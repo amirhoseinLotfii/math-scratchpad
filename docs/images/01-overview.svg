@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Math inside the conversation.</title><desc id="desc">Feature illustration of the math editor and its manual review workflow.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Math inside the conversation.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">A touch-first notebook for equations and your reasoning.</text>
+<rect x="64" y="250" width="650" height="670" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="100" y="310" fill="#d0f5e2" font-size="30" font-weight="500" text-anchor="start">Write. Think. Take the next step.</text>
+<text x="104" y="405" fill="#f2f6f3" font-size="34" font-weight="600" text-anchor="start">Edit the expression itself</text>
+<text x="104" y="451" fill="#b8c5bf" font-size="25" font-weight="400" text-anchor="start">Numbers, fractions and nested templates.</text>
+<text x="104" y="545" fill="#f2f6f3" font-size="34" font-weight="600" text-anchor="start">Keep every step</text>
+<text x="104" y="591" fill="#b8c5bf" font-size="25" font-weight="400" text-anchor="start">Independent lines with an explicit Final.</text>
+<text x="104" y="685" fill="#f2f6f3" font-size="34" font-weight="600" text-anchor="start">Review on your terms</text>
+<text x="104" y="731" fill="#b8c5bf" font-size="25" font-weight="400" text-anchor="start">Check copies; you paste and send.</text>
+<rect x="104" y="805" width="220" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="214.0" y="847.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Symbols</text>
+<rect x="344" y="805" width="220" height="64" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="454.0" y="847.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Check</text>
+<rect x="752" y="250" width="784" height="670" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="790" y="310" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Exercise 1 · In progress</text>
+<text x="790" y="380" fill="#f2f6f3" font-size="30" font-weight="600" text-anchor="start">Step 1</text>
+<rect x="1360" y="340" width="132" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1426.0" y="382.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Final</text>
+<rect x="948" y="432" width="84" height="72" rx="12" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="990.0" y="488" fill="#d0f5e2" font-size="58" font-weight="400" text-anchor="middle">2</text>
+<path d="M940 506 L1040 506" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="990.0" y="566" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">3</text>
+<text x="1075" y="524" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">+</text>
+<text x="1170.0" y="488" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">1</text>
+<path d="M1120 506 L1220 506" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="1170.0" y="566" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">4</text>
+<text x="790" y="635" fill="#f2f6f3" font-size="38" font-weight="400" text-anchor="start">1   2   3   ÷</text>
+<text x="790" y="700" fill="#f2f6f3" font-size="38" font-weight="400" text-anchor="start">4   5   6   ×</text>
+<text x="790" y="765" fill="#f2f6f3" font-size="38" font-weight="400" text-anchor="start">7   8   9   −</text>
+<rect x="790" y="817" width="310" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="945.0" y="859.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">+ New step</text>
+<rect x="1124" y="817" width="365" height="64" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="1306.5" y="859.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Check</text>
+</g></svg>

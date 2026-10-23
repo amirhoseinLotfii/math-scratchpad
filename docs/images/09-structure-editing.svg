@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Select the whole structure.</title><desc id="desc">Whole fraction selection uses the internal mathematical clipboard, distinct from the review clipboard.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Select the whole structure.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Copy, cut, duplicate or paste while keeping nested fields together.</text>
+<rect x="64" y="265" width="1472" height="350" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="125" y="320" width="330" height="240" rx="18" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="290.0" y="420" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">x + 1</text>
+<path d="M155 438 L425 438" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="290.0" y="498" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">x − 1</text>
+<text x="535" y="350" fill="#d0f5e2" font-size="36" font-weight="500" text-anchor="start">Whole structure selected</text>
+<rect x="535" y="420" width="172" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="621.0" y="462.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Copy</text>
+<rect x="721" y="420" width="172" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="807.0" y="462.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Cut</text>
+<rect x="907" y="420" width="172" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="993.0" y="462.0" fill="#f2f6f3" font-size="27.407407407407412" font-weight="500" text-anchor="middle">Duplicate</text>
+<rect x="1093" y="420" width="172" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1179.0" y="462.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Delete</text>
+<rect x="1279" y="420" width="172" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1365.0" y="462.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Paste</text>
+<text x="535" y="565" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Internal math clipboard</text>
+<rect x="64" y="655" width="1472" height="260" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="100" y="712" fill="#d0f5e2" font-size="31" font-weight="600" text-anchor="start">Duplicate</text>
+<text x="480.0" y="763" fill="#f2f6f3" font-size="44" font-weight="400" text-anchor="middle">x + 1</text>
+<path d="M375 781 L585 781" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="480.0" y="841" fill="#f2f6f3" font-size="44" font-weight="400" text-anchor="middle">x − 1</text>
+<text x="690" y="808" fill="#d0f5e2" font-size="60" font-weight="400" text-anchor="start">→</text>
+<text x="970.0" y="763" fill="#f2f6f3" font-size="44" font-weight="400" text-anchor="middle">x + 1</text>
+<path d="M865 781 L1075 781" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="970.0" y="841" fill="#f2f6f3" font-size="44" font-weight="400" text-anchor="middle">x − 1</text>
+<text x="1315.0" y="763" fill="#f2f6f3" font-size="44" font-weight="400" text-anchor="middle">x + 1</text>
+<path d="M1210 781 L1420 781" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="1315.0" y="841" fill="#f2f6f3" font-size="44" font-weight="400" text-anchor="middle">x − 1</text>
+</g></svg>

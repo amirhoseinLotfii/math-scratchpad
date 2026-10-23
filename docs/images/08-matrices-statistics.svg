@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Go beyond arithmetic.</title><desc id="desc">A 2 by 2 matrix and probability/statistics symbols are notation templates, not calculations.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Go beyond arithmetic.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Editable matrix, probability and statistics notation.</text>
+<rect x="64" y="265" width="720" height="640" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="812" y="265" width="724" height="640" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="110" y="335" fill="#d0f5e2" font-size="34" font-weight="600" text-anchor="start">Matrices</text>
+<path d="M190 405 L170 405" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<path d="M170 405 L170 670" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<path d="M170 670 L190 670" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<path d="M640 405 L660 405" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<path d="M660 405 L660 670" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<path d="M660 670 L640 670" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<text x="300" y="490" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">1</text>
+<text x="510" y="490" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">2</text>
+<text x="300" y="620" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">3</text>
+<text x="510" y="620" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">4</text>
+<text x="110" y="785" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">2 × 2 and 3 × 3 templates</text>
+<text x="110" y="825" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Independent editable cells.</text>
+<text x="860" y="335" fill="#d0f5e2" font-size="34" font-weight="600" text-anchor="start">Probability &amp; stats</text>
+<text x="875" y="430" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="start">P(A)</text>
+<text x="1070" y="430" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Probability</text>
+<text x="875" y="512" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="start">n!</text>
+<text x="1070" y="512" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Factorial</text>
+<text x="875" y="594" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="start">nCk</text>
+<text x="1070" y="594" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Binomial coefficient</text>
+<text x="875" y="676" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="start">x̄</text>
+<text x="1070" y="676" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Mean</text>
+<text x="875" y="758" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="start">σ</text>
+<text x="1070" y="758" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Sigma</text>
+</g></svg>

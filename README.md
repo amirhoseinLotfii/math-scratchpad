@@ -13,6 +13,14 @@ Write fractions where you see them. Tap a digit to place the caret. Keep your re
 
 Built with **React 19, TypeScript, Redux Toolkit 2 and Vite 8**. This is a working editor prototype, with source, tests and self-contained builds.
 
+## Feature gallery
+
+Explore the current keyboard, direct fraction editing, steps, notation templates and review workflow in [12 vector feature illustrations](docs/gallery.md). These are explanatory artwork, not captured app screens.
+
+![Math Scratchpad overview](docs/images/01-overview.svg)
+
+[View all 12 features](docs/gallery.md)
+
 ## What makes it useful
 
 - **One formula, directly editable.** Vertical fractions, powers, roots, parentheses and templates are the actual interactive expression.

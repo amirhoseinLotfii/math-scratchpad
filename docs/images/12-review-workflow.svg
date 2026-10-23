@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Your work. Your review request.</title><desc id="desc">Manual review workflow with Copied and Changed since copy states and a selectable fallback if copying is blocked.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Your work. Your review request.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Check copies the problem and steps; you paste and send in the chat.</text>
+<rect x="64" y="270" width="470" height="350" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="104" y="340" fill="#d0f5e2" font-size="33" font-weight="600" text-anchor="start">1  Copy</text>
+<rect x="565" y="270" width="470" height="350" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="605" y="340" fill="#d0f5e2" font-size="33" font-weight="600" text-anchor="start">2  Paste</text>
+<rect x="1066" y="270" width="470" height="350" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="1106" y="340" fill="#d0f5e2" font-size="33" font-weight="600" text-anchor="start">3  Send</text>
+<rect x="115" y="405" width="368" height="64" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="299.0" y="447.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Check</text>
+<text x="300" y="560" fill="#d0f5e2" font-size="27" font-weight="400" text-anchor="middle">Copied</text>
+<text x="610" y="430" fill="#f2f6f3" font-size="30" font-weight="400" text-anchor="start">Original problem</text>
+<text x="610" y="470" fill="#f2f6f3" font-size="30" font-weight="400" text-anchor="start">All ordered steps</text>
+<text x="610" y="510" fill="#f2f6f3" font-size="30" font-weight="400" text-anchor="start">Explicit final answer</text>
+<text x="1110" y="430" fill="#f2f6f3" font-size="29" font-weight="400" text-anchor="start">Paste into this chat.</text>
+<text x="1110" y="470" fill="#f2f6f3" font-size="29" font-weight="400" text-anchor="start">Send it yourself.</text>
+<text x="1110" y="510" fill="#f2f6f3" font-size="29" font-weight="400" text-anchor="start">Ask for a review.</text>
+<rect x="64" y="665" width="1472" height="240" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="100" y="710" width="276" height="42" rx="10" fill="#402e17" stroke="#8c6936" stroke-width="2"/>
+<text x="112" y="739" fill="#f4c16f" font-size="23" font-weight="500" text-anchor="start">Changed since copy</text>
+<text x="460" y="742" fill="#f2f6f3" font-size="32" font-weight="400" text-anchor="start">Edit after copying? Press Check again.</text>
+<text x="100" y="838" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Clipboard blocked? Select the fallback text and copy it manually.</text>
+</g></svg>

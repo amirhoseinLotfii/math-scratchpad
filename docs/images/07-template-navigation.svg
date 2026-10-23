@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Fill the fields. Keep moving.</title><desc id="desc">Integral field order is lower bound, upper bound, integrand, variable, then outside the template.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Fill the fields. Keep moving.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Next walks through template fields and returns to the main line.</text>
+<rect x="64" y="260" width="1472" height="340" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="200" y="490" fill="#f2f6f3" font-size="180" font-weight="400" text-anchor="start">∫</text>
+<text x="315" y="345" fill="#f2f6f3" font-size="48" font-weight="400" text-anchor="start">□</text>
+<text x="285" y="540" fill="#f2f6f3" font-size="48" font-weight="400" text-anchor="start">□</text>
+<text x="420" y="445" fill="#f2f6f3" font-size="86" font-weight="400" text-anchor="start">□</text>
+<text x="600" y="445" fill="#f2f6f3" font-size="74" font-weight="400" text-anchor="start">d</text>
+<text x="700" y="445" fill="#f2f6f3" font-size="86" font-weight="400" text-anchor="start">□</text>
+<text x="855" y="330" fill="#d0f5e2" font-size="34" font-weight="400" text-anchor="start">1  Lower bound</text>
+<text x="855" y="395" fill="#d0f5e2" font-size="34" font-weight="400" text-anchor="start">2  Upper bound</text>
+<text x="855" y="460" fill="#d0f5e2" font-size="34" font-weight="400" text-anchor="start">3  Integrand</text>
+<text x="855" y="525" fill="#d0f5e2" font-size="34" font-weight="400" text-anchor="start">4  Variable</text>
+<rect x="64" y="660" width="270" height="74" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="199.0" y="707.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Lower</text>
+<text x="348" y="712" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="middle">→</text>
+<rect x="362" y="660" width="270" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="497.0" y="707.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Upper</text>
+<text x="646" y="712" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="middle">→</text>
+<rect x="660" y="660" width="270" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="795.0" y="707.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Body</text>
+<text x="944" y="712" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="middle">→</text>
+<rect x="958" y="660" width="270" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1093.0" y="707.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Variable</text>
+<text x="1242" y="712" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="middle">→</text>
+<rect x="1256" y="660" width="270" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1391.0" y="707.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Main line</text>
+<text x="100" y="845" fill="#b8c5bf" font-size="26" font-weight="400" text-anchor="start">Also available</text>
+<text x="100" y="905" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="start">a/b       xⁿ       √       ( )       lim       Σ</text>
+</g></svg>

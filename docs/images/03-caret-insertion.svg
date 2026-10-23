@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Place the cursor where you need it.</title><desc id="desc">Number insertion changes 123 to 1923; main-line insertion adds an empty fraction without changing the existing denominator.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Place the cursor where you need it.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Edit a digit, or insert on the main line beside a fraction.</text>
+<rect x="64" y="265" width="720" height="630" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="812" y="265" width="724" height="630" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="106" y="330" fill="#d0f5e2" font-size="32" font-weight="600" text-anchor="start">Inside a number</text>
+<text x="140" y="505" fill="#f2f6f3" font-size="92" font-weight="400" text-anchor="start">123</text>
+<path d="M201 425 L201 520" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<text x="420" y="492" fill="#d0f5e2" font-size="62" font-weight="400" text-anchor="start">→</text>
+<text x="520" y="505" fill="#f2f6f3" font-size="78" font-weight="400" text-anchor="start">1923</text>
+<path d="M620 430 L620 520" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<rect x="135" y="620" width="210" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="240.0" y="662.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Insert 9</text>
+<text x="110" y="760" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Choose the boundary after 1.</text>
+<text x="110" y="800" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">The remaining digits stay in place.</text>
+<text x="852" y="330" fill="#d0f5e2" font-size="32" font-weight="600" text-anchor="start">Outside a fraction</text>
+<text x="945.0" y="458" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">2</text>
+<path d="M895 476 L995 476" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="945.0" y="536" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">3</text>
+<text x="1040" y="500" fill="#d0f5e2" font-size="54" font-weight="400" text-anchor="start">→</text>
+<text x="1185.0" y="458" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">2</text>
+<path d="M1135 476 L1235 476" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="1185.0" y="536" fill="#f2f6f3" font-size="58" font-weight="400" text-anchor="middle">3</text>
+<text x="1270" y="495" fill="#f2f6f3" font-size="54" font-weight="400" text-anchor="start">+</text>
+<rect x="1338" y="402" width="79" height="72" rx="12" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="1377.5" y="458" fill="#d0f5e2" font-size="50" font-weight="400" text-anchor="middle">□</text>
+<path d="M1330 476 L1425 476" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="1377.5" y="536" fill="#f2f6f3" font-size="50" font-weight="400" text-anchor="middle">□</text>
+<text x="855" y="760" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Tap the dot beside a fraction.</text>
+<text x="855" y="800" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Add an operator and a blank template.</text>
+</g></svg>

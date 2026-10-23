@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Start at the top-left.</title><desc id="desc">The current LTR keyboard starts with 1 2 3 and places Backspace in the top-right quick-key slot.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Start at the top-left.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Ascending numbers and Backspace beside the quick templates.</text>
+<rect x="64" y="250" width="920" height="690" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="92" y="275" width="278" height="58" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="231.0" y="314.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Symbols</text>
+<rect x="386" y="275" width="278" height="58" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="525.0" y="314.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Compact</text>
+<rect x="680" y="275" width="278" height="58" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="819.0" y="314.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Hide keys</text>
+<rect x="92" y="350" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="194.0" y="397.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">a/b</text>
+<rect x="312" y="350" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="414.0" y="397.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">xⁿ</text>
+<rect x="532" y="350" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="634.0" y="397.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">√</text>
+<rect x="752" y="350" width="204" height="74" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="854.0" y="397.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">⌫</text>
+<rect x="92" y="438" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="194.0" y="485.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">1</text>
+<rect x="312" y="438" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="414.0" y="485.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">2</text>
+<rect x="532" y="438" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="634.0" y="485.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">3</text>
+<rect x="752" y="438" width="204" height="74" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="854.0" y="485.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">÷</text>
+<rect x="92" y="526" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="194.0" y="573.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">4</text>
+<rect x="312" y="526" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="414.0" y="573.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">5</text>
+<rect x="532" y="526" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="634.0" y="573.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">6</text>
+<rect x="752" y="526" width="204" height="74" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="854.0" y="573.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">×</text>
+<rect x="92" y="614" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="194.0" y="661.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">7</text>
+<rect x="312" y="614" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="414.0" y="661.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">8</text>
+<rect x="532" y="614" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="634.0" y="661.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">9</text>
+<rect x="752" y="614" width="204" height="74" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="854.0" y="661.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">−</text>
+<rect x="92" y="702" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="194.0" y="749.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">0</text>
+<rect x="312" y="702" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="414.0" y="749.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">.</text>
+<rect x="532" y="702" width="204" height="74" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="634.0" y="749.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">=</text>
+<rect x="752" y="702" width="204" height="74" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="854.0" y="749.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">+</text>
+<rect x="92" y="800" width="278" height="58" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="231.0" y="839.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">←</text>
+<rect x="386" y="800" width="278" height="58" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="525.0" y="839.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">→</text>
+<rect x="680" y="800" width="278" height="58" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="819.0" y="839.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Next</text>
+<text x="1040" y="365" fill="#d0f5e2" font-size="42" font-weight="600" text-anchor="start">1 → 2 → 3</text>
+<text x="1040" y="445" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Numbers increase</text>
+<text x="1040" y="485" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">from the upper left.</text>
+<text x="1040" y="600" fill="#d0f5e2" font-size="72" font-weight="400" text-anchor="start">⌫</text>
+<text x="1040" y="670" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Delete without reaching</text>
+<text x="1040" y="710" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">below the number grid.</text>
+</g></svg>

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Keep the whole solution in view.</title><desc id="desc">Three ordered solution steps show 2/3+1/4, then 8/12+3/12, then 11/12 explicitly marked Final.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Keep the whole solution in view.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Revising an earlier line preserves later work and marks it for review.</text>
+<rect x="64" y="260" width="1472" height="185" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="100" y="318" fill="#f2f6f3" font-size="31" font-weight="600" text-anchor="start">Step 1</text>
+<rect x="270" y="283" width="108" height="42" rx="10" fill="#254c3d" stroke="#719b85" stroke-width="2"/>
+<text x="282" y="312" fill="#d0f5e2" font-size="23" font-weight="500" text-anchor="start">Edited</text>
+<text x="770.0" y="328" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">2</text>
+<path d="M720 346 L820 346" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="770.0" y="406" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">3</text>
+<text x="855" y="364" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">+</text>
+<text x="950.0" y="328" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">1</text>
+<path d="M900 346 L1000 346" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="950.0" y="406" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">4</text>
+<rect x="64" y="465" width="1472" height="185" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="100" y="523" fill="#f2f6f3" font-size="31" font-weight="600" text-anchor="start">Step 2</text>
+<rect x="270" y="488" width="192" height="42" rx="10" fill="#402e17" stroke="#8c6936" stroke-width="2"/>
+<text x="282" y="517" fill="#f4c16f" font-size="23" font-weight="500" text-anchor="start">Needs review</text>
+<text x="770.0" y="533" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">8</text>
+<path d="M720 551 L820 551" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="770.0" y="611" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">12</text>
+<text x="855" y="569" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">+</text>
+<text x="950.0" y="533" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">3</text>
+<path d="M900 551 L1000 551" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="950.0" y="611" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">12</text>
+<rect x="64" y="670" width="1472" height="185" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<text x="100" y="728" fill="#f2f6f3" font-size="31" font-weight="600" text-anchor="start">Step 3</text>
+<rect x="270" y="693" width="192" height="42" rx="10" fill="#402e17" stroke="#8c6936" stroke-width="2"/>
+<text x="282" y="722" fill="#f4c16f" font-size="23" font-weight="500" text-anchor="start">Needs review</text>
+<text x="855.0" y="738" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">11</text>
+<path d="M800 756 L910 756" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="855.0" y="816" fill="#f2f6f3" font-size="46" font-weight="400" text-anchor="middle">12</text>
+<rect x="1310" y="726" width="170" height="64" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="1395.0" y="768.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Final</text>
+<text x="100" y="923" fill="#d0f5e2" font-size="30" font-weight="500" text-anchor="start">+ New step</text>
+<text x="420" y="923" fill="#b8c5bf" font-size="27" font-weight="400" text-anchor="start">Each new line starts empty.</text>
+</g></svg>

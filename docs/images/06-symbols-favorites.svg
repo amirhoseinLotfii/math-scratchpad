@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Find symbols by topic.</title><desc id="desc">Symbol topics include Numbers, Algebra, Functions, Calculus, Matrices and Probability and statistics.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Find symbols by topic.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Favorites, recent symbols and a preview before insertion.</text>
+<rect x="64" y="255" width="1472" height="680" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="88" y="280" width="226" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="201.0" y="322.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Numbers</text>
+<rect x="328" y="280" width="226" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="441.0" y="322.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Algebra</text>
+<rect x="568" y="280" width="226" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="681.0" y="322.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Functions</text>
+<rect x="808" y="280" width="226" height="64" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="921.0" y="322.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Calculus</text>
+<rect x="1048" y="280" width="226" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1161.0" y="322.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Matrices</text>
+<rect x="1288" y="280" width="226" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="1401.0" y="322.0" fill="#f2f6f3" font-size="17.719298245614034" font-weight="500" text-anchor="middle">Probability &amp; stats</text>
+<text x="105" y="406" fill="#b8c5bf" font-size="24" font-weight="400" text-anchor="start">Favorites</text>
+<rect x="250" y="363" width="88" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="294.0" y="405.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">∫</text>
+<rect x="350" y="363" width="88" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="394.0" y="405.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">a/b</text>
+<rect x="450" y="363" width="88" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="494.0" y="405.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">√</text>
+<text x="685" y="406" fill="#b8c5bf" font-size="24" font-weight="400" text-anchor="start">Recent</text>
+<rect x="790" y="363" width="88" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="834.0" y="405.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Σ</text>
+<rect x="890" y="363" width="88" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="934.0" y="405.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">xⁿ</text>
+<rect x="100" y="470" width="725" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="462.5" y="512.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">d/dx     Derivative</text>
+<text x="775" y="514" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="start">☆</text>
+<rect x="100" y="566" width="725" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="462.5" y="608.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">∫     Integral</text>
+<text x="775" y="610" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="start">★</text>
+<rect x="100" y="662" width="725" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="462.5" y="704.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">lim     Limit</text>
+<text x="775" y="706" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="start">☆</text>
+<rect x="100" y="758" width="725" height="64" rx="16" fill="#2b302f" stroke="#424d47" stroke-width="2"/>
+<text x="462.5" y="800.0" fill="#f2f6f3" font-size="28" font-weight="500" text-anchor="middle">Σ     Sum</text>
+<text x="775" y="802" fill="#d0f5e2" font-size="28" font-weight="400" text-anchor="start">☆</text>
+<rect x="865" y="470" width="620" height="390" rx="24" fill="#1b2721" stroke="#719b85" stroke-width="2"/>
+<text x="900" y="525" fill="#d0f5e2" font-size="31" font-weight="500" text-anchor="start">Editable template</text>
+<text x="935" y="690" fill="#f2f6f3" font-size="132" font-weight="400" text-anchor="start">∫</text>
+<text x="1020" y="585" fill="#f2f6f3" font-size="39" font-weight="400" text-anchor="start">□</text>
+<text x="1000" y="735" fill="#f2f6f3" font-size="39" font-weight="400" text-anchor="start">□</text>
+<text x="1050" y="655" fill="#f2f6f3" font-size="57" font-weight="400" text-anchor="start">□  d □</text>
+<rect x="900" y="765" width="550" height="64" rx="16" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="1175.0" y="807.0" fill="#d0f5e2" font-size="28" font-weight="500" text-anchor="middle">Insert template</text>
+</g></svg>

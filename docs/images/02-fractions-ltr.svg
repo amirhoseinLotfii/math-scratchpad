@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc" direction="ltr"><title id="title">Fractions in the right direction.</title><desc id="desc">Two vertical fractions, 2 over 3 plus 1 over 4, with the first numerator selected.</desc>
+<defs><radialGradient id="bg" cx="0" cy="0" r="1"><stop stop-color="#244d3b"/><stop offset="1" stop-color="#101916"/></radialGradient></defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+<text x="64" y="64" fill="#d0f5e2" font-size="27" font-weight="500" text-anchor="start">Math Scratchpad</text>
+<text x="64" y="142" fill="#f2f6f3" font-size="52" font-weight="600" text-anchor="start">Fractions in the right direction.</text>
+<text x="64" y="194" fill="#b8c5bf" font-size="28" font-weight="400" text-anchor="start">Left-to-right math. Separate numerator and denominator targets.</text>
+<rect x="64" y="260" width="1472" height="650" rx="24" fill="#202624" stroke="#424d47" stroke-width="2"/>
+<rect x="618" y="487" width="84" height="72" rx="12" fill="#254c3d" stroke="#d0f5e2" stroke-width="2"/>
+<text x="660.0" y="543" fill="#d0f5e2" font-size="72" font-weight="400" text-anchor="middle">2</text>
+<path d="M610 561 L710 561" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="660.0" y="621" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">3</text>
+<text x="745" y="579" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">+</text>
+<text x="840.0" y="543" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">1</text>
+<path d="M790 561 L890 561" fill="none" stroke="#f2f6f3" stroke-width="3" stroke-linecap="round"/>
+<text x="840.0" y="621" fill="#f2f6f3" font-size="72" font-weight="400" text-anchor="middle">4</text>
+<rect x="140" y="350" width="234" height="42" rx="10" fill="#254c3d" stroke="#719b85" stroke-width="2"/>
+<text x="152" y="379" fill="#d0f5e2" font-size="23" font-weight="500" text-anchor="start">First numerator</text>
+<path d="M390 370 L640 505" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<rect x="140" y="730" width="262" height="42" rx="10" fill="#254c3d" stroke="#719b85" stroke-width="2"/>
+<text x="152" y="759" fill="#d0f5e2" font-size="23" font-weight="500" text-anchor="start">First denominator</text>
+<path d="M420 750 L650 625" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<rect x="1090" y="350" width="248" height="42" rx="10" fill="#254c3d" stroke="#719b85" stroke-width="2"/>
+<text x="1102" y="379" fill="#d0f5e2" font-size="23" font-weight="500" text-anchor="start">Second numerator</text>
+<path d="M1090 390 L840 510" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<rect x="1060" y="730" width="276" height="42" rx="10" fill="#254c3d" stroke="#719b85" stroke-width="2"/>
+<text x="1072" y="759" fill="#d0f5e2" font-size="23" font-weight="500" text-anchor="start">Second denominator</text>
+<path d="M1070 730 L840 625" fill="none" stroke="#d0f5e2" stroke-width="3" stroke-linecap="round"/>
+<text x="800" y="850" fill="#d0f5e2" font-size="29" font-weight="500" text-anchor="middle">Visual order and editing order stay aligned.</text>
+</g></svg>
