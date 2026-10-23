@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Start numeric keys at the top-left with 1–3 and place Backspace beside quick templates at the top-right.
+
 - Match the gallery direction with a charcoal/forest-green shell, mint highlights, rounded step cards and more readable numeric keys.
 - Render original problems as read-only math using the existing formula renderer.
 - Show topic-specific template previews alongside symbol rows, plus favorites and recent symbols.

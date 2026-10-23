@@ -14,7 +14,7 @@ describe('Real React interface', () => {
     expect([...expression.querySelectorAll('[data-node-id]')].map(x => x.textContent)).toEqual(['2', '3', '+', '1', '4']);
     expect(container.querySelector('.scratchpad')?.getAttribute('dir')).toBe('ltr'); expect(container.textContent).not.toMatch(/[\u0600-\u06ff]/);
     for (const token of expression.querySelectorAll<HTMLButtonElement>('[data-node-id]')) { fireEvent.click(token); expect(store.getState().doc.cursor.nodeId).toBe(token.dataset.nodeId); }
-    expect(within(screen.getByLabelText('Numeric keys')).getAllByRole('button').map(x => x.textContent)).toEqual(['7', '8', '9', '÷', '4', '5', '6', '×', '1', '2', '3', '−', '0', '.', '=', '+']);
+    expect(within(screen.getByLabelText('Numeric keys')).getAllByRole('button').map(x => x.textContent)).toEqual(['1', '2', '3', '÷', '4', '5', '6', '×', '7', '8', '9', '−', '0', '.', '=', '+']);
   });
   it('places caret by measured digit midpoint on a touched number', () => {
     const { store } = mount(); store.dispatch(actions.command({ type: 'clear' })); for (const value of '123') store.dispatch(actions.command({ type: 'digit', value }));

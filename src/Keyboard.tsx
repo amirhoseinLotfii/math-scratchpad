@@ -37,13 +37,12 @@ export function Keyboard() {
       </div>)}</div><aside className="template-preview" aria-label="Editable template preview"><p className="eyebrow">EDITABLE TEMPLATE</p><h3>{preview.title}</h3><div className="preview-formula"><Formula sequence={preview.expression} stepId="template-preview" readOnly top /></div><p className="small">Insert a template, then fill its fields with Next.</p><button type="button" className="primary" onClick={() => symbol(preview.key)}>Insert template</button><p className="small">Notation tools, not an automatic solver.</p></aside></div>
     </div>}
     {!s.symbolsOpen && <>
-      {shortcuts.length > 0 && <div className="shortcut-list" aria-label="Favorite symbols">{shortcuts.map(x => <button type="button" key={x.key} aria-label={`Insert favorite ${x.title}`} onClick={() => symbol(x.key)}>{x.label}</button>)}</div>}
+      <div className="quick-key-row" dir="ltr"><div className="shortcut-list" aria-label="Favorite symbols">{shortcuts.map(x => <button type="button" key={x.key} aria-label={`Insert favorite ${x.title}`} onClick={() => symbol(x.key)}>{x.label}</button>)}</div><button type="button" className="backspace-key" aria-label="Backspace" onClick={() => dispatch(actions.command({ type: 'backspace' }))}>⌫</button></div>
       {!s.prefs.compact && <div className="key-grid">{['x', 'y', 'n', 't'].map(k => <button type="button" key={k} onClick={() => symbol(k)}>{k}</button>)}</div>}
-      <div className="key-grid" aria-label="Numeric keys">{['7', '8', '9', '÷', '4', '5', '6', '×', '1', '2', '3', '−', '0', '.', '=', '+'].map(k => <button type="button" className={/[0-9.]/.test(k) ? 'number-key' : 'operator-key'} key={k} onClick={() => dispatch(actions.command({ type: /[0-9.]/.test(k) ? 'digit' : 'operator', value: k }))}>{k}</button>)}</div>
+      <div className="key-grid" aria-label="Numeric keys">{['1', '2', '3', '÷', '4', '5', '6', '×', '7', '8', '9', '−', '0', '.', '=', '+'].map(k => <button type="button" className={/[0-9.]/.test(k) ? 'number-key' : 'operator-key'} key={k} onClick={() => dispatch(actions.command({ type: /[0-9.]/.test(k) ? 'digit' : 'operator', value: k }))}>{k}</button>)}</div>
       <div className="navigation-grid">
         <button type="button" aria-label="Move left" onClick={() => dispatch(actions.move(-1))}>←</button>
         <button type="button" aria-label="Move right" onClick={() => dispatch(actions.move(1))}>→</button>
-        <button type="button" aria-label="Backspace" onClick={() => dispatch(actions.command({ type: 'backspace' }))}>⌫</button>
         <button type="button" aria-label="Next field" onClick={() => dispatch(actions.next())}>Next</button>
       </div>
     </>}

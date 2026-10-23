@@ -15,7 +15,7 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 - The product root and every math sequence explicitly use `dir="ltr"`; CSS uses `unicode-bidi: isolate`.
 - Original Persian problems use `dir="auto"` outside the math editor. They are not parsed into editor labels.
 - Top-level expressions wrap at operators, keeping an operator attached to its right-hand term. Wide atomic chunks and matrices have contained horizontal scrolling.
-- Numeric keys use a fixed LTR 4-column order. Compact mode removes the permanent variable row; it does not shrink tap targets.
+- Numeric keys use a fixed LTR 4-column order starting with `1 2 3` at the top, then `4 5 6`, then `7 8 9`. Backspace occupies the top-right quick-template slot; cursor navigation stays below the numeric keys. Compact mode removes the permanent variable row; it does not shrink tap targets.
 - The product reflows down to a 320 px target width. It has no fixed viewport shell or floating keyboard that assumes control of ChatGPT chrome.
 
 ## Components and states
