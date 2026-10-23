@@ -1,0 +1,29 @@
+{
+  "name": "math-scratchpad-redux",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "npm run typecheck && vite build && node scripts/standalone.mjs",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "2.13.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-redux": "^9.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.0",
+    "vite": "8.3.5",
+    "vitest": "^4.0.0"
+  }
+}

@@ -1,0 +1,39 @@
+# Launch copy — prepared, not posted
+
+These drafts describe the implemented 0.3.0 prototype. Add the verified repository URL before publication. No engagement, Android certification or automatic ChatGPT installation is claimed.
+
+## English / LinkedIn
+
+I built Math Scratchpad: a touch-first math notebook with React, TypeScript and Redux Toolkit.
+
+The detail I cared about most: the fraction you see is the one you edit. Tap a digit, place the caret, move between numerator and denominator, and keep your reasoning in ordered steps. Math stays LTR even alongside a Persian problem.
+
+This release adds compact keys, structural Next, whole-structure copy/cut/paste, favorites and recent symbols. Check copies the complete problem and steps for a review conversation; it never pretends to send a message.
+
+Source, tests, a bilingual README and the remaining device-testing checklist are included. I would especially value feedback on mobile editing, accessibility and mixed LTR/RTL content.
+
+Repository: use the verified published URL.
+
+If it helps you, star it or watch releases. Contributions and reproducible bug reports are welcome.
+
+#React #TypeScript #Redux #Accessibility #MathEducation #OpenSource
+
+## فارسی / معرفی پروژه
+
+روی یک دفتر ریاضی لمسی کار کردم: Math Scratchpad با React، TypeScript و Redux Toolkit.
+
+خود کسر و فرمول قابل ویرایش است؛ می‌شود روی رقم لمس کرد، بین صورت و مخرج حرکت کرد و مراحل حل را مرتب نوشت. جهت ریاضی LTR می‌ماند، حتی کنار صورت مسئله فارسی.
+
+در این نسخه، صفحه‌کلید جمع‌وجور، حرکت هوشمند Next، جابه‌جایی کل ساختار، نمادهای محبوب و اخیر، و هشدار تغییر بعد از کپی اضافه شده. دکمه Check مسئله و مراحل را برای ارسال در گفتگو کپی می‌کند.
+
+کد، تست‌ها و README فارسی و انگلیسی آماده‌اند. این هنوز نمونه قابل توسعه است و بازخورد روی گوشی واقعی و دسترس‌پذیری خیلی کمک می‌کند.
+
+مخزن: آدرس تأییدشده مخزن پس از انتشار درج شود.
+
+اگر برایتان کاربردی بود، Star بدهید و برای خبر نسخه‌ها Watch بخش Releases را فعال کنید. گزارش ایراد دقیق و مشارکت خوشحال‌کننده است.
+
+## Short post
+
+Math Scratchpad: touch-first math editing with React + Redux Toolkit. Direct fraction editing, explicit LTR, ordered steps, smart Next and a review prompt you copy and send. Source + tests + bilingual docs. Feedback on mobile accessibility welcome.
+
+Repository: use the verified published URL.

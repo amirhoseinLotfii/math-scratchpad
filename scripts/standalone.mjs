@@ -1,0 +1,10 @@
+import { build } from 'esbuild';
+import { readFile, writeFile } from 'node:fs/promises';
+const result = await build({ entryPoints: ['src/main.tsx'], bundle: true, write: false, minify: true, format: 'iife', define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.css': 'empty' } });
+const css = await readFile('src/styles.css', 'utf8');
+const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+const fragment = `<div id="math-scratchpad-redux"></div>\n<style>\n${css}\n</style>\n<script>\n(()=>{${js}})();\n</script>\n`;
+if (Buffer.byteLength(fragment) >= 1000000) throw Error('Inline bundle is too large.');
+await writeFile('dist/inline-fragment.html', fragment);
+await writeFile('dist/standalone.html', `<!doctype html>\n<html lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Math Scratchpad</title></head><body>${fragment}</body></html>`);
+console.log(`Self-contained bundle: ${Buffer.byteLength(fragment)} bytes`);
