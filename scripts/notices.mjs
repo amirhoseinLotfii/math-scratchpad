@@ -11,7 +11,7 @@ for (const [name, version] of [...packages].sort()) {
   let notice = '';
   for (const file of ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'license', 'license.md', 'LICENSE-MIT', 'LICENSE-MIT.txt']) { try { notice = await readFile(`${root}/${file}`, 'utf8'); break; } catch {} }
   if (!notice) throw Error(`Missing license text for ${name}`);
-  text += `\n## ${name} ${version} (${pkg.license})\n\n${notice.trim()}\n`;
+  text += `\n## ${name} ${version} (${pkg.license})\n\n${notice.replace(/\r\n/g, '\n').trim()}\n`;
 }
 await writeFile('THIRD_PARTY_NOTICES.md', text);
 console.log(`Notices for ${packages.size} runtime packages`);

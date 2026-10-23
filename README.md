@@ -1,8 +1,13 @@
 # Math Scratchpad
 
+[![Validate editor](https://github.com/amirhoseinLotfii/math-scratchpad/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/amirhoseinLotfii/math-scratchpad/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 **A touch-first math notebook with direct equation editing, explicit LTR math, and a review workflow you control.**
 
 [راهنمای فارسی](README.fa.md) · [Architecture](docs/architecture.md) · [Design system](docs/design-system.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
+
+Project: [amirhoseinLotfii/math-scratchpad](https://github.com/amirhoseinLotfii/math-scratchpad) · [Release updates](https://github.com/amirhoseinLotfii/math-scratchpad/releases)
 
 Write fractions where you see them. Tap a digit to place the caret. Keep your reasoning in ordered steps, then copy the original problem and your work for review in ChatGPT.
 

@@ -1,6 +1,6 @@
 # Launch copy — prepared, not posted
 
-These drafts describe the implemented 0.3.0 prototype. Add the verified repository URL before publication. No engagement, Android certification or automatic ChatGPT installation is claimed.
+These drafts describe the implemented 0.3.0 prototype. The repository is published; these social posts are still drafts. No engagement, Android certification or automatic ChatGPT installation is claimed.
 
 ## English / LinkedIn
 
@@ -12,7 +12,7 @@ This release adds compact keys, structural Next, whole-structure copy/cut/paste,
 
 Source, tests, a bilingual README and the remaining device-testing checklist are included. I would especially value feedback on mobile editing, accessibility and mixed LTR/RTL content.
 
-Repository: use the verified published URL.
+Repository: https://github.com/amirhoseinLotfii/math-scratchpad
 
 If it helps you, star it or watch releases. Contributions and reproducible bug reports are welcome.
 
@@ -28,7 +28,7 @@ If it helps you, star it or watch releases. Contributions and reproducible bug r
 
 کد، تست‌ها و README فارسی و انگلیسی آماده‌اند. این هنوز نمونه قابل توسعه است و بازخورد روی گوشی واقعی و دسترس‌پذیری خیلی کمک می‌کند.
 
-مخزن: آدرس تأییدشده مخزن پس از انتشار درج شود.
+مخزن: https://github.com/amirhoseinLotfii/math-scratchpad
 
 اگر برایتان کاربردی بود، Star بدهید و برای خبر نسخه‌ها Watch بخش Releases را فعال کنید. گزارش ایراد دقیق و مشارکت خوشحال‌کننده است.
 
@@ -36,4 +36,4 @@ If it helps you, star it or watch releases. Contributions and reproducible bug r
 
 Math Scratchpad: touch-first math editing with React + Redux Toolkit. Direct fraction editing, explicit LTR, ordered steps, smart Next and a review prompt you copy and send. Source + tests + bilingual docs. Feedback on mobile accessibility welcome.
 
-Repository: use the verified published URL.
+Repository: https://github.com/amirhoseinLotfii/math-scratchpad

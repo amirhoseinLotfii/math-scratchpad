@@ -7,6 +7,7 @@ Executed in the build environment on 2026-10-23 using Node.js 24.19.0.
 - `npm test`: **23 passing tests** across reducer/session and React DOM suites.
 - `npm run build`: strict TypeScript check, Vite production build and self-contained bundle generation succeed.
 - React DOM tests use JSDOM. Digit-coordinate tests use measured-rectangle fixtures, not a physical touchscreen.
+- GitHub CI for the implementation commit [completed successfully](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/39984286504).
 
 | Required scenario | Evidence | Result |
 | --- | --- | --- |
@@ -35,7 +36,6 @@ Executed in the build environment on 2026-10-23 using Node.js 24.19.0.
 - Screenshots and computed-layout validation at mobile widths.
 - Host reply composer overlap, in-chat clipboard permission behavior and persistence duration.
 - TalkBack, font fallback and all nested-template ergonomic cases.
-- Remote GitHub CI until the repository exists and the workflow actually runs.
 
 ## Device checklist
 
