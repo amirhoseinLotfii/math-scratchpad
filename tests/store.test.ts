@@ -84,3 +84,22 @@ describe('Review payload and persistence', () => {
     expect(latex(parse('۲/۳ + ١/٤'))).toBe('\\frac{2}{3}+\\frac{1}{4}'); expect(() => parse('\\unknown{x}')).toThrow('Cannot import'); expect(() => parse('1.2.3')).toThrow();
   });
 });
+
+
+describe('Step review status', () => {
+  it('does not mark a newly added line or final-answer metadata as stale math', () => {
+    const store = create(); store.dispatch(actions.command({ type: 'newStep' }));
+    expect(exerciseOf(store.getState().doc).steps.map(s => s.status)).toEqual(['unchecked', 'unchecked']);
+    const first = exerciseOf(store.getState().doc).steps[0];
+    store.dispatch(actions.select({ stepId: first.id, nodeId: leaves(first.expression)[0].node.id }));
+    store.dispatch(actions.command({ type: 'final' }));
+    expect(exerciseOf(store.getState().doc).steps[1].status).toBe('unchecked');
+    expect(stepOf(store.getState().doc).edited).toBeUndefined();
+  });
+  it('preserves actual edit badges through backup and undo', () => {
+    const store = create(); store.dispatch(actions.command({ type: 'digit', value: '9' }));
+    expect(stepOf(store.getState().doc).edited).toBe(true);
+    expect(validateSession(JSON.parse(serialize(store.getState()))).doc.exercises[0].steps[0].edited).toBe(true);
+    store.dispatch(actions.undo()); expect(stepOf(store.getState().doc).edited).toBeUndefined();
+  });
+});

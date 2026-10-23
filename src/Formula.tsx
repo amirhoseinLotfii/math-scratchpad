@@ -2,9 +2,9 @@ import { Fragment, type MouseEvent } from 'react';
 import { fields, type MathNode, type Sequence } from './model';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { actions } from './store';
-type Props = { sequence: Sequence; stepId: string; path?: string; top?: boolean };
+type Props = { sequence: Sequence; stepId: string; path?: string; top?: boolean; readOnly?: boolean };
 
-export function Formula({ sequence, stepId, path = '', top = false }: Props) {
+export function Formula({ sequence, stepId, path = '', top = false, readOnly = false }: Props) {
   const dispatch = useAppDispatch(); const cursor = useAppSelector(s => s.doc.cursor);
   function gap(index: number) {
     const active = cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === index;
@@ -22,10 +22,11 @@ export function Formula({ sequence, stepId, path = '', top = false }: Props) {
     dispatch(actions.select({ stepId, nodeId: n.id, offset }));
   }
   function renderNode(n: MathNode, index: number) {
-    const selected = cursor.stepId === stepId && cursor.selected === n.id;
+    const selected = !readOnly && cursor.stepId === stepId && cursor.selected === n.id;
     const label = n.type === 'fraction' ? `Fraction ${sequence.children.slice(0, index + 1).filter(x => x.type === 'fraction').length}` : n.type === 'template' ? n.kind : n.type;
-    const field = (s: Sequence, name: string) => <Formula sequence={s} stepId={stepId} path={`${path} / ${label} ${name}`} />;
+    const field = (s: Sequence, name: string) => <Formula sequence={s} stepId={stepId} path={`${path} / ${label} ${name}`} readOnly={readOnly} />;
     if (!fields(n).length && 'value' in n) {
+      if (readOnly) return <span className={`math-token readonly-token ${n.type}`}><span>{n.value || '□'}</span></span>;
       const active = cursor.stepId === stepId && cursor.nodeId === n.id && !cursor.selected && !cursor.sequenceId;
       return <button type="button" className={`math-token ${active ? 'token-active' : ''} ${n.type}`} aria-label={`${path} ${n.type} ${n.value || 'empty'}`.trim()} aria-pressed={active} data-node-id={n.id}
         onClick={e => leafClick(e, n)}>
@@ -56,7 +57,7 @@ export function Formula({ sequence, stepId, path = '', top = false }: Props) {
   const chunks: { node: MathNode; index: number }[][] = [];
   sequence.children.forEach((node, index) => { if (!chunks.length || (top && node.type === 'operator')) chunks.push([]); chunks.at(-1)!.push({ node, index }); });
   return <span dir="ltr" className={`math-sequence ${top ? 'top-sequence' : ''}`} data-sequence={sequence.id}>
-    {(top || (cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === 0)) && gap(0)}
-    {chunks.map((chunk, i) => <span className="math-chunk" key={i}>{chunk.map(({ node, index }) => <Fragment key={node.id}>{renderNode(node, index)}{((top && fields(node).length > 0) || (cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === index + 1)) && gap(index + 1)}</Fragment>)}</span>)}
+    {(!readOnly && (top || (cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === 0))) && gap(0)}
+    {chunks.map((chunk, i) => <span className="math-chunk" key={i}>{chunk.map(({ node, index }) => <Fragment key={node.id}>{renderNode(node, index)}{(!readOnly && ((top && fields(node).length > 0) || (cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === index + 1))) && gap(index + 1)}</Fragment>)}</span>)}
   </span>;
 }

@@ -129,7 +129,13 @@ const slice = createSlice({
         applyCommand(state, action.payload);
         if (JSON.stringify(before) === JSON.stringify(state.doc)) return;
         state.past.push(before); if (state.past.length > 80) state.past.shift(); state.future = [];
-        if (state.doc.exerciseId === exId) invalidate(state.doc, index);
+        if (state.doc.exerciseId === exId) {
+          const previousStep = exerciseOf(before).steps[index];
+          const changedStep = exerciseOf(state.doc).steps.find(step => step.id === previousStep.id);
+          if (changedStep && JSON.stringify(previousStep.expression) !== JSON.stringify(changedStep.expression)) {
+            changedStep.edited = true; invalidate(state.doc, index);
+          } else if (!changedStep) invalidate(state.doc, index);
+        }
         state.notice = ''; state.keyboardOpen = true;
       } catch (error) { state.doc = before; state.notice = error instanceof Error ? error.message : 'Could not edit.'; }
     },

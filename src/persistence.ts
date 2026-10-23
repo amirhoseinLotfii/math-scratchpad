@@ -30,7 +30,7 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
   const exercises: Exercise[] = raw.exercises.map((ex: Bag) => {
     if (typeof ex.source !== 'string' || ex.source.length > 4000 || !['math', 'text'].includes(ex.mode) || !Array.isArray(ex.steps) || !ex.steps.length || ex.steps.length > 40) throw Error('Invalid exercise.');
     if (ex.steps.filter((s: Bag) => s.final).length > 1) throw Error('Only one final answer is allowed.');
-    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
+    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
   });
   const ex = exercises.find(x => x.id === raw.exerciseId) ?? exercises.at(-1)!;
   const old = data.version === 1 ? { stepId: raw.step, nodeId: raw.node, offset: raw.caret, sequenceId: raw.gap?.sequenceId, index: raw.gap?.index } : raw.cursor ?? {};

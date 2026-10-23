@@ -4,9 +4,9 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 
 ## Foundations
 
-- Tokens are root-scoped `--ms-*` CSS properties. Surface, text, keys, border, primary, selection and warning colors follow `light-dark()`.
+- Tokens are root-scoped `--ms-*` CSS properties. The image-inspired product uses a fixed charcoal/forest-green theme with mint selections and amber review warnings. It stays dark in either host theme; ChatGPT chrome is owned by the host.
 - System UI fonts for controls; a system math/serif stack for equations. No downloaded fonts.
-- A 6–12 px spacing rhythm, 12 px control radius and restrained boundaries between steps.
+- An 8 px spacing rhythm, 14 px control radius, 18 px step cards and a 24 px product shell. Matte gradients and mint structure outlines follow the approved image direction; marketing captions and magnifiers are not part of the editor.
 - Native buttons and fields retain browser focus indication. Controls are at least 44 px wide and 48 px high. Every action has a visible label or accessible name.
 - Selected controls use both appearance and `aria-pressed`; status labels communicate state in words.
 
@@ -25,9 +25,20 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 | Numeric token | Idle, caret active, empty placeholder; tapping chooses the nearest measured digit boundary |
 | Structure | Unselected or whole structure selected; parent selection available by button |
 | Main-line gap | Visible dot, active insertion caret; never selects a fraction child |
-| Step | Active, inactive, later step needs review, explicit final |
-| Symbols | Topic categories, optional recent row, favorite toggles |
+| Step | Active, inactive, genuinely edited, later step needs review, explicit final |
+| Symbols | Topic categories, recents and favorites, insertion rows and a read-only template preview |
 | Review | Idle, copying, copied, changed since copy, blocked manual fallback |
+
+## Implemented image-to-product details (0.4.0)
+
+- Original math problems render with the same formula renderer in read-only mode; source text remains unchanged in review payloads. Unsupported imports remain visible as source text.
+- Problem and template previews contain no editable buttons, insertion gaps or active caret. Editable steps still have a single direct-interaction surface.
+- Every step is a separate rounded card. `Edited` records an actual expression change and survives session transfer; Undo restores that state. Editing earlier math preserves later expressions and marks them `Needs review`.
+- Adding a blank step or toggling the final-answer flag does not invalidate math in other steps.
+- Symbols use readable topic controls, symbol/title rows and star toggles. A topic-specific editable-template preview has an explicit insertion button.
+- Symbol list and preview sit beside one another when the product has room; container queries stack them at 520 px and simplify controls below 400 px. The host viewport is not assumed to equal the editor width.
+- Whole-structure actions have a labeled selection panel and an internal-clipboard explanation. Check retains the manual copy/paste review flow.
+- Session backup explains text copying, external storage and restoration instead of promising automatic downloads or cloud synchronization.
 
 ## Remaining validation
 

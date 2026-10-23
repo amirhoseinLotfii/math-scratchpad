@@ -57,3 +57,41 @@ describe('Real React interface', () => {
     mount(); click('Symbols'); click('Calculus'); click('Favorite Integral'); click('Insert Integral'); expect(screen.queryByLabelText('Symbol topics')).toBeNull(); expect(screen.getByLabelText('Numeric keys')).toBeTruthy(); expect(screen.getByRole('button', { name: 'Insert favorite Integral' })).toBeTruthy();
   });
 });
+
+
+describe('Image-inspired notebook interaction', () => {
+  it('renders the problem as noninteractive math without changing the editing selection', () => {
+    const { store } = mount(); const before = store.getState().doc.cursor;
+    const problem = screen.getByLabelText('Original problem');
+    expect([...problem.querySelectorAll('.readonly-token')].map(n => n.textContent)).toEqual(['2', '3', '+', '1', '4']);
+    expect(problem.querySelector('button')).toBeNull();
+    expect(store.getState().doc.cursor).toEqual(before);
+  });
+  it('previews a notation template without inserting it until requested', () => {
+    const { store } = mount(); const original = latex(stepOf(store.getState().doc).expression);
+    click('Symbols'); click('Calculus');
+    const preview = screen.getByLabelText('Editable template preview');
+    expect(preview.querySelector('.large-glyph')?.textContent).toBe('∫');
+    expect(preview.querySelector('[data-node-id]')).toBeNull();
+    expect(latex(stepOf(store.getState().doc).expression)).toBe(original);
+    click('Insert template');
+    expect(latex(stepOf(store.getState().doc).expression)).toContain('\\int_');
+    expect(screen.queryByLabelText('Symbol topics')).toBeNull();
+  });
+  it('shows an Edited badge only for changed math and preserves later lines', () => {
+    const { container, store } = mount(); click('+ New step'); click('5');
+    const ex = exerciseOf(store.getState().doc); const later = latex(ex.steps[1].expression);
+    fireEvent.click(container.querySelector(`[data-node-id="${leaves(ex.steps[0].expression)[0].node.id}"]`)!);
+    click('9');
+    expect(container.querySelector(`[data-step-id="${ex.steps[0].id}"] .step-state`)?.textContent).toBe('Edited');
+    expect(container.querySelector(`[data-step-id="${ex.steps[1].id}"] .step-state`)?.textContent).toBe('Needs review');
+    expect(latex(exerciseOf(store.getState().doc).steps[1].expression)).toBe(later);
+  });
+  it('labels whole-structure editing while keeping the fraction intact', () => {
+    const { container } = mount(); click('Structure');
+    expect(screen.getByText('Whole structure selected')).toBeTruthy();
+    expect(container.querySelector('.structure-selected .fraction')).toBeTruthy();
+    click('Copy'); click('Duplicate');
+    expect(container.querySelectorAll('[aria-label="Step 1 expression"] .fraction')).toHaveLength(3);
+  });
+});

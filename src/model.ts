@@ -7,7 +7,7 @@ export type Structure =
   | { id: string; type: 'matrix'; size: number; cells: Sequence[] }
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
-export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review' };
+export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean };
 export type Exercise = { id: string; source: string; mode: 'math' | 'text'; steps: Step[] };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
 export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor };

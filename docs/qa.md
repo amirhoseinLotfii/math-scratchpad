@@ -1,13 +1,13 @@
-# Verification report — 0.3.0
+# Verification report — 0.4.0
 
 Executed in the build environment on 2026-10-23 using Node.js 24.19.0.
 
 ## Automated results
 
-- `npm test`: **23 passing tests** across reducer/session and React DOM suites.
+- `npm test`: **29 passing tests** across reducer/session and React DOM suites.
 - `npm run build`: strict TypeScript check, Vite production build and self-contained bundle generation succeed.
 - React DOM tests use JSDOM. Digit-coordinate tests use measured-rectangle fixtures, not a physical touchscreen.
-- GitHub CI for the implementation commit [completed successfully](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/39984286504).
+- Historical GitHub CI for the 0.3.0 implementation commit [completed successfully](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/39984286504).
 
 | Required scenario | Evidence | Result |
 | --- | --- | --- |
@@ -30,6 +30,15 @@ Executed in the build environment on 2026-10-23 using Node.js 24.19.0.
 | Recents/favorites and template catalog | Four unique recent entries, favorites, all structure types | Passed |
 | Session import | v2 roundtrip, v1 migration, invalid and duplicate IDs rejected | Passed |
 
+## Additional 0.4.0 regression checks
+
+- Read-only original-problem rendering has the correct token order and cannot move the editor cursor.
+- Browsing a topic and its template preview does not mutate math; Insert template inserts it and returns to the keyboard.
+- Edited and Needs review badges track real math changes while later values stay intact.
+- Structure selection highlights the whole fraction; Copy/Duplicate preserve its nested fields.
+- New-step/final-answer metadata changes do not mark unrelated steps stale.
+- Edit metadata survives session roundtrip and is restored by Undo.
+
 ## Not executed / not claimed
 
 - Physical touch-hit geometry in ChatGPT Android.
@@ -39,4 +48,4 @@ Executed in the build environment on 2026-10-23 using Node.js 24.19.0.
 
 ## Device checklist
 
-At 320, 360, 412 and 768 CSS px, in light and dark themes: verify the 5 initial token targets, insert an empty fraction beside an existing one, edit the middle digit of 123, add and revisit 3 steps, open Symbols and return, close/reopen keys, copy/review manually and scroll a matrix. Confirm the host composer never makes the active controls unreachable. Record device and host versions with results.
+At 320, 360, 412 and 768 CSS px, with either host theme (the product stays dark): verify the 5 initial token targets, insert an empty fraction beside an existing one, edit the middle digit of 123, add and revisit 3 steps, open Symbols and return, close/reopen keys, copy/review manually and scroll a matrix. Confirm the host composer never makes the active controls unreachable. Record device and host versions with results.

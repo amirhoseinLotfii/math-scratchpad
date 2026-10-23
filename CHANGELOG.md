@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 — 2026-10-23
+
+### Changed
+
+- Match the gallery direction with a charcoal/forest-green shell, mint highlights, rounded step cards and more readable numeric keys.
+- Render original problems as read-only math using the existing formula renderer.
+- Show topic-specific template previews alongside symbol rows, plus favorites and recent symbols.
+- Add genuine Edited badges, clearer whole-structure actions and explicit session-backup guidance.
+- Use product-container breakpoints for stacked mobile layouts without assuming the width of the ChatGPT viewport.
+
+### Fixed
+
+- New steps and final-answer flag changes no longer incorrectly mark later math as needing review.
+- Session restore preserves real edit markers; previews cannot change the editing selection.
+
+### Validation
+
+- 29 automated tests and production build pass. Android visual/touch checks are still pending; image-perfect matching is not claimed.
+
 ## 0.3.0 — 2026-10-23
 
 ### Added

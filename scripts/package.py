@@ -1,6 +1,7 @@
 """Package source, documentation and built files; never include dependencies or git state."""
 from pathlib import Path
 import hashlib
+import json
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
@@ -8,7 +9,8 @@ files = sorted(p for p in root.rglob('*') if p.is_file() and not set(p.relative_
 manifest = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root).as_posix()}' for p in files) + '\n'
 (root / 'MANIFEST.sha256').write_text(manifest)
 files.append(root / 'MANIFEST.sha256')
-output = root.parent / 'math-scratchpad-redux-v0.3.0.zip'
+version = json.loads((root / 'package.json').read_text())['version']
+output = root.parent / f'math-scratchpad-redux-v{version}.zip'
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
     for path in files:
         archive.write(path, Path('math-scratchpad-redux') / path.relative_to(root))
