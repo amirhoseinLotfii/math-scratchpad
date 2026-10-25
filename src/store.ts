@@ -1,6 +1,7 @@
 import { configureStore, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence } from './model';
 import { parse } from './parser';
+import { diagnosticQuestions } from './diagnostic';
 
 export type ScratchState = {
   doc: Document; past: Document[]; future: Document[];
@@ -16,7 +17,7 @@ export function initialDocument(): Document {
   return { exercises: [exercise], exerciseId: exercise.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
 }
 export function initialState(): ScratchState {
-  return { doc: initialDocument(), past: [], future: [], prefs: { compact: true, favorites: ['fraction', 'power', 'root'], recent: [] }, keyboardOpen: true, symbolsOpen: false, topic: 'Numbers', structureClipboard: null, copies: {}, notice: '' };
+  return { doc: initialDocument(), past: [], future: [], prefs: { compact: true, favorites: ['fraction', 'power', 'root'], recent: [] }, keyboardOpen: false, symbolsOpen: false, topic: 'Numbers', structureClipboard: null, copies: {}, notice: '' };
 }
 function focusNode(doc: Document, node: MathNode, offset = 0) {
   doc.cursor.nodeId = node.id; doc.cursor.sequenceId = null; doc.cursor.offset = offset; doc.cursor.selected = null;
@@ -112,7 +113,7 @@ function applyCommand(state: ScratchState, cmd: Command) {
     } else { const copy = freshNode(item.node); item.parent.children.splice(item.index + 1, 0, copy); c.selected = copy.id; c.nodeId = null; c.sequenceId = null; }
   } else if (cmd.type === 'paste') { if (state.structureClipboard) put(d, freshNode(state.structureClipboard)); }
   else if (cmd.type === 'newProblem' || cmd.type === 'newExercise') {
-    if (d.exercises.length >= 12) throw Error('Maximum 12 exercises. Export a backup before starting another session.');
+    if (d.exercises.length >= 40) throw Error('Maximum 40 exercises. Export a backup before starting another session.');
     const step = blankStep(); const source = cmd.type === 'newProblem' ? latex(current.expression) : cmd.source.trim();
     if (!source || source.length > 4000) throw Error('Enter a problem (at most 4000 characters).');
     const next: Exercise = { id: uid(), source, mode: cmd.type === 'newProblem' ? 'math' : cmd.mode, steps: [step] };
@@ -136,13 +137,12 @@ const slice = createSlice({
             changedStep.edited = true; invalidate(state.doc, index);
           } else if (!changedStep) invalidate(state.doc, index);
         }
-        state.notice = ''; state.keyboardOpen = true;
+        state.notice = '';
       } catch (error) { state.doc = before; state.notice = error instanceof Error ? error.message : 'Could not edit.'; }
     },
     select(state, action: PayloadAction<Partial<Cursor> & { stepId: string }>) {
       const step = exerciseOf(state.doc).steps.find(s => s.id === action.payload.stepId); if (!step) return;
       state.doc.cursor = { nodeId: null, sequenceId: null, index: 0, offset: 0, selected: null, ...action.payload, stepId: step.id };
-      state.keyboardOpen = true;
     },
     next(state) {
       const d = state.doc, c = d.cursor, info = activeInfo(d);
@@ -168,6 +168,67 @@ const slice = createSlice({
       }
       const all = leaves(stepOf(d).expression); const index = all.findIndex(x => x.node.id === info.node.id); const n = all[index + dir]?.node;
       if (n) focusNode(d, n, dir < 0 && n.type === 'number' ? n.value.length : 0);
+    },
+    /**
+     * Horizontal motion follows the MAIN LINE of the expression. A fraction
+     * numerator moves to the next fraction numerator, not to its denominator.
+     * Vertical motion is reserved for changing fraction levels.
+     */
+    horizontal(state, action: PayloadAction<-1 | 1>) {
+      const d = state.doc, c = d.cursor, top = stepOf(d).expression, direction = action.payload;
+      const info = activeInfo(d);
+      let nextIndex: number;
+      if (c.sequenceId === top.id) nextIndex = c.index + (direction < 0 ? -1 : 0);
+      else if (info) nextIndex = (info.ancestors[0]?.index ?? info.index) + direction;
+      else return;
+      if (nextIndex < 0 || nextIndex >= top.children.length) {
+        focusGap(d, top, direction > 0 ? top.children.length : 0);
+        return;
+      }
+      const next = top.children[nextIndex];
+      if (next.type === 'fraction') {
+        const previousPath = info?.path ?? '';
+        const sequence = previousPath.includes('Denominator') ? next.denominator : next.numerator;
+        focusFirst(d, sequence);
+      } else {
+        const all = leaves(seq([next]));
+        const leaf = direction < 0 ? all.at(-1)!.node : all[0].node;
+        focusNode(d, leaf, direction < 0 && leaf.type === 'number' ? leaf.value.length : 0);
+      }
+    },
+    vertical(state, action: PayloadAction<-1 | 1>) {
+      const d = state.doc, info = activeInfo(d);
+      if (!info) return;
+      const fraction = [...info.ancestors].reverse().find(a => a.node.type === 'fraction');
+      if (!fraction || fraction.node.type !== 'fraction') return;
+      const target = action.payload < 0 ? fraction.node.numerator : fraction.node.denominator;
+      focusFirst(d, target);
+    },
+    adjacentExercise(state, action: PayloadAction<-1 | 1>) {
+      const d = state.doc, index = d.exercises.findIndex(x => x.id === d.exerciseId);
+      const target = d.exercises[index + action.payload];
+      if (!target) return;
+      d.exerciseId = target.id;
+      const line = target.steps.at(-1)!;
+      d.cursor.stepId = line.id;
+      focusFirst(d, line.expression);
+      state.notice = '';
+    },
+    startDiagnostic(state) {
+      const previous = clone(state.doc);
+      const exercises: Exercise[] = diagnosticQuestions.map(q => ({
+        id: uid(), mode: 'math', source: q.source, prompt: q.stem,
+        diagnosticId: q.id, steps: [blankStep()]
+      }));
+      state.past.push(previous);
+      if (state.past.length > 80) state.past.shift();
+      state.future = [];
+      const first = exercises[0];
+      state.doc = {
+        exercises, exerciseId: first.id,
+        cursor: { stepId: first.steps[0].id, nodeId: leaves(first.steps[0].expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null }
+      };
+      state.notice = '30-question diagnostic ready. Answers are never shown during the test.';
     },
     selectParent(state) {
       const info = activeInfo(state.doc); if (!info) return;
