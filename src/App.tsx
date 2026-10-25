@@ -237,7 +237,7 @@ export function App() {
             <button type="button" aria-pressed={!!ex.skipped} onClick={() => dispatch(actions.setSkipped(!ex.skipped))}>Skip</button>
             <button type="button" onClick={() => setShowResults(true)}>Finish & Analyze</button>
           </div>}
-          <p className="small">Check copies your steps for manual review. No auto-answer, hints or automatic sending.</p>
+          <p className="small">Check copies your steps for manual review. No automatic solving or sending.</p>
           <p className={'copy-state ' + (copied === 'Changed since copy' ? 'changed' : '')} aria-live="polite">{copied}</p>
           <p className="small" role="status">{state.notice}</p>
         </footer>
