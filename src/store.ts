@@ -46,7 +46,7 @@ function put(doc: Document, node: MathNode) {
 function invalidate(doc: Document, from: number) { exerciseOf(doc).steps.forEach((s, i) => { if (i >= from) s.status = i === from ? 'unchecked' : 'needs-review'; }); }
 export type Command =
   | { type: 'digit' | 'operator' | 'identifier' | 'insert'; value: string }
-  | { type: 'backspace' | 'clear' | 'newStep' | 'deleteStep' | 'final' | 'duplicate' | 'cut' | 'paste' | 'deleteStructure' }
+  | { type: 'insertBlankNumber' | 'backspace' | 'clear' | 'newStep' | 'deleteStep' | 'final' | 'duplicate' | 'cut' | 'paste' | 'deleteStructure' }
   | { type: 'newProblem' }
   | { type: 'newExercise'; source: string; mode: 'math' | 'text'; expression?: Sequence };
 function applyCommand(state: ScratchState, cmd: Command) {
@@ -68,6 +68,8 @@ function applyCommand(state: ScratchState, cmd: Command) {
       if (next && next.type !== 'operator') focusFirst(d, next);
       else { const value = num(); position.parent.children.splice(position.index + 1, 0, value); focusNode(d, value); }
     }
+  } else if (cmd.type === 'insertBlankNumber') {
+    put(d, num());
   } else if (cmd.type === 'identifier') {
     if (!/^[a-zA-Zπθ∞σ]$/.test(cmd.value)) return;
     if (item?.node.type === 'identifier' && !c.selected) item.node.value = cmd.value;
@@ -84,7 +86,20 @@ function applyCommand(state: ScratchState, cmd: Command) {
     state.prefs.recent = [cmd.value, ...state.prefs.recent.filter(k => k !== cmd.value)].slice(0, 4);
     state.symbolsOpen = false;
   } else if (cmd.type === 'backspace' || cmd.type === 'deleteStructure') {
-    if (item?.node.type === 'number' && c.offset > 0 && !c.selected && cmd.type === 'backspace') {
+    if (cmd.type === 'deleteStructure' && !c.selected && item) {
+      // Delete the selected semantic structure, even when its current leaf is empty.
+      const structure = [...item.ancestors].reverse().find(a => a.node.type === 'fraction' || a.node.type === 'root' || a.node.type === 'power' || a.node.type === 'group');
+      const target = structure ?? item;
+      target.parent.children.splice(target.index, 1);
+      if (!target.parent.children.length) target.parent.children.push(num());
+      focusFirst(d, target.parent);
+    } else if (cmd.type === 'backspace' && item?.node.type === 'number' && !item.node.value && item.ancestors.length) {
+      // An empty fraction field is not a dead end: remove its parent structure.
+      const parent = item.ancestors.at(-1)!;
+      parent.parent.children.splice(parent.index, 1);
+      if (!parent.parent.children.length) parent.parent.children.push(num());
+      focusFirst(d, parent.parent);
+    } else if (item?.node.type === 'number' && c.offset > 0 && !c.selected && cmd.type === 'backspace') {
       item.node.value = item.node.value.slice(0, c.offset - 1) + item.node.value.slice(c.offset); c.offset--;
     } else if (c.selected && item) {
       item.parent.children.splice(item.index, 1);
@@ -213,6 +228,12 @@ const slice = createSlice({
       d.cursor.stepId = line.id;
       focusFirst(d, line.expression);
       state.notice = '';
+    },
+    setConfidence(state, action: PayloadAction<'high' | 'medium' | 'low'>) {
+      exerciseOf(state.doc).confidence = action.payload;
+    },
+    setSkipped(state, action: PayloadAction<boolean>) {
+      exerciseOf(state.doc).skipped = action.payload;
     },
     startDiagnostic(state) {
       const previous = clone(state.doc);
