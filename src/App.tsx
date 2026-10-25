@@ -7,6 +7,7 @@ import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
 import { diagnosticQuestions } from './diagnostic';
 import { gradeDiagnostic } from './assessment';
+import { migrateChatDiagnosticSession } from './legacyDiagnostic';
 import { Formula } from './Formula';
 import { Keyboard } from './Keyboard';
 
@@ -129,7 +130,8 @@ export function App() {
   function loadBackup() {
     try {
       if (backupText.length > 1000000) throw Error('Session is too large.');
-      dispatch(actions.load(validateSession(JSON.parse(backupText))));
+      const json = JSON.parse(backupText);
+      dispatch(actions.load(migrateChatDiagnosticSession(json) ?? validateSession(json)));
       setBackup(false); setError(''); setShowResults(false);
     } catch (e) { setError(e instanceof Error ? e.message : 'Invalid session.'); }
   }
@@ -144,6 +146,18 @@ export function App() {
     if (await writeClipboard(text)) dispatch(actions.notice('Diagnostic report copied.'));
     else setManual(text);
   }
+  const skillScores = useMemo(() => {
+    const skills = new Map<string, { correct: number; assessed: number; unresolved: number }>();
+    for (const row of examGrades) {
+      const skill = row.question.skill;
+      const previous = skills.get(skill) ?? { correct: 0, assessed: 0, unresolved: 0 };
+      if (!row.result || row.result.numeric === 'unverified') previous.unresolved++;
+      else { previous.assessed++; if (row.result.numeric === 'correct') previous.correct++; }
+      skills.set(skill, previous);
+    }
+    return [...skills.entries()].map(([name, value]) => ({ name, ...value })).sort((a, b) =>
+      (a.assessed ? a.correct / a.assessed : -1) - (b.assessed ? b.correct / b.assessed : -1));
+  }, [examGrades]);
   const counts = {
     correct: examGrades.filter(x => x.result?.numeric === 'correct').length,
     unresolved: examGrades.filter(x => !x.result || x.result.numeric === 'unverified').length,
@@ -200,6 +214,7 @@ export function App() {
       <div className="notebook-main">
         <section className="problem" aria-label="Current problem">
           {ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}
+          {ex.migrationNotes && <p className="small" role="note">Some imported legacy fields contain non-math text. Their original content was retained for manual review; do not treat their score as definitive.</p>}
           {problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" readOnly top /></div> :
             <p dir={ex.mode === 'text' ? 'rtl' : 'ltr'} className={ex.mode === 'math' ? 'latex-source' : ''}>{ex.source}</p>}
         </section>
@@ -246,6 +261,13 @@ export function App() {
           <h2>Diagnostic Review</h2>
           <p><strong>{counts.correct}/30</strong> numerically correct · <strong>{counts.unresolved}</strong> skipped/unverified</p>
           <p className="small">Inconsistent equalities: {counts.steps} · Equivalent but not simplified: {counts.unsimplified}. Unverified is never silently scored incorrect.</p>
+          <h3>Skill Breakdown (provisional)</h3>
+          <div className="report-grid">{skillScores.map(skill => <div key={skill.name}>
+            <strong>{skill.name}</strong><br />{skill.correct}/{skill.assessed} numerically correct
+            {skill.unresolved > 0 && <span className="small"> · {skill.unresolved} unverified</span>}
+            <div className="small">{skill.assessed < 3 ? 'Limited evidence' : skill.correct / skill.assessed >= .8 ? 'Potential strength' : skill.correct / skill.assessed < .6 ? 'Practice priority' : 'Developing'}</div>
+          </div>)}</div>
+          <h3>Question-by-question detail</h3>
           <div className="report-grid">{examGrades.map(({ question, result }) => <div key={question.id}>
             <strong>Q{question.id}</strong> · <span>{question.skill}</span> · <span>{result?.numeric ?? 'skipped'}</span>
             {result && <span className="small"> / Form: {result.form} / Steps: {result.steps}</span>}
