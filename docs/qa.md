@@ -1,3 +1,12 @@
+## 0.5.1 regression additions — 2026-10-25
+
+- Tests added for simplified vs unsimplified negative fractions/integers, ambiguous adjacent notation and directional Delete/Backspace at insertion gaps.
+- Existing v0.5 diagnostic, navigation and responsive tests are retained.
+- Confirm the actual results in the GitHub Actions run for the new commit; this section does not claim physical device validation.
+- Remaining device checks: hardware keyboard/IME, modal focus, screen readers, host overlay and cross-chat persistence.
+
+---
+
 ## Verification report — 0.5.0 (2026-10-25)
 
 GitHub Actions run: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/40197474405

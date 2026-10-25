@@ -107,8 +107,18 @@ function applyCommand(state: ScratchState, cmd: Command) {
       focusGap(d, item.parent, Math.min(item.index, item.parent.children.length));
     } else if (c.sequenceId) {
       const parent = findSequence(current.expression, c.sequenceId)!;
-      const prev = parent.children[c.index - 1];
-      if (prev) { if (fields(prev).length) { c.selected = prev.id; c.nodeId = null; c.sequenceId = null; } else { parent.children.splice(--c.index, 1); if (!parent.children.length) parent.children.push(num()); } }
+      // Delete acts on the next item; Backspace acts on the previous one.
+      const index = cmd.type === 'deleteStructure' ? c.index : c.index - 1;
+      const adjacent = parent.children[index];
+      if (adjacent) {
+        if (cmd.type === 'backspace' && fields(adjacent).length) {
+          c.selected = adjacent.id; c.nodeId = null; c.sequenceId = null;
+        } else {
+          parent.children.splice(index, 1);
+          if (!parent.children.length) parent.children.push(num());
+          focusGap(d, parent, Math.min(index, parent.children.length));
+        }
+      }
     } else if (item && item.node.type !== 'number') {
       item.parent.children.splice(item.index, 1); if (!item.parent.children.length) item.parent.children.push(num()); focusGap(d, item.parent, item.index);
     }

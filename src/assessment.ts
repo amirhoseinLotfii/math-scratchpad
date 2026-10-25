@@ -121,15 +121,28 @@ function evaluateExpected(text: string) {
   return bits.length === 2 ? div(make(bits[0]), make(bits[1])) : make(text);
 }
 function simpleForm(seq: Sequence, result: FractionResult) {
-  if (seq.children.length !== 1) return false;
-  const only = seq.children[0];
-  if (only.type === 'number') return result.d === 1n;
+  // Unary negative values in lowest terms are simplified, not unsimplified.
+  let children = seq.children;
+  let sign = 1n;
+  if (children.length === 2 && children[0].type === 'operator' && children[0].value === '−') {
+    sign = -1n;
+    children = children.slice(1);
+  }
+  if (children.length !== 1) return false;
+  const only = children[0];
+  if (only.type === 'number') {
+    return /^\d+$/.test(only.value) && result.d === 1n && sign * BigInt(only.value) === result.n;
+  }
   if (only.type !== 'fraction') return false;
-  if (only.numerator.children.length !== 1 || only.denominator.children.length !== 1) return false;
-  const n = only.numerator.children[0], d = only.denominator.children[0];
+  let numerator = only.numerator.children;
+  if (numerator.length === 2 && numerator[0].type === 'operator' && numerator[0].value === '−') {
+    sign = -sign;
+    numerator = numerator.slice(1);
+  }
+  if (numerator.length !== 1 || only.denominator.children.length !== 1) return false;
+  const n = numerator[0], d = only.denominator.children[0];
   if (n.type !== 'number' || d.type !== 'number' || !/^\d+$/.test(n.value) || !/^\d+$/.test(d.value)) return false;
-  const a = BigInt(n.value), b = BigInt(d.value);
-  return a === result.n && b === result.d;
+  return sign * BigInt(n.value) === result.n && BigInt(d.value) === result.d;
 }
 export function gradeDiagnostic(exercise: Exercise, question: DiagnosticQuestion): DiagnosticGrade {
   const marked = exercise.steps.find(s => s.final);

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.1 — 2026-10-25
+
+### Fixed
+- Identify simplified negative fractions and negative integers accurately in diagnostic form grading.
+- Delete the next token at a main-line gap; Backspace targets the previous one, with Redux Undo/Redo.
+
+### Improved
+- More neutral, no-hint diagnostic question statements.
+- Added regression cases for signed forms, ambiguous notation and gap deletion.
+- Refreshed English/Persian documentation and shareable release copy.
+
+### Verification boundary
+- GitHub CI tests and builds validate the commit; physical keyboards, assistive tech, and embedded ChatGPT hosts need additional real-device checks.
+
+
 ## 0.5.0 — 2026-10-25
 
 ### Added

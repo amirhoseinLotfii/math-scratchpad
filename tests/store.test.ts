@@ -103,3 +103,20 @@ describe('Step review status', () => {
     store.dispatch(actions.undo()); expect(stepOf(store.getState().doc).edited).toBeUndefined();
   });
 });
+
+describe('Insertion-gap Delete and Backspace — 0.5.1', () => {
+  it('Delete removes the following item; Undo restores it', () => {
+    const store = create(), line = stepOf(store.getState().doc);
+    store.dispatch(actions.select({ stepId: line.id, sequenceId: line.expression.id, index: 1 }));
+    store.dispatch(actions.command({ type: 'deleteStructure' }));
+    expect(latex(stepOf(store.getState().doc).expression)).toBe('\\frac{2}{3}\\frac{1}{4}');
+    store.dispatch(actions.undo());
+    expect(latex(stepOf(store.getState().doc).expression)).toBe('\\frac{2}{3}+\\frac{1}{4}');
+  });
+  it('Backspace removes the preceding operator instead of the next fraction', () => {
+    const store = create(), line = stepOf(store.getState().doc);
+    store.dispatch(actions.select({ stepId: line.id, sequenceId: line.expression.id, index: 2 }));
+    store.dispatch(actions.command({ type: 'backspace' }));
+    expect(latex(stepOf(store.getState().doc).expression)).toBe('\\frac{2}{3}\\frac{1}{4}');
+  });
+});

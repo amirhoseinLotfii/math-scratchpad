@@ -13,6 +13,17 @@ Write fractions where you see them. Tap a digit to place the caret. Keep your re
 
 Built with **React 19, TypeScript, Redux Toolkit 2 and Vite 8**. This is an open-source editor prototype with source, tests and self-contained builds.
 
+## 0.5.1 reliability update — October 25, 2026
+
+- **More accurate feedback:** lowest-term negative results (such as `−1/8`) are recognized as simplified.
+- **Predictable deletion:** at a main-line insertion gap, Delete targets the next item and Backspace the previous item; Undo reverses the edit.
+- **No-hint assessment:** selected Persian question statements no longer contain unintended sign/strategy nudges.
+- **Regression tests:** add signed-fraction, ambiguous-work and structural-editing checks.
+
+The same **30-question, one-notebook workflow** remains in place: Next/Previous preserve each problem's steps; original problems show vertical math, editor controls are English/LTR, and the optional keyboard docks beside the notebook on desktop. This is a learning notebook, not an automatic solver. Physical-device keyboard and embedded-host checks remain open.
+
+[Shareable launch announcement](docs/ANNOUNCEMENT.md) · [English/Persian promotional copy](docs/launch-posts.md)
+
 ## New in 0.5 — Fraction Mastery & keyboard-first editing
 
 - **30 no-hint diagnostic questions:** Persian question statements, English/LTR controls, and vertically typeset mathematical expressions.

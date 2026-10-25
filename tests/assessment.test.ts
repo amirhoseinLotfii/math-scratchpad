@@ -62,3 +62,24 @@ describe('Diagnostic numerical/form/step grading regressions', () => {
     expect(gradeDiagnostic(ex('\\frac{1}{3}'), q('-1/3')).numeric).toBe('incorrect');
   });
 });
+
+describe('Signed answer form regressions — 0.5.1', () => {
+  it('accepts lowest-terms negative fractions', () => {
+    const result = gradeDiagnostic(ex('-\\frac{1}{8}'), q('-1/8', true));
+    expect(result.numeric).toBe('correct');
+    expect(result.form).toBe('simplified');
+  });
+  it('flags negative equivalent fractions that are not in lowest terms', () => {
+    const result = gradeDiagnostic(ex('-\\frac{4}{32}'), q('-1/8', true));
+    expect(result.numeric).toBe('correct');
+    expect(result.form).toBe('equivalent-unsimplified');
+  });
+  it('accepts simplified negative integers', () => {
+    const result = gradeDiagnostic(ex('-1'), q('-1', true));
+    expect(result.numeric).toBe('correct');
+    expect(result.form).toBe('simplified');
+  });
+  it('does not invent a grade for unfinished adjacent math', () => {
+    expect(gradeDiagnostic(ex('\\frac{6}{8}\\frac{3}{4}'), q('3/4')).numeric).toBe('unverified');
+  });
+});

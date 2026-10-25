@@ -1,4 +1,4 @@
-# Math Scratchpad 0.5 — release announcement
+# Math Scratchpad 0.5.1 — maintenance release announcement
 
 Project: https://github.com/amirhoseinLotfii/math-scratchpad
 
@@ -6,9 +6,11 @@ Project: https://github.com/amirhoseinLotfii/math-scratchpad
 
 **Your notebook should follow your thinking — not solve the problem for you.**
 
-Math Scratchpad 0.5 is an open-source, responsive math notebook built with React and TypeScript.
+Math Scratchpad 0.5.1 is an open-source, responsive math notebook built with React and TypeScript.
 
-What's new?
+New in 0.5.1: negative-fraction simplest-form grading, predictable Delete/Backspace around structural insertions, neutral no-hint prompts, and regression tests.
+
+Core features:
 - 30 no-hint fraction questions with Persian prompts and LTR mathematical notation
 - One notebook that remembers each problem's steps as you move with Next / Previous
 - Direct editing of vertical fractions, roots, powers and arithmetic expressions
@@ -29,7 +31,7 @@ If it helps, please **Star** the repository and share it with a student, teacher
 
 **دفتر ریاضی باید به فکرکردن کمک کند، نه اینکه جواب را به‌جایت حل کند.**
 
-نسخهٔ ۰٫۵ پروژهٔ متن‌باز Math Scratchpad منتشر شد: دفتر تعاملی و واکنش‌گرا برای نوشتن مستقیمِ کسرهای عمودی، رادیکال‌ها و مراحل حل.
+نسخهٔ ۰٫۵٫۱ پروژهٔ متن‌باز Math Scratchpad منتشر شد: دفتر تعاملی و واکنش‌گرا برای نوشتن مستقیمِ کسرهای عمودی، رادیکال‌ها و مراحل حل.
 
 در این نسخه آزمون ۳۰سؤالی کسرها با صورت سؤال فارسی و فرمول‌های چپ‌به‌راست، جابه‌جایی با Next/Previous بدون از دست‌دادن مراحل قبلی، ناوبری با جهت‌های کیبورد، Undo/Redo و تحلیل عددی مقدماتی اضافه شده است. پاسخ‌های مبهم به‌جای نمرهٔ صفر برای بازبینی علامت‌گذاری می‌شوند.
 
@@ -44,3 +46,6 @@ https://github.com/amirhoseinLotfii/math-scratchpad
 ## Publication boundaries
 
 This file contains shareable copy, **not proof that a social-media campaign or third-party post has been published**. Device-specific claims must be verified before marketing them as tested.
+
+
+**Publication note:** This is copy ready to share. No external social-media post or device-certification claim is implied.
