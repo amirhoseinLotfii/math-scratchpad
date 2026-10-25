@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { App } from '../src/App';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
@@ -35,11 +35,12 @@ describe('Responsive Math Scratchpad', () => {
   });
   it('edits a specific digit by clicked position and retains caret editing', () => {
     const { container, store } = mount();
-    store.dispatch(actions.command({ type: 'clear' }));
-    store.dispatch(actions.command({ type: 'digit', value: '1' }));
-    store.dispatch(actions.command({ type: 'digit', value: '2' }));
-    store.dispatch(actions.command({ type: 'digit', value: '3' }));
-    fireEvent.click(container.querySelector('[aria-label="Step 1 number 123"]')!, { clientX: 0, detail: 1 });
+    act(() => {
+      store.dispatch(actions.command({ type: 'clear' }));
+      store.dispatch(actions.command({ type: 'digit', value: '1' }));
+      store.dispatch(actions.command({ type: 'digit', value: '2' }));
+      store.dispatch(actions.command({ type: 'digit', value: '3' }));
+    });
     const token = screen.getByRole('button', { name: 'Step 1 number 123' });
     token.querySelectorAll<HTMLElement>('[data-digit]').forEach((span,i) => {
       span.getBoundingClientRect = () => ({ left: 100+i*20,width:20 } as DOMRect);
@@ -86,7 +87,7 @@ describe('Responsive Math Scratchpad', () => {
     expect(latex(stepOf(store.getState().doc).expression)).not.toContain('\\frac{2}{3}');
   });
   it('opens keyboard-operated insertion chooser, arrows move focus and Enter inserts a fraction', () => {
-    const {container,store}=mount(); click('⊕ Insert…');
+    const {container,store}=mount(); click('Step 1 Insert after item 1'); click('⊕ Insert…');
     const dialog=screen.getByRole('dialog');
     expect(dialog).toBeTruthy();
     fireEvent.keyDown(dialog,{key:'ArrowRight'});
@@ -132,7 +133,7 @@ describe('Responsive Math Scratchpad', () => {
     expect(store.getState().doc.exercises).toHaveLength(30);
     expect(store.getState().doc.exercises[0].prompt).toContain('هم‌ارز');
     expect(container.querySelector('.scratchpad')?.getAttribute('dir')).toBe('ltr');
-    expect(screen.getByText(/برای هم‌ارز شدن/)).toHaveAttribute('dir','rtl');
+    expect(screen.getByText(/برای هم‌ارز شدن/).getAttribute('dir')).toBe('rtl');
     expect(container.textContent?.toLowerCase()).not.toContain('hint');
     fireEvent.keyDown(container.querySelector('.scratchpad')!,{key:'9'});
     const first=latex(stepOf(store.getState().doc).expression);
