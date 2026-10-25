@@ -7,7 +7,7 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
   const data = input as Bag;
   if (!data || ![1, 2].includes(data.version)) throw Error('Unsupported session version.');
   const raw = data.version === 1 ? { ...data.state, exerciseId: data.state?.exercise } : data.doc;
-  if (!raw || !Array.isArray(raw.exercises) || !raw.exercises.length || raw.exercises.length > 12) throw Error('Invalid session.');
+  if (!raw || !Array.isArray(raw.exercises) || !raw.exercises.length || raw.exercises.length > 40) throw Error('Invalid session.');
   const ids = new Set<string>(); let count = 0;
   function id(v: unknown): string { if (typeof v !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(v) || ids.has(v)) throw Error('Invalid or duplicate ID.'); ids.add(v); return v; }
   function sequence(v: Bag, depth: number): Sequence {
@@ -30,7 +30,7 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
   const exercises: Exercise[] = raw.exercises.map((ex: Bag) => {
     if (typeof ex.source !== 'string' || ex.source.length > 4000 || !['math', 'text'].includes(ex.mode) || !Array.isArray(ex.steps) || !ex.steps.length || ex.steps.length > 40) throw Error('Invalid exercise.');
     if (ex.steps.filter((s: Bag) => s.final).length > 1) throw Error('Only one final answer is allowed.');
-    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
+    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, ...(typeof ex.prompt === 'string' && ex.prompt.length < 4000 ? { prompt: ex.prompt } : {}), ...(Number.isInteger(ex.diagnosticId) && ex.diagnosticId >= 1 && ex.diagnosticId <= 30 ? { diagnosticId: ex.diagnosticId } : {}), steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
   });
   const ex = exercises.find(x => x.id === raw.exerciseId) ?? exercises.at(-1)!;
   const old = data.version === 1 ? { stepId: raw.step, nodeId: raw.node, offset: raw.caret, sequenceId: raw.gap?.sequenceId, index: raw.gap?.index } : raw.cursor ?? {};
@@ -46,8 +46,8 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
 }
 export function restoreState(): ScratchState {
   const state = initialState();
-  try { const raw = localStorage.getItem(KEY) ?? localStorage.getItem('math-scratchpad-flow-v1'); if (raw) { const saved = validateSession(JSON.parse(raw)); state.doc = saved.doc; if (saved.prefs) state.prefs = saved.prefs; } } catch { state.notice = 'Previous draft could not be restored. Import a session backup if available.'; }
+  try { const raw = localStorage.getItem(KEY) ?? localStorage.getItem('math-scratchpad-flow-v1'); if (raw) { const saved = validateSession(JSON.parse(raw)); state.doc = saved.doc; if (saved.prefs) state.prefs = saved.prefs; state.keyboardOpen = JSON.parse(raw).keyboardOpen === true; } } catch { state.notice = 'Previous draft could not be restored. Import a session backup if available.'; }
   return state;
 }
-export const serialize = (state: ScratchState) => JSON.stringify({ version: 2, doc: state.doc, prefs: state.prefs }, null, 2);
+export const serialize = (state: ScratchState) => JSON.stringify({ version: 2, doc: state.doc, prefs: state.prefs, keyboardOpen: state.keyboardOpen }, null, 2);
 export function saveState(state: ScratchState): boolean { try { localStorage.setItem(KEY, serialize(state)); return true; } catch { return false; } }
