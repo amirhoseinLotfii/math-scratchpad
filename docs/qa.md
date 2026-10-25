@@ -1,3 +1,15 @@
+## Verification report — 0.5.0 (2026-10-25)
+
+GitHub Actions run: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/40197474405
+
+- **42 passing automated tests** across four suites (`app`, `store`, `assessment`, `legacy`).
+- `npm test`: **passed**; `npm run build`: **passed** (strict TypeScript check, Vite and single-file integration artifacts).
+- Regression coverage includes initial closed keyboard, desktop side-panel placement, LTR math, Persian-only problem stem, same-level horizontal navigation, fraction vertical navigation, structural Delete and Ctrl+Z, arrow-operated Insert chooser, Next/Previous with saved problem-specific steps, exact rational equivalence, simplified-form warnings, inconsistent equalities, malformed fraction handling and import of the previous 30-answer JSON format.
+- **Not yet device-verified:** physical laptop keyboard layouts/IME edge cases, Android/iOS touch, focus with third-party hosts, screen readers and cross-chat persistence. Passing JSDOM tests do not prove those behaviors.
+- Diagnostic scores are provisional. Unsupported mathematical notation and imported free-text fields require manual review; they are not silently assigned a zero.
+
+---
+
 # Verification report — 0.4.0
 
 Executed in the build environment on 2026-10-23 using Node.js 24.19.0.

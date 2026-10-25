@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.0 — 2026-10-25
+
+### Added
+- Thirty no-hint Persian-stem fraction diagnostic questions displayed as LTR mathematical expressions.
+- Exact rational (BigInt) diagnostic feedback separating numerical correctness, required form and equality-chain consistency.
+- Keyboard-driven insertion chooser, horizontal same-level and vertical fraction navigation.
+- Per-question progress retained while using Previous / Next Problem.
+
+### Changed
+- Responsive desktop notebook and optional side keyboard with full-width collapsed state.
+- UI remains English and LTR; only the question statement uses Persian RTL.
+- Keyboard stays closed by default, with best-effort stored preference.
+
+### Fixed
+- Structural Delete/Backspace and undo/redo shortcuts independent of keyboard visibility.
+- Session metadata validation for the expanded 30-question bank.
+- Old tests that assumed the keyboard was nested inside each step.
+
+### Limitations
+- Automated diagnostic feedback is provisional, not a substitute for manual review.
+- Physical device keyboard and accessibility testing is still required.
+- Cross-conversation updates are not possible with the embedded-chat edition.
+
+
+
 ## 0.4.0 — 2026-10-23
 
 ### Changed
