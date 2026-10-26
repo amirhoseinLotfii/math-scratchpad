@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { readFile, writeFile } from 'node:fs/promises';
-const result = await build({ entryPoints: ['src/main.tsx'], bundle: true, write: false, minify: true, format: 'iife', define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.css': 'empty' } });
+const result = await build({ entryPoints: [process.argv[2] ?? 'src/main.tsx'], bundle: true, write: false, minify: true, format: 'iife', define: { 'process.env.NODE_ENV': '"production"' }, loader: { '.css': 'empty' } });
 const css = await readFile('src/styles.css', 'utf8');
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const fragment = `<div id="math-scratchpad-redux"></div>\n<style>\n${css}\n</style>\n<script>\n(()=>{${js}})();\n</script>\n`;

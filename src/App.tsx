@@ -6,6 +6,7 @@ import { parse } from './parser';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
 import { diagnosticQuestions } from './diagnostic';
+import { fractionRoundOne } from './fractionRoundOne';
 import { gradeDiagnostic } from './assessment';
 import { migrateChatDiagnosticSession } from './legacyDiagnostic';
 import { Formula } from './Formula';
@@ -26,11 +27,16 @@ export function App() {
   const [backup, setBackup] = useState(false), [backupText, setBackupText] = useState('');
   const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);
   const [showResults, setShowResults] = useState(false);
+  const [confirmFractions, setConfirmFractions] = useState(false);
+  const insertDialogRoot = useRef<HTMLDivElement>(null);
   const checkBusy = useRef(false), manualRef = useRef<HTMLTextAreaElement>(null);
   const editorRoot = useRef<HTMLElement>(null), dialogRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const currentIndex = ex.steps.findIndex(x => x.id === state.doc.cursor.stepId);
   const exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
-  const exam = !!ex.diagnosticId && state.doc.exercises.some(x => x.diagnosticId === 30);
+  const fractions = ex.assessment === 'fractions-round-1';
+  const questionBank = fractions ? fractionRoundOne : diagnosticQuestions;
+  const questionCount = questionBank.length;
+  const exam = !!ex.diagnosticId && state.doc.exercises.some(x => x.diagnosticId === questionCount && (x.assessment === 'fractions-round-1') === fractions);
   const completed = state.doc.exercises.filter(x => x.diagnosticId && (x.skipped || x.steps.some(s => latex(s.expression) !== '\\square'))).length;
   const copy = state.copies[ex.id], copied = !copy ? '' : copy === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
   const selected = activeInfo(state.doc);
@@ -44,13 +50,24 @@ export function App() {
 
   useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); }, [ex.id]);
   useEffect(() => { if (insertOpen) dialogRefs.current[choice]?.focus({ preventScroll: true }); }, [insertOpen, choice]);
+  useEffect(() => {
+    if (!insertOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && insertDialogRoot.current && !insertDialogRoot.current.contains(event.target)) {
+        setInsertOpen(false);
+        editorRoot.current?.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, [insertOpen]);
   const examGrades = useMemo(() => {
     if (!showResults || !exam) return [];
-    return diagnosticQuestions.map(question => {
+    return questionBank.map(question => {
       const entry = state.doc.exercises.find(x => x.diagnosticId === question.id);
       return entry ? { question, result: entry.skipped ? null : gradeDiagnostic(entry, question) } : { question, result: null };
     });
-  }, [showResults, exam, state.doc]);
+  }, [showResults, exam, state.doc, questionBank]);
 
   async function check() {
     if (checkBusy.current) return;
@@ -178,22 +195,27 @@ export function App() {
     </header>
     <section className="exercise-bar" aria-label="Exercise navigation">
       <button type="button" disabled={exerciseIndex === 0} onClick={() => nextProblem(-1)}>← Previous</button>
-      <label>Exercise
+      <label>{fractions ? 'Round 1 · Fractions' : 'Exercise'}
         <select aria-label="Current exercise" value={ex.id} onChange={e => { dispatch(actions.switchExercise(e.target.value)); setManual(''); setShowResults(false); }}>
-          {state.doc.exercises.map((x, i) => <option value={x.id} key={x.id}>{x.diagnosticId ? 'Question ' + x.diagnosticId + ' / 30' : 'Exercise ' + (i + 1)}{x.steps.some(st => st.final) ? ' · Final' : ''}</option>)}
+          {state.doc.exercises.map((x, i) => <option value={x.id} key={x.id}>{x.diagnosticId ? 'Question ' + x.diagnosticId + ' / ' + (x.assessment === 'fractions-round-1' ? 20 : 30) : 'Exercise ' + (i + 1)}{x.skipped ? ' · Skipped' : x.steps.some(st => st.final) ? ' · Final' : fractions ? ' · Unanswered' : ''}</option>)}
         </select>
       </label>
       <button type="button" disabled={exerciseIndex === state.doc.exercises.length - 1} onClick={() => nextProblem(1)}>Next Problem →</button>
     </section>
     {exam && <section className="diagnostic-progress" aria-label="Diagnostic progress">
-      <div className="diagnostic-track"><div style={{ width: (completed / 30 * 100) + '%' }} /></div>
-      <p className="small">{completed} of 30 answered or skipped · Answers hidden until Finish</p>
+      <div className="diagnostic-track"><div style={{ width: (completed / questionCount * 100) + '%' }} /></div>
+      <p className="small">{completed} of {questionCount} answered or skipped · Answers hidden until Finish</p>
     </section>}
     {menu && <nav className="menu-panel" aria-label="Notebook actions">
       <button type="button" onClick={() => { dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })); setMenu(false); }}>Use example</button>
       <button type="button" onClick={() => { dispatch(actions.command({ type: 'newProblem' })); setMenu(false); }}>Use current expression as new problem</button>
+      <button type="button" onClick={() => { setConfirmFractions(true); setMenu(false); }}>Start Round 1 · 20 fraction questions</button>
       <button type="button" onClick={() => { setConfirmExam(true); setMenu(false); }}>Start 30-question diagnostic</button>
     </nav>}
+    {confirmFractions && <section className="setup-panel" aria-label="Confirm fraction round start">
+      <h2>Start Round 1 · 20 fraction questions?</h2><p>Export Session JSON first to keep the current exercise list. Your answers are preserved between questions.</p>
+      <div className="toolbar"><button type="button" className="primary" onClick={() => { dispatch(actions.startFractionRound()); dispatch(actions.keyboard(true)); setConfirmFractions(false); setShowResults(false); }}>Start 20 Questions</button><button type="button" onClick={() => setConfirmFractions(false)}>Cancel</button></div>
+    </section>}
     {confirmExam && <section className="setup-panel" aria-label="Confirm diagnostic start">
       <h2>Start diagnostic?</h2><p>This opens 30 new questions and replaces the current exercise list. Export a Session JSON backup first if you need to keep it.</p>
       <div className="toolbar"><button type="button" className="primary" onClick={startDiagnostic}>Start 30 Questions</button><button type="button" onClick={() => setConfirmExam(false)}>Cancel</button></div>
@@ -259,7 +281,7 @@ export function App() {
         {manual && <section className="manual-copy"><label htmlFor="review-text">Review message · select all to copy</label><textarea id="review-text" ref={manualRef} readOnly value={manual} onFocus={e => e.currentTarget.select()} /><div className="toolbar"><button type="button" onClick={() => { manualRef.current?.focus(); manualRef.current?.select(); }}>Select All</button><button type="button" onClick={() => setManual('')}>Close</button></div></section>}
         {exam && showResults && <section className="diagnostic-report" aria-label="Diagnostic report">
           <h2>Diagnostic Review</h2>
-          <p><strong>{counts.correct}/30</strong> numerically correct · <strong>{counts.unresolved}</strong> skipped/unverified</p>
+          <p><strong>{counts.correct}/{questionCount}</strong> numerically correct · <strong>{counts.unresolved}</strong> skipped/unverified</p>
           <p className="small">Inconsistent equalities: {counts.steps} · Equivalent but not simplified: {counts.unsimplified}. Unverified is never silently scored incorrect.</p>
           <h3>Skill Breakdown (provisional)</h3>
           <div className="report-grid">{skillScores.map(skill => <div key={skill.name}>
@@ -278,8 +300,8 @@ export function App() {
       </div>
       {state.keyboardOpen && <aside className="keyboard-side"><Keyboard /></aside>}
     </div>
-    {insertOpen && <div className="insert-overlay" onKeyDown={dialogKeys}>
-      <div className="insert-dialog" role="dialog" aria-modal="true" aria-labelledby="insert-title">
+    {insertOpen && <div className="insert-overlay" onKeyDown={dialogKeys} onClick={event => { if (event.target === event.currentTarget) { setInsertOpen(false); editorRoot.current?.focus({ preventScroll: true }); } }}>
+      <div ref={insertDialogRoot} className="insert-dialog" role="dialog" aria-modal="true" aria-labelledby="insert-title">
         <h2 id="insert-title">Insert Math Element</h2><p className="small">Arrow keys navigate · Enter inserts · Escape closes · Type an operator to select it</p>
         <div className="insert-options">{INSERT_OPTIONS.map((option, i) =>
           <button type="button" key={option.kind} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</button>)}</div>

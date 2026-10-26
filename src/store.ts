@@ -2,6 +2,7 @@ import { configureStore, createSlice, type PayloadAction } from '@reduxjs/toolki
 import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence } from './model';
 import { parse } from './parser';
 import { diagnosticQuestions } from './diagnostic';
+import { fractionRoundOne } from './fractionRoundOne';
 
 export type ScratchState = {
   doc: Document; past: Document[]; future: Document[];
@@ -260,6 +261,22 @@ const slice = createSlice({
         cursor: { stepId: first.steps[0].id, nodeId: leaves(first.steps[0].expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null }
       };
       state.notice = '30-question diagnostic ready. Answers are never shown during the test.';
+    },
+    startFractionRound(state) {
+      const previous = clone(state.doc);
+      const exercises: Exercise[] = fractionRoundOne.map(q => ({
+        id: uid(), mode: q.source ? 'math' : 'text', source: q.source || ' ', prompt: q.stem, assessment: 'fractions-round-1',
+        diagnosticId: q.id, steps: [blankStep()]
+      }));
+      state.past.push(previous);
+      if (state.past.length > 80) state.past.shift();
+      state.future = [];
+      const first = exercises[0];
+      state.doc = {
+        exercises, exerciseId: first.id,
+        cursor: { stepId: first.steps[0].id, nodeId: leaves(first.steps[0].expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null }
+      };
+      state.notice = 'Round 1: 20 fraction questions ready. Answers are never shown during the test.';
     },
     selectParent(state) {
       const info = activeInfo(state.doc); if (!info) return;

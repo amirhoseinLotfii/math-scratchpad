@@ -9,7 +9,7 @@ export function Formula({ sequence, stepId, path = '', top = false, readOnly = f
   function gap(index: number) {
     const active = cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === index;
     return <button type="button" className={`math-gap ${active ? 'at-gap' : ''}`} aria-label={`${path} Insert ${index === 0 ? 'before' : 'after'} item ${Math.max(1, index)}`} data-gap-index={index} data-sequence-id={sequence.id}
-      onClick={() => dispatch(actions.select({ stepId, sequenceId: sequence.id, index }))}><span aria-hidden="true">{active ? '│' : '·'}</span></button>;
+      onClick={() => dispatch(actions.select({ stepId, sequenceId: sequence.id, index }))}><span aria-hidden="true">{active ? '│' : ''}</span></button>;
   }
   function leafClick(e: MouseEvent<HTMLButtonElement>, n: MathNode) {
     if (n.type !== 'number' && n.type !== 'identifier' && n.type !== 'operator') return;
