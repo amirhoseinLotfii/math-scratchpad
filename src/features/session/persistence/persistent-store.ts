@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { uid } from '../../../model';
+import { isoLocal } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
 import type { PersistOptions } from 'zustand/middleware';
@@ -21,6 +22,11 @@ const fullSignature = (session: PersistedSession['session']) => JSON.stringify(s
 const workSignature = (session: PersistedSession['session']) => JSON.stringify({
  exercises: session.doc.exercises.map(({ elapsedMs, ...work }) => work), exerciseId: session.doc.exerciseId, prefs: session.prefs,
 });
+export const STORAGE_PREFIX = 'math-scratchpad';
+/** Remove every localStorage key owned by this app (all schema versions). */
+export function clearAppStorage() {
+ try { Object.keys(localStorage).filter(key => key.startsWith(STORAGE_PREFIX)).forEach(key => localStorage.removeItem(key)); return true; } catch { return false; }
+}
 export function createPersistentStore() {
  const writerId = uid();
  let saved: Envelope | null = null, protectedDraft = false, bootError = '';
@@ -54,7 +60,7 @@ export function createPersistentStore() {
    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
    revision = next.state.sync.revision; lastWriter = writerId; author = true;
    lastSignature = fullSignature(session); lastWork = workSignature(session); failedSignature = '';
-   if (store.getState().storageState?.kind === 'error') quietState(undefined);
+   suppress = true; store.setState(store.getState().storageState?.kind === 'error' ? { storageState: undefined, savedAt: isoLocal() } : { savedAt: isoLocal() }); suppress = false;
   } catch {
    failedSignature = fullSignature(session);
    quietState({ kind: 'error', message: 'Draft storage is unavailable. Your work remains in memory; copy a full session JSON backup.' });
@@ -111,6 +117,11 @@ export function createPersistentStore() {
    revision = Math.max(revision, incoming.state.sync.revision); remote = null; quietState(undefined); author = true;
    const current = store.getState(); queue({ doc: current.doc, prefs: current.prefs, keyboardOpen: current.keyboardOpen }, true); flush();
   }
+ };
+ store.clearStorage = () => {
+  // Stop all writes first so a pending autosave cannot resurrect cleared data.
+  protectedDraft = true; pending = null; clearTimeout(timeout);
+  clearAppStorage();
  };
  const pagehide = () => queueMicrotask(flush);
  window.addEventListener('storage', storageEvent); window.addEventListener('pagehide', pagehide);

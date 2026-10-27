@@ -86,7 +86,7 @@ describe('Predictable keyboard editing',()=>{
   const s=mount(); expect(screen.queryAllByRole('radio')).toHaveLength(0);
   fireEvent.click(screen.getByRole('button',{name:'Check · Copy for Review'}));
   expect(screen.getByRole('dialog',{name:/confidence/i})).toBeTruthy();
-  expect(screen.getAllByRole('radio').every(r=>!(r as HTMLInputElement).checked)).toBe(true);
+  expect((screen.getByRole('radio',{name:'High'}) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole('radio',{name:'Medium'}));
   fireEvent.click(screen.getByRole('button',{name:/continue/i}));
   await waitFor(()=>expect(validateSession(JSON.parse(serialize(s.getState()))).doc.exercises[0].confidence).toBe('medium'));

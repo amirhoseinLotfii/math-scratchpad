@@ -8,9 +8,16 @@ export type Structure =
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
 export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean };
-export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; steps: Step[] };
+export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; steps: Step[] };
+export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
-export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor };
+export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor; session?: SessionMeta };
+/** ISO-8601 timestamp carrying the local UTC offset, e.g. 2026-10-27T16:20:00.000+03:30. */
+export function isoLocal(date = new Date()): string {
+  const pad = (n: number, w = 2) => String(Math.trunc(Math.abs(n))).padStart(w, '0');
+  const off = -date.getTimezoneOffset(), sign = off >= 0 ? '+' : '-';
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}${sign}${pad(off / 60)}:${pad(off % 60)}`;
+}
 export type Preferences = { compact: boolean; favorites: string[]; recent: string[] };
 export const uid = () => `m${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 export const num = (value = ''): Leaf => ({ id: uid(), type: 'number', value });

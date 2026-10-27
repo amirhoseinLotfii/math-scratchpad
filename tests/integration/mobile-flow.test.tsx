@@ -26,9 +26,7 @@ describe('Approved mobile batch workflow', () => {
   await userEvent.click(screen.getByRole('button', { name: /Next question/i }));
   const dialog = screen.getByRole('dialog', { name: /confidence/i });
   expect(store.getState().doc.exerciseId).toBe(id);
-  await userEvent.click(within(dialog).getByRole('button', { name: /continue/i }));
-  expect(store.getState().doc.exerciseId).toBe(id);
-  await userEvent.click(within(dialog).getByRole('radio', { name: 'High' }));
+  expect((within(dialog).getByRole('radio', { name: 'High' }) as HTMLInputElement).checked).toBe(true);
   await userEvent.click(within(dialog).getByRole('button', { name: /continue/i }));
   expect(store.getState().doc.exercises[0].confidence).toBe('high');
   expect(store.getState().doc.exerciseId).not.toBe(id);

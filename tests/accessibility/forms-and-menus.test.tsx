@@ -6,31 +6,22 @@ import { scanDOM } from '../support/accessibility';
 afterEach(cleanup);
 
 describe('A11Y-FORM: validation, explanation and error focus', () => {
- it('empty confidence submit exposes an English error associated with its invalid group', async () => {
-  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
+ it('confidence defaults to High so Continue never submits an empty value', async () => {
+  const { user, store } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
   const dialog = screen.getByRole('dialog', { name: /confidence/i });
+  expect(within(dialog).getByRole('radio', { name: 'High' })).toBeChecked();
   await user.click(within(dialog).getByRole('button', { name: /continue/i }));
-  const group = within(dialog).getByRole('radiogroup', { name: /confiden/i });
-  const error = within(dialog).getByRole('alert');
-  expect(error).toHaveTextContent(/select|choose|required/i); expect(error.textContent).not.toMatch(/[\u0600-\u06ff]/);
-  expect(group).toHaveAttribute('aria-invalid', 'true');
-  expect(group.getAttribute('aria-describedby')?.split(/\s+/)).toContain(error.id);
- });
- it('focuses the invalid confidence choice after failed submit', async () => {
-  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
-  await user.click(screen.getByRole('button', { name: /continue/i }));
-  expect(screen.getAllByRole('radio')).toContain(document.activeElement);
- });
- it('removes the stale validation error after a valid choice', async () => {
-  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
-  await user.click(screen.getByRole('button', { name: /continue/i }));
-  await user.click(screen.getByRole('radio', { name: 'High' }));
   expect(screen.queryByRole('alert')).toBeNull();
-  expect(screen.getByRole('radiogroup', { name: /confiden/i })).not.toHaveAttribute('aria-invalid', 'true');
+  expect(store.getState().doc.exercises[0].confidence).toBe('high');
  });
- it('confidence validation state remains structurally accessible to axe', async () => {
-  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
+ it('a lower confidence choice replaces the default before Continue', async () => {
+  const { user, store } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
+  await user.click(screen.getByRole('radio', { name: 'Low' }));
   await user.click(screen.getByRole('button', { name: /continue/i }));
+  expect(store.getState().doc.exercises[0].confidence).toBe('low');
+ });
+ it('confidence dialog remains structurally accessible to axe', async () => {
+  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
   expect(await scanDOM(screen.getByRole('dialog'))).toEqual([]);
  });
  it('empty new-problem submission does not create a question and focuses its labelled field', async () => {

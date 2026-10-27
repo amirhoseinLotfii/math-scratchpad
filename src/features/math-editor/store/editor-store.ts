@@ -2,7 +2,7 @@ import { produce } from 'immer';
 import { createStore } from 'zustand/vanilla';
 import { persist, type PersistOptions } from 'zustand/middleware';
 type PayloadAction<T> = { payload: T };
-import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence } from '../../../model';
+import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal } from '../../../model';
 import { parse } from '../../../parser';
 import { diagnosticQuestions } from '../../../diagnostic';
 import { fractionRoundOne } from '../../../fractionRoundOne';
@@ -13,14 +13,16 @@ export type ScratchState = {
   structureClipboard: MathNode | null;
   copies: Record<string, string>; notice: string;
   storageState?: { kind: 'error' | 'conflict'; message: string };
+  savedAt?: string;
 };
 export function exerciseOf(doc: Document) { return doc.exercises.find(x => x.id === doc.exerciseId)!; }
 export function stepOf(doc: Document) { return exerciseOf(doc).steps.find(s => s.id === doc.cursor.stepId)!; }
 export function initialDocument(): Document {
   const step = blankStep(); step.expression = parse(example);
   const exercise: Exercise = { id: uid(), source: example, mode: 'math', steps: [step] };
-  return { exercises: [exercise], exerciseId: exercise.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
+  return { session: newSessionMeta(), exercises: [exercise], exerciseId: exercise.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
 }
+export function newSessionMeta(): SessionMeta { return { id: `S-${isoLocal().slice(0, 16).replace(/[-:T]/g, '')}-${uid().slice(1, 7)}`, startedAt: isoLocal() }; }
 export function initialState(): ScratchState {
   return { doc: initialDocument(), past: [], future: [], prefs: { compact: true, favorites: ['fraction', 'power', 'root'], recent: [] }, keyboardOpen: false, symbolsOpen: false, topic: 'Numbers', structureClipboard: null, copies: {}, notice: '' };
 }
@@ -139,7 +141,7 @@ function applyCommand(state: ScratchState, cmd: Command) {
   } else if (cmd.type === 'deleteStep') {
     if (ex.steps[0].id === current.id) return;
     else { const index = ex.steps.indexOf(current); ex.steps.splice(index, 1); const next = ex.steps[Math.min(index, ex.steps.length - 1)]; c.stepId = next.id; focusFirst(d, next.expression); }
-  } else if (cmd.type === 'final') { const value = !current.final; ex.steps.forEach(s => { s.final = s.id === current.id && value; }); }
+  } else if (cmd.type === 'final') { const value = !current.final; ex.steps.forEach(s => { s.final = s.id === current.id && value; }); if (value) ex.submittedAt = isoLocal(); }
   else if (cmd.type === 'cut' || cmd.type === 'duplicate') {
     if (!c.selected || !item) return;
     if (cmd.type === 'cut') {
@@ -169,6 +171,7 @@ const handlers = {
       try {
         applyCommand(state, action.payload);
         if (JSON.stringify(before.exercises) === JSON.stringify(state.doc.exercises)) return;
+        { const touched = exerciseOf(state.doc); if (!touched.startedAt) touched.startedAt = isoLocal(); }
         state.past.push(before); if (state.past.length > 80) state.past.shift(); state.future = state.future.filter(x => x.exerciseId !== exId);
         if (state.doc.exerciseId === exId) {
           const previousStep = exerciseOf(before).steps[index];
@@ -259,7 +262,18 @@ const handlers = {
       state.notice = '';
     },
     setConfidence(state: ScratchState, action: PayloadAction<'high' | 'medium' | 'low'>) {
-      exerciseOf(state.doc).confidence = action.payload;
+      const ex = exerciseOf(state.doc); ex.confidence = action.payload; ex.submittedAt = isoLocal();
+    },
+    setHint(state: ScratchState, action: PayloadAction<{ used: boolean; note?: string }>) {
+      const ex = exerciseOf(state.doc); ex.hintUsed = action.payload.used;
+      const note = action.payload.note?.slice(0, 500); if (note) ex.hintNote = note; else delete ex.hintNote;
+    },
+    setSessionMeta(state: ScratchState, action: PayloadAction<Partial<Omit<SessionMeta, 'id' | 'startedAt'>>>) {
+      const meta = state.doc.session ?? (state.doc.session = newSessionMeta());
+      Object.assign(meta, action.payload);
+    },
+    resetSession(state: ScratchState) {
+      state.doc = initialDocument(); state.past = []; state.future = []; state.copies = {}; state.notice = 'Session reset. A new session has started.';
     },
     setSkipped(state: ScratchState, action: PayloadAction<boolean>) {
       exerciseOf(state.doc).skipped = action.payload;
@@ -275,7 +289,7 @@ const handlers = {
       state.future = [];
       const first = exercises[0];
       state.doc = {
-        exercises, exerciseId: first.id,
+        session: newSessionMeta(), exercises, exerciseId: first.id,
         cursor: { stepId: first.steps[0].id, nodeId: leaves(first.steps[0].expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null }
       };
       state.notice = '30-question diagnostic ready. Answers are never shown during the test.';
@@ -291,7 +305,7 @@ const handlers = {
       state.future = [];
       const first = exercises[0];
       state.doc = {
-        exercises, exerciseId: first.id,
+        session: newSessionMeta(), exercises, exerciseId: first.id,
         cursor: { stepId: first.steps[0].id, nodeId: leaves(first.steps[0].expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null }
       };
       state.notice = 'Round 1: 20 fraction questions ready. Answers are never shown during the test.';
@@ -348,6 +362,7 @@ export const makeStore = (preloadedState?: ScratchState, persistence?: PersistOp
   return Object.assign(store, {
     dispatch: (action: EditorAction) => { store.setState(reducer(store.getState(), action), true); return action; },
     resolveConflict: undefined as ((choice: 'local' | 'remote') => void) | undefined,
+    clearStorage: undefined as (() => void) | undefined,
   });
 };
 export type ScratchStore = ReturnType<typeof makeStore>;

@@ -407,3 +407,15 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 }
 
 #math-scratchpad-redux .confidence-hint { text-align: right; color: var(--muted-foreground); font-size: 12px; margin: 8px 0 0; }
+/* v0.6 session panel */
+.session-panel { display: grid; gap: 8px; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.session-panel .session-scales { display: flex; flex-wrap: wrap; gap: 12px; }
+.session-panel label { display: inline-flex; align-items: center; gap: 6px; }
+.session-panel select, .session-panel input[type="text"] { min-height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; background: transparent; color: inherit; }
+.session-panel input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); }
+.session-panel .hint-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.session-panel .final-status.missing { color: #e0a43a; }
+.save-indicator { overflow-wrap: anywhere; }
+.session-panel { min-width: 0; max-width: 100%; }
+.session-panel code, .session-panel .final-status { overflow-wrap: anywhere; word-break: break-word; }
+.session-panel input[type="text"] { min-width: 0; max-width: 100%; }

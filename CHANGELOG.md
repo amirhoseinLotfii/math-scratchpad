@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — 2026-10-27
+
+### Added
+- **Tutor export** (`Export for tutor (JSON)` in the menu): versioned session JSON (`schema_version: math-scratchpad.session/1.0`) with session id, anxiety/energy (1–5), start/end time, and per item: `item_id`, `status`, `student_answer`, `final_answer`, `final_step_id`, verbatim `steps[]`, `started_at`/`submitted_at` (ISO-8601 with UTC offset), `solve_time_sec`, `confidence` (5/3/1), `hint_used`/`hint_note`, `independent`. Copied to clipboard and downloaded as a file.
+- Pre-export warning listing answered questions that have no marked final answer.
+- `Alt + Enter` marks the current step as the final answer (the per-step **Final** button remains).
+- Session panel: math-anxiety and energy pickers, per-question "Tutor help used" + note, and final-answer status.
+- Persistence controls: always-visible **Saved ✓** indicator, Download/Import backup file, End session, Reset current session and Reset all local storage (both with confirmation dialogs).
+- GitHub Pages deployment workflow (`.github/workflows/pages.yml`).
+
+### Changed
+- The confidence picker is preselected to **High (5)** and can never be submitted empty.
+- Stored drafts keep the versioned key `math-scratchpad-session-v3`; older v2/v1 drafts and backups without session metadata still load (new fields are optional and validated).
+
 ## 0.5.1 — 2026-10-25
 
 ### Fixed

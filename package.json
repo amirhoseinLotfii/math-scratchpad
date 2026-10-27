@@ -1,6 +1,6 @@
 {
   "name": "math-scratchpad-redux",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "build": "npm run typecheck && vite build && node scripts/standalone.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test:unit": "vitest run tests/unit tests/store.test.ts tests/assessment.test.ts tests/legacy.test.ts tests/wide/layout-model.test.ts",
-    "test:integration": "vitest run tests/integration tests/app.test.tsx tests/fraction-round.test.tsx tests/keyboard-ux.test.tsx tests/wide/workspace.test.tsx",
+    "test:integration": "vitest run tests/integration tests/app.test.tsx tests/fraction-round.test.tsx tests/keyboard-ux.test.tsx tests/wide/workspace.test.tsx tests/integration/tutor-export-ui.test.tsx",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:typecheck": "tsc -p tsconfig.tests.json --noEmit",

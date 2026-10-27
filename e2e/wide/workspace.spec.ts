@@ -73,7 +73,7 @@ test('WIDE-13: shortcut dialog traps focus, Escape restores the trigger, and wor
 });
 test('WIDE-14: next-question decision still requires confidence and cancellation preserves work',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('88');const next=page.getByRole('button',{name:/Next question/});await next.click();
- await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();await page.keyboard.press('Escape');await expect(next).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('88');
+ await expect(page.getByRole('radio',{name:'High',exact:true})).toBeChecked();await page.keyboard.press('Escape');await expect(next).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('88');
 });
 test('WIDE-15: a committed answer advances, updates status and is retained on return',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('9');await page.getByRole('button',{name:/Next question/}).click();await page.getByRole('radio',{name:'Medium',exact:true}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();

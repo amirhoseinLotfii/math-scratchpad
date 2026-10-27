@@ -24,7 +24,8 @@ test('batch completion requires confidence and offers explicit export actions', 
  await selector.selectOption(last!);
  await page.getByRole('button', { name: /Finish session/i }).click();
  const confidence = page.getByRole('dialog', { name: /confidence/i });
- await expect(confidence.getByRole('radio', { checked: true })).toHaveCount(0);
+ await expect(confidence.getByRole('radio', { checked: true })).toHaveCount(1);
+ await expect(confidence.getByRole('radio', { name: 'High' })).toBeChecked();
  await confidence.getByRole('radio', { name: 'High' }).check();
  await confidence.getByRole('button', { name: /Continue/i }).click();
  const complete = page.getByRole('dialog', { name: /Session complete/i });

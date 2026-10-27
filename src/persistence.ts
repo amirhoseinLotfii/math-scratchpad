@@ -1,8 +1,15 @@
 import { metadataSchema } from './features/session/schemas/session-schema';
-import { ascii, fields, leaves, templateCounts, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence } from './model';
+import { ascii, fields, leaves, templateCounts, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta } from './model';
 import { initialState, type ScratchState } from './store';
 const KEY = 'math-scratchpad-redux-v2';
 type Bag = Record<string, any>;
+const isoText = (v: unknown): v is string => typeof v === 'string' && v.length <= 40 && /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/.test(v);
+const scale = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 5 ? v as number : undefined;
+function sessionMeta(v: Bag | undefined): SessionMeta | undefined {
+  if (!v || typeof v.id !== 'string' || !/^[\w-]{1,80}$/.test(v.id) || !isoText(v.startedAt)) return undefined;
+  const anxiety = scale(v.anxiety), energy = scale(v.energy);
+  return { id: v.id, startedAt: v.startedAt, ...(anxiety ? { anxiety } : {}), ...(energy ? { energy } : {}), ...(isoText(v.endedAt) ? { endedAt: v.endedAt } : {}) };
+}
 /** Reconstruct a bounded allowlisted tree, discarding all unknown fields. */
 export function validateSession(input: unknown): { doc: Document; prefs?: Preferences } {
   const data = input as Bag;
@@ -32,7 +39,7 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
     metadataSchema.parse(ex);
     if (typeof ex.source !== 'string' || ex.source.length > 4000 || !['math', 'text'].includes(ex.mode) || !Array.isArray(ex.steps) || !ex.steps.length || ex.steps.length > 40) throw Error('Invalid exercise.');
     if (ex.steps.filter((s: Bag) => s.final).length > 1) throw Error('Only one final answer is allowed.');
-    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, ...(typeof ex.prompt === 'string' && ex.prompt.length < 4000 ? { prompt: ex.prompt } : {}), ...(Number.isInteger(ex.diagnosticId) && ex.diagnosticId >= 1 && ex.diagnosticId <= 30 ? { diagnosticId: ex.diagnosticId } : {}), ...(ex.assessment === 'fractions-round-1' ? { assessment: 'fractions-round-1' as const } : {}), ...(Number.isFinite(ex.elapsedMs) && ex.elapsedMs >= 0 ? { elapsedMs: ex.elapsedMs } : {}), ...( ['high','medium','low'].includes(ex.confidence) ? { confidence: ex.confidence } : {}), ...(ex.skipped === true ? { skipped: true } : {}), ...(typeof ex.migrationNotes === 'string' && ex.migrationNotes.length <= 5000 ? { migrationNotes: ex.migrationNotes } : {}), steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
+    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, ...(typeof ex.prompt === 'string' && ex.prompt.length < 4000 ? { prompt: ex.prompt } : {}), ...(Number.isInteger(ex.diagnosticId) && ex.diagnosticId >= 1 && ex.diagnosticId <= 30 ? { diagnosticId: ex.diagnosticId } : {}), ...(ex.assessment === 'fractions-round-1' ? { assessment: 'fractions-round-1' as const } : {}), ...(Number.isFinite(ex.elapsedMs) && ex.elapsedMs >= 0 ? { elapsedMs: ex.elapsedMs } : {}), ...( ['high','medium','low'].includes(ex.confidence) ? { confidence: ex.confidence } : {}), ...(ex.skipped === true ? { skipped: true } : {}), ...(isoText(ex.startedAt) ? { startedAt: ex.startedAt } : {}), ...(isoText(ex.submittedAt) ? { submittedAt: ex.submittedAt } : {}), ...(typeof ex.hintUsed === 'boolean' ? { hintUsed: ex.hintUsed } : {}), ...(typeof ex.hintNote === 'string' && ex.hintNote.length <= 500 ? { hintNote: ex.hintNote } : {}), ...(typeof ex.migrationNotes === 'string' && ex.migrationNotes.length <= 5000 ? { migrationNotes: ex.migrationNotes } : {}), steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
   });
   const ex = exercises.find(x => x.id === raw.exerciseId) ?? exercises.at(-1)!;
   const old = data.version === 1 ? { stepId: raw.step, nodeId: raw.node, offset: raw.caret, sequenceId: raw.gap?.sequenceId, index: raw.gap?.index } : raw.cursor ?? {};
@@ -44,7 +51,8 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
   const gap = sequences(step.expression).find(s => s.id === old.sequenceId);
   if (gap && Number.isInteger(old.index) && old.index >= 0 && old.index <= gap.children.length) { cursor.sequenceId = gap.id; cursor.index = old.index; cursor.nodeId = null; }
   const prefs = data.prefs;
-  return { doc: { exercises, exerciseId: ex.id, cursor }, prefs: prefs ? { compact: prefs.compact !== false, favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter((x: unknown) => typeof x === 'string' && x.length < 30).slice(0, 12) : [], recent: Array.isArray(prefs.recent) ? prefs.recent.filter((x: unknown) => typeof x === 'string' && x.length < 30).slice(0, 4) : [] } : undefined };
+  const session = sessionMeta(raw.session);
+  return { doc: { ...(session ? { session } : {}), exercises, exerciseId: ex.id, cursor }, prefs: prefs ? { compact: prefs.compact !== false, favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter((x: unknown) => typeof x === 'string' && x.length < 30).slice(0, 12) : [], recent: Array.isArray(prefs.recent) ? prefs.recent.filter((x: unknown) => typeof x === 'string' && x.length < 30).slice(0, 4) : [] } : undefined };
 }
 export function restoreState(): ScratchState {
   const state = initialState();
