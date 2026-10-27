@@ -16,3 +16,14 @@ All checks begin pending in manual-acceptance.json. Record real hardware, Androi
 12. **axe-incomplete-triage** — Read every incomplete/manual-review result in browser axe artifacts, verify each rendered instance and record disposition/evidence. Zero automatic violations does not close manual items.
 
 If a criterion fails, record status failed with reproduction steps and evidence; do not omit it. An untested case remains pending. A complete checklist is not sufficient if automated gates or snapshots are failing.
+
+## Laptop and desktop additions
+
+These checks extend the existing phone protocol; record per-platform device/browser/AT versions in each evidence file.
+
+- `wide-chrome-keyboard`: On Windows or Linux Chrome, complete a batch question using only the physical keyboard. Exercise slash insertion, digits inside a fraction, boundaries, Home/End, Backspace/Delete, Ctrl+Z/redo, Tab focus, shortcut help, confidence and completion. Confirm browser/system shortcuts remain usable outside the editor.
+- `wide-firefox-zoom`: On actual Firefox, test 100%, 200% and 400% browser zoom and reduced window height. Verify reading order, reflow, sticky context, local equation scrolling and reachable dialog/footer controls. CSS text scaling is not proof of actual browser zoom.
+- `wide-nvda-reading`: With NVDA on Windows, distinguish active question, focused question button, answered/skipped/draft status, numerator/denominator context, protected deletion and confidence errors. Retain actual speech observations and any failures.
+- `wide-voiceover-editing`: With VoiceOver on macOS, enter/edit math, use Command+Z/Command+Shift+Z, browse questions, open/close both dialogs and verify focus restoration and absence of repeated timer announcements.
+- `wide-pointer-scroll`: Use a mouse and trackpad to place the caret before/mid/after multi-digit numbers, reset a nonactive step, delete a middle step, scroll a long question list and long work independently, and resize across both thresholds without losing work.
+- `wide-layout-acceptance`: Review the real running laptop and desktop views against the approved proposals, including 1024×768, 1440×900, 1920×1080 and ultrawide. Verify no mandatory numeric keypad, readable Persian/English, visible original question, proper toolbar order and retained phone behavior. Record user acceptance separately from engineering screenshot baselines.

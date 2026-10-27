@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Pause, Play } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, activeInfo, exerciseOf } from './store';
-import { ascii, example, leaves, latex } from './model';
+import { ascii, example, leaves, latex, symbolList } from './model';
 import { parse } from './parser';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
@@ -22,6 +22,12 @@ import { ConfidenceDialog } from './features/session/components/confidence-dialo
 import { CompletionDialog } from './features/session/components/completion-dialog';
 import { problemSchema, jsonInputSchema } from './features/session/schemas/session-schema';
 
+import { useWorkspaceLayout } from './shared/hooks/use-workspace-layout';
+import { QuestionNavigator } from './features/workspace/components/question-navigator';
+import { MathTools } from './features/workspace/components/math-tools';
+import { questionStatus } from './features/workspace/model/workspace-layout';
+import { ShortcutHelp } from './features/workspace/components/shortcut-help';
+
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
  { name: '√ Root', kind: 'root' }, { name: 'Power', kind: 'power' },
@@ -30,6 +36,10 @@ const INSERT_OPTIONS = [
 ];
 type Decision = 'next' | 'complete' | 'copy';
 export function App() {
+ const layout = useWorkspaceLayout(), wide = layout !== 'phone';
+ const insertOptions = useMemo(() => wide ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({name:item.title,kind:item.key}))] : INSERT_OPTIONS, [wide]);
+ const [shortcutsOpen, setShortcutsOpen] = useState(false);
+ const helpInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const batch = state.doc.exercises.length > 1, last = exerciseIndex === state.doc.exercises.length - 1;
@@ -46,20 +56,23 @@ export function App() {
  const mode = problemForm.watch('mode');
  const fractions = ex.assessment === 'fractions-round-1', questionBank = fractions ? fractionRoundOne : diagnosticQuestions;
  const exam = !!ex.diagnosticId && state.doc.exercises.some(x => x.diagnosticId === questionBank.length);
- const completed = state.doc.exercises.filter(x => x.skipped || x.steps.some(s => latex(s.expression) !== '\\square')).length;
+ const completed = state.doc.exercises.filter(x => wide ? ['Answered','Skipped'].includes(questionStatus(x)) : x.skipped || x.steps.some(s => latex(s.expression) !== '\\square')).length;
  const currentIndex = ex.steps.findIndex(x => x.id === state.doc.cursor.stepId), selected = activeInfo(state.doc);
  const selectionLabel = state.doc.cursor.sequenceId ? `Step ${currentIndex + 1} · Main-line insertion` : selected ? `Step ${currentIndex + 1}${selected.path}${state.doc.cursor.selected ? ' · Whole structure' : ' · Caret ' + state.doc.cursor.offset}` : '';
  const copied = !state.copies[ex.id] ? '' : state.copies[ex.id] === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
  const problemExpression = useMemo(() => { if (ex.mode !== 'math') return null; try { return parse(ex.source); } catch { return null; } }, [ex.mode, ex.source]);
- const modalOpen = insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
+ const modalOpen = shortcutsOpen || insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
  useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); }, [ex.id]);
- useEffect(() => { if (insertOpen) dialogRefs.current[choice]?.focus({ preventScroll: true }); }, [insertOpen, choice]);
+ useEffect(() => { setChoice(0); }, [wide]);
+ useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
+ function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
  function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
-  if (kind === 'number') dispatch(actions.command({ type: 'insertBlankNumber' }));
-  else if (['+','−','×','÷','='].includes(kind)) dispatch(actions.command({ type: 'operator', value: kind }));
+  if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
+  else if (kind === 'number') dispatch(actions.command({ type: 'insertBlankNumber' }));
+  else if (['+','−','×','÷','=','≤','≥','≠','<','>'].includes(kind)) dispatch(actions.command({ type: 'operator', value: kind }));
   else dispatch(actions.command({ type: 'insert', value: kind }));
   restoreInsert.current = false; setInsertOpen(false); focusEditor();
  }
@@ -131,8 +144,9 @@ export function App() {
   else if (key === 'Enter' && state.doc.cursor.sequenceId) { event.preventDefault(); openInsert(); }
  }
  function dialogKeys(event: KeyboardEvent<HTMLDivElement>) {
-  event.stopPropagation(); const size = INSERT_OPTIONS.length;
+  event.stopPropagation(); const size = insertOptions.length;
   if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); const delta = ({ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3} as Record<string,number>)[event.key]; setChoice(c => (c + delta + size) % size); }
+  else if ((event.key === 'Home' || event.key === 'End') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); setChoice(event.key === 'Home' ? 0 : size - 1); }
   else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); insert((event.target as HTMLElement).getAttribute('data-insert-kind')!); }
   else if (event.key === 'Tab') {
    event.preventDefault(); const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button')); const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -143,10 +157,11 @@ export function App() {
   const entry = state.doc.exercises.find(x => x.diagnosticId === question.id); return { question, result: !entry || entry.skipped ? null : gradeDiagnostic(entry, question) };
  }), [showResults, exam, questionBank, state.doc]);
  async function copyReport() { const text = examGrades.map(({question,result}) => `Q${question.id} | ${question.stem}\nExpected: ${question.expected}\n${result?.numeric ?? 'skipped'}`).join('\n\n'); if (await writeClipboard(text)) dispatch(actions.notice('Diagnostic report copied.')); else setManual(text); }
- return <main ref={editorRoot} className="scratchpad" inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
+ const mathTools = <MathTools wide={wide} canUndo={state.past.some(d => d.exerciseId === ex.id)} canRedo={state.future.some(d => d.exerciseId === ex.id)} onUndo={() => { dispatch(actions.undo()); focusEditor(); }} onRedo={() => { dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
+ return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
   <div className="app-content" inert={modalOpen}>
    <header className="app-header"><div><p className="eyebrow">YOUR MATH NOTEBOOK</p><h1>Math Scratchpad</h1><p className="small subtitle">Write. Think. Take the next step.</p></div>
-    <div className="header-actions"><Button className="desktop-action" onClick={() => setSetup(true)}>New Problem</Button><Button className="desktop-action" onClick={() => { jsonForm.reset({ json: serialize(store.getState()) }); setBackup(true); }}>Session JSON</Button>
+    <div className="header-actions">{wide && <><span className="local-draft-label">{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : 'Local draft'}</span><Button ref={helpInvoker} onClick={() => setShortcutsOpen(true)}>Keyboard shortcuts</Button></>}<Button className="desktop-action" onClick={() => setSetup(true)}>New Problem</Button><Button className="desktop-action" onClick={() => { jsonForm.reset({ json: serialize(store.getState()) }); setBackup(true); }}>Session JSON</Button>
      <Button className="keyboard-toggle" aria-expanded={state.keyboardOpen} onClick={() => dispatch(actions.keyboard(!state.keyboardOpen))}>{state.keyboardOpen ? '⌨ Hide Keyboard' : '⌨ Show Keyboard'}</Button>
      <DropdownMenu open={menu} onOpenChange={setMenu}><DropdownMenuTrigger asChild><Button aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onClick={() => setMenu(value => !value)}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions">
       {batch && <DropdownMenuItem onSelect={() => request('copy')}>Check · Copy for Review</DropdownMenuItem>}
@@ -160,18 +175,26 @@ export function App() {
       <DropdownMenuItem onSelect={() => dispatch(actions.setSkipped(!ex.skipped))}>{ex.skipped ? 'Unskip question' : 'Skip question'}</DropdownMenuItem>
      </DropdownMenuContent></DropdownMenu>
     </div></header>
-   {batch && <section className="exercise-bar" aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => { dispatch(actions.switchExercise(e.target.value)); setShowResults(false); setManual(''); }}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{entry.skipped ? ' · Skipped' : entry.steps.some(s => s.final) ? ' · Final' : ' · Unanswered'}</option>)}</select></label>
-    <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={completed} className="diagnostic-track"><div style={{ width: `${completed / state.doc.exercises.length * 100}%` }} /></div><p className="small progress-text">{completed} of {state.doc.exercises.length} answered or skipped · Answers hidden until Finish</p></section>}
-   {(confirmExam || confirmFractions) && <section className="setup-panel" aria-label={confirmFractions ? 'Confirm fraction round start' : 'Confirm diagnostic start'}><h2>Start {confirmFractions ? 'Round 1 · 20 fraction questions' : 'diagnostic'}?</h2><p>Export Session JSON first to keep your current work.</p><div className="toolbar"><Button variant="default" onClick={() => { dispatch(confirmFractions ? actions.startFractionRound() : actions.startDiagnostic()); dispatch(actions.keyboard(true)); setConfirmExam(false); setConfirmFractions(false); setShowResults(false); }}>{confirmFractions ? 'Start 20 Questions' : 'Start 30 Questions'}</Button><Button onClick={() => { setConfirmExam(false); setConfirmFractions(false); }}>Cancel</Button></div></section>}
+
+   {(confirmExam || confirmFractions) && <section className="setup-panel" aria-label={confirmFractions ? 'Confirm fraction round start' : 'Confirm diagnostic start'}><h2>Start {confirmFractions ? 'Round 1 · 20 fraction questions' : 'diagnostic'}?</h2><p>Export Session JSON first to keep your current work.</p><div className="toolbar"><Button variant="default" onClick={() => { dispatch(confirmFractions ? actions.startFractionRound() : actions.startDiagnostic()); if (!wide) dispatch(actions.keyboard(true)); setConfirmExam(false); setConfirmFractions(false); setShowResults(false); }}>{confirmFractions ? 'Start 20 Questions' : 'Start 30 Questions'}</Button><Button onClick={() => { setConfirmExam(false); setConfirmFractions(false); }}>Cancel</Button></div></section>}
    {setup && <section className="setup-panel" aria-label="New exercise"><h2>New exercise</h2><form onSubmit={start} noValidate>
     <label htmlFor="problem-format">Problem format</label><select id="problem-format" {...problemForm.register('mode')}><option value="math">Math / LaTeX</option><option value="text">Persian text</option></select>
     <label htmlFor="problem-input">Problem</label><textarea id="problem-input" {...problemForm.register('source')} maxLength={4000} dir={mode === 'text' ? 'rtl' : 'ltr'} aria-invalid={!!problemForm.formState.errors.source} aria-describedby={problemForm.formState.errors.source ? 'problem-error' : undefined} placeholder={mode === 'math' ? example : 'Describe the question'} />
     {problemForm.formState.errors.source && <p id="problem-error" role="alert">{problemForm.formState.errors.source.message}</p>}
     <div className="toolbar"><Button type="submit" variant="default">Start</Button><Button onClick={() => setSetup(false)}>Cancel</Button></div></form></section>}
    {backup && <section className="setup-panel" aria-label="Session backup"><h2>Session backup</h2><form onSubmit={loadBackup} noValidate><label htmlFor="session-json">Copy or paste session JSON</label><textarea id="session-json" {...jsonForm.register('json')} spellCheck={false} aria-invalid={!!jsonForm.formState.errors.json} aria-describedby={jsonForm.formState.errors.json ? 'json-error' : undefined} /><div className="toolbar"><Button onClick={async () => dispatch(actions.notice(await writeClipboard(jsonForm.getValues('json')) ? 'Session copied.' : 'Select the text and copy manually.'))}>Copy Session</Button><Button type="submit">Restore</Button><Button onClick={() => setBackup(false)}>Close</Button></div>{jsonForm.formState.errors.json && <p id="json-error" role="alert">{jsonForm.formState.errors.json.message}</p>}</form></section>}
-   <div className={`editor-layout ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`}><div className="notebook-main">
-    <section className="problem" aria-label="Current problem">{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}</section>
+   <div className="workspace">{layout === 'desktop' && batch && <QuestionNavigator doc={state.doc} onSelect={switchQuestion} />}
+    <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
+   {batch && <section className="exercise-bar" hidden={layout === 'desktop'} aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{wide ? ` · ${questionStatus(entry)}` : entry.skipped ? ' · Skipped' : entry.steps.some(s => s.final) ? ' · Final' : ' · Unanswered'}</option>)}</select></label>
+    <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={completed} className="diagnostic-track"><div style={{ width: `${completed / state.doc.exercises.length * 100}%` }} /></div><p className="small progress-text">{completed} of {state.doc.exercises.length} answered or skipped · Answers hidden until Finish</p></section>}
+    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}</section>
     <QuestionTimer key={ex.id} exerciseId={ex.id} elapsedMs={ex.elapsedMs} suspended={modalOpen || setup || backup || confirmExam || confirmFractions} />
+    {layout === 'desktop' && <details className="shortcut-panel" open><summary>Keyboard shortcuts</summary><ShortcutHelp /></details>}
+    </div>
+    <div className={`editor-layout work-pane ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? 'Your work' : undefined}><div className="notebook-main">
+    {wide && mathTools}
+    {wide && <div className="work-heading"><h2>Your work</h2><p className="small">Write each step. Review when you're ready.</p></div>}
+
     <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => <article className={`step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id} data-step-id={step.id}>
      <header className="step-header"><Button className="step-title" variant="ghost" onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); focusEditor(); }}>Step {i + 1}</Button><span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
       <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); dispatch(actions.command({ type: 'final' })); }}>Final{step.final ? ' ✓' : ''}</Button>
@@ -180,26 +203,25 @@ export function App() {
      {step.id === state.doc.cursor.stepId && <p className="selection small"><span className="selection-dot" aria-hidden="true" />{selectionLabel}</p>}
     </article>)}</section>
     <Button className="add-step" onClick={addStep}><Plus aria-hidden="true" />Add step</Button>
-    <div className="quick-math-tools" role="group" aria-label="Quick math tools">{[
-     { label:'Insert fraction', kind:'fraction', glyph:<svg className="math-tool-icon" viewBox="0 0 36 38" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 5c-8-5-10 9-3 7l4-3M22 3l-2 10M7 18h22M15 22l-2 12c12 4 13-14 1-5" /></svg> },
-     { label:'Insert parentheses', kind:'group', glyph:'( )' }, { label:'Insert square root',kind:'root',glyph:'√' },
-     { label:'Insert power',kind:'power',glyph:<svg className="math-tool-icon" viewBox="0 0 36 38" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M8 14l13 17M21 14L8 31M24 7q8-6 8 0q0 3-8 9h8" /></svg> }, { label:'Insert equals',kind:'=',glyph:'=' },
-    ].map(tool => <Button key={tool.kind} aria-label={tool.label} onClick={() => insert(tool.kind)}><span aria-hidden="true">{tool.glyph}</span></Button>)}</div>
+    {!wide && mathTools}
     {state.keyboardOpen && <Keyboard />}
-    <footer className="review-controls">{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
+    <footer className="review-controls">{wide && <p className="wide-keyboard-hint"><kbd>/</kbd> Insert symbols · <kbd>Ctrl / Cmd + Z</kbd> Undo · <kbd>Tab</kbd> Move focus</p>}{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
      <p className={`copy-state ${copied === 'Changed since copy' ? 'changed' : ''}`}>{copied}</p><p className="small" role="status" aria-live="polite">{state.notice}</p>
      {batch && <nav className="question-navigation" aria-label="Question navigation"><Button disabled={exerciseIndex === 0} onClick={() => { dispatch(actions.adjacentExercise(-1)); setManual(''); }}>← Previous</Button><Button onClick={() => request(last ? 'complete' : 'next')}>{last ? 'Finish session' : 'Next question →'}</Button></nav>}
+     {wide && batch && !ex.skipped && <p className="confidence-hint">Confidence required before continuing.</p>}
 
      {state.storageState?.kind === 'error' && <p role="alert">{state.storageState.message}</p>}
     </footer>
     {manual && <section className="manual-copy"><label htmlFor="review-text">Review message · select all to copy</label><textarea id="review-text" ref={manualRef} readOnly value={manual} onFocus={e => e.currentTarget.select()} /><div className="toolbar"><Button onClick={() => { manualRef.current?.focus(); manualRef.current?.select(); }}>Select All</Button><Button onClick={() => setManual('')}>Close</Button></div></section>}
     {showResults && exam && <section className="diagnostic-report" aria-label="Diagnostic report"><h2>Diagnostic Review</h2><p><strong>{examGrades.filter(x => x.result?.numeric === 'correct').length}/{questionBank.length}</strong> numerically correct</p><div className="report-grid">{examGrades.map(({question,result}) => <div key={question.id}><strong>Q{question.id}</strong> · {result?.numeric ?? 'skipped'}{result && <span> / Form: {result.form} / Steps: {result.steps}</span>}</div>)}</div><Button onClick={copyReport}>Copy Full Diagnostic Report</Button><p className="small">Estimated skill performance only. Unsupported expressions remain unverified.</p></section>}
    </div></div>
+   </div>
   </div>
+  <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); helpInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
   <Dialog open={insertOpen} onOpenChange={value => { if (!value) closeInsert(); }}><DialogContent className="insert-dialog" onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (restoreInsert.current && insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); else focusEditor(); }}>
-   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options">{INSERT_OPTIONS.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div><Button onClick={closeInsert}>Cancel · Esc</Button>
+   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options">{insertOptions.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div><Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
  </main>;

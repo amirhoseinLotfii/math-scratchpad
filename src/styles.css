@@ -321,3 +321,89 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 @container (min-width: 840px) {
  #math-scratchpad-redux button.desktop-action, #math-scratchpad-redux .step-header button.final-marker { display: inline-flex; }
 }
+/* Layout wrappers are transparent on phones; shared state never depends on CSS order. */
+#math-scratchpad-redux .workspace, #math-scratchpad-redux .question-context, #math-scratchpad-redux .math-tools-row { display: contents; }
+#math-scratchpad-redux .exercise-bar[hidden] { display: none; }
+@media (min-width: 900px) {
+ #math-scratchpad-redux { max-width: 1800px; }
+ #math-scratchpad-redux .scratchpad { padding: 24px; }
+ #math-scratchpad-redux .app-content { min-height: calc(100dvh - 48px); }
+ #math-scratchpad-redux .app-header { margin-bottom: 24px; align-items: center; }
+ #math-scratchpad-redux .app-header h1 { font-size: 24px; white-space: nowrap; }
+ #math-scratchpad-redux .app-header .eyebrow, #math-scratchpad-redux .app-header .subtitle,
+ #math-scratchpad-redux button.desktop-action, #math-scratchpad-redux .step-header button.final-marker { display: none; }
+ #math-scratchpad-redux .header-actions { display: flex; gap: 8px; }
+ #math-scratchpad-redux .header-actions button { min-height: 44px; }
+ #math-scratchpad-redux .keyboard-toggle[aria-expanded='true'] { display: inline-flex; }
+ #math-scratchpad-redux .local-draft-label { font-size: 12px; color: var(--muted-foreground); margin-right: 12px; }
+ #math-scratchpad-redux .workspace { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 24px; align-items: start; flex: 1; min-width: 0; }
+ #math-scratchpad-redux .question-context { display: block; position: sticky; top: 24px; min-width: 0; max-height: calc(100dvh - 116px); overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 3px; }
+ #math-scratchpad-redux .exercise-bar { display: block; padding: 0 0 16px; }
+ #math-scratchpad-redux .exercise-bar label { display: block; }
+ #math-scratchpad-redux .exercise-bar select { font-size: 14px; }
+ #math-scratchpad-redux .exercise-bar .diagnostic-track { margin-top: 12px; }
+ #math-scratchpad-redux .problem { padding: 20px; margin: 0 0 12px; }
+ #math-scratchpad-redux .question-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px; }
+ #math-scratchpad-redux .question-heading h2 { margin: 0; font-size: 21px; }
+ #math-scratchpad-redux .topic-badge { border: 1px solid var(--border); border-radius: 20px; color: var(--muted-foreground); padding: 4px 8px; font-size: 12px; }
+ #math-scratchpad-redux .persian-question { font-size: 16px; line-height: 1.9; }
+ #math-scratchpad-redux .problem-formula { padding: 24px 0 12px; overflow-x: auto; }
+ #math-scratchpad-redux .question-timer { padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin: 0; font-size: 13px; }
+ #math-scratchpad-redux .question-timer span:first-child { display: flex; flex-direction: column; gap: 6px; }
+ #math-scratchpad-redux .question-timer output { margin: 0; font-size: 22px; }
+ #math-scratchpad-redux .editor-layout { display: block; min-width: 0; }
+ #math-scratchpad-redux .notebook-main { min-height: calc(100dvh - 116px); max-width: none; margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+ #math-scratchpad-redux .math-tools-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; border: 1px solid var(--border); background: var(--background); border-radius: var(--radius); margin-bottom: 24px; }
+ #math-scratchpad-redux .wide-history-tools { display: flex; gap: 4px; }
+ #math-scratchpad-redux .wide-history-tools button { padding: 8px; min-height: 44px; font-size: 13px; }
+ #math-scratchpad-redux .quick-math-tools { display: flex; flex: 1; gap: 4px; padding: 0; border: 0; border-radius: 0; background: transparent; margin: 0; }
+ #math-scratchpad-redux .quick-math-tools button { min-width: 44px; width: 44px; min-height: 44px; padding: 4px; font-size: 25px; }
+ #math-scratchpad-redux .quick-math-tools .math-tool-icon { width: 24px; height: 28px; }
+ #math-scratchpad-redux .wide-more-tools { font-size: 12px; padding: 8px; min-height: 44px; }
+ #math-scratchpad-redux .work-heading h2 { margin-bottom: 4px; font-size: 24px; }
+ #math-scratchpad-redux .work-heading { margin-bottom: 20px; }
+ #math-scratchpad-redux .work-heading p { margin: 0; font-size: 14px; }
+ #math-scratchpad-redux .steps { gap: 12px; }
+ #math-scratchpad-redux .step { padding: 16px; background: var(--background); }
+ #math-scratchpad-redux .step.current-step { border-color: var(--ring); }
+ #math-scratchpad-redux .step-title { font-size: 16px; }
+ #math-scratchpad-redux .expression { min-height: 100px; }
+ #math-scratchpad-redux button.add-step { margin: 16px 0; min-height: 48px; }
+ #math-scratchpad-redux .math-keyboard { flex: initial; margin: 0 0 16px; }
+ #math-scratchpad-redux .key-grid { flex: initial; grid-template-rows: repeat(4, 48px); }
+ #math-scratchpad-redux .review-controls { margin-top: auto; padding-top: 24px; }
+ #math-scratchpad-redux .wide-keyboard-hint { font-size: 12px; color: var(--muted-foreground); border-top: 1px solid var(--border); padding-top: 16px; margin: 0 0 16px; }
+ #math-scratchpad-redux .question-navigation { display: flex; justify-content: space-between; gap: 16px; margin-top: 12px; }
+ #math-scratchpad-redux .question-navigation button { min-width: 150px; }
+ #math-scratchpad-redux .question-navigation button:last-child { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+ #math-scratchpad-redux .review-button { width: auto; align-self: flex-end; }
+ #math-scratchpad-redux .shortcut-panel { margin-top: 20px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+ #math-scratchpad-redux .shortcut-panel summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+ #math-scratchpad-redux .question-navigator { position: sticky; top: 24px; max-height: calc(100dvh - 116px); overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 14px; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+ #math-scratchpad-redux .question-navigator h2 { font-size: 18px; }
+ #math-scratchpad-redux .question-navigator ol { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
+ #math-scratchpad-redux .question-navigator .question-destination { display: flex; width: 100%; min-height: 64px; justify-content: flex-start; gap: 12px; text-align: left; padding: 10px; }
+ #math-scratchpad-redux .question-destination[aria-current='page'] { outline: 2px solid var(--ring); outline-offset: -2px; background: var(--secondary); }
+ #math-scratchpad-redux .question-destination:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+ #math-scratchpad-redux .destination-status { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 3px; }
+ #math-scratchpad-redux .question-state-dot { display: flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; border: 1px solid var(--border); border-radius: 50%; }
+ #math-scratchpad-redux .state-answered { background: var(--primary); color: var(--primary-foreground); }
+ #math-scratchpad-redux .state-draft { border-color: var(--ring); }
+}
+.shortcut-help { margin: 16px 0 0; display: grid; gap: 14px; }
+.shortcut-help > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.shortcut-help dt { flex: 0 1 auto; }
+.shortcut-help dd { margin: 0; font-size: 13px; color: var(--muted-foreground); text-align: right; }
+.shortcut-help kbd, .wide-keyboard-hint kbd { font-family: var(--font-sans); font-size: 12px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; }
+@media (min-width: 1600px) {
+ #math-scratchpad-redux .workspace { grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); }
+ #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: 208px minmax(280px, 340px) minmax(0, 1fr); }
+ #math-scratchpad-redux .notebook-main { padding: 20px; }
+}
+@media (min-width: 900px) and (max-width: 1100px) {
+ #math-scratchpad-redux .local-draft-label { display: none; }
+ #math-scratchpad-redux .app-header h1 { font-size: 20px; }
+ #math-scratchpad-redux .header-actions button { font-size: 12px; }
+}
+
+#math-scratchpad-redux .confidence-hint { text-align: right; color: var(--muted-foreground); font-size: 12px; margin: 8px 0 0; }

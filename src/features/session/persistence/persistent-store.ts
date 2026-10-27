@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { uid } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
 import type { PersistOptions } from 'zustand/middleware';
@@ -21,7 +22,7 @@ const workSignature = (session: PersistedSession['session']) => JSON.stringify({
  exercises: session.doc.exercises.map(({ elapsedMs, ...work }) => work), exerciseId: session.doc.exerciseId, prefs: session.prefs,
 });
 export function createPersistentStore() {
- const writerId = crypto.randomUUID();
+ const writerId = uid();
  let saved: Envelope | null = null, protectedDraft = false, bootError = '';
  let initial: ScratchState;
  try {
@@ -30,7 +31,7 @@ export function createPersistentStore() {
   else {
    const hasLegacy = !!(localStorage.getItem('math-scratchpad-redux-v2') ?? localStorage.getItem('math-scratchpad-flow-v1'));
    initial = restoreState();
-   if (!hasLegacy) initial.keyboardOpen = matchMedia('(max-width: 839px), (pointer: coarse)').matches;
+   if (!hasLegacy) initial.keyboardOpen = matchMedia('(max-width: 899px), (pointer: coarse)').matches;
    if (initial.notice) { protectedDraft = true; bootError = initial.notice; }
   }
  } catch {

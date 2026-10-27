@@ -9,8 +9,8 @@
     "test": "vitest run",
     "build": "npm run typecheck && vite build && node scripts/standalone.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test:unit": "vitest run tests/unit tests/store.test.ts tests/assessment.test.ts tests/legacy.test.ts",
-    "test:integration": "vitest run tests/integration tests/app.test.tsx tests/fraction-round.test.tsx tests/keyboard-ux.test.tsx",
+    "test:unit": "vitest run tests/unit tests/store.test.ts tests/assessment.test.ts tests/legacy.test.ts tests/wide/layout-model.test.ts",
+    "test:integration": "vitest run tests/integration tests/app.test.tsx tests/fraction-round.test.tsx tests/keyboard-ux.test.tsx tests/wide/workspace.test.tsx",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:typecheck": "tsc -p tsconfig.tests.json --noEmit",
@@ -25,7 +25,9 @@
     "test:release": "npm run test:gate && npm run test:manual-gate",
     "test:property": "vitest run tests/properties",
     "test:architecture": "vitest run tests/architecture",
-    "test:browser:prepare": "node scripts/prepare-browser.mjs"
+    "test:browser:prepare": "node scripts/prepare-browser.mjs",
+    "test:wide": "vitest run tests/wide",
+    "test:wide:browser": "playwright test --project=laptop-1024 --project=laptop-1440 --project=desktop-1920 --project=desktop-2560"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",

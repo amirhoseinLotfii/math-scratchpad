@@ -13,7 +13,7 @@ Write fractions where you see them. Tap a digit to place the caret. Keep your re
 
 Built with **React 19, strict TypeScript, Zustand, React Hook Form, Zod and Vite 8**. This is an open-source editor prototype with source, tests and self-contained builds.
 
-## Phone-first development build
+## Responsive development build
 
 The phone layout now uses required confidence dialogs, protected first steps, reset/delete icons, ordered quick symbols, a 1–9 keypad, per-question timing and full-session JSON export from the overflow menu. Batch navigation opens confidence before advancing; the last question exposes completion actions. Source-owned Radix components and semantic design tokens implement the shared UI.
 
@@ -28,7 +28,9 @@ npm run test:manual-gate    # remains blocked until device checks have real evid
 npm run build
 ```
 
-See [current test results](docs/MOBILE_TEST_RESULTS.md), [implemented architecture](docs/architecture/mobile-stack.md) and [manual protocol](docs/testing/manual-protocol.md). Automated screenshot baselines record engineering review only; they do not constitute user or real-device acceptance. On short screens, the notebook remains vertically scrollable to preserve readable text and touch targets.
+Laptop widths use a question/work split; desktop batches add a persistent question navigator. Fresh wide sessions keep the virtual keypad closed and expose physical-keyboard editing, a complete notation catalog and shortcut help. Resizing preserves the same draft, cursor and history.
+
+See [current test results](docs/WIDE_TEST_RESULTS.md), [wide test contract](docs/WIDE_TEST_PLAN.md), [implemented architecture](docs/architecture/mobile-stack.md) and [manual protocol](docs/testing/manual-protocol.md). Automated screenshot baselines record engineering review only; they do not constitute user or real-device acceptance. On short screens, the notebook remains vertically scrollable to preserve readable text and touch targets.
 
 ## 0.5.1 reliability update — October 25, 2026
 

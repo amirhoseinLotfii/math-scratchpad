@@ -1,4 +1,4 @@
-# Mobile stack and boundaries — implemented phone-first architecture
+# Mobile stack and boundaries — implemented responsive architecture
 
 Production now uses React/strict TypeScript, a Zustand vanilla store, RHF/Zod forms and source-owned Radix-backed UI components. The existing pure editing engine is retained through a typed action adapter so established regression tests continue to exercise the same mathematical behaviors.
 
@@ -61,3 +61,9 @@ Confidence is absent from mobile edit view. Submit/Next opens a labelled dialog.
 - https://zustand.docs.pmnd.rs/reference/middlewares/persist
 - https://playwright.dev/docs/accessibility-testing
 - https://www.w3.org/WAI/WCAG22/Understanding/
+
+## Laptop and desktop extension
+
+`src/features/workspace/model/workspace-layout.ts` contains pure layout/status policies; `src/shared/hooks/use-workspace-layout.ts` subscribes to media-query changes with cleanup. `src/features/workspace/components/` provides the question navigator, shared math toolbar and shortcut help. No device-specific math/history store exists. CSS and behavior use 900/1600 CSS-pixel boundaries; tests exercise both sides. Wide toolbar DOM order matches visual order. Details and the full notation dialog remain keyboard accessible. Native question button text supplies accessible names rather than an overriding aria-label.
+
+The requested React/TypeScript/Zustand/shadcn-style/RHF/Zod stack remains unchanged. See `docs/WIDE_TEST_PLAN.md` for the complete scope matrix and `docs/WIDE_TEST_RESULTS.md` for actual results.

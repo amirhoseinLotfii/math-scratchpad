@@ -7,7 +7,7 @@ export async function startBatch(page: Page) {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
- await expect(page.getByRole('combobox', { name: 'Current exercise' }).locator('option')).toHaveCount(20);
+ await expect(page.locator('select[aria-label="Current exercise"] option')).toHaveCount(20);
 }
 export async function openConfidence(page: Page) {
  await startBatch(page); await page.getByRole('button', { name: /Next question/i }).click();

@@ -66,6 +66,36 @@
       "id": "axe-incomplete-triage",
       "status": "pending",
       "evidence": ""
+    },
+    {
+      "id": "wide-chrome-keyboard",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "wide-firefox-zoom",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "wide-nvda-reading",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "wide-voiceover-editing",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "wide-pointer-scroll",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "wide-layout-acceptance",
+      "status": "pending",
+      "evidence": ""
     }
   ]
 }

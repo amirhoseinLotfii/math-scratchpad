@@ -2,6 +2,8 @@ export const requiredManualChecks = Object.freeze([
  'talkback-reading', 'talkback-editing', 'talkback-modal', 'android-touch',
  'android-text-and-zoom', 'android-safe-areas', 'external-keyboard', 'clipboard-recovery',
  'multi-tab-recovery', 'contrast-review', 'visual-baselines', 'axe-incomplete-triage',
+ 'wide-chrome-keyboard', 'wide-firefox-zoom', 'wide-nvda-reading',
+ 'wide-voiceover-editing', 'wide-pointer-scroll', 'wide-layout-acceptance',
 ]);
 /** @param {unknown} input @returns {string[]} */
 export function validateManualAcceptance(input) {

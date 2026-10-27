@@ -1,3 +1,5 @@
+> Historical phone implementation baseline. The current combined phone/laptop/desktop run is in [WIDE_TEST_RESULTS.md](WIDE_TEST_RESULTS.md).
+
 # Phone implementation and verification results
 
 Final automated gate: **PASSED**. Recorded at `2026-10-27T03:20:53.236Z` (UTC).

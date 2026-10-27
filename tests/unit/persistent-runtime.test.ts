@@ -16,6 +16,13 @@ beforeEach(() => {
 });
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('production persistent runtime', () => {
+ it('can start a remote HTTP preview where randomUUID is unavailable', () => {
+  vi.stubGlobal('crypto', {}); const runtime = mount(); runtime.flush();
+  const saved = JSON.parse(localStorage.getItem(SESSION_KEY)!);
+  expect(saved.state.sync.writerId).toEqual(expect.any(String));
+  expect(saved.state.sync.writerId.length).toBeGreaterThan(1);
+  expect(runtime.store.getState().storageState).toBeUndefined();
+ });
  it('debounces fresh writes and stores only the portable session and revision metadata', () => {
   const runtime = mount(); expect(localStorage.getItem(SESSION_KEY)).toBeNull();
   runtime.store.dispatch(actions.command({ type: 'digit', value: '7' }));
