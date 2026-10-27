@@ -32,6 +32,7 @@ import { buildTutorExport, downloadText, missingFinalAnswers } from './features/
 import { clearAppStorage } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
+import { getConfig as getDriveConfig } from './features/drive-bank/google';
 
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
@@ -52,7 +53,7 @@ export function App() {
  const batch = state.doc.exercises.length > 1, last = exerciseIndex === state.doc.exercises.length - 1;
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
- const [driveBankInitialized, setDriveBankInitialized] = useState(false);
+ const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [driveBankAvailable, setDriveBankAvailable] = useState(false);
  const [confirmExam, setConfirmExam] = useState(false), [confirmFractions, setConfirmFractions] = useState(false);
  const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);

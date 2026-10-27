@@ -57,22 +57,46 @@ export function archiveSession(state: ScratchState): void {
   if (!readArchive().some(x => x.id === id && x.data === data)) throw Error('ذخیرهٔ جلسه تأیید نشد.');
 }
 
-export async function readPrivateBank(fileId: string, token: string): Promise<DriveBank> {
-  if (!/^[A-Za-z0-9_-]{10,150}$/.test(fileId)) throw Error('شناسهٔ فایل Drive معتبر نیست.');
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
-  if (!response.ok) throw Error(response.status === 401 ? 'مجوز Google منقضی شده؛ دوباره متصل شو.' : `خواندن فایل Drive ناموفق بود (${response.status}).`);
-  const body = await response.text();
-  if (body.length > 1000000) throw Error('فایل بانک بیش از حد بزرگ است.');
-  return validateBank(JSON.parse(body));
+/** Persian, user-facing message for a failed Drive call. */
+export function driveError(status: number, action: string): Error {
+  if (status === 401) return Error('مجوز Google منقضی شده؛ «اتصال دوباره» را بزن.');
+  if (status === 403) return Error(`${action}: Google اجازه نداد (۴۰۳). فایل را دوباره از «انتخاب فایل بانک» انتخاب کن یا Drive API را در پروژهٔ Google Cloud فعال کن.`);
+  if (status === 404) return Error(`${action}: فایل پیدا نشد یا به این برنامه داده نشده (۴۰۴). فایل را دوباره انتخاب کن.`);
+  if (status === 429 || status >= 500) return Error(`${action}: Google موقتاً پاسخ نداد (${status})؛ بعداً خودکار دوباره امتحان می‌شود.`);
+  return Error(`${action} ناموفق بود (${status}).`);
 }
-
-/** Find the one configured bank without publishing its private Drive file ID. */
-export async function findQuestionBank(token: string): Promise<string> {
-  const params = new URLSearchParams({ q: "name = 'MATH_QUESTION_BANK.json' and trashed = false", fields: 'nextPageToken,files(id,name,mimeType)', pageSize: '100', spaces: 'drive' });
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
-  if (!response.ok) throw Error(response.status === 401 ? 'مجوز Google منقضی شده؛ دوباره متصل شو.' : `جست‌وجوی بانک ناموفق بود (${response.status}).`);
-  const data: unknown = await response.json();
-  if (!data || typeof data !== 'object' || !('files' in data) || !Array.isArray(data.files)) throw Error('فهرست فایل‌های Drive معتبر نیست.');
-  if (('nextPageToken' in data && data.nextPageToken) || data.files.length !== 1 || typeof data.files[0]?.id !== 'string') throw Error('باید دقیقاً یک فایل MATH_QUESTION_BANK.json در Drive وجود داشته باشد.');
-  return data.files[0].id;
+export const EMPTY_BANK = 'EMPTY_BANK';
+/** Parse bank text; an empty file is a valid "no questions yet" state, not a crash. */
+export function parseBankText(body: string): DriveBank | typeof EMPTY_BANK {
+  if (body.length > 1000000) throw Error('فایل بانک بیش از حد بزرگ است.');
+  if (!body.replace(/^\uFEFF/, '').trim()) return EMPTY_BANK;
+  let json: unknown;
+  try { json = JSON.parse(body.replace(/^\uFEFF/, '')); } catch { throw Error('محتوای فایل بانک JSON معتبر نیست؛ جلسهٔ فعلی تغییری نکرد.'); }
+  return validateBank(json);
+}
+export type DriveMeta = { id: string; name: string; mimeType: string; size?: string; md5Checksum?: string; modifiedTime?: string; headRevisionId?: string; version?: string; trashed?: boolean };
+const validFileId = (id: string) => /^[A-Za-z0-9_-]{10,150}$/.test(id);
+/** Cheap metadata request used for change detection; content is downloaded only when this changes. */
+export async function readDriveMeta(fileId: string, token: string): Promise<DriveMeta> {
+  if (!validFileId(fileId)) throw Error('شناسهٔ فایل Drive معتبر نیست.');
+  const fields = 'id,name,mimeType,size,md5Checksum,modifiedTime,headRevisionId,version,trashed';
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${fields}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+  if (!response.ok) throw driveError(response.status, 'خواندن مشخصات فایل');
+  const meta = await response.json() as DriveMeta;
+  if (meta.trashed) throw Error('فایل بانک در سطل زبالهٔ Drive است.');
+  if (meta.mimeType === 'application/vnd.google-apps.document') throw Error('فایل بانک Google Doc است؛ باید یک فایل ‎.json‎ معمولی باشد.');
+  return meta;
+}
+/** Fingerprint of Drive metadata; any content edit changes md5Checksum/headRevisionId/version. */
+export function metaFingerprint(meta: DriveMeta): string {
+  return [meta.id, meta.md5Checksum ?? '', meta.headRevisionId ?? '', meta.version ?? '', meta.size ?? '', meta.modifiedTime ?? ''].join('|');
+}
+export async function readPrivateBankText(fileId: string, token: string): Promise<string> {
+  if (!validFileId(fileId)) throw Error('شناسهٔ فایل Drive معتبر نیست.');
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+  if (!response.ok) throw driveError(response.status, 'خواندن فایل بانک');
+  return response.text();
+}
+export async function readPrivateBank(fileId: string, token: string): Promise<DriveBank | typeof EMPTY_BANK> {
+  return parseBankText(await readPrivateBankText(fileId, token));
 }

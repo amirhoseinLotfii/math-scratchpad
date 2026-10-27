@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { archiveSession, bankDocument, findQuestionBank, readArchive, readPrivateBank, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
+import { archiveSession, bankDocument, metaFingerprint, parseBankText, EMPTY_BANK, readDriveMeta, readArchive, readPrivateBank, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { initialState } from '../../src/store';
 import { validateSession } from '../../src/persistence';
 import { buildTutorExport } from '../../src/features/session/export/tutor-export';
@@ -33,9 +33,21 @@ describe('Drive question bank', () => {
     await readPrivateBank('privateFileId123', 'temporary-token');
     expect(fetchSpy).toHaveBeenCalledWith('https://www.googleapis.com/drive/v3/files/privateFileId123?alt=media', expect.objectContaining({ headers: { Authorization: 'Bearer temporary-token' }, cache: 'no-store' }));
   });
-  it('refuses an ambiguous file name rather than selecting a random bank', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ files: [{ id: 'first' }, { id: 'second' }] }), { status: 200 }));
-    await expect(findQuestionBank('temporary-token')).rejects.toThrow('دقیقاً یک فایل');
+  it('treats an empty Drive file as "no questions yet" and bad JSON as a Persian error', () => {
+    expect(parseBankText('')).toBe(EMPTY_BANK); expect(parseBankText('\uFEFF  \n')).toBe(EMPTY_BANK);
+    expect(() => parseBankText('{oops')).toThrow('JSON معتبر نیست');
+  });
+  it('detects content change from Drive metadata without downloading', async () => {
+    const meta = { id: 'privateFileId123', name: 'MATH_QUESTION_BANK.json', mimeType: 'application/json', md5Checksum: 'a', headRevisionId: 'r1', version: '5' };
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(meta), { status: 200 }));
+    const got = await readDriveMeta('privateFileId123', 'tok');
+    expect(String(spy.mock.calls[0][0])).toContain('fields=');
+    expect(metaFingerprint(got)).toBe(metaFingerprint({ ...meta }));
+    expect(metaFingerprint(got)).not.toBe(metaFingerprint({ ...meta, md5Checksum: 'b', headRevisionId: 'r2', version: '6' }));
+  });
+  it('maps Drive HTTP errors to Persian guidance', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
+    await expect(readDriveMeta('privateFileId123', 'tok')).rejects.toThrow('دوباره انتخاب');
   });
   it('does not archive a session while storage is conflicted', () => {
     const state = initialState(); state.storageState = { kind: 'conflict', message: 'conflict' };
