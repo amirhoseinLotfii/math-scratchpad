@@ -1,31 +1,33 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Formula } from './Formula';
 import { makeStructure, seq, symbolList, topics } from './model';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { actions, activeInfo } from './store';
+import { Button } from './shared/ui/button';
 export function Keyboard() {
-  const s = useAppSelector(s => s), dispatch = useAppDispatch();
-  function symbol(key: string) {
-    if (/^[xynt]$/.test(key)) dispatch(actions.command({ type: 'identifier', value: key }));
-    else if (key === 'infinity' || key === 'sigma') dispatch(actions.command({ type: 'identifier', value: key === 'sigma' ? 'σ' : '∞' }));
-    else if (['≤', '≥', '≠', '<', '>'].includes(key)) dispatch(actions.command({ type: 'operator', value: key }));
-    else dispatch(actions.command({ type: 'insert', value: key }));
-    dispatch(actions.recentSymbol(key));
-    dispatch(actions.closeSymbols());
-  }
-  const preview = useMemo(() => {
-    const key = ({ Numbers: 'fraction', Algebra: 'abs', Functions: 'f', Calculus: 'integral', Matrices: 'matrix2', 'Probability & stats': 'choose' } as Record<string, string>)[s.topic] ?? 'fraction';
-    return { key, expression: seq([makeStructure(key)]), title: symbolList.find(x => x.key === key)!.title };
-  }, [s.topic]);
-  const item = activeInfo(s.doc), parentAvailable = !!item?.ancestors.length;
-  const lookup = (key: string) => symbolList.find(x => x.key === key);
-  const shortcuts = s.prefs.favorites.length ? s.prefs.favorites.map(lookup).filter(x => !!x) : [];
-  return <section className="math-keyboard" aria-label="Math keyboard" dir="ltr">
-    <div className="toolbar keyboard-toolbar">
-      <button type="button" aria-expanded={s.symbolsOpen} onClick={() => dispatch(actions.symbols())}>Symbols</button>
-      <button type="button" aria-pressed={s.prefs.compact} onClick={() => dispatch(actions.compact())}>{s.prefs.compact ? 'Compact' : 'Full keys'}</button>
-      <button type="button" onClick={() => dispatch(actions.keyboard(false))}>Hide keys</button>
-    </div>
+ const s = useAppSelector(s => s), dispatch = useAppDispatch();
+ const [more, setMore] = useState(false);
+ function focusEditor() { document.querySelector<HTMLElement>('main.scratchpad')?.focus({ preventScroll: true }); }
+ function symbol(key: string) {
+  if (/^[xynt]$/.test(key)) dispatch(actions.command({ type: 'identifier', value: key }));
+  else if (key === 'infinity' || key === 'sigma') dispatch(actions.command({ type: 'identifier', value: key === 'sigma' ? 'σ' : '∞' }));
+  else if (['≤','≥','≠','<','>'].includes(key)) dispatch(actions.command({ type: 'operator', value: key }));
+  else dispatch(actions.command({ type: 'insert', value: key }));
+  dispatch(actions.recentSymbol(key)); dispatch(actions.closeSymbols()); focusEditor();
+ }
+ const preview = useMemo(() => {
+  const key = ({ Numbers:'fraction', Algebra:'abs', Functions:'f', Calculus:'integral', Matrices:'matrix2', 'Probability & stats':'choose' } as Record<string,string>)[s.topic] ?? 'fraction';
+  return { key, expression: seq([makeStructure(key)]), title: symbolList.find(x => x.key === key)!.title };
+ }, [s.topic]);
+ const item = activeInfo(s.doc), parentAvailable = !!item?.ancestors.length;
+ const lookup = (key: string) => symbolList.find(x => x.key === key);
+ const shortcuts = s.prefs.favorites.map(lookup).filter(x => !!x);
+ return <section className="math-keyboard" aria-label="Math keyboard" dir="ltr">
+  <div className="keyboard-toolbar">
+   <Button aria-expanded={s.symbolsOpen} onClick={() => dispatch(actions.symbols())}><span aria-hidden="true">π</span> Symbols</Button>
+   <Button aria-expanded={more} onClick={() => setMore(!more)}><span aria-hidden="true">⠿</span> More tools</Button>
+   <Button aria-label="Backspace" onClick={() => { dispatch(actions.command({ type: 'backspace' })); focusEditor(); }}><span aria-hidden="true">⌫</span> Backspace</Button>
+  </div>
     {s.symbolsOpen && <div className="symbols-panel"><div className="panel-heading"><h2>Symbols</h2><span className="small">Find by topic</span></div>
       {shortcuts.length > 0 && <div className="symbol-shortcuts"><p className="small">Favorites</p><div className="shortcut-list">{shortcuts.map(x => <button type="button" key={x.key} aria-label={`Insert favorite ${x.title}`} onClick={() => symbol(x.key)}>{x.label}</button>)}</div></div>}
       <div className="topic-list" aria-label="Symbol topics">{Object.keys(topics).map(t => <button type="button" key={t} aria-pressed={s.topic === t} onClick={() => dispatch(actions.topic(t))}>{t}</button>)}</div>
@@ -36,27 +38,17 @@ export function Keyboard() {
         <button type="button" aria-label={`Favorite ${x.title}`} aria-pressed={s.prefs.favorites.includes(x.key)} onClick={() => dispatch(actions.favorite(x.key))}>{s.prefs.favorites.includes(x.key) ? '★' : '☆'}</button>
       </div>)}</div><aside className="template-preview" aria-label="Editable template preview"><p className="eyebrow">EDITABLE TEMPLATE</p><h3>{preview.title}</h3><div className="preview-formula"><Formula sequence={preview.expression} stepId="template-preview" readOnly top /></div><p className="small">Insert a template, then fill its fields with Next.</p><button type="button" className="primary" onClick={() => symbol(preview.key)}>Insert template</button><p className="small">Notation tools, not an automatic solver.</p></aside></div>
     </div>}
-    {!s.symbolsOpen && <>
-      <div className="quick-key-row" dir="ltr"><div className="shortcut-list" aria-label="Favorite symbols">{shortcuts.map(x => <button type="button" key={x.key} aria-label={`Insert favorite ${x.title}`} onClick={() => symbol(x.key)}>{x.label}</button>)}</div><button type="button" className="backspace-key" aria-label="Backspace" onClick={() => dispatch(actions.command({ type: 'backspace' }))}>⌫</button></div>
-      {!s.prefs.compact && <div className="key-grid">{['x', 'y', 'n', 't'].map(k => <button type="button" key={k} onClick={() => symbol(k)}>{k}</button>)}</div>}
-      <div className="key-grid" aria-label="Numeric keys">{['1', '2', '3', '÷', '4', '5', '6', '×', '7', '8', '9', '−', '0', '.', '=', '+'].map(k => <button type="button" className={/[0-9.]/.test(k) ? 'number-key' : 'operator-key'} key={k} onClick={() => dispatch(actions.command({ type: /[0-9.]/.test(k) ? 'digit' : 'operator', value: k }))}>{k}</button>)}</div>
-      <div className="navigation-grid">
-        <button type="button" aria-label="Move left" onClick={() => dispatch(actions.move(-1))}>←</button>
-        <button type="button" aria-label="Move right" onClick={() => dispatch(actions.move(1))}>→</button>
-        <button type="button" aria-label="Next field" onClick={() => dispatch(actions.next())}>Next</button>
-      </div>
-    </>}
-    <div className="toolbar editing-tools">
-      <button type="button" disabled={!s.past.length} onClick={() => dispatch(actions.undo())}>Undo</button>
-      <button type="button" disabled={!s.future.length} onClick={() => dispatch(actions.redo())}>Redo</button>
-      <button type="button" disabled={!parentAvailable} onClick={() => dispatch(actions.selectParent())}>{s.doc.cursor.selected ? 'Parent' : 'Structure'}</button>
-      <button type="button" disabled={!s.structureClipboard} onClick={() => dispatch(actions.command({ type: 'paste' }))}>Paste</button>
-    </div>
-    {s.doc.cursor.selected && <div className="structure-selection"><p className="structure-label">Whole structure selected <span className="small">Internal math clipboard</span></p><div className="toolbar structure-tools" aria-label="Selected structure actions">
-      <button type="button" onClick={() => dispatch(actions.copyStructure())}>Copy</button>
-      <button type="button" onClick={() => dispatch(actions.command({ type: 'cut' }))}>Cut</button>
-      <button type="button" onClick={() => dispatch(actions.command({ type: 'duplicate' }))}>Duplicate</button>
-      <button type="button" onClick={() => dispatch(actions.command({ type: 'deleteStructure' }))}>Delete</button>
-    </div></div>}
-  </section>;
+
+  {!s.symbolsOpen && <div className="key-grid" role="group" aria-label="Numeric keys">{['1','2','3','÷','4','5','6','×','7','8','9','−','0','.','Fraction','+'].map(key => <Button key={key} className={/^[0-9.]$/.test(key) ? 'number-key' : 'operator-key'} onClick={() => {
+   if (key === 'Fraction') dispatch(actions.command({ type:'insert', value:'fraction' }));
+   else dispatch(actions.command({ type: /^[0-9.]$/.test(key) ? 'digit' : 'operator', value:key }));
+   focusEditor();
+  }}>{key}</Button>)}</div>}
+  {more && <div className="more-tools-panel">
+   <div className="navigation-grid"><Button aria-label="Move left" onClick={() => { dispatch(actions.horizontal(-1)); focusEditor(); }}>←</Button><Button aria-label="Move right" onClick={() => { dispatch(actions.horizontal(1)); focusEditor(); }}>→</Button><Button aria-label="Next field" onClick={() => { dispatch(actions.next()); focusEditor(); }}>Next</Button></div>
+   <div className="editing-tools"><Button disabled={!s.past.some(d => d.exerciseId === s.doc.exerciseId)} onClick={() => { dispatch(actions.undo()); focusEditor(); }}>Undo</Button><Button disabled={!s.future.some(d => d.exerciseId === s.doc.exerciseId)} onClick={() => { dispatch(actions.redo()); focusEditor(); }}>Redo</Button><Button disabled={!parentAvailable} onClick={() => { dispatch(actions.selectParent()); focusEditor(); }}>{s.doc.cursor.selected ? 'Parent' : 'Structure'}</Button><Button onClick={() => { dispatch(actions.command({ type:'deleteStructure' })); focusEditor(); }}>Delete Item</Button><Button disabled={!s.structureClipboard} onClick={() => { dispatch(actions.command({ type:'paste' })); focusEditor(); }}>Paste</Button><Button onClick={() => dispatch(actions.keyboard(false))}>Hide keys</Button></div>
+   <Button aria-pressed={s.prefs.compact} onClick={() => dispatch(actions.compact())}>{s.prefs.compact ? 'Compact' : 'Full keys'}</Button>
+  </div>}
+  {s.doc.cursor.selected && <div className="structure-selection"><p className="structure-label">Whole structure selected</p><div className="toolbar" aria-label="Selected structure actions"><Button onClick={() => dispatch(actions.copyStructure())}>Copy</Button><Button onClick={() => { dispatch(actions.command({type:'cut'})); focusEditor(); }}>Cut</Button><Button onClick={() => { dispatch(actions.command({type:'duplicate'})); focusEditor(); }}>Duplicate</Button><Button onClick={() => { dispatch(actions.command({type:'deleteStructure'})); focusEditor(); }}>Delete</Button></div></div>}
+ </section>;
 }

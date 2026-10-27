@@ -1,3 +1,4 @@
+import { metadataSchema } from './features/session/schemas/session-schema';
 import { ascii, fields, leaves, templateCounts, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence } from './model';
 import { initialState, type ScratchState } from './store';
 const KEY = 'math-scratchpad-redux-v2';
@@ -28,9 +29,10 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
     throw Error('Invalid mathematical content.');
   }
   const exercises: Exercise[] = raw.exercises.map((ex: Bag) => {
+    metadataSchema.parse(ex);
     if (typeof ex.source !== 'string' || ex.source.length > 4000 || !['math', 'text'].includes(ex.mode) || !Array.isArray(ex.steps) || !ex.steps.length || ex.steps.length > 40) throw Error('Invalid exercise.');
     if (ex.steps.filter((s: Bag) => s.final).length > 1) throw Error('Only one final answer is allowed.');
-    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, ...(typeof ex.prompt === 'string' && ex.prompt.length < 4000 ? { prompt: ex.prompt } : {}), ...(Number.isInteger(ex.diagnosticId) && ex.diagnosticId >= 1 && ex.diagnosticId <= 30 ? { diagnosticId: ex.diagnosticId } : {}), ...(ex.assessment === 'fractions-round-1' ? { assessment: 'fractions-round-1' as const } : {}), ...( ['high','medium','low'].includes(ex.confidence) ? { confidence: ex.confidence } : {}), ...(ex.skipped === true ? { skipped: true } : {}), ...(typeof ex.migrationNotes === 'string' && ex.migrationNotes.length <= 5000 ? { migrationNotes: ex.migrationNotes } : {}), steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
+    return { id: id(ex.id), source: ex.mode === 'math' ? ascii(ex.source) : ex.source, mode: ex.mode, ...(typeof ex.prompt === 'string' && ex.prompt.length < 4000 ? { prompt: ex.prompt } : {}), ...(Number.isInteger(ex.diagnosticId) && ex.diagnosticId >= 1 && ex.diagnosticId <= 30 ? { diagnosticId: ex.diagnosticId } : {}), ...(ex.assessment === 'fractions-round-1' ? { assessment: 'fractions-round-1' as const } : {}), ...(Number.isFinite(ex.elapsedMs) && ex.elapsedMs >= 0 ? { elapsedMs: ex.elapsedMs } : {}), ...( ['high','medium','low'].includes(ex.confidence) ? { confidence: ex.confidence } : {}), ...(ex.skipped === true ? { skipped: true } : {}), ...(typeof ex.migrationNotes === 'string' && ex.migrationNotes.length <= 5000 ? { migrationNotes: ex.migrationNotes } : {}), steps: ex.steps.map((s: Bag) => ({ id: id(s.id), expression: sequence(s.expression, 0), final: s.final === true, ...(s.edited === true ? { edited: true } : {}), status: s.status === 'needs-review' ? 'needs-review' : 'unchecked' })) };
   });
   const ex = exercises.find(x => x.id === raw.exerciseId) ?? exercises.at(-1)!;
   const old = data.version === 1 ? { stepId: raw.step, nodeId: raw.node, offset: raw.caret, sequenceId: raw.gap?.sequenceId, index: raw.gap?.index } : raw.cursor ?? {};

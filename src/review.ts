@@ -5,12 +5,16 @@ export function reviewPayload(doc: Document) {
   return {
     type: 'math-scratchpad-review', version: 1,
     problem: { format: exercise.mode === 'text' ? 'persian-text' : 'math-or-latex', text: exercise.source },
+    questionId: exercise.diagnosticId ?? null,
+    prompt: exercise.prompt ?? null,
+    confidence: exercise.confidence ?? null,
+    trackedVisibleMs: exercise.elapsedMs ?? null,
     steps: exercise.steps.map((s, i) => ({ number: i + 1, latex: latex(s.expression), isFinal: s.final })),
     reviewThroughStep: exercise.steps.findIndex(s => s.id === doc.cursor.stepId) + 1,
     finalAnswer: marked ? { step: exercise.steps.indexOf(marked) + 1, latex: latex(marked.expression) } : null
   };
 }
-export const fingerprint = (doc: Document) => JSON.stringify(reviewPayload(doc));
+export const fingerprint = (doc: Document) => JSON.stringify({ ...reviewPayload(doc), trackedVisibleMs: undefined });
 export function reviewMessage(doc: Document) {
   return [
     'Please review my Math Scratchpad work in this ChatGPT conversation.',

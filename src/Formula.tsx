@@ -9,6 +9,7 @@ export function Formula({ sequence, stepId, path = '', top = false, readOnly = f
   function gap(index: number) {
     const active = cursor.stepId === stepId && cursor.sequenceId === sequence.id && cursor.index === index;
     return <button type="button" className={`math-gap ${active ? 'at-gap' : ''}`} aria-label={`${path} Insert ${index === 0 ? 'before' : 'after'} item ${Math.max(1, index)}`} data-gap-index={index} data-sequence-id={sequence.id}
+      onFocus={() => dispatch(actions.select({ stepId, sequenceId: sequence.id, index }))}
       onClick={() => dispatch(actions.select({ stepId, sequenceId: sequence.id, index }))}><span aria-hidden="true">{active ? '│' : ''}</span></button>;
   }
   function leafClick(e: MouseEvent<HTMLButtonElement>, n: MathNode) {
@@ -29,6 +30,7 @@ export function Formula({ sequence, stepId, path = '', top = false, readOnly = f
       if (readOnly) return <span className={`math-token readonly-token ${n.type}`}><span>{n.value || '□'}</span></span>;
       const active = cursor.stepId === stepId && cursor.nodeId === n.id && !cursor.selected && !cursor.sequenceId;
       return <button type="button" className={`math-token ${active ? 'token-active' : ''} ${n.type}`} aria-label={`${path} ${n.type} ${n.value || 'empty'}`.trim()} aria-pressed={active} data-node-id={n.id}
+        onFocus={() => dispatch(actions.select({ stepId, nodeId: n.id, offset: n.type === 'number' ? n.value.length : 0 }))}
         onClick={e => leafClick(e, n)}>
         {n.type === 'number' ? (n.value ? [...n.value].map((c, i) => <Fragment key={i}>{active && cursor.offset === i && <span className="caret" aria-hidden="true" />}<span data-digit={i}>{c}</span></Fragment>) : <span className="placeholder">□</span>) : n.value}
         {active && n.type === 'number' && cursor.offset === n.value.length && <span className="caret" aria-hidden="true" />}

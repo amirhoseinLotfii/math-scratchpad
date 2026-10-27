@@ -11,7 +11,24 @@ Project: [amirhoseinLotfii/math-scratchpad](https://github.com/amirhoseinLotfii/
 
 Write fractions where you see them. Tap a digit to place the caret. Keep your reasoning in ordered steps, then copy the original problem and your work for review in ChatGPT.
 
-Built with **React 19, TypeScript, Redux Toolkit 2 and Vite 8**. This is an open-source editor prototype with source, tests and self-contained builds.
+Built with **React 19, strict TypeScript, Zustand, React Hook Form, Zod and Vite 8**. This is an open-source editor prototype with source, tests and self-contained builds.
+
+## Phone-first development build
+
+The phone layout now uses required confidence dialogs, protected first steps, reset/delete icons, ordered quick symbols, a 1–9 keypad, per-question timing and full-session JSON export from the overflow menu. Batch navigation opens confidence before advancing; the last question exposes completion actions. Source-owned Radix components and semantic design tokens implement the shared UI.
+
+Drafts are validated, versioned and synchronized through localStorage within the same browser profile and origin. Conflicting unsaved work asks which draft to keep; unavailable storage leaves work in memory and exposes JSON backup. This is not cross-device cloud sync.
+
+```sh
+npm ci
+npm run dev
+npm run test:browser:prepare # bundled Chromium fallback; or install Playwright Chromium
+npm run test:gate           # types, coverage and real browser checks
+npm run test:manual-gate    # remains blocked until device checks have real evidence
+npm run build
+```
+
+See [current test results](docs/MOBILE_TEST_RESULTS.md), [implemented architecture](docs/architecture/mobile-stack.md) and [manual protocol](docs/testing/manual-protocol.md). Automated screenshot baselines record engineering review only; they do not constitute user or real-device acceptance. On short screens, the notebook remains vertically scrollable to preserve readable text and touch targets.
 
 ## 0.5.1 reliability update — October 25, 2026
 

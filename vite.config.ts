@@ -1,2 +1,3 @@
 import { defineConfig } from 'vite';
-export default defineConfig({ base: './', build: { sourcemap: true } });
+import tailwindcss from '@tailwindcss/vite';
+export default defineConfig({ base: './', plugins: [tailwindcss()], build: { sourcemap: true } });

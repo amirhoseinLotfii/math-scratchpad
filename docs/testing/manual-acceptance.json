@@ -1,0 +1,71 @@
+{
+  "device": "",
+  "osVersion": "",
+  "browser": "",
+  "browserVersion": "",
+  "assistiveTechnology": "",
+  "reviewedBy": "",
+  "reviewedAt": "",
+  "checks": [
+    {
+      "id": "talkback-reading",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "talkback-editing",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "talkback-modal",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "android-touch",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "android-text-and-zoom",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "android-safe-areas",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "external-keyboard",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "clipboard-recovery",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "multi-tab-recovery",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "contrast-review",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "visual-baselines",
+      "status": "pending",
+      "evidence": ""
+    },
+    {
+      "id": "axe-incomplete-triage",
+      "status": "pending",
+      "evidence": ""
+    }
+  ]
+}

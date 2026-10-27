@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { Provider } from 'react-redux';
+import { Provider } from './app/store-provider';
 import { App } from './App';
 import { makeStore, actions, initialState } from './store';
 import { serialize, validateSession } from './persistence';

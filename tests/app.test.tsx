@@ -1,6 +1,7 @@
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { Provider } from 'react-redux';
+import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
 import { leaves, latex } from '../src/model';
@@ -15,7 +16,7 @@ function mount() {
   const view = render(<div id="math-scratchpad-redux"><Provider store={store}><App /></Provider></div>);
   return { ...view, store };
 }
-const click = (name: string) => fireEvent.click(screen.getByRole('button', { name, exact: true }));
+const click = (name: string) => name === '⊕ Insert…' ? fireEvent.keyDown(screen.getByRole('main'), {key:'/'}) : fireEvent.click(screen.queryByRole('button', { name }) ?? screen.getByRole('menuitem', {name}));
 function showKeys() { click('⌨ Show Keyboard'); }
 
 describe('Responsive Math Scratchpad', () => {
@@ -28,7 +29,7 @@ describe('Responsive Math Scratchpad', () => {
     expect(screen.getByLabelText('Original problem').querySelector('button')).toBeNull();
     expect(screen.getByLabelText('Current problem').textContent).not.toContain('2/3');
     showKeys();
-    expect(within(screen.getByLabelText('Numeric keys')).getAllByRole('button').map(x => x.textContent)).toEqual(['1','2','3','÷','4','5','6','×','7','8','9','−','0','.','=','+']);
+    expect(within(screen.getByLabelText('Numeric keys')).getAllByRole('button').map(x => x.textContent)).toEqual(['1','2','3','÷','4','5','6','×','7','8','9','−','0','.','Fraction','+']);
     expect(container.querySelector('.editor-layout')?.classList.contains('keyboard-visible')).toBe(true);
     click('⌨ Hide Keyboard');
     expect(container.querySelector('.editor-layout')?.classList.contains('keyboard-hidden')).toBe(true);
@@ -56,12 +57,12 @@ describe('Responsive Math Scratchpad', () => {
     expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{2}{3}');
     expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{1}{4}');
   });
-  it('keeps one keyboard in a desktop sibling panel, not inside the steps', () => {
+  it('keeps one shared keyboard below the phone editing tools, never nested in a step', () => {
     const {container} = mount(); showKeys();
     expect(screen.getAllByLabelText('Math keyboard')).toHaveLength(1);
     expect(screen.getByLabelText('Math keyboard').closest('.step')).toBeNull();
-    expect(container.querySelector('.keyboard-side')).toBeTruthy();
-    click('+ New Step');
+    expect(container.querySelector('.notebook-main .math-keyboard')).toBeTruthy();
+    click('Add step');
     expect(screen.getAllByLabelText('Math keyboard')).toHaveLength(1);
     expect(screen.getAllByLabelText(/Step \d expression/)).toHaveLength(2);
   });
@@ -79,6 +80,7 @@ describe('Responsive Math Scratchpad', () => {
   it('removes selected fractions structurally by Delete and reverses with Ctrl+Z', () => {
     const {container,store} = mount(); const first=leaves(stepOf(store.getState().doc).expression)[0].node;
     fireEvent.click(container.querySelector('[data-node-id="'+first.id+'"]')!);
+    act(() => store.dispatch(actions.selectParent()));
     fireEvent.keyDown(container.querySelector('.scratchpad')!, { key:'Delete' });
     expect(latex(stepOf(store.getState().doc).expression)).not.toContain('\\frac{2}{3}');
     fireEvent.keyDown(container.querySelector('.scratchpad')!, { key:'z', ctrlKey:true });
@@ -92,10 +94,10 @@ describe('Responsive Math Scratchpad', () => {
     expect(dialog).toBeTruthy();
     fireEvent.keyDown(dialog,{key:'ArrowRight'});
     fireEvent.keyDown(dialog,{key:'ArrowLeft'});
-    fireEvent.keyDown(dialog,{key:'Enter'});
+    fireEvent.keyDown(document.activeElement!,{key:'Enter'});
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{\\square}{\\square}');
-    fireEvent.click(screen.getByRole('button',{name:'⊕ Insert…'}));
+    fireEvent.keyDown(screen.getByRole('main'),{key:'/'});
     fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'});
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -103,6 +105,7 @@ describe('Responsive Math Scratchpad', () => {
     const copy=vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:copy}});
     const {container,store}=mount();
+    act(()=>store.dispatch(actions.setConfidence('high')));
     click('Check · Copy for Review');
     await waitFor(()=>expect(screen.getByText('Copied',{exact:true})).toBeTruthy());
     expect(copy.mock.calls[0][0]).toContain('reviewThroughStep');
@@ -113,7 +116,7 @@ describe('Responsive Math Scratchpad', () => {
   it('shows a manual selectable review message on clipboard failure', async () => {
     Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:vi.fn().mockRejectedValue(Error('blocked'))}});
     Object.defineProperty(document,'execCommand',{configurable:true,value:vi.fn().mockReturnValue(false)});
-    mount(); click('Check · Copy for Review');
+    const {store}=mount(); act(()=>store.dispatch(actions.setConfidence('high'))); click('Check · Copy for Review');
     await waitFor(()=>expect(screen.getByLabelText('Review message · select all to copy')).toBeTruthy());
     expect(screen.queryByText('Copied',{exact:true})).toBeNull();
   });
@@ -128,7 +131,7 @@ describe('Responsive Math Scratchpad', () => {
     expect(screen.queryByLabelText('Symbol topics')).toBeNull();
     expect(screen.getByLabelText('Numeric keys')).toBeTruthy();
   });
-  it('starts 30 Persian-stem questions, preserves each answer with Next and Previous and has no hints',()=>{
+  it('starts 30 Persian-stem questions, preserves each answer with Next and Previous and has no hints',async()=>{
     const {container,store}=mount();click('Exercise menu');click('Start 30-question diagnostic');click('Start 30 Questions');
     expect(store.getState().doc.exercises).toHaveLength(30);
     expect(store.getState().doc.exercises[0].prompt).toContain('هم‌ارز');
@@ -137,14 +140,16 @@ describe('Responsive Math Scratchpad', () => {
     expect(container.textContent?.toLowerCase()).not.toContain('hint');
     fireEvent.keyDown(container.querySelector('.scratchpad')!,{key:'9'});
     const first=latex(stepOf(store.getState().doc).expression);
-    click('Next Problem →');
+    await userEvent.click(screen.getByRole('button',{name:/Next question/}));
+    await userEvent.click(screen.getByRole('radio',{name:'High'}));
+    await userEvent.click(screen.getByRole('button',{name:/Continue/}));
     expect(store.getState().doc.exercises[0].steps[0].expression).toBeTruthy();
     expect(latex(stepOf(store.getState().doc).expression)).toBe('\\square');
     click('← Previous');
     expect(latex(stepOf(store.getState().doc).expression)).toBe(first);
   });
   it('marks changed prior steps for review without mutating later expressions',()=>{
-    const {container,store}=mount();click('+ New Step');
+    const {container,store}=mount();click('Add step');
     fireEvent.keyDown(container.querySelector('.scratchpad')!,{key:'5'});
     const ex=exerciseOf(store.getState().doc), later=latex(ex.steps[1].expression);
     fireEvent.click(container.querySelector('[data-node-id="'+leaves(ex.steps[0].expression)[0].node.id+'"]')!);

@@ -1,0 +1,13 @@
+import { expect, test } from '@playwright/test';
+import { openConfidence, startBatch } from '../support/mobile-journey';
+for (const state of ['single-edit', 'batch-edit', 'confidence'] as const) {
+ test(`VISUAL ${state}: reviewed phone layout baseline`, async ({ page }) => {
+  if (state === 'batch-edit') await startBatch(page);
+  else if (state === 'confidence') await openConfidence(page);
+  else await page.goto('/');
+  await expect(page).toHaveScreenshot(`${state}.png`, {
+   fullPage: true, animations: 'disabled', caret: 'hide', mask: [page.getByLabel('Question elapsed time')],
+   maxDiffPixelRatio: 0.005,
+  });
+ });
+}
