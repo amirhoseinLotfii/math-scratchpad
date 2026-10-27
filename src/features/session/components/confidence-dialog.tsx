@@ -10,8 +10,8 @@ export function ConfidenceDialog({ open, initial, onCancel, onConfirm, invoker }
  open: boolean; initial?: Value['confidence']; onCancel: () => void; onConfirm: (value: Value['confidence']) => void; invoker: HTMLElement | null;
 }) {
  const id = useId(), restoreFocus = useRef(true);
- const { register, reset, handleSubmit, formState: { errors } } = useForm<Value>({ resolver: zodResolver(confidenceSchema), defaultValues: { confidence: initial }, reValidateMode: 'onChange' });
- useEffect(() => { if (open) { restoreFocus.current = true; reset({ confidence: initial }); } }, [open, initial, reset]);
+ const { register, reset, handleSubmit, formState: { errors } } = useForm<Value>({ resolver: zodResolver(confidenceSchema), defaultValues: { confidence: initial ?? 'high' }, reValidateMode: 'onChange' });
+ useEffect(() => { if (open) { restoreFocus.current = true; reset({ confidence: initial ?? 'high' }); } }, [open, initial, reset]);
  return <Dialog open={open} onOpenChange={value => { if (!value) onCancel(); }}>
   <DialogContent onCloseAutoFocus={event => { event.preventDefault(); if (restoreFocus.current) invoker?.focus({ preventScroll: true }); }}>
    <DialogTitle>Answer confidence</DialogTitle>
