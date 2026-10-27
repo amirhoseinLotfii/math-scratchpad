@@ -46,6 +46,7 @@ export function App() {
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false);
  const [confirmExam, setConfirmExam] = useState(false), [confirmFractions, setConfirmFractions] = useState(false);
  const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);
+ const [showAllTools, setShowAllTools] = useState(false), [resetSession, setResetSession] = useState(false);
  const [decision, setDecision] = useState<Decision | null>(null), [complete, setComplete] = useState(false);
  const [manual, setManual] = useState(''), [busy, setBusy] = useState(false), [showResults, setShowResults] = useState(false);
  const editorRoot = useRef<HTMLElement>(null), manualRef = useRef<HTMLTextAreaElement>(null);
@@ -67,7 +68,7 @@ export function App() {
  useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
  function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
  function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
- function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertOpen(true); }
+ function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setShowAllTools(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
   if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
@@ -91,6 +92,10 @@ export function App() {
   else { jsonForm.reset({ json: text }); setBackup(true); dispatch(actions.notice('Clipboard blocked. Select and copy the session JSON manually.')); }
  }
  function commit(action: Decision) {
+  if ((action === 'next' || action === 'complete') && !ex.skipped && !ex.steps.some(step => step.final)) {
+   const candidate = [...ex.steps].reverse().find(step => latex(step.expression) !== '\\square');
+   if (candidate) { dispatch(actions.select({ stepId: candidate.id, nodeId: leaves(candidate.expression)[0].node.id })); dispatch(actions.command({ type: 'final' })); }
+  }
   if (action === 'next') { dispatch(actions.adjacentExercise(1)); setManual(''); setShowResults(false); }
   else if (action === 'complete') setComplete(true);
   else void copyReview();
@@ -144,7 +149,7 @@ export function App() {
   else if (key === 'Enter' && state.doc.cursor.sequenceId) { event.preventDefault(); openInsert(); }
  }
  function dialogKeys(event: KeyboardEvent<HTMLDivElement>) {
-  event.stopPropagation(); const size = insertOptions.length;
+  event.stopPropagation(); const size = showAllTools ? insertOptions.length : Math.min(8, insertOptions.length);
   if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); const delta = ({ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3} as Record<string,number>)[event.key]; setChoice(c => (c + delta + size) % size); }
   else if ((event.key === 'Home' || event.key === 'End') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); setChoice(event.key === 'Home' ? 0 : size - 1); }
   else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); insert((event.target as HTMLElement).getAttribute('data-insert-kind')!); }
@@ -169,6 +174,7 @@ export function App() {
       <DropdownMenuItem onSelect={() => setSetup(true)}>New Problem</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => { jsonForm.reset({ json: '' }); setBackup(true); }}>Import session JSON</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => setConfirmFractions(true)}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setResetSession(true)}>Reset current session</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => setConfirmExam(true)}>Start 30-question diagnostic</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' }))}>Use example</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newProblem' }))}>Use current expression as new problem</DropdownMenuItem>
@@ -187,7 +193,7 @@ export function App() {
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
    {batch && <section className="exercise-bar" hidden={layout === 'desktop'} aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{wide ? ` · ${questionStatus(entry)}` : entry.skipped ? ' · Skipped' : entry.steps.some(s => s.final) ? ' · Final' : ' · Unanswered'}</option>)}</select></label>
     <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={completed} className="diagnostic-track"><div style={{ width: `${completed / state.doc.exercises.length * 100}%` }} /></div><p className="small progress-text">{completed} of {state.doc.exercises.length} answered or skipped · Answers hidden until Finish</p></section>}
-    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}</section>
+    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{ex.prompt?.includes('S001-C01-PRACTICE20-r1-20261027') && ({0:'کسرها را هم‌مخرج کن، صورت دوم را از اول کم کن و نتیجه را ساده کن.',4:'کسرها را هم‌مخرج کن، صورت‌ها را جمع کن و حاصل را ساده کن.',8:'عدد صحیح را در مخرج ضرب کن، صورت را اضافه کن و نتیجه را روی همان مخرج بنویس.',12:'ابتدا پرانتز، سپس ضرب و تقسیم و در پایان جمع و تفریق را انجام بده.',16:'صورت‌ها را در هم و مخرج‌ها را در هم ضرب کن و حاصل را ساده کن.',18:'برای تقسیم، کسر دوم را وارونه کن و در کسر اول ضرب کن.'} as Record<number,string>)[exerciseIndex] && <details dir="rtl" lang="fa"><summary aria-label="راهنمای حل">ⓘ راهنما</summary><p>{({0:'کسرها را هم‌مخرج کن، صورت دوم را از اول کم کن و نتیجه را ساده کن.',4:'کسرها را هم‌مخرج کن، صورت‌ها را جمع کن و حاصل را ساده کن.',8:'عدد صحیح را در مخرج ضرب کن، صورت را اضافه کن و نتیجه را روی همان مخرج بنویس.',12:'ابتدا پرانتز، سپس ضرب و تقسیم و در پایان جمع و تفریق را انجام بده.',16:'صورت‌ها را در هم و مخرج‌ها را در هم ضرب کن و حاصل را ساده کن.',18:'برای تقسیم، کسر دوم را وارونه کن و در کسر اول ضرب کن.'} as Record<number,string>)[exerciseIndex]}</p></details>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}</section>
     <QuestionTimer key={ex.id} exerciseId={ex.id} elapsedMs={ex.elapsedMs} suspended={modalOpen || setup || backup || confirmExam || confirmFractions} />
     {layout === 'desktop' && <details className="shortcut-panel" open><summary>Keyboard shortcuts</summary><ShortcutHelp /></details>}
     </div>
@@ -218,10 +224,11 @@ export function App() {
    </div>
   </div>
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); helpInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
+  <Dialog open={resetSession} onOpenChange={setResetSession}><DialogContent><DialogTitle>Reset current session?</DialogTitle><DialogDescription>All current answers and times will be cleared. Export Session JSON first if you need them.</DialogDescription><div className="dialog-actions"><Button onClick={() => setResetSession(false)}>Cancel</Button><Button onClick={() => { dispatch(actions.startFractionRound()); setResetSession(false); }}>Reset</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
   <Dialog open={insertOpen} onOpenChange={value => { if (!value) closeInsert(); }}><DialogContent className="insert-dialog" onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (restoreInsert.current && insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); else focusEditor(); }}>
-   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options">{insertOptions.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div><Button onClick={closeInsert}>Cancel · Esc</Button>
+   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options">{insertOptions.slice(0, showAllTools ? undefined : 8).map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > 8 && <Button onClick={() => setShowAllTools(v => !v)}>{showAllTools ? 'نمایش کمتر' : 'مشاهده بیشتر'}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
  </main>;

@@ -72,12 +72,11 @@ test('A11Y-STAT-02: copy success is announced without unexpectedly moving focus'
  await expect(page.getByRole('status').filter({ hasText: /copied/i })).toBeVisible();
  await expect(trigger).toBeFocused();
 });
-test('A11Y-ERR-01: invalid confidence has a linked error and focused radio', async ({ page }) => {
- const dialog = await openConfidence(page); await dialog.getByRole('button', { name: /Continue/i }).click();
- const group = dialog.getByRole('radiogroup', { name: /confidence/i }), error = dialog.getByRole('alert');
- await expect(group).toHaveAttribute('aria-invalid','true');
- const id = await error.getAttribute('id'); expect((await group.getAttribute('aria-describedby'))?.split(/\s+/)).toContain(id);
- expect(await dialog.getByRole('radio').evaluateAll(nodes => nodes.some(node => node === document.activeElement))).toBe(true);
+test('A11Y-ERR-01: default confidence is High and can be changed', async ({ page }) => {
+ const dialog = await openConfidence(page);
+ await expect(dialog.getByRole('radio', { name: 'High' })).toBeChecked();
+ await dialog.getByRole('radio', { name: 'Low' }).check();
+ await expect(dialog.getByRole('radio', { name: 'Low' })).toBeChecked();
 });
 test('A11Y-POINTER-01: cancelling a press does not reset the answer', async ({ page }) => {
  await startBatch(page); await page.getByRole('main').focus(); await page.keyboard.type('123');

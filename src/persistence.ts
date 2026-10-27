@@ -51,5 +51,5 @@ export function restoreState(): ScratchState {
   try { const raw = localStorage.getItem(KEY) ?? localStorage.getItem('math-scratchpad-flow-v1'); if (raw) { const saved = validateSession(JSON.parse(raw)); state.doc = saved.doc; if (saved.prefs) state.prefs = saved.prefs; state.keyboardOpen = JSON.parse(raw).keyboardOpen === true; } } catch { state.notice = 'Previous draft could not be restored. Import a session backup if available.'; }
   return state;
 }
-export const serialize = (state: ScratchState) => JSON.stringify({ version: 2, doc: state.doc, prefs: state.prefs, keyboardOpen: state.keyboardOpen }, null, 2);
+export const serialize = (state: ScratchState) => JSON.stringify({ version: 2, doc: state.doc, prefs: state.prefs, keyboardOpen: state.keyboardOpen, timing: { type: 'visible_unpaused_question_time_ms', totalMs: state.doc.exercises.reduce((sum, exercise) => sum + (exercise.elapsedMs ?? 0), 0), questions: state.doc.exercises.map(exercise => ({ id: exercise.id, elapsedMs: exercise.elapsedMs ?? 0 })) } }, null, 2);
 export function saveState(state: ScratchState): boolean { try { localStorage.setItem(KEY, serialize(state)); return true; } catch { return false; } }
