@@ -93,6 +93,7 @@ describe('wide toolbar and step behavior',()=>{
  });
  it.each([['Integral','\\int'],['2 by 2 matrix','\\begin{bmatrix}'],['Variable x','x'],['Infinity','\\infty'],['≤','\\le'],['Factorial','!']])('inserts advanced %s directly without a virtual keypad',async(name,expected)=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'More math tools'}));
+  await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:'مشاهده بیشتر'}));
   await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name}));
   expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toContain(expected);
   expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();expect(screen.getByRole('main')).toHaveFocus();
