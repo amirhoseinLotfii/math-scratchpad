@@ -8,8 +8,8 @@ export type Structure =
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
 export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean };
-export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; steps: Step[] };
-export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string };
+export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; bankQuestionId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; steps: Step[] };
+export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
 export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor; session?: SessionMeta };
 /** ISO-8601 timestamp carrying the local UTC offset, e.g. 2026-10-27T16:20:00.000+03:30. */

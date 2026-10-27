@@ -6,7 +6,7 @@ export const TUTOR_EXPORT_SCHEMA = 'math-scratchpad.session/1.0';
 export const CONFIDENCE_SCORE = { high: 5, medium: 3, low: 1 } as const;
 export type ItemStatus = 'answered' | 'skipped' | 'unanswered';
 export type TutorItem = {
-  item_id: string; index: number; question_id: number | null; assessment: string | null;
+  item_id: string; index: number; question_id: number | string | null; assessment: string | null;
   prompt: string | null; problem: string; problem_format: 'math-or-latex' | 'persian-text';
   status: ItemStatus; student_answer: string | null; final_answer: string | null; final_step_id: string | null; final_step_number: number | null;
   steps: { step_id: string; number: number; latex: string; is_final: boolean }[];
@@ -16,7 +16,7 @@ export type TutorItem = {
 };
 export type TutorExport = {
   schema_version: string; app: 'math-scratchpad'; app_version: string; exported_at: string;
-  session_id: string; anxiety: number | null; energy: number | null; started_at: string; ended_at: string | null;
+  session_id: string; bank_id?: string; bank_version?: string; anxiety: number | null; energy: number | null; started_at: string; ended_at: string | null;
   totals: { items: number; answered: number; skipped: number; unanswered: number; missing_final_answer: number };
   items: TutorItem[];
 };
@@ -31,7 +31,7 @@ export function exportItem(ex: Exercise, index: number): TutorItem {
   const confidence = ex.confidence ?? 'high';
   const status = itemStatus(ex);
   return {
-    item_id: ex.id, index: index + 1, question_id: ex.diagnosticId ?? null, assessment: ex.assessment ?? null,
+    item_id: ex.id, index: index + 1, question_id: ex.bankQuestionId ?? ex.diagnosticId ?? null, assessment: ex.assessment ?? null,
     prompt: ex.prompt ?? null, problem: ex.mode === 'math' ? ascii(ex.source) : ex.source, problem_format: ex.mode === 'text' ? 'persian-text' : 'math-or-latex',
     status,
     student_answer: final && !blankStep(final.latex) ? final.latex : null,
@@ -54,7 +54,7 @@ export function buildTutorExport(doc: Document, now = new Date()): TutorExport {
   const count = (s: ItemStatus) => items.filter(x => x.status === s).length;
   return {
     schema_version: TUTOR_EXPORT_SCHEMA, app: 'math-scratchpad', app_version: APP_VERSION, exported_at: isoLocal(now),
-    session_id: meta?.id ?? 'unknown', anxiety: meta?.anxiety ?? null, energy: meta?.energy ?? null,
+    session_id: meta?.id ?? 'unknown', ...(meta?.bankId ? { bank_id: meta.bankId } : {}), ...(meta?.bankVersion ? { bank_version: meta.bankVersion } : {}), anxiety: meta?.anxiety ?? null, energy: meta?.energy ?? null,
     started_at: meta?.startedAt ?? items.map(x => x.started_at).filter(Boolean).sort()[0] ?? isoLocal(now), ended_at: meta?.endedAt ?? null,
     totals: { items: items.length, answered: count('answered'), skipped: count('skipped'), unanswered: count('unanswered'), missing_final_answer: missingFinalAnswers(doc).length },
     items,
