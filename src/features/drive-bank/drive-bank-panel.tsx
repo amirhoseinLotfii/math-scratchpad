@@ -4,7 +4,7 @@ import { actions } from '../../store';
 import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
 import { EMPTY_BANK, archiveSession, bankDocument, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBankText, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
-import { getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig, validApiKey, validAppId, validClientId, type DriveConfig, type Token } from './google';
+import { getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
@@ -54,7 +54,6 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
     const timer = setInterval(tick, POLL_MS); document.addEventListener('visibilitychange', tick);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
   }, [connected]);
-  function update(next: Partial<DriveConfig>) { const c = { ...config, ...next }; setConfig(c); }
   function afterToken(t: Token) {
     void (async () => {
       try {
@@ -79,9 +78,6 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
   }
   /** Runs synchronously in the tap handler so Android Chrome allows the Google popup. */
   function connect() {
-    if (!validClientId(config.clientId)) { setMessage('شناسهٔ OAuth (Client ID) معتبر نیست؛ باید به ‎.apps.googleusercontent.com‎ ختم شود.'); return; }
-    if (!validApiKey(config.apiKey) || !validAppId(config.appId)) { setMessage('کلید API و شمارهٔ پروژه (Project number) برای انتخاب فایل لازم‌اند.'); return; }
-    try { saveConfig(config); } catch { /* storage full: still connect for this page */ }
     setBusy(true); setMessage('در پنجرهٔ Google حساب شخصی پروژه را انتخاب کن…');
     requestToken(config.clientId, { prompt: connected || config.fileId ? '' : 'consent' }, r => {
       if (!active.current) return;
@@ -105,15 +101,9 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
   }
   const current = store.getState().doc.session;
   const same = available && current?.bankId === available.bank.bank_id && current.bankVersion === available.version;
-  const field = (id: string, label: string, key: 'clientId' | 'apiKey' | 'appId') => <><label htmlFor={id}>{label}</label><input id={id} value={config[key]} onChange={e => { update({ [key]: e.target.value.trim() }); }} dir="ltr" autoComplete="off" spellCheck={false} /></>;
   return <section className="setup-panel" lang="fa" dir="rtl" aria-label="بانک Google Drive" hidden={!open}>
     <h2>بانک سؤال در Google Drive</h2>
     <p>برنامه فقط به فایلی که خودت در پنجرهٔ Google انتخاب می‌کنی دسترسی دارد (مجوز drive.file)، نه به بقیهٔ Drive. وقتی صفحه باز است، هر ۳۰ ثانیه تغییر فایل بررسی می‌شود.</p>
-    <details open={!config.clientId}><summary>تنظیمات یک‌باره</summary>
-      {field('drive-client', 'شناسه OAuth برنامه', 'clientId')}
-      {field('drive-key', 'کلید API (برای Picker)', 'apiKey')}
-      {field('drive-app', 'شمارهٔ پروژه (Project number)', 'appId')}
-    </details>
     <p>فایل انتخاب‌شده: <span dir="ltr">{config.fileName || (config.fileId ? 'انتخاب شده' : '—')}</span>{checkedAt && ` · آخرین بررسی ${checkedAt}`}</p>
     <p role="status" aria-live="polite">{message}</p>
     <div className="toolbar"><Button onClick={connect} disabled={busy || !ready}>{connected ? 'اتصال دوباره' : token.current === null && config.fileId ? 'اتصال دوباره' : 'اتصال Google Drive'}</Button>

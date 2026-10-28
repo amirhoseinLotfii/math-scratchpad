@@ -2,11 +2,12 @@
 
 برنامه با مجوز محدود `drive.file` فقط به فایلی دسترسی دارد که خودت یک بار در پنجرهٔ انتخاب فایل Google (Picker) انتخاب کنی؛ بقیهٔ Drive دیده نمی‌شود و فایل عمومی نمی‌شود. وقتی صفحه باز است، هر ۳۰ ثانیه فقط مشخصات فایل (md5Checksum، headRevisionId، version) خوانده می‌شود و محتوا فقط وقتی تغییر کرده دانلود می‌شود. جلسهٔ باز هرگز خودکار عوض نمی‌شود؛ قبل از بازکردن دستهٔ تازه جلسهٔ فعلی در مرورگر ذخیره می‌شود. شناسهٔ بانک، نسخه و شناسهٔ سؤال در خروجی مربی ثبت می‌شوند.
 
-## راه‌اندازی اولیه (یک بار)
-1. Google Cloud Console: پروژه بساز، Google Drive API و Google Picker API را فعال کن.
-2. OAuth consent screen: External، حالت Testing، حساب شخصی پروژه را در Test users اضافه کن؛ scope: `drive.file`.
-3. Credentials: OAuth client از نوع Web application با Authorized JavaScript origin `https://amirhoseinlotfii.github.io`؛ و یک API key محدود به HTTP referrer `https://amirhoseinlotfii.github.io/*` و فقط Google Picker API.
-4. در برنامه: منو ← `Google Drive · بانک سؤال` ← Client ID، API key و Project number را وارد کن، «اتصال Google Drive» را بزن و فایل `MATH_QUESTION_BANK.json` را انتخاب کن. هیچ client secret یا توکنی لازم نیست و ذخیره نمی‌شود.
+## راه‌اندازی
+شناسهٔ OAuth (Client ID)، شمارهٔ پروژه و کلید API مربوط به Picker داخل خود برنامه (`src/features/drive-bank/drive-config.ts`) قرار دارند و هیچ ورود دستی لازم نیست؛ تنظیمات قدیمی ذخیره‌شده در مرورگر نادیده گرفته می‌شوند. کلید API عمومی است و فقط به HTTP referrer `https://amirhoseinlotfii.github.io/*` و Google Picker API محدود است. هیچ client secret یا توکنی لازم نیست و ذخیره نمی‌شود.
+
+در برنامه: منو ← `Google Drive · بانک سؤال` ← «اتصال Google Drive» را بزن و فایل `MATH_QUESTION_BANK.json` را انتخاب کن.
+
+پیکربندی Google Cloud (پروژهٔ `math-scratchpad`، فقط برای نگهدارنده): Google Drive API و Google Picker API فعال؛ OAuth consent screen از نوع External در حالت Testing با حساب شخصی در Test users و scope `drive.file`؛ OAuth client از نوع Web application با Authorized JavaScript origin `https://amirhoseinlotfii.github.io`.
 
 مجوز Google حدود یک ساعت معتبر است و فقط در حافظهٔ صفحه نگه داشته می‌شود؛ پس از آن یا پس از بستن صفحه یک لمس روی «اتصال دوباره» لازم است (انتخاب فایل تکرار نمی‌شود). کلید پاسخ در فایل جدا (مثلاً `MATH_ANSWER_KEY.json`) بماند و هرگز در برنامه انتخاب نشود. فایل خالی خطا نیست و «هنوز خالی» نمایش داده می‌شود.
 

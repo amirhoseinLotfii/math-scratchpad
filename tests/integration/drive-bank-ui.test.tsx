@@ -27,13 +27,21 @@ function mockDrive(state: { content: string; rev: number }) {
 async function connect(user: ReturnType<typeof renderMobileApp>['user']) {
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
-  await user.type(screen.getByLabelText('شناسه OAuth برنامه'), '123.apps.googleusercontent.com');
-  await user.type(screen.getByLabelText('کلید API (برای Picker)'), 'AIzaSyTESTKEY_public_restricted');
-  await user.type(screen.getByLabelText('شمارهٔ پروژه (Project number)'), '1234567890');
   await waitFor(() => expect((screen.getByRole('button', { name: 'اتصال Google Drive' }) as HTMLButtonElement).disabled).toBe(false));
   await user.click(screen.getByRole('button', { name: 'اتصال Google Drive' }));
 }
 describe('private Drive bank flow', () => {
+  it('uses built-in Google identifiers, shows no manual entry, and ignores old saved ones', async () => {
+    localStorage.setItem('math-scratchpad-drive-config-v1', JSON.stringify({ clientId: 'old.apps.googleusercontent.com', apiKey: 'OLDKEY_old_old_old_old_old', appId: '1', fileId: '' }));
+    const { getConfig } = await import('../../src/features/drive-bank/google');
+    const { GOOGLE_CLIENT_ID, GOOGLE_APP_ID, GOOGLE_API_KEY } = await import('../../src/features/drive-bank/drive-config');
+    expect(getConfig()).toMatchObject({ clientId: GOOGLE_CLIENT_ID, appId: GOOGLE_APP_ID, apiKey: GOOGLE_API_KEY });
+    const { user } = renderMobileApp();
+    await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+    await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
+    expect(screen.queryByText('تنظیمات یک‌باره')).toBeNull();
+    expect(screen.queryByLabelText('شناسه OAuth برنامه')).toBeNull();
+  });
   it('picks the file, reads the bank, and archives the active work before switching', async () => {
     mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockDrive({ content: JSON.stringify(bank('1+2')), rev: 1 });

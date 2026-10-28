@@ -1,20 +1,18 @@
 /* Browser-only Google sign-in (GIS token model) and Google Picker. No client secret, no refresh token, nothing stored server-side. */
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from './drive-config';
 export const SCOPES = `openid email ${DRIVE_SCOPE}`;
 const CONFIG_KEY = 'math-scratchpad-drive-config-v1';
-/** Public-safe identifiers only: OAuth Web client ID, referrer-restricted API key, Cloud project number. Picked file id stays in this browser. */
+/** Built-in public identifiers (see drive-config.ts) plus the picked file, which stays in this browser. */
 export type DriveConfig = { clientId: string; apiKey: string; appId: string; fileId: string; fileName: string };
-const env = ((import.meta as { env?: Record<string, string | undefined> }).env ?? {});
 export function getConfig(): DriveConfig {
   let v: Record<string, unknown> = {};
-  try { v = JSON.parse(localStorage.getItem(CONFIG_KEY) ?? '{}'); } catch { /* ignore */ }
-  const s = (k: string, e?: string) => typeof v[k] === 'string' && v[k] ? v[k] as string : (e ?? '');
-  return { clientId: s('clientId', env.VITE_GOOGLE_CLIENT_ID), apiKey: s('apiKey', env.VITE_GOOGLE_API_KEY), appId: s('appId', env.VITE_GOOGLE_APP_ID), fileId: s('fileId'), fileName: s('fileName') };
+  try { v = JSON.parse(localStorage.getItem(CONFIG_KEY) ?? '{}') ?? {}; } catch { /* ignore */ }
+  const s = (k: string) => typeof v[k] === 'string' ? v[k] as string : '';
+  // Only the picked file is read from storage; any old saved clientId/apiKey/appId is ignored.
+  return { clientId: GOOGLE_CLIENT_ID, apiKey: GOOGLE_API_KEY, appId: GOOGLE_APP_ID, fileId: s('fileId'), fileName: s('fileName') };
 }
-export function saveConfig(c: DriveConfig) { localStorage.setItem(CONFIG_KEY, JSON.stringify(c)); }
-export const validClientId = (id: string) => /^[\w.-]+\.apps\.googleusercontent\.com$/.test(id);
-export const validApiKey = (k: string) => /^[\w-]{20,60}$/.test(k);
-export const validAppId = (k: string) => /^\d{6,20}$/.test(k);
+export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) { localStorage.setItem(CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName })); }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type G = any;
