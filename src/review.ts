@@ -5,7 +5,7 @@ export function reviewPayload(doc: Document) {
   return {
     type: 'math-scratchpad-review', version: 1,
     problem: { format: exercise.mode === 'text' ? 'persian-text' : 'math-or-latex', text: exercise.source },
-    questionId: exercise.diagnosticId ?? null,
+    questionId: exercise.bankQuestionId ?? exercise.diagnosticId ?? null,
     prompt: exercise.prompt ?? null,
     confidence: exercise.confidence ?? null,
     trackedVisibleMs: exercise.elapsedMs ?? null,
