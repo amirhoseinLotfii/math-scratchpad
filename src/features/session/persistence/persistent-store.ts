@@ -1,3 +1,4 @@
+import { initialKeyboardOpen } from '../../../shared/lib/ui-prefs';
 import { z } from 'zod';
 import { uid } from '../../../model';
 import { isoLocal } from '../../../model';
@@ -43,6 +44,7 @@ export function createPersistentStore() {
  } catch {
   protectedDraft = true; bootError = 'Saved draft could not be restored. Import a backup or copy your current work before recovery.'; initial = initialState(); initial.keyboardOpen = true;
  }
+ if (!protectedDraft || bootError !== 'Saved draft could not be restored. Import a backup or copy your current work before recovery.') initial.keyboardOpen = initialKeyboardOpen(initial.keyboardOpen);
  if (bootError) initial.storageState = { kind: 'error', message: bootError };
  let revision = saved?.state.sync.revision ?? 0, lastWriter = saved?.state.sync.writerId ?? writerId;
  let lastSignature = saved ? fullSignature(saved.state.session) : '', lastWork = saved ? workSignature(saved.state.session) : '';
@@ -85,7 +87,7 @@ export function createPersistentStore() {
   partialize: value => ({ session: { doc: value.doc, prefs: value.prefs, keyboardOpen: value.keyboardOpen }, sync: { revision, writerId: lastWriter } }),
   merge: (value, current) => {
    const persisted = value as PersistedSession | undefined;
-   return persisted ? { ...current, ...persisted.session } : current;
+   return persisted ? { ...current, ...persisted.session, keyboardOpen: current.keyboardOpen } : current;
   },
  };
  store = makeStore(initial, options);

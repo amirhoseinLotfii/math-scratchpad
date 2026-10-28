@@ -1,4 +1,4 @@
-import { ascii, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
+import { ascii, elapsedAt, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
 import { APP_VERSION } from '../../../version';
 import { questionStatus } from '../../workspace/model/workspace-layout';
 
@@ -12,7 +12,7 @@ export type TutorItem = {
   steps: { step_id: string; number: number; latex: string; is_final: boolean }[];
   started_at: string | null; submitted_at: string | null; solve_time_sec: number | null;
   confidence: 5 | 3 | 1; confidence_label: 'high' | 'medium' | 'low';
-  hint_used: boolean; hint_note: string | null; independent: boolean;
+  hint_used: boolean; hint_note: string | null; guidance_available: boolean; guidance_opened: boolean; guidance_opened_at: string | null; independent: boolean;
 };
 export type TutorExport = {
   schema_version: string; app: 'math-scratchpad'; app_version: string; exported_at: string;
@@ -25,6 +25,8 @@ export function itemStatus(ex: Exercise): ItemStatus {
   if (ex.skipped) return 'skipped';
   return questionStatus(ex) === 'Not started' ? 'unanswered' : 'answered';
 }
+/** Help = tutor help checkbox OR in-app guidance opened (opening is permanent). */
+export const helped = (ex: Exercise) => ex.hintUsed === true || !!ex.guidanceOpenedAt;
 export function exportItem(ex: Exercise, index: number): TutorItem {
   const steps = ex.steps.map((s, i) => ({ step_id: s.id, number: i + 1, latex: latex(s.expression), is_final: s.final }));
   const final = steps.find(s => s.is_final) ?? null;
@@ -39,9 +41,9 @@ export function exportItem(ex: Exercise, index: number): TutorItem {
     final_step_id: final?.step_id ?? null, final_step_number: final?.number ?? null,
     steps: status === 'unanswered' ? [] : steps.filter(s => !blankStep(s.latex) || s.is_final),
     started_at: ex.startedAt ?? null, submitted_at: ex.submittedAt ?? null,
-    solve_time_sec: Number.isFinite(ex.elapsedMs) ? Math.round((ex.elapsedMs as number) / 1000) : null,
+    solve_time_sec: Number.isFinite(ex.elapsedMs) || Number.isFinite(ex.timerRunningSince) ? Math.round(elapsedAt(ex) / 1000) : null,
     confidence: CONFIDENCE_SCORE[confidence], confidence_label: confidence,
-    hint_used: ex.hintUsed === true, hint_note: ex.hintNote ?? null, independent: ex.hintUsed !== true,
+    hint_used: helped(ex), hint_note: ex.hintNote ?? null, guidance_available: !!ex.guidance, guidance_opened: !!ex.guidanceOpenedAt, guidance_opened_at: ex.guidanceOpenedAt ?? null, independent: !helped(ex),
   };
 }
 /** Items with work (not skipped) that have no marked final answer. */

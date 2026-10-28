@@ -30,7 +30,8 @@ describe('wide workspace: layout and single source of state', () => {
  });
  it('desktop exposes all question destinations and exactly one active question', () => {
   mount(); const nav = screen.getByRole('navigation', {name:'Questions'});
-  expect(within(nav).getAllByRole('button')).toHaveLength(20);
+  expect(within(nav).getAllByRole('button')).toHaveLength(21); // 20 destinations + collapse toggle
+  expect(nav.querySelectorAll('.question-destination')).toHaveLength(20);
   expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
  });
  it('single-question desktop omits batch navigator and preserves review action', () => {
@@ -60,7 +61,7 @@ describe('wide question navigator',()=>{
  });
  it('focusing a destination does not switch question',()=>{const {store}=mount();const before=store.getState().doc.exerciseId;screen.getByRole('button',{name:'Question 2 Not started'}).focus();expect(store.getState().doc.exerciseId).toBe(before);});
  it('ArrowDown, Home and End move focus without activating question buttons',()=>{
-  const {store}=mount();const nav=screen.getByRole('navigation',{name:'Questions'}), buttons=within(nav).getAllByRole('button'),before=store.getState().doc.exerciseId;
+  const {store}=mount();const nav=screen.getByRole('navigation',{name:'Questions'}), buttons=Array.from(nav.querySelectorAll<HTMLButtonElement>('.question-destination')),before=store.getState().doc.exerciseId;
   buttons[0].focus();fireEvent.keyDown(buttons[0],{key:'ArrowDown'});expect(buttons[1]).toHaveFocus();
   fireEvent.keyDown(buttons[1],{key:'End'});expect(buttons.at(-1)).toHaveFocus();
   fireEvent.keyDown(buttons.at(-1)!,{key:'Home'});expect(buttons[0]).toHaveFocus();expect(store.getState().doc.exerciseId).toBe(before);
@@ -93,6 +94,7 @@ describe('wide toolbar and step behavior',()=>{
  });
  it.each([['Integral','\\int'],['2 by 2 matrix','\\begin{bmatrix}'],['Variable x','x'],['Infinity','\\infty'],['≤','\\le'],['Factorial','!']])('inserts advanced %s directly without a virtual keypad',async(name,expected)=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'More math tools'}));
+  await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:/نمایش بیشتر/}));
   await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name}));
   expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toContain(expected);
   expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();expect(screen.getByRole('main')).toHaveFocus();

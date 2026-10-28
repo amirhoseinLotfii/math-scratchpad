@@ -17,7 +17,7 @@ describe('tutor export schema', () => {
   expect(data.schema_version).toBe(TUTOR_EXPORT_SCHEMA); expect(data.app_version).toBe('0.6.0');
   expect(data.anxiety).toBe(2); expect(data.energy).toBe(4); expect(data.started_at).toMatch(ISO);
   expect(data.items).toHaveLength(20);
-  expect(Object.keys(data.items[0]).sort()).toEqual(['assessment','confidence','confidence_label','final_answer','final_step_id','final_step_number','hint_note','hint_used','independent','index','item_id','problem','problem_format','prompt','question_id','solve_time_sec','started_at','status','steps','student_answer','submitted_at'].sort());
+  expect(Object.keys(data.items[0]).sort()).toEqual(['assessment','confidence','confidence_label','final_answer','final_step_id','final_step_number','guidance_available','guidance_opened','guidance_opened_at','hint_note','hint_used','independent','index','item_id','problem','problem_format','prompt','question_id','solve_time_sec','started_at','status','steps','student_answer','submitted_at'].sort());
   expect(data.items[0].status).toBe('unanswered'); expect(data.totals.unanswered).toBe(20);
  });
  it('marks the final answer, records timestamps, verbatim steps and solve time', () => {

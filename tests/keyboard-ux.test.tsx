@@ -4,7 +4,7 @@ import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
 import { QuestionTimer } from '../src/QuestionTimer';
 import { actions, activeInfo, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
-import { latex, leaves } from '../src/model';
+import { elapsedAt, latex, leaves } from '../src/model';
 import { serialize, validateSession } from '../src/persistence';
 import { fingerprint } from '../src/review';
 const create=()=>makeStore(initialState());
@@ -86,7 +86,7 @@ describe('Predictable keyboard editing',()=>{
   const s=mount(); expect(screen.queryAllByRole('radio')).toHaveLength(0);
   fireEvent.click(screen.getByRole('button',{name:'Check · Copy for Review'}));
   expect(screen.getByRole('dialog',{name:/confidence/i})).toBeTruthy();
-  expect((screen.getByRole('radio',{name:'High'}) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getAllByRole('radio').some(r=>(r as HTMLInputElement).checked)).toBe(false);
   fireEvent.click(screen.getByRole('radio',{name:'Medium'}));
   fireEvent.click(screen.getByRole('button',{name:/continue/i}));
   await waitFor(()=>expect(validateSession(JSON.parse(serialize(s.getState()))).doc.exercises[0].confidence).toBe('medium'));
@@ -96,15 +96,15 @@ describe('Predictable keyboard editing',()=>{
   expect(fingerprint(s.getState().doc)).toBe(before);expect(validateSession(JSON.parse(serialize(s.getState()))).doc.exercises[0].elapsedMs).toBe(12345);
  });
 });
-describe('Question visible-time accounting',()=>{
- it('accounts for monotonic time, pauses manually, and never attributes another question or hidden-page time to this question',()=>{
-  vi.useFakeTimers();let now=0;vi.spyOn(performance,'now').mockImplementation(()=>now);
-  const s=create(),id=s.getState().doc.exerciseId;
+describe('Question time accounting (wall clock)',()=>{
+ it('counts hidden/blurred time, stops only on manual Pause, and never attributes another question\'s time',()=>{
+  vi.useFakeTimers();const T=Date.UTC(2026,0,1);vi.setSystemTime(T);
+  const s=create(),id=s.getState().doc.exerciseId,at=()=>elapsedAt(exerciseOf(s.getState().doc));
   const view=render(<Provider store={s}><QuestionTimer exerciseId={id}/></Provider>);
-  now=1250;act(()=>vi.advanceTimersByTime(1000));expect(exerciseOf(s.getState().doc).elapsedMs).toBe(1250);
-  fireEvent.click(screen.getByRole('button',{name:'Pause'}));now=9000;act(()=>vi.advanceTimersByTime(3000));expect(exerciseOf(s.getState().doc).elapsedMs).toBe(1250);
-  fireEvent.click(screen.getByRole('button',{name:'Resume'}));now=9500;fireEvent(window,new Event('blur'));expect(exerciseOf(s.getState().doc).elapsedMs).toBe(1750);
-  now=20000;act(()=>vi.advanceTimersByTime(2000));expect(exerciseOf(s.getState().doc).elapsedMs).toBe(1750);
-  view.unmount();expect(exerciseOf(s.getState().doc).elapsedMs).toBe(1750);
+  act(()=>vi.advanceTimersByTime(1250));expect(at()).toBe(1250);
+  fireEvent.click(screen.getByRole('button',{name:'Pause'}));act(()=>vi.advanceTimersByTime(3000));expect(at()).toBe(1250);
+  fireEvent.click(screen.getByRole('button',{name:'Resume'}));fireEvent(window,new Event('blur'));act(()=>vi.advanceTimersByTime(500));expect(at()).toBe(1750);
+  view.unmount();act(()=>vi.advanceTimersByTime(250));expect(at()).toBe(2000);
+  vi.useRealTimers();
  });
 });

@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, dismissWellbeing } from './test';
 import { actions, initialState, makeStore } from '../../src/store';
 import { serialize } from '../../src/persistence';
 export const legacyStorageKey = 'math-scratchpad-redux-v2';
@@ -7,6 +7,7 @@ export async function startBatch(page: Page) {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
+ await dismissWellbeing(page);
  await expect(page.locator('select[aria-label="Current exercise"] option')).toHaveCount(20);
 }
 export async function openConfidence(page: Page) {

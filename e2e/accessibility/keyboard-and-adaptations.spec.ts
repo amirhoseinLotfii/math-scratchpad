@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator } from '../support/test';
 import { openConfidence, startBatch } from '../support/mobile-journey';
 async function expectUnobscured(control: Locator) {
  await control.scrollIntoViewIfNeeded();
@@ -72,10 +72,12 @@ test('A11Y-STAT-02: copy success is announced without unexpectedly moving focus'
  await expect(page.getByRole('status').filter({ hasText: /copied/i })).toBeVisible();
  await expect(trigger).toBeFocused();
 });
-test('A11Y-ERR-01: confidence is preselected to High so it can never be submitted empty', async ({ page }) => {
+test('A11Y-ERR-01: confidence has no default; continuing empty shows an error, choosing one continues', async ({ page }) => {
  const dialog = await openConfidence(page);
- await expect(dialog.getByRole('radio', { name: 'High' })).toBeChecked();
+ await expect(dialog.getByRole('radio', { checked: true })).toHaveCount(0);
  await dialog.getByRole('button', { name: /Continue/i }).click();
+ await expect(dialog.getByRole('alert')).toBeVisible(); await expect(dialog).toBeVisible();
+ await dialog.getByRole('radio', { name: 'High' }).check(); await dialog.getByRole('button', { name: /Continue/i }).click();
  await expect(dialog).toBeHidden(); await expect(page.getByRole('alert')).toHaveCount(0);
 });
 test('A11Y-POINTER-01: cancelling a press does not reset the answer', async ({ page }) => {

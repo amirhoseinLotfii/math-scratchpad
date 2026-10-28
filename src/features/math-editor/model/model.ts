@@ -9,7 +9,7 @@ export type Structure =
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
 export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean };
-export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; bankQuestionId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; steps: Step[] };
+export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; bankQuestionId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
 export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
 export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor; session?: SessionMeta };
@@ -107,3 +107,11 @@ export const topics: Record<string, SymbolItem[]> = {
   'Probability & stats': [symbol('probability', 'P(A)', 'Probability'), symbol('factorial', 'n!', 'Factorial'), symbol('choose', 'nCk', 'Binomial coefficient'), symbol('mean', 'x̄', 'Mean'), symbol('sigma', 'σ', 'Sigma')]
 };
 export const symbolList = Object.values(topics).flat();
+
+/** Total question time: closed segments (elapsedMs) plus the open wall-clock segment, if any. */
+export function elapsedAt(ex: Pick<Exercise, 'elapsedMs' | 'timerRunningSince' | 'timerPaused'>, now = Date.now()): number {
+  const base = Number.isFinite(ex.elapsedMs) && (ex.elapsedMs as number) >= 0 ? ex.elapsedMs as number : 0;
+  const since = ex.timerRunningSince;
+  return !ex.timerPaused && Number.isFinite(since) ? base + Math.max(0, now - (since as number)) : base;
+}
+

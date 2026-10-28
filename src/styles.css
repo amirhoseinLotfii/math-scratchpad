@@ -419,3 +419,23 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .session-panel { min-width: 0; max-width: 100%; }
 .session-panel code, .session-panel .final-status { overflow-wrap: anywhere; word-break: break-word; }
 .session-panel input[type="text"] { min-width: 0; max-width: 100%; }
+/* UX batch: collapsible panels, header progress, guidance, insert "show more" */
+#math-scratchpad-redux .session-panel > summary, #math-scratchpad-redux .question-guidance > summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; gap: 4px; }
+#math-scratchpad-redux .session-panel > section { display: grid; gap: 8px; min-width: 0; }
+#math-scratchpad-redux .navigator-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#math-scratchpad-redux .navigator-toggle { flex: none; }
+#math-scratchpad-redux .header-progress { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#math-scratchpad-redux .question-guidance { margin-top: 12px; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+#math-scratchpad-redux .question-guidance p { margin: 8px 0 0; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+#math-scratchpad-redux .guidance-used { font-weight: 400; opacity: .8; }
+.insert-more { width: 100%; margin-bottom: 8px; }
+.wellbeing-dialog .session-scales { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.wellbeing-dialog .session-scales label { display: inline-flex; align-items: center; gap: 6px; }
+.wellbeing-dialog select { min-height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; background: transparent; color: inherit; }
+#math-scratchpad-redux .link-button { background: none; border: 0; padding: 0 4px; color: var(--primary); text-decoration: underline; cursor: pointer; font: inherit; min-height: 24px; }
+/* Visible focus for the new disclosure summaries and link button. */
+#math-scratchpad-redux summary:focus-visible, #math-scratchpad-redux .link-button:focus-visible { outline: 3px solid var(--ring); outline-offset: 3px; border-radius: 6px; }
+/* Progress line must not push the header actions past narrow viewports (320px reflow). */
+#math-scratchpad-redux .app-header > * { min-width: 0; max-width: 100%; }
+#math-scratchpad-redux .header-actions { flex: 0 1 auto; }
+#math-scratchpad-redux .header-progress { flex: 1 1 auto; margin: 0; }

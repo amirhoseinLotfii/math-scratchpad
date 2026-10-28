@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '../support/test';
 import { actions, initialState, makeStore } from '../../src/store';
 import { serialize } from '../../src/persistence';
 import { parse } from '../../src/parser';
@@ -43,7 +43,7 @@ test('SYNC-04: storage events do not bounce forever between clean tabs', async (
  await seedLegacy(page); await page.goto('/'); await expectSaved(page);
  await page.getByRole('button', { name: 'Pause', exact: true }).click();
  const other = await context.newPage(); await other.goto('/');
- await other.getByRole('button', { name: 'Pause', exact: true }).click();
+ await expect(other.getByRole('button', { name: 'Resume', exact: true })).toBeVisible(); // pause is shared through the saved session
  await other.clock.install(); await other.clock.runFor(1000);
  await page.getByRole('main').focus(); await page.keyboard.type('222');
  await expect(other.getByLabel('Step 1 expression')).toContainText('222');

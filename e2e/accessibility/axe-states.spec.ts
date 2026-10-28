@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../support/test';
 import AxeBuilder from '@axe-core/playwright';
 import { openCompletion, openConfidence, startBatch } from '../support/mobile-journey';
 const states = ['single-edit','batch-edit','menu','symbols','confidence','confidence-error','completion','new-problem','invalid-json'] as const;

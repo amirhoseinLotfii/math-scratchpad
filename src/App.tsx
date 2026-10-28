@@ -27,12 +27,13 @@ import { QuestionNavigator } from './features/workspace/components/question-navi
 import { MathTools } from './features/workspace/components/math-tools';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { ShortcutHelp } from './features/workspace/components/shortcut-help';
-import { SessionPanel } from './features/session/components/session-panel';
+import { SessionPanel, SessionScales } from './features/session/components/session-panel';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
 import { clearAppStorage } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
+import { wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
 
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
@@ -41,10 +42,14 @@ const INSERT_OPTIONS = [
  { name: '−', kind: '−' }, { name: '×', kind: '×' }, { name: '÷', kind: '÷' }, { name: '=', kind: '=' },
 ];
 type Decision = 'next' | 'complete' | 'copy';
+/** Number of insert tools shown before “نمایش بیشتر”. */
+export const INSERT_VISIBLE = 8;
 export function App() {
  const layout = useWorkspaceLayout(), wide = layout !== 'phone';
  const insertOptions = useMemo(() => wide ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({name:item.title,kind:item.key}))] : INSERT_OPTIONS, [wide]);
- const [shortcutsOpen, setShortcutsOpen] = useState(false);
+ const [shortcutsOpen, setShortcutsOpen] = useState(false), [insertExpanded, setInsertExpanded] = useState(false);
+ const [guidanceOpen, setGuidanceOpen] = useState(false);
+ const [wellbeingDismissed, setWellbeingDismissed] = useState<string | null>(null);
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
  const fileInput = useRef<HTMLInputElement>(null);
  const helpInvoker = useRef<HTMLButtonElement>(null);
@@ -59,6 +64,7 @@ export function App() {
  const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);
  const [decision, setDecision] = useState<Decision | null>(null), [complete, setComplete] = useState(false);
  const [manual, setManual] = useState(''), [busy, setBusy] = useState(false), [showResults, setShowResults] = useState(false);
+ const visibleInsert = insertExpanded ? insertOptions : insertOptions.slice(0, INSERT_VISIBLE);
  const editorRoot = useRef<HTMLElement>(null), manualRef = useRef<HTMLTextAreaElement>(null);
  const invoker = useRef<HTMLElement | null>(null), insertInvoker = useRef<HTMLElement | null>(null), restoreInsert = useRef(true);
  const dialogRefs = useRef<(HTMLButtonElement | null)[]>([]), decisionRef = useRef<Decision | null>(null), copyBusy = useRef(false);
@@ -68,17 +74,22 @@ export function App() {
  const fractions = ex.assessment === 'fractions-round-1', questionBank = fractions ? fractionRoundOne : diagnosticQuestions;
  const exam = !!ex.diagnosticId && state.doc.exercises.some(x => x.diagnosticId === questionBank.length);
  const completed = state.doc.exercises.filter(x => wide ? ['Answered','Skipped'].includes(questionStatus(x)) : x.skipped || x.steps.some(s => latex(s.expression) !== '\\square')).length;
+ const answeredCount = state.doc.exercises.filter(x => questionStatus(x) === 'Answered').length, skippedCount = state.doc.exercises.filter(x => x.skipped).length;
+ const sessionId = state.doc.session?.id ?? '';
+ const needWellbeing = batch && !!sessionId && state.doc.session?.anxiety === undefined && state.doc.session?.energy === undefined && wellbeingDismissed !== sessionId && !wellbeingAsked(sessionId) && state.storageState?.kind !== 'conflict';
+ const [askingFor, setAskingFor] = useState<string | null>(null), askWellbeing = !!askingFor && askingFor === sessionId && wellbeingDismissed !== sessionId;
+ useEffect(() => { if (needWellbeing) setAskingFor(sessionId); }, [needWellbeing, sessionId]);
  const currentIndex = ex.steps.findIndex(x => x.id === state.doc.cursor.stepId), selected = activeInfo(state.doc);
  const selectionLabel = state.doc.cursor.sequenceId ? `Step ${currentIndex + 1} · Main-line insertion` : selected ? `Step ${currentIndex + 1}${selected.path}${state.doc.cursor.selected ? ' · Whole structure' : ' · Caret ' + state.doc.cursor.offset}` : '';
  const copied = !state.copies[ex.id] ? '' : state.copies[ex.id] === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
  const problemExpression = useMemo(() => { if (ex.mode !== 'math') return null; try { return parse(ex.source); } catch { return null; } }, [ex.mode, ex.source]);
- const modalOpen = shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
- useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); }, [ex.id]);
+ const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
+ useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); setGuidanceOpen(false); }, [ex.id]);
  useEffect(() => { setChoice(0); }, [wide]);
  useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
  function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
  function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
- function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertOpen(true); }
+ function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
   if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
@@ -136,7 +147,7 @@ export function App() {
  function cancelDecision() { decisionRef.current = null; setDecision(null); }
  function confirmDecision(value: 'low' | 'medium' | 'high') {
   const action = decisionRef.current; if (!action) return;
-  decisionRef.current = null; dispatch(actions.setConfidence(value)); setDecision(null); commit(action);
+  decisionRef.current = null; if (action !== 'copy') dispatch(actions.autoFinal()); dispatch(actions.setConfidence(value)); setDecision(null); commit(action);
  }
  function addStep() {
   dispatch(actions.command({ type: 'newStep' })); focusEditor();
@@ -175,10 +186,10 @@ export function App() {
   else if (key === 'ArrowUp' || key === 'ArrowDown') { event.preventDefault(); dispatch(actions.vertical(key === 'ArrowUp' ? -1 : 1)); }
   else if (key === 'Backspace' || key === 'Delete') { event.preventDefault(); dispatch(actions.command({ type: key === 'Delete' ? 'deleteForward' : 'backspace' })); }
   else if (key === 'Home' || key === 'End') { event.preventDefault(); const item = activeInfo(store.getState().doc); if (item?.node.type === 'number') dispatch(actions.select({ stepId: state.doc.cursor.stepId, nodeId: item.node.id, offset: key === 'Home' ? 0 : item.node.value.length })); }
-  else if (key === 'Enter' && state.doc.cursor.sequenceId) { event.preventDefault(); openInsert(); }
+  else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); addStep(); }
  }
  function dialogKeys(event: KeyboardEvent<HTMLDivElement>) {
-  event.stopPropagation(); const size = insertOptions.length;
+  event.stopPropagation(); const size = visibleInsert.length;
   if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); const delta = ({ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3} as Record<string,number>)[event.key]; setChoice(c => (c + delta + size) % size); }
   else if ((event.key === 'Home' || event.key === 'End') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); setChoice(event.key === 'Home' ? 0 : size - 1); }
   else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); insert((event.target as HTMLElement).getAttribute('data-insert-kind')!); }
@@ -195,8 +206,8 @@ export function App() {
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
   <div className="app-content" inert={modalOpen}>
    <header className="app-header"><div><p className="eyebrow">YOUR MATH NOTEBOOK</p><h1>Math Scratchpad</h1><p className="small subtitle">Write. Think. Take the next step.</p></div>
-    <div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>{driveBankAvailable && <Button onClick={() => setDriveBankOpen(true)}>New Drive questions</Button>}{wide && <><Button ref={helpInvoker} onClick={() => setShortcutsOpen(true)}>Keyboard shortcuts</Button></>}<Button className="desktop-action" onClick={() => setSetup(true)}>New Problem</Button><Button className="desktop-action" onClick={() => { jsonForm.reset({ json: serialize(store.getState()) }); setBackup(true); }}>Session JSON</Button>
-     <Button className="keyboard-toggle" aria-expanded={state.keyboardOpen} onClick={() => dispatch(actions.keyboard(!state.keyboardOpen))}>{state.keyboardOpen ? '⌨ Hide Keyboard' : '⌨ Show Keyboard'}</Button>
+    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} answered, ${skippedCount} skipped`}><strong>{answeredCount}</strong>/{state.doc.exercises.length} answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>{driveBankAvailable && <Button onClick={() => setDriveBankOpen(true)}>New Drive questions</Button>}{wide && <><Button ref={helpInvoker} onClick={() => setShortcutsOpen(true)}>Keyboard shortcuts</Button></>}<Button className="desktop-action" onClick={() => setSetup(true)}>New Problem</Button><Button className="desktop-action" onClick={() => { jsonForm.reset({ json: serialize(store.getState()) }); setBackup(true); }}>Session JSON</Button>
+     <Button className="keyboard-toggle" aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}>{state.keyboardOpen ? '⌨ Hide Keyboard' : '⌨ Show Keyboard'}</Button>
      <DropdownMenu open={menu} onOpenChange={setMenu}><DropdownMenuTrigger asChild><Button aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onClick={() => setMenu(value => !value)}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions">
       {batch && <DropdownMenuItem onSelect={() => request('copy')}>Check · Copy for Review</DropdownMenuItem>}
       <DropdownMenuItem onSelect={() => { void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
@@ -230,10 +241,9 @@ export function App() {
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
    {batch && <section className="exercise-bar" hidden={layout === 'desktop'} aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{wide ? ` · ${questionStatus(entry)}` : entry.skipped ? ' · Skipped' : entry.steps.some(s => s.final) ? ' · Final' : ' · Unanswered'}</option>)}</select></label>
     <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={completed} className="diagnostic-track"><div style={{ width: `${completed / state.doc.exercises.length * 100}%` }} /></div><p className="small progress-text">{completed} of {state.doc.exercises.length} answered or skipped · Answers hidden until Finish</p></section>}
-    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}</section>
-    <SessionPanel meta={state.doc.session} exercise={ex} onMeta={value => dispatch(actions.setSessionMeta(value))} onHint={value => dispatch(actions.setHint(value))} />
-    <QuestionTimer key={ex.id} exerciseId={ex.id} elapsedMs={ex.elapsedMs} suspended={modalOpen || setup || backup || confirmExam || confirmFractions} />
-    {layout === 'desktop' && <details className="shortcut-panel" open><summary>Keyboard shortcuts</summary><ShortcutHelp /></details>}
+    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}{ex.guidance && <details className="question-guidance" lang="fa" dir="rtl" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>راهنمای سؤال{ex.guidanceOpenedAt ? <span className="small guidance-used"> · استفاده شد</span> : null}</summary><p>{ex.guidance}</p></details>}</section>
+    <SessionPanel meta={state.doc.session} exercise={ex} onEditScales={() => { setWellbeingDismissed(null); setAskingFor(sessionId); }} />
+    <QuestionTimer key={ex.id} exerciseId={ex.id} />
     </div>
     <div className={`editor-layout work-pane ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? 'Your work' : undefined}><div className="notebook-main">
     {wide && mathTools}
@@ -265,10 +275,13 @@ export function App() {
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
   <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>
   <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="default" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
+  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc"><DialogTitle>Before you start this batch</DialogTitle><DialogDescription id="wellbeing-desc">Asked once per batch and applied to the whole session. Leave “Not set” if you prefer; you can change them later from Session details.</DialogDescription>
+   <SessionScales meta={state.doc.session} onMeta={value => dispatch(actions.setSessionMeta(value))} />
+   <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
   <Dialog open={insertOpen} onOpenChange={value => { if (!value) closeInsert(); }}><DialogContent className="insert-dialog" onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (restoreInsert.current && insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); else focusEditor(); }}>
-   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options">{insertOptions.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div><Button onClick={closeInsert}>Cancel · Esc</Button>
+   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" lang="fa" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'نمایش کمتر' : `نمایش بیشتر (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
  </main>;

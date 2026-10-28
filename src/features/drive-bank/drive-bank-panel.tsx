@@ -1,3 +1,4 @@
+import { initialKeyboardOpen } from '../../shared/lib/ui-prefs';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppStore } from '../../hooks';
 import { actions } from '../../store';
@@ -90,7 +91,7 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
     try {
       const doc = bankDocument(available.bank, available.version);
       archiveSession(store.getState());
-      dispatch(actions.load({ doc })); dispatch(actions.keyboard(true));
+      dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(true)));
       setArchives(readArchive()); onAvailable(false); setMessage('دستهٔ جدید باز شد؛ جلسهٔ قبلی در همین مرورگر حفظ شد.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'ذخیرهٔ جلسهٔ قبلی ناموفق بود.'} دستهٔ جدید باز نشد.`); }
   }

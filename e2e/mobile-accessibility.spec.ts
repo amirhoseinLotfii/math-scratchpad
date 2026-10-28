@@ -1,9 +1,10 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, dismissWellbeing } from './support/test';
 async function startBatch(page: Page) {
  await page.goto('/');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
+ await dismissWellbeing(page);
 }
 test('confidence dialog traps Tab and Shift+Tab and restores focus', async ({ page }) => {
  await startBatch(page);
@@ -24,8 +25,7 @@ test('batch completion requires confidence and offers explicit export actions', 
  await selector.selectOption(last!);
  await page.getByRole('button', { name: /Finish session/i }).click();
  const confidence = page.getByRole('dialog', { name: /confidence/i });
- await expect(confidence.getByRole('radio', { checked: true })).toHaveCount(1);
- await expect(confidence.getByRole('radio', { name: 'High' })).toBeChecked();
+ await expect(confidence.getByRole('radio', { checked: true })).toHaveCount(0);
  await confidence.getByRole('radio', { name: 'High' }).check();
  await confidence.getByRole('button', { name: /Continue/i }).click();
  const complete = page.getByRole('dialog', { name: /Session complete/i });

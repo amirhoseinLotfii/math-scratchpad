@@ -3,7 +3,7 @@ import { createStore } from 'zustand/vanilla';
 import { persist, type PersistOptions } from 'zustand/middleware';
 type PayloadAction<T> = { payload: T };
 import { validScale } from '../model/model';
-import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal } from '../../../model';
+import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal, elapsedAt } from '../../../model';
 import { parse } from '../../../parser';
 import { diagnosticQuestions } from '../../../diagnostic';
 import { fractionRoundOne } from '../../../fractionRoundOne';
@@ -269,6 +269,17 @@ const handlers = {
       const ex = exerciseOf(state.doc); ex.hintUsed = action.payload.used;
       const note = action.payload.note?.slice(0, 500); if (note) ex.hintNote = note; else delete ex.hintNote;
     },
+    openGuidance(state: ScratchState) {
+      const ex = exerciseOf(state.doc); if (!ex.guidance) return;
+      if (!ex.guidanceOpenedAt) ex.guidanceOpenedAt = isoLocal();
+    },
+    /** Before leaving a question with confirmed confidence: mark the last non-empty step Final when nothing is Final. */
+    autoFinal(state: ScratchState) {
+      const ex = exerciseOf(state.doc);
+      if (ex.skipped || ex.steps.some(s => s.final)) return;
+      const lastWork = [...ex.steps].reverse().find(s => latex(s.expression) !== '\\square');
+      if (lastWork) lastWork.final = true;
+    },
     setSessionMeta(state: ScratchState, action: PayloadAction<Partial<Omit<SessionMeta, 'id' | 'startedAt'>>>) {
       const meta = state.doc.session ?? (state.doc.session = newSessionMeta());
       const { anxiety, energy, ...rest } = action.payload; Object.assign(meta, rest);
@@ -330,6 +341,19 @@ const handlers = {
       if (index < 0) return;
       const [next] = state.future.splice(index, 1);
       state.past.push(clone(state.doc)); restoreExerciseEdit(state.doc, next); state.notice = '';
+    },
+    /** Opens a timing segment for the shown question and closes any other question's open segment. */
+    timerStart(state: ScratchState, action: PayloadAction<{ exerciseId: string; now: number }>) {
+      const { exerciseId, now } = action.payload; if (!Number.isFinite(now)) return;
+      for (const ex of state.doc.exercises) {
+        if (ex.id === exerciseId) { if (!ex.timerPaused && !Number.isFinite(ex.timerRunningSince)) ex.timerRunningSince = now; }
+        else if (Number.isFinite(ex.timerRunningSince)) { ex.elapsedMs = elapsedAt(ex, now); delete ex.timerRunningSince; }
+      }
+    },
+    timerPause(state: ScratchState, action: PayloadAction<{ exerciseId: string; now: number; paused: boolean }>) {
+      const ex = state.doc.exercises.find(x => x.id === action.payload.exerciseId); if (!ex) return;
+      if (action.payload.paused) { if (Number.isFinite(ex.timerRunningSince)) ex.elapsedMs = elapsedAt({ ...ex, timerPaused: false }, action.payload.now); delete ex.timerRunningSince; ex.timerPaused = true; }
+      else { delete ex.timerPaused; ex.timerRunningSince = action.payload.now; }
     },
     addQuestionTime(state: ScratchState, action: PayloadAction<{ exerciseId: string; milliseconds: number }>) {
       const ex = state.doc.exercises.find(x => x.id === action.payload.exerciseId);

@@ -17,26 +17,27 @@ describe('question navigator', () => {
   it('shows answered/skipped counts, statuses, current item and keyboard movement', async () => {
     const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x'); doc.exercises[0].steps[0].expression = parse('3'); doc.exercises[0].confidence = 'high'; doc.exercises[1].skipped = true;
     const onSelect = vi.fn(); render(<QuestionNavigator doc={doc} onSelect={onSelect} />);
-    expect(screen.getByText('2 of 2 answered or skipped')).toBeTruthy();
+    expect(screen.getByText('1 of 2 answered · 1 skipped')).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Question progress' }).getAttribute('aria-valuenow')).toBe('2');
-    const buttons = screen.getAllByRole('button'); expect(buttons[0].textContent).toContain('Answered'); expect(buttons[1].textContent).toContain('Skipped');
+    const buttons = screen.getAllByRole('button').filter(b => b.classList.contains('question-destination')); expect(buttons[0].textContent).toContain('Answered'); expect(buttons[1].textContent).toContain('Skipped');
     expect(buttons[0].getAttribute('aria-current')).toBe('page');
     const user = userEvent.setup(); buttons[0].focus(); await user.keyboard('{ArrowDown}'); expect(document.activeElement).toBe(buttons[1]); await user.keyboard('{Home}'); expect(document.activeElement).toBe(buttons[0]);
     await user.click(buttons[1]); expect(onSelect).toHaveBeenCalledWith(doc.exercises[1].id);
   });
   it('drafts without confidence do not count as answered', () => {
     const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x'); doc.exercises[0].steps[0].expression = parse('3');
-    render(<QuestionNavigator doc={doc} onSelect={() => undefined} />); expect(screen.getByText('0 of 2 answered or skipped')).toBeTruthy();
+    render(<QuestionNavigator doc={doc} onSelect={() => undefined} />); expect(screen.getByText('0 of 2 answered')).toBeTruthy();
   });
 });
 
 describe('question timer display', () => {
   it.each([[0, '00:00'], [999, '00:00'], [61000, '01:01'], [3599000, '59:59'], [3600000, '60:00']])('%i ms -> %s', (ms, text) => {
-    const store = makeStore(initialState()); render(<Provider store={store}><QuestionTimer exerciseId="x" elapsedMs={ms} /></Provider>);
+    vi.useFakeTimers(); const store = makeStore(initialState()); const ex = store.getState().doc.exercises[0]; store.dispatch(actions.addQuestionTime({ exerciseId: ex.id, milliseconds: ms }));
+    render(<Provider store={store}><QuestionTimer exerciseId={ex.id} /></Provider>);
     expect(screen.getByLabelText('Question elapsed time').textContent).toBe(text);
   });
   it('pause button toggles aria-pressed and label; direction is LTR', async () => {
-    const store = makeStore(initialState()); const { container } = render(<Provider store={store}><QuestionTimer exerciseId="x" /></Provider>);
+    const store = makeStore(initialState()); const { container } = render(<Provider store={store}><QuestionTimer exerciseId={store.getState().doc.exercises[0].id} /></Provider>);
     const b = screen.getByRole('button', { name: 'Pause' }); expect(b.getAttribute('aria-pressed')).toBe('false');
     await userEvent.setup().click(b); expect(screen.getByRole('button', { name: 'Resume' }).getAttribute('aria-pressed')).toBe('true');
     expect(container.querySelector('.question-timer')?.getAttribute('dir')).toBe('ltr');

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../support/test';
 import { openConfidence, startBatch } from '../support/mobile-journey';
 for (const state of ['single-edit', 'batch-edit', 'confidence'] as const) {
  test(`VISUAL ${state}: reviewed phone layout baseline`, async ({ page }) => {

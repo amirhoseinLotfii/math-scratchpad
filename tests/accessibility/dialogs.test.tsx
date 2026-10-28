@@ -11,12 +11,12 @@ describe('A11Y-DLG: modal confidence and symbols', () => {
   const dialog = screen.getByRole('dialog', { name: /confidence/i }); expect(dialog).toHaveAttribute('aria-modal', 'true');
   expect(dialog.contains(document.activeElement)).toBe(true);
  });
- it('has a named radio group, three named choices and High (5) preselected by default', async () => {
+ it('has a named radio group, three named choices and none preselected or auto-focused', async () => {
   const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
   const group = screen.getByRole('radiogroup', { name: /confiden/i });
   expect(within(group).getAllByRole('radio')).toHaveLength(3);
-  expect(within(group).getByRole('radio', { name: 'High' })).toBeChecked();
-  for (const name of ['Low','Medium']) expect(within(group).getByRole('radio', { name })).not.toBeChecked();
+  for (const name of ['Low','Medium','High']) expect(within(group).getByRole('radio', { name })).not.toBeChecked();
+  expect(document.activeElement).toBe(screen.getByRole('dialog', { name: /confidence/i }));
  });
  it('supports radio arrow-key selection without committing navigation', async () => {
   const { user, store } = renderMobileApp(); const id = store.getState().doc.exerciseId;

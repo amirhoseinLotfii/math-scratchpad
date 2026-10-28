@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '../support/test';
 import AxeBuilder from '@axe-core/playwright';
 import { openCompletion, startBatch } from '../support/mobile-journey';
 const box = async (page:Page, selector:string) => (await page.locator(selector).boundingBox())!;
@@ -73,7 +73,7 @@ test('WIDE-13: shortcut dialog traps focus, Escape restores the trigger, and wor
 });
 test('WIDE-14: next-question decision still requires confidence and cancellation preserves work',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('88');const next=page.getByRole('button',{name:/Next question/});await next.click();
- await expect(page.getByRole('radio',{name:'High',exact:true})).toBeChecked();await page.keyboard.press('Escape');await expect(next).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('88');
+ await expect(page.getByRole('radio',{checked:true})).toHaveCount(0);await page.keyboard.press('Escape');await expect(next).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('88');
 });
 test('WIDE-15: a committed answer advances, updates status and is retained on return',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('9');await page.getByRole('button',{name:/Next question/}).click();await page.getByRole('radio',{name:'Medium',exact:true}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();
@@ -121,7 +121,7 @@ test('WIDE-25: the initial notebook fits the viewport without empty page scrolli
 });
 test('WIDE-26: advanced notation is available without a numeric keyboard',async({page})=>{
  await startBatch(page);await page.getByRole('button',{name:'More math tools'}).click();const dialog=page.getByRole('dialog',{name:'Insert Math Element'});
- await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
+ await dialog.getByRole('button',{name:/نمایش بیشتر/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
  await expect(page.getByLabel('Step 1 expression')).toContainText('7');await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
 test('WIDE-27: End and Home keep the full notation catalog focus visible',async({page})=>{
@@ -134,4 +134,13 @@ for(const state of ['single','batch','multi-step','shortcuts'] as const)test(`WI
  if(state==='multi-step'){await page.getByRole('main').focus();await page.keyboard.press('/');await page.keyboard.press('Enter');await page.keyboard.type('12');await page.keyboard.press('ArrowDown');await page.keyboard.type('7');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('42');}
  if(state==='shortcuts')await page.getByRole('button',{name:'Keyboard shortcuts',exact:true}).click();
  await expect(page).toHaveScreenshot(`${state}.png`,{fullPage:true,animations:'disabled',caret:'hide',mask:[page.getByLabel('Question elapsed time')],maxDiffPixelRatio:0.005});
+});
+test('WIDE-KB-13: virtual keyboard is closed by default on desktop and an explicit choice survives reload',async({page})=>{
+ await page.addInitScript(()=>{ const k='math-scratchpad-redux-v2'; if(!sessionStorage.getItem('seeded')){ sessionStorage.setItem('seeded','1'); const raw=localStorage.getItem(k); if(raw){ const d=JSON.parse(raw); d.keyboardOpen=true; localStorage.setItem(k,JSON.stringify(d)); } } });
+ await startBatch(page);const toggle=page.locator('.keyboard-toggle');
+ await expect(toggle).toHaveText(/Show Keyboard/);await expect(toggle).toHaveAttribute('aria-expanded','false');
+ await toggle.click();await expect(toggle).toHaveText(/Hide Keyboard/);
+ expect(await page.evaluate(()=>localStorage.getItem('math-scratchpad-ui-v1:virtual-keyboard'))).toBe('1');
+ await page.reload();await expect(page.locator('.keyboard-toggle')).toHaveText(/Hide Keyboard/);
+ await page.locator('.keyboard-toggle').click();await page.reload();await expect(page.locator('.keyboard-toggle')).toHaveText(/Show Keyboard/);
 });

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, dismissWellbeing } from './support/test';
 test.beforeEach(async ({ page }) => { await page.goto('/'); });
 test('touch controls fit the mobile container and preserve keypad order', async ({ page }) => {
  if (!(await page.locator('[aria-label="Numeric keys"]').isVisible())) await page.getByRole('button', { name: /Show Keyboard/ }).click();
@@ -43,6 +43,7 @@ test('confidence modal supports keyboard cancellation without losing focus', asy
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
+ await dismissWellbeing(page);
  const next = page.getByRole('button', { name: /Next question/i });
  await next.click();
  const dialog = page.getByRole('dialog', { name: /confidence/i });
@@ -57,3 +58,11 @@ test('phone header keeps desktop setup buttons in the overflow menu', async ({ p
  await expect(page.getByRole('heading', { name: 'Math Scratchpad', exact: true })).toBeVisible();
  await expect(page.getByRole('button', { name: 'Exercise menu' })).toBeVisible();
 });
+test('KB-13: phone keeps its keyboard open by default and remembers an explicit Hide', async ({ page }) => {
+ await startKb(page); const toggle = page.locator('.keyboard-toggle');
+ await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+ await page.getByRole('button', { name: /More tools/ }).click(); await page.getByRole('button', { name: 'Hide keys' }).click(); await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+ expect(await page.evaluate(() => localStorage.getItem('math-scratchpad-ui-v1:virtual-keyboard'))).toBe('0');
+ await page.reload(); await expect(page.locator('.keyboard-toggle')).toHaveAttribute('aria-expanded', 'false');
+});
+async function startKb(page: import('./support/test').Page) { const { startBatch } = await import('./support/mobile-journey'); await startBatch(page); }

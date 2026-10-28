@@ -6,13 +6,14 @@ import { scanDOM } from '../support/accessibility';
 afterEach(cleanup);
 
 describe('A11Y-FORM: validation, explanation and error focus', () => {
- it('confidence defaults to High so Continue never submits an empty value', async () => {
-  const { user, store } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
+ it('confidence has no default; Continue without a choice explains the error and does not advance', async () => {
+  const { user, store } = renderMobileApp(); const id = store.getState().doc.exerciseId; await user.click(screen.getByRole('button', { name: /Next question/i }));
   const dialog = screen.getByRole('dialog', { name: /confidence/i });
-  expect(within(dialog).getByRole('radio', { name: 'High' })).toBeChecked();
+  expect(within(dialog).getByRole('radio', { name: 'High' })).not.toBeChecked();
   await user.click(within(dialog).getByRole('button', { name: /continue/i }));
-  expect(screen.queryByRole('alert')).toBeNull();
-  expect(store.getState().doc.exercises[0].confidence).toBe('high');
+  expect(await screen.findByRole('alert')).toHaveTextContent(/Choose your confidence/);
+  expect(store.getState().doc.exercises[0].confidence).toBeUndefined();
+  expect(store.getState().doc.exerciseId).toBe(id);
  });
  it('a lower confidence choice replaces the default before Continue', async () => {
   const { user, store } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));

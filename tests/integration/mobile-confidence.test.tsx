@@ -10,7 +10,7 @@ async function open() { await userEvent.click(screen.getByRole('button', { name:
 describe('Confidence decision boundaries', () => {
  it.each([['Low','low'], ['Medium','medium'], ['High','high']])('commits %s only on explicit Continue', async (label, value) => {
   const s = mount(), dialog = await open(), first = s.getState().doc.exerciseId;
-  expect(within(dialog).getAllByRole('radio').filter(x => (x as HTMLInputElement).checked).map(x => (x as HTMLInputElement).value)).toEqual(['high']);
+  expect(within(dialog).getAllByRole('radio').filter(x => (x as HTMLInputElement).checked).map(x => (x as HTMLInputElement).value)).toEqual([]); // nothing is chosen on the student's behalf
   await userEvent.click(within(dialog).getByRole('radio', { name: label }));
   expect(s.getState().doc.exerciseId).toBe(first);
   await userEvent.click(within(dialog).getByRole('button', { name: /continue/i }));

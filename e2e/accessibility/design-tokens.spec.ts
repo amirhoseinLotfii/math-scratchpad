@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../support/test';
 test('DS-01: shared semantic theme tokens exist for surfaces, text, focus and errors', async ({ page }) => {
  await page.goto('/');
  const values = await page.getByRole('main').evaluate(el => {
