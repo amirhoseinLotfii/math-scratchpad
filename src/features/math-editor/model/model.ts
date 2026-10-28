@@ -3,7 +3,8 @@ export type Sequence = { id: string; type: 'sequence'; children: MathNode[] };
 export type Structure =
   | { id: string; type: 'fraction'; numerator: Sequence; denominator: Sequence }
   | { id: string; type: 'power'; base: Sequence; exponent: Sequence }
-  | { id: string; type: 'root' | 'group'; body: Sequence }
+  | { id: string; type: 'root'; body: Sequence }
+  | { id: string; type: 'group'; body: Sequence; delim?: 'bracket' }
   | { id: string; type: 'matrix'; size: number; cells: Sequence[] }
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
@@ -18,6 +19,8 @@ export function isoLocal(date = new Date()): string {
   const off = -date.getTimezoneOffset(), sign = off >= 0 ? '+' : '-';
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}${sign}${pad(off / 60)}:${pad(off % 60)}`;
 }
+/** Anxiety/energy are integers 1-5; anything else is treated as not recorded. */
+export const validScale = (v: unknown): number | undefined => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 5 ? v as number : undefined;
 export type Preferences = { compact: boolean; favorites: string[]; recent: string[] };
 export const uid = () => `m${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 export const num = (value = ''): Leaf => ({ id: uid(), type: 'number', value });
@@ -76,9 +79,9 @@ export function latex(n: MathNode | Sequence): string {
   if (n.type === 'identifier') return ({ 'π': '\\pi ', 'θ': '\\theta ', '∞': '\\infty ', 'σ': '\\sigma ' } as Record<string, string>)[n.value] || n.value;
   if (n.type === 'operator') return ({ '×': '\\times ', '÷': '\\div ', '−': '-', '≤': '\\le ', '≥': '\\ge ', '≠': '\\ne ' } as Record<string, string>)[n.value] || n.value;
   if (n.type === 'fraction') return `\\frac{${latex(n.numerator)}}{${latex(n.denominator)}}`;
-  if (n.type === 'power') return `{${latex(n.base)}}^{${latex(n.exponent)}}`;
+  if (n.type === 'power') return `{${latex(n.base)}}^{${latex(n.exponent)}}`; // the parser reads {..} before ^ as invisible grouping
   if (n.type === 'root') return `\\sqrt{${latex(n.body)}}`;
-  if (n.type === 'group') return `\\left(${latex(n.body)}\\right)`;
+  if (n.type === 'group') return n.delim === 'bracket' ? `\\left[${latex(n.body)}\\right]` : `\\left(${latex(n.body)}\\right)`;
   if (n.type === 'matrix') { const rows = []; for (let i = 0; i < n.size; i++) rows.push(n.cells.slice(i * n.size, (i + 1) * n.size).map(latex).join('&')); return `\\begin{bmatrix}${rows.join('\\\\')}\\end{bmatrix}`; }
   if (n.type !== 'template') return '';
   const a = n.args.map(latex);

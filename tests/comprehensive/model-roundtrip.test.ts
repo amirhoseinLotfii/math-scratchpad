@@ -1,12 +1,20 @@
-import { describe, expect, it, test } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parse } from '../../src/parser';
 import { ascii, fields, freshNode, latex, leaves, makeStructure, nodes, templateCounts, findSequence, isoLocal } from '../../src/model';
 import { initialState, stepOf } from '../../src/store';
 import { serialize, validateSession } from '../../src/persistence';
 
-const stable = ['1+2', '\\frac{1}{2}', '\\frac{\\frac{1}{2}}{3}+4', '\\sqrt{x+1}', 'a\\times b\\div c', 'a\\le b', 'a\\ge b', 'a\\ne b', '\\pi +\\theta ', '(1+2)\\times 3', 'f(x)', '-3', '1.5+.5', '\\square', 'x=y'];
+const stable = ['x^2', '{x+1}^{2}', '5!', '{n+1}!', '3%', '{50}%', 'abs(x)', '|x-1|', '\\sin(x)', 'sin x', '\\frac12', '[1+2]', '20-[3\\times(5-2)]', '\\left[x\\right]^2', '\\frac{1}{2}^2', 'e^{i\\pi}', 'a,b', '\\sqrt{(x)}', 'x^{y^{z}}', '1+2', '\\frac{1}{2}', '\\frac{\\frac{1}{2}}{3}+4', '\\sqrt{x+1}', 'a\\times b\\div c', 'a\\le b', 'a\\ge b', 'a\\ne b', '\\pi +\\theta ', '(1+2)\\times 3', 'f(x)', '-3', '1.5+.5', '\\square', 'x=y'];
 describe('serialize -> parse round trips', () => {
   it.each(stable)('latex(parse(latex(parse(%s)))) is a fixed point', s => { const once = latex(parse(s)); expect(latex(parse(once))).toBe(once); });
+  it('structural round trip: parse(latex(t)) has the same node types as t', () => {
+    const shape = (x: unknown): unknown => Array.isArray(x) ? x.map(shape) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).filter(([k]) => k !== 'id').map(([k, v]) => [k, shape(v)])) : x;
+    for (const s of stable) { const t = parse(s); expect(shape(parse(latex(t)))).toEqual(shape(t)); }
+  });
+  it('brackets survive persistence with their delimiter', () => {
+    const state = initialState(); stepOf(state.doc).expression = parse('[x]'); const back = validateSession(JSON.parse(serialize(state)));
+    expect(back.doc.exercises[0].steps[0].expression.children[0]).toMatchObject({ type: 'group', delim: 'bracket' });
+  });
   it('every simple structure survives session serialize/validate', () => {
     for (const s of stable) {
       const state = initialState(); stepOf(state.doc).expression = parse(s);
@@ -14,14 +22,14 @@ describe('serialize -> parse round trips', () => {
       expect(latex(back.doc.exercises[0].steps[0].expression)).toBe(latex(parse(s)));
     }
   });
-  // BUG-5: power serializes its base as {x}; re-importing reads { } as a visible group, so x^2 becomes (x)^2.
-  test.fails('BUG-5 x^2 round trip is stable', () => { const once = latex(parse('x^2')); expect(latex(parse(once))).toBe(once); });
-  test.fails('BUG-5 5! round trip is stable', () => { const once = latex(parse('5!')); expect(latex(parse(once))).toBe(once); });
-  // BUG-6: the serializer's own output for percent ({3}\%) and abs (\left|x\right|) cannot be re-imported.
-  test.fails('BUG-6 percent output can be re-imported', () => { expect(() => parse(latex(parse('3%')))).not.toThrow(); });
-  test.fails('BUG-6 abs output can be re-imported', () => { expect(() => parse(latex(parse('abs(x)')))).not.toThrow(); });
-  // BUG-7: the parser emits a "," operator (from "," or "،") but validateSession rejects it, so the whole draft is lost on reload.
-  test.fails('BUG-7 a step containing a comma survives persistence', () => {
+  // BUG-5 regression
+  it('BUG-5 x^2 round trip is stable', () => { const once = latex(parse('x^2')); expect(latex(parse(once))).toBe(once); });
+  it('BUG-5 5! round trip is stable', () => { const once = latex(parse('5!')); expect(latex(parse(once))).toBe(once); });
+  // BUG-6 regression
+  it('BUG-6 percent output can be re-imported', () => { expect(() => parse(latex(parse('3%')))).not.toThrow(); });
+  it('BUG-6 abs output can be re-imported', () => { expect(() => parse(latex(parse('abs(x)')))).not.toThrow(); });
+  // BUG-7 regression
+  it('BUG-7 a step containing a comma survives persistence', () => {
     const state = initialState(); stepOf(state.doc).expression = parse('a,b');
     expect(() => validateSession(JSON.parse(serialize(state)))).not.toThrow();
   });

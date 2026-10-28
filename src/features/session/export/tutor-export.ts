@@ -1,4 +1,4 @@
-import { ascii, isoLocal, latex, type Document, type Exercise } from '../../../model';
+import { ascii, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
 import { APP_VERSION } from '../../../version';
 import { questionStatus } from '../../workspace/model/workspace-layout';
 
@@ -54,7 +54,7 @@ export function buildTutorExport(doc: Document, now = new Date()): TutorExport {
   const count = (s: ItemStatus) => items.filter(x => x.status === s).length;
   return {
     schema_version: TUTOR_EXPORT_SCHEMA, app: 'math-scratchpad', app_version: APP_VERSION, exported_at: isoLocal(now),
-    session_id: meta?.id ?? 'unknown', ...(meta?.bankId ? { bank_id: meta.bankId } : {}), ...(meta?.bankVersion ? { bank_version: meta.bankVersion } : {}), anxiety: meta?.anxiety ?? null, energy: meta?.energy ?? null,
+    session_id: meta?.id ?? 'unknown', ...(meta?.bankId ? { bank_id: meta.bankId } : {}), ...(meta?.bankVersion ? { bank_version: meta.bankVersion } : {}), anxiety: validScale(meta?.anxiety) ?? null, energy: validScale(meta?.energy) ?? null,
     started_at: meta?.startedAt ?? items.map(x => x.started_at).filter(Boolean).sort()[0] ?? isoLocal(now), ended_at: meta?.endedAt ?? null,
     totals: { items: items.length, answered: count('answered'), skipped: count('skipped'), unanswered: count('unanswered'), missing_final_answer: missingFinalAnswers(doc).length },
     items,

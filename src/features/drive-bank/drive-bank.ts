@@ -8,15 +8,32 @@ export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
 export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string };
 export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[] };
 const safeId = /^[\w.-]{1,80}$/;
+const FORBIDDEN_SEGMENTS = new Set(['answer', 'answers', 'solution', 'solutions', 'key', 'keys', 'expected', 'rubric', 'verification']);
+/** Splits a field name into words (answer_key, answerKey, ANSWER-KEY, answer.key -> answer, key), so "keyboard" or "monkey" are not flagged. */
+export function forbiddenKey(name: string): boolean {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return words.some(w => FORBIDDEN_SEGMENTS.has(w)) || words.join('_') === 'final_answer';
+}
+/** Returns the path of the first answer/key-like field anywhere in the JSON, or null. */
+export function findForbiddenKey(value: unknown, path = '', depth = 0): string | null {
+  if (depth > 64 || !value || typeof value !== 'object') return null;
+  for (const [k, v] of Object.entries(value)) {
+    const here = Array.isArray(value) ? `${path}[${k}]` : path ? `${path}.${k}` : k;
+    if (!Array.isArray(value) && forbiddenKey(k)) return here;
+    const inner = findForbiddenKey(v, here, depth + 1); if (inner) return inner;
+  }
+  return null;
+}
 export function validateBank(input: unknown): DriveBank {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('ساختار بانک معتبر نیست.');
   const data = input as Record<string, unknown>;
+  const leaked = findForbiddenKey(data);
+  if (leaked) throw Error(`بانک سؤال نباید پاسخ یا کلید داشته باشد (فیلد «${leaked}»). فایل رد شد.`);
   if (data.schema_version !== BANK_SCHEMA || typeof data.bank_id !== 'string' || !safeId.test(data.bank_id) || typeof data.version !== 'string' || !safeId.test(data.version) || !Array.isArray(data.questions) || data.questions.length > 40) throw Error('شناسه، نسخه یا ساختار بانک معتبر نیست.');
   const ids = new Set<string>();
   const questions = data.questions.map((entry): BankQuestion => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw Error('ساختار سؤال معتبر نیست.');
     const q = entry as Record<string, unknown>;
-    if (Object.keys(q).some(k => /^(answer|answers|expected|solution|key|rubric|verification)$/i.test(k))) throw Error('بانک سؤال نباید پاسخ یا کلید داشته باشد.');
     if (typeof q.id !== 'string' || !safeId.test(q.id) || ids.has(q.id) || !['math', 'text'].includes(String(q.mode)) || typeof q.source !== 'string' || !q.source.trim() || q.source.length > 4000 || (q.prompt !== undefined && (typeof q.prompt !== 'string' || q.prompt.length >= 4000))) throw Error('متن، قالب یا شناسهٔ سؤال معتبر نیست.');
     ids.add(q.id);
     if (q.mode === 'math') parse(ascii(q.source));

@@ -27,10 +27,11 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
     const nodeId = id(v.id);
     if (v.type === 'number' && typeof v.value === 'string' && /^[0-9.]{0,60}$/.test(v.value)) return { id: nodeId, type: 'number', value: v.value };
     if (v.type === 'identifier' && typeof v.value === 'string' && /^[a-zA-Zπθ∞σ]$/.test(v.value)) return { id: nodeId, type: 'identifier', value: v.value };
-    if (v.type === 'operator' && ['+', '−', '×', '÷', '=', '<', '>', '≤', '≥', '≠'].includes(v.value)) return { id: nodeId, type: 'operator', value: v.value };
+    if (v.type === 'operator' && ['+', '−', '×', '÷', '=', '<', '>', '≤', '≥', '≠', ','].includes(v.value)) return { id: nodeId, type: 'operator', value: v.value };
     if (v.type === 'fraction') return { id: nodeId, type: 'fraction', numerator: sequence(v.numerator, depth + 1), denominator: sequence(v.denominator, depth + 1) };
     if (v.type === 'power') return { id: nodeId, type: 'power', base: sequence(v.base, depth + 1), exponent: sequence(v.exponent, depth + 1) };
-    if (v.type === 'root' || v.type === 'group') return { id: nodeId, type: v.type, body: sequence(v.body, depth + 1) };
+    if (v.type === 'root') return { id: nodeId, type: 'root', body: sequence(v.body, depth + 1) };
+    if (v.type === 'group') return { id: nodeId, type: 'group', body: sequence(v.body, depth + 1), ...(v.delim === 'bracket' ? { delim: 'bracket' as const } : {}) };
     if (v.type === 'matrix' && [2, 3].includes(v.size) && Array.isArray(v.cells) && v.cells.length === v.size * v.size) return { id: nodeId, type: 'matrix', size: v.size, cells: v.cells.map((x: Bag) => sequence(x, depth + 1)) };
     if (v.type === 'template' && Object.hasOwn(templateCounts, v.kind) && Array.isArray(v.args) && v.args.length === templateCounts[v.kind]) return { id: nodeId, type: 'template', kind: v.kind, args: v.args.map((x: Bag) => sequence(x, depth + 1)) };
     throw Error('Invalid mathematical content.');

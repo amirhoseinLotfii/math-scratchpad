@@ -89,8 +89,8 @@ describe('Drive bank panel', () => {
   });
   it('a broken update keeps the previous bank and says so', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1 }; mockDrive(drive); const { user } = panel(); await connect(user); await screen.findByText(/2 سؤال/);
-    drive.content = BANK('20-[3\\times(5-2)]', 'v2'); drive.rev = 2; await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
-    expect(await screen.findByText(/Unsupported input near \[.*نسخهٔ قبلی دریافت‌شده و جلسهٔ فعلی دست نخورد/)).toBeTruthy();
+    drive.content = BANK('x_1', 'v2'); drive.rev = 2; await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
+    expect(await screen.findByText(/Unsupported input near _1.*نسخهٔ قبلی دریافت‌شده و جلسهٔ فعلی دست نخورد/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' })).toBeTruthy();
   });
   it('shows Google Doc and 403 errors in Persian', async () => {

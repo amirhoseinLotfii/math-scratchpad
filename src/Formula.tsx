@@ -40,7 +40,7 @@ export function Formula({ sequence, stepId, path = '', top = false, readOnly = f
     if (n.type === 'fraction') content = <span className="fraction"><span className="numerator">{field(n.numerator, 'Numerator')}</span><span>{field(n.denominator, 'Denominator')}</span></span>;
     else if (n.type === 'power') content = <span className="power">{field(n.base, 'Base')}<sup>{field(n.exponent, 'Exponent')}</sup></span>;
     else if (n.type === 'root') content = <span className="radical"><span aria-hidden="true">√</span><span className="radicand">{field(n.body, 'Radicand')}</span></span>;
-    else if (n.type === 'group') content = <span className="group"><span aria-hidden="true">(</span>{field(n.body, 'Parentheses')}<span aria-hidden="true">)</span></span>;
+    else if (n.type === 'group') content = <span className="group"><span aria-hidden="true">{n.delim === 'bracket' ? '[' : '('}</span>{field(n.body, n.delim === 'bracket' ? 'Brackets' : 'Parentheses')}<span aria-hidden="true">{n.delim === 'bracket' ? ']' : ')'}</span></span>;
     else if (n.type === 'matrix') content = <span className="matrix-scroll"><span className="matrix" style={{ gridTemplateColumns: `repeat(${n.size}, max-content)` }}>{n.cells.map((cell, i) => <span key={cell.id}>{field(cell, `Row ${Math.floor(i / n.size) + 1} column ${i % n.size + 1}`)}</span>)}</span></span>;
     else if (n.type === 'template') {
       const fs = fields(n), a = n.args.map((s, i) => <Fragment key={s.id}>{field(s, fs[i][1])}</Fragment>);

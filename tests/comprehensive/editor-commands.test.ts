@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../../src/store';
 import { latex } from '../../src/model';
 import { validateSession, serialize } from '../../src/persistence';
@@ -59,8 +59,12 @@ describe('steps, final answer, undo/redo', () => {
 
 describe('session metadata', () => {
   it('anxiety and energy in range are stored', () => { const { d, doc } = setup(); d(actions.setSessionMeta({ anxiety: 1, energy: 5 })); expect(doc().session).toMatchObject({ anxiety: 1, energy: 5 }); });
-  // BUG-8: the reducer stores out-of-range anxiety/energy; export sends it, but reload silently drops it.
-  test.fails('BUG-8 out-of-range anxiety is rejected by the reducer', () => { const { d, doc } = setup(); d(actions.setSessionMeta({ anxiety: 9 })); expect(doc().session?.anxiety).toBeUndefined(); });
+  it('BUG-8 out-of-range or non-integer anxiety/energy are rejected by the reducer', () => {
+    const { d, doc } = setup(); d(actions.setSessionMeta({ anxiety: 3, energy: 4 }));
+    for (const bad of [9, 0, -1, 2.5, NaN, '3' as unknown as number]) { d(actions.setSessionMeta({ anxiety: bad })); expect(doc().session?.anxiety).toBeUndefined(); }
+    d(actions.setSessionMeta({ anxiety: 5 })); expect(doc().session).toMatchObject({ anxiety: 5, energy: 4 });
+    d(actions.setSessionMeta({ endedAt: 'x' })); expect(doc().session?.energy).toBe(4); // untouched when not in payload
+  });
   it('persistence drops out-of-range anxiety/energy', () => {
     const st = initialState(); st.doc.session = { ...st.doc.session!, anxiety: 9, energy: 0 };
     const back = validateSession(JSON.parse(serialize(st))); expect(back.doc.session?.anxiety).toBeUndefined(); expect(back.doc.session?.energy).toBeUndefined();

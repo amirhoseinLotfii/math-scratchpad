@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, test, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BANK_SCHEMA, EMPTY_BANK, ARCHIVE_KEY, archiveSession, bankDocument, driveError, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBank, readPrivateBankText, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { getConfig, saveConfig, requestToken, pickFile, DRIVE_SCOPE } from '../../src/features/drive-bank/google';
 import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from '../../src/features/drive-bank/drive-config';
@@ -8,7 +8,7 @@ import { validateSession } from '../../src/persistence';
 
 const q = (id: string, extra: Record<string, unknown> = {}) => ({ id, mode: 'math', source: '1+2', ...extra });
 const bank = (extra: Record<string, unknown> = {}) => ({ schema_version: BANK_SCHEMA, bank_id: 'B1', version: 'v1', questions: [q('Q01')], ...extra });
-const INVALID = 'شناسه، نسخه یا ساختار بانک معتبر نیست.', BADQ = 'متن، قالب یا شناسهٔ سؤال معتبر نیست.', KEY = 'بانک سؤال نباید پاسخ یا کلید داشته باشد.';
+const INVALID = 'شناسه، نسخه یا ساختار بانک معتبر نیست.', BADQ = 'متن، قالب یا شناسهٔ سؤال معتبر نیست.', KEY = 'بانک سؤال نباید پاسخ یا کلید داشته باشد';
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); delete window.google; });
 
 describe('validateBank: top level', () => {
@@ -40,9 +40,22 @@ describe('validateBank: questions', () => {
     expect(validateBank(bank({ questions: [q('Q1', { source: '۱+۲' })] })).questions[0].source).toBe('۱+۲');
   });
   it('keeps prompt only when it is a string', () => { expect(validateBank(bank({ questions: [q('Q1', { prompt: 'حل کن' })] })).questions[0].prompt).toBe('حل کن'); expect(validateBank(bank()).questions[0]).not.toHaveProperty('prompt'); });
-  // BUG-9: forbidden-key check only looks at exact keys on each question. Top-level keys and variants are silently accepted (and dropped), so a bank with keys is not flagged.
-  test.fails('BUG-9 rejects a top-level answers/key field', () => expect(() => validateBank(bank({ answers: { Q01: '3' } }))).toThrow(KEY));
-  test.fails('BUG-9 rejects variant field names like answer_key / final_answer', () => expect(() => validateBank(bank({ questions: [q('Q1', { answer_key: '3' })] }))).toThrow(KEY));
+  it('BUG-9 rejects a top-level answers/key field and names the field', () => { expect(() => validateBank(bank({ answers: { Q01: '3' } }))).toThrow(KEY); expect(() => validateBank(bank({ answers: 1 }))).toThrow('«answers»'); });
+  it.each(['answer_key', 'answerKey', 'AnswerKey', 'ANSWER_KEY', 'final_answer', 'finalAnswer', 'FINAL-ANSWER', 'expected_value', 'expectedValue', 'solutions', 'solution.steps', 'keys', 'Key', 'model_solution', 'correctAnswer', 'student answer', 'rubric', 'Expected'])('BUG-9 rejects field %j on a question', k => expect(() => validateBank(bank({ questions: [q('Q1', { [k]: '3' })] }))).toThrow(KEY));
+  it('BUG-9 rejects forbidden fields at any depth, including inside arrays', () => {
+    expect(() => validateBank(bank({ meta: { notes: [{ deep: { answerKey: 1 } }] } }))).toThrow('meta.notes[0].deep.answerKey');
+    expect(() => validateBank(bank({ questions: [q('Q1', { extra: { solution: 'x' } })] }))).toThrow('questions[0].extra.solution');
+  });
+  it.each(['keyboard', 'keyword', 'monkey', 'turkey', 'keystroke', 'hotkeyHint', 'answered_count', 'expectedness', 'solver', 'source_note', 'prompt_hint'])('BUG-9 does not flag the harmless field %j', k => {
+    expect(() => validateBank(bank({ [k]: 'x', questions: [q('Q1')] }))).not.toThrow();
+  });
+  it('BUG-9 forbidden word in a value (not a key) is fine', () => expect(validateBank(bank({ questions: [q('Q1', { mode: 'text', source: 'answer key solution expected' })] })).questions).toHaveLength(1));
+  it('the real private bank v3 is still accepted', async () => {
+    const fs = await import('node:fs'); const path = '/workspace/bank_v3.json';
+    if (!fs.existsSync(path)) return; // private file, only present on the dev box
+    const raw = JSON.parse(fs.readFileSync(path, 'utf8')); // local copy predates the schema_version line added on Drive
+    const parsed = parseBankText(JSON.stringify({ schema_version: BANK_SCHEMA, ...raw })); expect(parsed).not.toBe(EMPTY_BANK); expect((parsed as { questions: unknown[] }).questions).toHaveLength(26);
+  });
 });
 
 describe('parseBankText', () => {
@@ -51,7 +64,10 @@ describe('parseBankText', () => {
   it.each(['{', 'not json', '{"a":1,}', "{'a':1}"])('invalid JSON %j gives the Persian JSON error', t => expect(() => parseBankText(t)).toThrow('JSON معتبر نیست'));
   it('rejects files over 1,000,000 characters before parsing', () => expect(() => parseBankText(' '.repeat(1000001))).toThrow('بیش از حد بزرگ'));
   it('reproduces the missing schema_version incident', () => { const b: Record<string, unknown> = bank(); delete b.schema_version; expect(() => parseBankText(JSON.stringify(b))).toThrow(INVALID); });
-  it('reproduces the bracket incident: one bad question rejects the whole file', () => expect(() => parseBankText(JSON.stringify(bank({ questions: [q('A'), q('N2c-PL02', { source: '20-[3\\times(5-2)]' })] })))).toThrow('Unsupported input near ['));
+  it('the bracket incident file (N2c-PL02 with [ ]) is now accepted, while a truly bad question still rejects the whole file', () => {
+    expect(parseBankText(JSON.stringify(bank({ questions: [q('A'), q('N2c-PL02', { source: '20-[3\\times(5-2)]' })] })))).not.toBe(EMPTY_BANK);
+    expect(() => parseBankText(JSON.stringify(bank({ questions: [q('A'), q('B', { source: 'x_1' })] })))).toThrow('Unsupported input near _1');
+  });
 });
 
 describe('snapshotVersion and bankDocument', () => {

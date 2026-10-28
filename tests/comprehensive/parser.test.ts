@@ -51,10 +51,10 @@ describe('parser: malformed input gives clear errors', () => {
     ['/2', 'Put a value before this operator.'], ['+/2', 'Put a value before this operator.'], ['!', 'Put a value before this operator.'], ['%', 'Put a value before this operator.'], ['^2', 'Put a value before this operator.'],
     ['(x', 'Close the parenthesis.'], ['{x', 'Close the LaTeX brace.'], ['x)', 'Unsupported input near ).'], ['x}', 'Unsupported input near }.'],
     ['x^', 'Complete the expression.'], ['\\frac{1}', 'Complete the expression.'], ['\\sqrt', 'Complete the expression.'],
-    ['\\', 'Check the LaTeX command.'], ['\\\\', 'Check the LaTeX command.'], ['\\%', 'Check the LaTeX command.'], ['\\{x\\}', 'Check the LaTeX command.'],
+    ['\\', 'Check the LaTeX command.'], ['\\\\', 'Check the LaTeX command.'], ['\\%', 'Put a value before this operator.'], ['\\{x\\}', 'Check the LaTeX command.'],
     ['\\alpha', 'Cannot import \\alpha yet. Insert its template from Symbols.'], ['\\timesx', 'Cannot import \\timesx yet. Insert its template from Symbols.'],
-    ['|x|', 'Unsupported input near |x|.'], ['x_1', 'Unsupported input near _1.'], ['x²', 'Unsupported input near ².'], ['٫5', 'Unsupported input near ٫5.'], ['x^^2', 'Unsupported input near ^2.'],
-    ['\\sqrt[3]{8}', 'Unsupported input near [3]{8}.'], ['\\left[x\\right]', 'Unsupported input near [x].'],
+    ['|x', 'Close the absolute value bar.'], ['[x', 'Close the square bracket.'], ['x]', 'Unsupported input near ].'], ['sin', 'Add the argument of sin, e.g. sin(x).'], ['\\cos+1', 'Add the argument of cos, e.g. cos(x).'], ['x_1', 'Unsupported input near _1.'], ['x²', 'Unsupported input near ².'], ['٫5', 'Unsupported input near ٫5.'], ['x^^2', 'Unsupported input near ^2.'],
+    ['\\sqrt[3]{8}', 'nth roots like \\sqrt[3]{x} are not supported yet'],
     ['sin x)', 'Unsupported input near ).'],
   ])('%j -> %s', (input, message) => expect(() => parse(input)).toThrow(message));
   it('rejects input over 4000 characters, accepts exactly 4000 and large flat expressions', () => {
@@ -78,13 +78,26 @@ describe('parser: malformed input gives clear errors', () => {
   });
 });
 
-describe('parser: known bugs', () => {
-  // BUG-1: square brackets are not supported, so a bank like N2c-PL02 `20-[3\times(5-2)]` rejects the whole file.
-  test.fails('BUG-1 accepts square brackets as grouping', () => { expect(tex('20-[3\\times(5-2)]')).toBe('20-\\left(3\\times \\left(5-2\\right)\\right)'); });
-  // BUG-2: standard LaTeX shorthand \frac12 fails because group() reads one atom and "12" is one number.
-  test.fails('BUG-2 accepts \\frac12 shorthand', () => { expect(tex('\\frac12')).toBe('\\frac{1}{2}'); });
-  // BUG-3: `\sin(x)` keeps the parentheses as an extra group: \sin((x)).
-  test.fails('BUG-3 \\sin(x) is the same as sin(x)', () => { expect(tex('\\sin(x)')).toBe(tex('sin(x)')); });
-  // BUG-4: "sin x" without backslash or parentheses silently becomes s·i·n·x instead of an error or sin.
-  test.fails('BUG-4 bare "sin x" is not silently split into letters', () => { expect(tex('sin x')).not.toBe('sinx'); });
+describe('parser: regressions for fixed bugs', () => {
+  it('BUG-1 square brackets are real bracket groups and serialize as brackets', () => {
+    expect(tex('20-[3\\times(5-2)]')).toBe('20-\\left[3\\times \\left(5-2\\right)\\right]');
+    expect(parse('[x]').children[0]).toMatchObject({ type: 'group', delim: 'bracket' });
+    expect(parse('(x)').children[0]).not.toHaveProperty('delim');
+    expect(tex('\\left[x+1\\right]^2')).toBe('{\\left[x+1\\right]}^{2}');
+    expect(tex('[[1]]')).toBe('\\left[\\left[1\\right]\\right]');
+    expect(() => parse('[x)')).toThrow('Unsupported input near ).');
+  });
+  it('BUG-1 nth root gives a clear error (the root node has no index)', () => expect(() => parse('\\sqrt[3]{8}')).toThrow(/nth roots/));
+  it('BUG-2 \\frac12 shorthand uses one digit per argument', () => {
+    expect(tex('\\frac12')).toBe('\\frac{1}{2}'); expect(tex('\\frac123')).toBe('\\frac{1}{2}3'); expect(tex('\\frac1{23}')).toBe('\\frac{1}{23}'); expect(tex('\\frac ab')).toBe('\\frac{a}{b}'); expect(tex('\\sqrt12')).toBe('\\sqrt{1}2');
+    expect(tex('x^10')).toBe('{x}^{10}'); // students mean x^{10}; ^ keeps the whole number
+  });
+  it('BUG-3 \\sin(x) has one pair of parentheses', () => {
+    for (const f of ['sin', 'cos', 'tan', 'log', 'ln', 'exp']) { expect(tex(`\\${f}(x)`)).toBe(tex(`${f}(x)`)); expect(tex(`\\${f}(x)`)).toBe(`\\${f}\\left(x\\right)`); }
+    expect(tex('\\log(10)')).toBe('\\log\\left(10\\right)');
+  });
+  it('BUG-4 bare function names are read as functions', () => {
+    expect(tex('sin x')).toBe('\\sin\\left(x\\right)'); expect(tex('cos 30')).toBe('\\cos\\left(30\\right)'); expect(tex('2sin x+1')).toBe('2\\sin\\left(x\\right)+1');
+    expect(tex('ln{e}')).toBe('\\ln\\left(e\\right)'); expect(tex('sine')).toBe('sine'); expect(tex('x')).toBe('x');
+  });
 });

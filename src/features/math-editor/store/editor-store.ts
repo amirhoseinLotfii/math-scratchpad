@@ -2,6 +2,7 @@ import { produce } from 'immer';
 import { createStore } from 'zustand/vanilla';
 import { persist, type PersistOptions } from 'zustand/middleware';
 type PayloadAction<T> = { payload: T };
+import { validScale } from '../model/model';
 import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal } from '../../../model';
 import { parse } from '../../../parser';
 import { diagnosticQuestions } from '../../../diagnostic';
@@ -270,7 +271,8 @@ const handlers = {
     },
     setSessionMeta(state: ScratchState, action: PayloadAction<Partial<Omit<SessionMeta, 'id' | 'startedAt'>>>) {
       const meta = state.doc.session ?? (state.doc.session = newSessionMeta());
-      Object.assign(meta, action.payload);
+      const { anxiety, energy, ...rest } = action.payload; Object.assign(meta, rest);
+      for (const [k, v] of [['anxiety', anxiety], ['energy', energy]] as const) { if (!(k in action.payload)) continue; const ok = validScale(v); if (ok) meta[k] = ok; else delete meta[k]; }
     },
     resetSession(state: ScratchState) {
       state.doc = initialDocument(); state.past = []; state.future = []; state.copies = {}; state.notice = 'Session reset. A new session has started.';
