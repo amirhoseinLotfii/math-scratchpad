@@ -1,16 +1,20 @@
-import { Undo2, Redo2 } from 'lucide-react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { Button } from '../../../shared/ui/button';
 export function MathTools({ wide, canUndo, canRedo, onUndo, onRedo, onInsert, onMore }: {
  wide:boolean;canUndo:boolean;canRedo:boolean;onUndo:()=>void;onRedo:()=>void;onInsert:(kind:string)=>void;onMore:()=>void;
 }) {
- return <div className="math-tools-row">
-  {wide && <div className="wide-history-tools" role="group" aria-label="Edit history"><Button disabled={!canUndo} onClick={onUndo}><Undo2 aria-hidden="true" />Undo</Button><Button disabled={!canRedo} onClick={onRedo}><Redo2 aria-hidden="true" />Redo</Button></div>}
-  <div className="quick-math-tools" role="group" aria-label="Quick math tools">{[
-   {label:'Insert fraction',kind:'fraction',glyph:<svg className="math-tool-icon" viewBox="0 0 36 38" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M21 5c-8-5-10 9-3 7l4-3M22 3l-2 10M7 18h22M15 22l-2 12c12 4 13-14 1-5" /></svg>},
-   {label:'Insert parentheses',kind:'group',glyph:'( )'}, {label:'Insert square root',kind:'root',glyph:'√'},
-   {label:'Insert power',kind:'power',glyph:<svg className="math-tool-icon" viewBox="0 0 36 38" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M8 14l13 17M21 14L8 31M24 7q8-6 8 0q0 3-8 9h8" /></svg>},
-   {label:'Insert equals',kind:'=',glyph:'='},
-  ].map(tool=><Button key={tool.kind} title={tool.label} aria-label={tool.label} onClick={()=>onInsert(tool.kind)}><span aria-hidden="true">{tool.glyph}</span></Button>)}</div>
-  {wide && <Button className="wide-more-tools" onClick={onMore}>More math tools</Button>}
- </div>;
+ const root=useRef<HTMLDivElement>(null),[active,setActive]=useState('fraction');
+ const tools=[
+  {key:'undo',label:'Undo',name:'Undo',disabled:!canUndo,run:onUndo},
+  {key:'redo',label:'Redo',name:'Redo',disabled:!canRedo,run:onRedo},
+  ...[{key:'fraction',label:'Fraction'},{key:'number',label:'Number'},{key:'root',label:'Root'},{key:'power',label:'Power'},{key:'group',label:'Parentheses'},...['+','−','×','÷','='].map(key=>({key,label:key}))].map(t=>({...t,name:`Insert ${t.key==='group'?'parentheses':t.key==='root'?'square root':t.key==='number'?'number':t.key==='power'?'power':t.key==='fraction'?'fraction':t.key==='='?'equals':t.key}`,disabled:false,run:()=>onInsert(t.key)})),
+  {key:'more',label:'More math tools',name:'More math tools',disabled:false,run:onMore}
+ ];
+ const current=tools.find(t=>t.key===active&&!t.disabled)?.key??tools.find(t=>!t.disabled)!.key;
+ function keys(event:KeyboardEvent<HTMLDivElement>){
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  const buttons=Array.from(root.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')??[]),at=buttons.indexOf(event.target as HTMLButtonElement);if(at<0)return;
+  event.preventDefault();const index=event.key==='Home'?0:event.key==='End'?buttons.length-1:(at+(event.key==='ArrowLeft'?-1:1)+buttons.length)%buttons.length;buttons[index]?.focus();
+ }
+ return <div ref={root} className="math-tools-row" role="toolbar" aria-label="Math tools" data-wide={wide} onKeyDown={keys}>{tools.map(t=><Button key={t.key} aria-label={t.name} disabled={t.disabled} tabIndex={current===t.key?0:-1} onFocus={()=>setActive(t.key)} onClick={t.run}>{t.label}</Button>)}</div>;
 }

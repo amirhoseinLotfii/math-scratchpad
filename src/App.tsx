@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Pause, Play } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, activeInfo, exerciseOf } from './store';
-import { ascii, example, leaves, latex, symbolList } from './model';
+import { answerTypeOf, ascii, example, leaves, latex, symbolList } from './model';
 import { parse } from './parser';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
@@ -14,6 +14,8 @@ import { gradeDiagnostic } from './assessment';
 import { migrateChatDiagnosticSession } from './legacyDiagnostic';
 import { Formula } from './Formula';
 import { Keyboard } from './Keyboard';
+import { ChoiceAnswer } from './features/workspace/components/choice-answer';
+import { QuestionPrompt } from './features/workspace/components/question-prompt';
 import { QuestionTimer } from './QuestionTimer';
 import { Button } from './shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './shared/ui/dialog';
@@ -27,7 +29,7 @@ import { QuestionNavigator } from './features/workspace/components/question-navi
 import { MathTools } from './features/workspace/components/math-tools';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { ShortcutHelp } from './features/workspace/components/shortcut-help';
-import { SessionPanel, SessionScales } from './features/session/components/session-panel';
+import { SessionScales } from './features/session/components/session-panel';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
 import { clearAppStorage } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
@@ -48,15 +50,19 @@ export function App() {
  const layout = useWorkspaceLayout(), wide = layout !== 'phone';
  const insertOptions = useMemo(() => wide ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({name:item.title,kind:item.key}))] : INSERT_OPTIONS, [wide]);
  const [shortcutsOpen, setShortcutsOpen] = useState(false), [insertExpanded, setInsertExpanded] = useState(false);
+ const [insertQuery,setInsertQuery]=useState('');
  const [guidanceOpen, setGuidanceOpen] = useState(false);
  const [wellbeingDismissed, setWellbeingDismissed] = useState<string | null>(null);
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
  const fileInput = useRef<HTMLInputElement>(null);
- const helpInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const batch = state.doc.exercises.length > 1, last = exerciseIndex === state.doc.exercises.length - 1;
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false);
+ const [menuMore,setMenuMore]=useState(false);
+ const menuTrigger=useRef<HTMLButtonElement>(null), menuEscape=useRef(false);
+ const textAnswer=useRef<HTMLTextAreaElement>(null), firstChoice=useRef<HTMLButtonElement>(null);
+ const answerType=answerTypeOf(ex);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [driveBankAvailable, setDriveBankAvailable] = useState(false);
@@ -64,16 +70,17 @@ export function App() {
  const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);
  const [decision, setDecision] = useState<Decision | null>(null), [complete, setComplete] = useState(false);
  const [manual, setManual] = useState(''), [busy, setBusy] = useState(false), [showResults, setShowResults] = useState(false);
- const visibleInsert = insertExpanded ? insertOptions : insertOptions.slice(0, INSERT_VISIBLE);
+ const visibleInsert = insertExpanded ? insertOptions.filter(tool=>tool.name.toLowerCase().includes(insertQuery.trim().toLowerCase())) : insertOptions.slice(0, INSERT_VISIBLE);
  const editorRoot = useRef<HTMLElement>(null), manualRef = useRef<HTMLTextAreaElement>(null);
  const invoker = useRef<HTMLElement | null>(null), insertInvoker = useRef<HTMLElement | null>(null), restoreInsert = useRef(true);
  const dialogRefs = useRef<(HTMLButtonElement | null)[]>([]), decisionRef = useRef<Decision | null>(null), copyBusy = useRef(false);
  const problemForm = useForm({ resolver: zodResolver(problemSchema), defaultValues: { source: '', mode: 'math' as 'math' | 'text' } });
  const jsonForm = useForm({ resolver: zodResolver(jsonInputSchema), defaultValues: { json: '' } });
  const mode = problemForm.watch('mode');
+ useEffect(()=>{if(!menu&&(setup||backup)){const frame=requestAnimationFrame(()=>{if(setup)problemForm.setFocus('source');if(backup)jsonForm.setFocus('json');});return()=>cancelAnimationFrame(frame);}},[setup,backup,menu]);
  const fractions = ex.assessment === 'fractions-round-1', questionBank = fractions ? fractionRoundOne : diagnosticQuestions;
  const exam = !!ex.diagnosticId && state.doc.exercises.some(x => x.diagnosticId === questionBank.length);
- const completed = state.doc.exercises.filter(x => wide ? ['Answered','Skipped'].includes(questionStatus(x)) : x.skipped || x.steps.some(s => latex(s.expression) !== '\\square')).length;
+ const completed = state.doc.exercises.filter(x => ['Answered','Skipped'].includes(questionStatus(x))).length;
  const answeredCount = state.doc.exercises.filter(x => questionStatus(x) === 'Answered').length, skippedCount = state.doc.exercises.filter(x => x.skipped).length;
  const sessionId = state.doc.session?.id ?? '';
  const needWellbeing = batch && !!sessionId && state.doc.session?.anxiety === undefined && state.doc.session?.energy === undefined && wellbeingDismissed !== sessionId && !wellbeingAsked(sessionId) && state.storageState?.kind !== 'conflict';
@@ -83,13 +90,22 @@ export function App() {
  const selectionLabel = state.doc.cursor.sequenceId ? `Step ${currentIndex + 1} · Main-line insertion` : selected ? `Step ${currentIndex + 1}${selected.path}${state.doc.cursor.selected ? ' · Whole structure' : ' · Caret ' + state.doc.cursor.offset}` : '';
  const copied = !state.copies[ex.id] ? '' : state.copies[ex.id] === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
  const problemExpression = useMemo(() => { if (ex.mode !== 'math') return null; try { return parse(ex.source); } catch { return null; } }, [ex.mode, ex.source]);
- const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
- useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); setGuidanceOpen(false); }, [ex.id]);
+ const modalOpen = confirmExam || confirmFractions || askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
+ useEffect(() => { setGuidanceOpen(false); menuEscape.current=false; }, [ex.id]);
+ useEffect(() => { if (!modalOpen && !menu && !setup && !backup && !driveBankOpen && !menuEscape.current) { const frame=requestAnimationFrame(focusEditor); return ()=>cancelAnimationFrame(frame); } }, [ex.id,modalOpen,menu,setup,backup,driveBankOpen]);
  useEffect(() => { setChoice(0); }, [wide]);
- useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
- function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
- function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
- function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
+ useEffect(() => { if (insertOpen && document.activeElement?.tagName!=='INPUT') { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
+ function switchQuestion(id: string) { menuEscape.current=false; dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
+ function focusEditor() {
+  if(backup||setup||driveBankOpen||document.querySelector('[role=dialog], [role=menu]')) return;
+  const kind=answerTypeOf(exerciseOf(store.getState().doc));
+  const target=kind==='text'?textAnswer.current:kind==='choice'?firstChoice.current:editorRoot.current;
+  target?.focus({preventScroll:true});
+ }
+ function returnToEditor(event: {preventDefault:()=>void}) { event.preventDefault(); requestAnimationFrame(focusEditor); }
+ function changeMenu(open:boolean) { if(open){menuEscape.current=false;setMenuMore(false);}setMenu(open); }
+ function previousQuestion(){ menuEscape.current=false;dispatch(actions.adjacentExercise(-1));setManual('');setShowResults(false);requestAnimationFrame(focusEditor); }
+ function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertQuery(''); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
   if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
@@ -135,7 +151,7 @@ export function App() {
   else if (kind === 'all') { if (store.clearStorage) store.clearStorage(); else clearAppStorage(); window.location.reload(); }
  }
  function commit(action: Decision) {
-  if (action === 'next') { dispatch(actions.adjacentExercise(1)); setManual(''); setShowResults(false); }
+  if (action === 'next') { dispatch(actions.adjacentExercise(1)); setManual(''); setShowResults(false); menuEscape.current=false; requestAnimationFrame(focusEditor); }
   else if (action === 'complete') setComplete(true);
   else void copyReview();
  }
@@ -164,37 +180,40 @@ export function App() {
  });
  const loadBackup = jsonForm.handleSubmit(value => {
   try { const raw = JSON.parse(value.json); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); setBackup(false); setShowResults(false); }
-  catch (error) { jsonForm.setError('json', { message: error instanceof Error ? error.message : 'Invalid session JSON.' }, { shouldFocus: true }); }
+  catch (error) { jsonForm.setError('json', { message: 'Could not restore this backup. Check that it is a complete Math Scratchpad session JSON (version 1 or 2).' }, { shouldFocus: true }); }
  });
  function keyboard(event: KeyboardEvent<HTMLElement>) {
   const key = event.key, target = event.target as HTMLElement;
+  if(!event.nativeEvent.isComposing && !modalOpen && !menu && !setup && (event.ctrlKey||event.metaKey) && event.altKey && ['ArrowLeft','ArrowRight'].includes(key)){event.preventDefault();if(key==='ArrowLeft')previousQuestion();else if(!last)request('next');return;}
   if (event.defaultPrevented || event.nativeEvent.isComposing || modalOpen || setup || backup || confirmExam || confirmFractions) return;
   if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable) return;
+  if(answerType!=='math')return;
   const inMath = target === editorRoot.current || !!target.closest('.expression'); if (!inMath) return;
   if (event.ctrlKey || event.metaKey) {
    if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); }
    else if (key.toLowerCase() === 'y') { event.preventDefault(); dispatch(actions.redo()); } return;
   }
   if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); return; }
-  if (event.altKey) { if (key.toLowerCase() === 'f' || key.toLowerCase() === 'r') { event.preventDefault(); insert(key.toLowerCase() === 'f' ? 'fraction' : 'root'); } return; }
+  if (event.altKey) { if (key.toLowerCase() === 'f' || key.toLowerCase() === 'r' || event.code==='KeyR') { event.preventDefault(); insert(key.toLowerCase() === 'f' ? 'fraction' : 'root'); } return; }
   if (/^[0-9.]$/.test(key)) { event.preventDefault(); dispatch(actions.command({ type: 'digit', value: key })); }
   else if (/^[a-zA-Z]$/.test(key)) { event.preventDefault(); dispatch(actions.command({ type: 'identifier', value: key })); }
-  else if (key === '/') { event.preventDefault(); openInsert(); }
+  else if (key === '/') { event.preventDefault(); insert('fraction'); }
+  else if(key==='^'){event.preventDefault();insert('power');}
   else if (['+','-','−','*','×','÷','='].includes(key)) { event.preventDefault(); dispatch(actions.command({ type: 'operator', value: ({ '-':'−','*':'×' } as Record<string,string>)[key] ?? key })); }
   else if (key === '(') { event.preventDefault(); insert('group'); }
   else if (key === 'ArrowLeft' || key === 'ArrowRight') { event.preventDefault(); dispatch(actions.horizontal(key === 'ArrowLeft' ? -1 : 1)); }
-  else if (key === 'ArrowUp' || key === 'ArrowDown') { event.preventDefault(); dispatch(actions.vertical(key === 'ArrowUp' ? -1 : 1)); }
+  else if (key === 'ArrowUp' || key === 'ArrowDown') { event.preventDefault(); const dir=key==='ArrowUp'?-1:1; const before=JSON.stringify(store.getState().doc.cursor);dispatch(actions.vertical(dir));if(JSON.stringify(store.getState().doc.cursor)===before){const line=ex.steps[currentIndex+dir];if(line)dispatch(actions.select({stepId:line.id,nodeId:leaves(line.expression)[0].node.id}));} }
   else if (key === 'Backspace' || key === 'Delete') { event.preventDefault(); dispatch(actions.command({ type: key === 'Delete' ? 'deleteForward' : 'backspace' })); }
   else if (key === 'Home' || key === 'End') { event.preventDefault(); const item = activeInfo(store.getState().doc); if (item?.node.type === 'number') dispatch(actions.select({ stepId: state.doc.cursor.stepId, nodeId: item.node.id, offset: key === 'Home' ? 0 : item.node.value.length })); }
   else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); addStep(); }
  }
  function dialogKeys(event: KeyboardEvent<HTMLDivElement>) {
-  event.stopPropagation(); const size = visibleInsert.length;
-  if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); const delta = ({ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3} as Record<string,number>)[event.key]; setChoice(c => (c + delta + size) % size); }
+  event.stopPropagation(); if((event.target as HTMLElement).tagName==='INPUT'&&event.key!=='Tab')return; const size = visibleInsert.length;
+  if (size>0&&['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); const delta = ({ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3} as Record<string,number>)[event.key]; setChoice(c => (c + delta + size) % size); }
   else if ((event.key === 'Home' || event.key === 'End') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); setChoice(event.key === 'Home' ? 0 : size - 1); }
   else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); insert((event.target as HTMLElement).getAttribute('data-insert-kind')!); }
   else if (event.key === 'Tab') {
-   event.preventDefault(); const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button')); const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+   event.preventDefault(); const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input')); const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
    buttons[(at + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length]?.focus();
   }
  }
@@ -206,25 +225,32 @@ export function App() {
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
   <div className="app-content" inert={modalOpen}>
    <header className="app-header"><div><p className="eyebrow">YOUR MATH NOTEBOOK</p><h1>Math Scratchpad</h1><p className="small subtitle">Write. Think. Take the next step.</p></div>
-    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} answered, ${skippedCount} skipped`}><strong>{answeredCount}</strong>/{state.doc.exercises.length} answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>{driveBankAvailable && <Button onClick={() => setDriveBankOpen(true)}>New Drive questions</Button>}{wide && <><Button ref={helpInvoker} onClick={() => setShortcutsOpen(true)}>Keyboard shortcuts</Button></>}<Button className="desktop-action" onClick={() => setSetup(true)}>New Problem</Button><Button className="desktop-action" onClick={() => { jsonForm.reset({ json: serialize(store.getState()) }); setBackup(true); }}>Session JSON</Button>
-     <Button className="keyboard-toggle" aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}>{state.keyboardOpen ? '⌨ Hide Keyboard' : '⌨ Show Keyboard'}</Button>
-     <DropdownMenu open={menu} onOpenChange={setMenu}><DropdownMenuTrigger asChild><Button aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onClick={() => setMenu(value => !value)}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions">
-      {batch && <DropdownMenuItem onSelect={() => request('copy')}>Check · Copy for Review</DropdownMenuItem>}
-      <DropdownMenuItem onSelect={() => { void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => { void exportTutor(); }}>Export for tutor (JSON)</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => { setDriveBankInitialized(true); setDriveBankOpen(true); }}>Google Drive · بانک سؤال</DropdownMenuItem>
-      <DropdownMenuItem onSelect={downloadBackup}>Download backup file</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => fileInput.current?.click()}>Import backup file</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => dispatch(actions.setSessionMeta({ endedAt: isoLocal() }))}>End session (record end time)</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setResetKind('session')}>Reset current session</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setResetKind('all')}>Reset all local storage</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setSetup(true)}>New Problem</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => { jsonForm.reset({ json: '' }); setBackup(true); }}>Import session JSON</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setConfirmFractions(true)}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setConfirmExam(true)}>Start 30-question diagnostic</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' }))}>Use example</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newProblem' }))}>Use current expression as new problem</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => dispatch(actions.setSkipped(!ex.skipped))}>{ex.skipped ? 'Unskip question' : 'Skip question'}</DropdownMenuItem>
+    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} answered, ${skippedCount} skipped`}><strong>{answeredCount}</strong> of {state.doc.exercises.length} answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</p>}{batch&&<div className="header-track" role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><div style={{width:`${answeredCount/state.doc.exercises.length*100}%`}}/></div>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>{driveBankAvailable && <Button onClick={() => setDriveBankOpen(true)}>New Drive questions</Button>}<Button className="keyboard-toggle" aria-label={state.keyboardOpen?'⌨ Hide Keyboard':'⌨ Show Keyboard'} title={state.keyboardOpen?'Hide Keyboard':'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}><span aria-hidden="true">⌨</span><span className="keyboard-label">{state.keyboardOpen?'Hide Keyboard':'Show Keyboard'}</span></Button>
+     <DropdownMenu open={menu} onOpenChange={changeMenu}><DropdownMenuTrigger asChild><Button ref={menuTrigger} aria-label="Exercise menu" size="icon"><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" onEscapeKeyDown={()=>{menuEscape.current=true;}} onCloseAutoFocus={event=>{event.preventDefault();requestAnimationFrame(()=>{if(menuEscape.current)menuTrigger.current?.focus();else focusEditor();});}}>
+      <DropdownMenuItem onSelect={()=>request('copy')}>Check · Copy for Review</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>{void exportTutor();}}>Export for tutor (JSON)</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>{setDriveBankInitialized(true);setDriveBankOpen(true);}}>Google Drive · بانک سؤال</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>setSetup(true)}>New Problem</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>dispatch(actions.setSkipped(!ex.skipped))}>{ex.skipped?'Unskip question':'Skip question'}</DropdownMenuItem>
+      <DropdownMenuItem className="menu-more" aria-expanded={menuMore} aria-controls="extra-actions" onSelect={event=>{event.preventDefault();setMenuMore(!menuMore);}}>Show more <span aria-hidden="true">{menuMore?'⌃':'⌄'}</span></DropdownMenuItem>
+      {menuMore&&<div id="extra-actions" role="presentation">
+       <div role="group" aria-label="Session"><h3 role="presentation" className="menu-group-title">Session</h3>
+        <DropdownMenuItem className="session-menu-details" onSelect={()=>{setWellbeingDismissed(null);setAskingFor(sessionId);}}>Session details<span className="menu-description">Session {sessionId} · Math anxiety: {state.doc.session?.anxiety??'Not set'} · Energy: {state.doc.session?.energy??'Not set'}</span><span className="menu-change">Change</span></DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>dispatch(actions.setSessionMeta({endedAt:isoLocal()}))}>End session (record end time)</DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>setResetKind('session')}>Reset current session</DropdownMenuItem>
+       </div><div role="group" aria-label="Practice"><h3 role="presentation" className="menu-group-title">Practice</h3>
+        <DropdownMenuItem onSelect={()=>setConfirmFractions(true)}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>setConfirmExam(true)}>Start 30-question diagnostic</DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>dispatch(actions.command({type:'newExercise',source:example,mode:'math'}))}>Use example</DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>dispatch(actions.command({type:'newProblem'}))}>Use current expression as new problem</DropdownMenuItem>
+       </div><div role="group" aria-label="Data"><h3 role="presentation" className="menu-group-title">Data</h3>
+        <DropdownMenuItem onSelect={()=>{void copySession();}}>Copy full session JSON</DropdownMenuItem>
+        <DropdownMenuItem onSelect={downloadBackup}>Download backup file</DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>fileInput.current?.click()}>Import backup file</DropdownMenuItem>
+        <DropdownMenuItem onSelect={()=>{jsonForm.reset({json:''});setBackup(true);}}>Import session JSON</DropdownMenuItem>
+       </div><div role="group" aria-label="Help"><h3 role="presentation" className="menu-group-title">Help</h3><DropdownMenuItem onSelect={()=>setShortcutsOpen(true)}>Keyboard shortcuts</DropdownMenuItem></div>
+       <div role="group" aria-label="Danger zone"><h3 role="presentation" className="menu-group-title danger-text">Danger zone</h3><DropdownMenuItem className="danger-text" onSelect={()=>setResetKind('all')}>Reset all local storage</DropdownMenuItem></div>
+      </div>}
      </DropdownMenuContent></DropdownMenu>
     </div></header>
 
@@ -239,16 +265,16 @@ export function App() {
    {backup && <section className="setup-panel" aria-label="Session backup"><h2>Session backup</h2><form onSubmit={loadBackup} noValidate><label htmlFor="session-json">Copy or paste session JSON</label><textarea id="session-json" {...jsonForm.register('json')} spellCheck={false} aria-invalid={!!jsonForm.formState.errors.json} aria-describedby={jsonForm.formState.errors.json ? 'json-error' : undefined} /><div className="toolbar"><Button onClick={async () => dispatch(actions.notice(await writeClipboard(jsonForm.getValues('json')) ? 'Session copied.' : 'Select the text and copy manually.'))}>Copy Session</Button><Button type="submit">Restore</Button><Button onClick={() => setBackup(false)}>Close</Button></div>{jsonForm.formState.errors.json && <p id="json-error" role="alert">{jsonForm.formState.errors.json.message}</p>}</form></section>}
    <div className="workspace">{layout === 'desktop' && batch && <QuestionNavigator doc={state.doc} onSelect={switchQuestion} />}
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
-   {batch && <section className="exercise-bar" hidden={layout === 'desktop'} aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{wide ? ` · ${questionStatus(entry)}` : entry.skipped ? ' · Skipped' : entry.steps.some(s => s.final) ? ' · Final' : ' · Unanswered'}</option>)}</select></label>
-    <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={completed} className="diagnostic-track"><div style={{ width: `${completed / state.doc.exercises.length * 100}%` }} /></div><p className="small progress-text">{completed} of {state.doc.exercises.length} answered or skipped · Answers hidden until Finish</p></section>}
-    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}{ex.guidance && <details className="question-guidance" lang="fa" dir="rtl" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>راهنمای سؤال{ex.guidanceOpenedAt ? <span className="small guidance-used"> · استفاده شد</span> : null}</summary><p>{ex.guidance}</p></details>}</section>
-    <SessionPanel meta={state.doc.session} exercise={ex} onEditScales={() => { setWellbeingDismissed(null); setAskingFor(sessionId); }} />
+   {batch && <section className="exercise-bar" hidden={layout === 'desktop'} aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{` · ${questionStatus(entry)}`}</option>)}</select></label>
+</section>}
+    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}<QuestionPrompt prompt={ex.prompt}/>{ex.mode==='text'?ex.source.trim()&&<p className="problem-source" dir="auto">{ex.source}</p>:problemExpression?<div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly/></div>:<p className="problem-source" dir="auto">{ex.source}</p>}{ex.guidance && <details className="question-guidance" lang="fa" dir="rtl" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>راهنمای سؤال{ex.guidanceOpenedAt ? <span className="small guidance-used"> · استفاده شد</span> : null}</summary><p>{ex.guidance}</p></details>}</section>
     <QuestionTimer key={ex.id} exerciseId={ex.id} />
     </div>
-    <div className={`editor-layout work-pane ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? 'Your work' : undefined}><div className="notebook-main">
-    {wide && mathTools}
-    {wide && <div className="work-heading"><h2>Your work</h2><p className="small">Write each step. Review when you're ready.</p></div>}
+    <div data-answer-type={answerType} className={`editor-layout work-pane ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? 'Your work' : undefined}><div className="notebook-main">
+    {wide && answerType==='math' && mathTools}
+    <div className="work-heading"><h2>Your work</h2>{answerType==='math'&&<p className="small">Write each step. Review when you're ready.</p>}</div>
 
+    {answerType==='text'?<div className="text-answer"><label htmlFor="answer-text">Answer</label><textarea id="answer-text" ref={textAnswer} dir="auto" value={ex.answerText??''} maxLength={10000} onChange={event=>dispatch(actions.setAnswerText(event.target.value))}/></div>:answerType==='choice'?<ChoiceAnswer choices={ex.choices??[]} value={ex.answerText} firstRef={firstChoice} onChange={value=>dispatch(actions.setAnswerText(value))}/>:<>
     <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => <article className={`step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id} data-step-id={step.id}>
      <header className="step-header"><Button className="step-title" variant="ghost" onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); focusEditor(); }}>Step {i + 1}</Button><span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
       <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); dispatch(actions.command({ type: 'final' })); }}>Final{step.final ? ' ✓' : ''}</Button>
@@ -259,9 +285,10 @@ export function App() {
     <Button className="add-step" onClick={addStep}><Plus aria-hidden="true" />Add step</Button>
     {!wide && mathTools}
     {state.keyboardOpen && <Keyboard />}
-    <footer className="review-controls">{wide && <p className="wide-keyboard-hint"><kbd>/</kbd> Insert symbols · <kbd>Ctrl / Cmd + Z</kbd> Undo · <kbd>Tab</kbd> Move focus</p>}{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
+    </>}
+    <footer className="review-controls">{wide && answerType==='math' && <p className="wide-keyboard-hint"><kbd>/</kbd> Fraction · <kbd>^</kbd> Power · <kbd>Ctrl / Cmd + Z</kbd> Undo · <kbd>Tab</kbd> Move focus</p>}{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
      <p className={`copy-state ${copied === 'Changed since copy' ? 'changed' : ''}`}>{copied}</p><p className="small" role="status" aria-live="polite">{state.notice}</p>
-     {batch && <nav className="question-navigation" aria-label="Question navigation"><Button disabled={exerciseIndex === 0} onClick={() => { dispatch(actions.adjacentExercise(-1)); setManual(''); }}>← Previous</Button><Button onClick={() => request(last ? 'complete' : 'next')}>{last ? 'Finish session' : 'Next question →'}</Button></nav>}
+     {batch && <nav className="question-navigation" aria-label="Question navigation"><Button disabled={exerciseIndex === 0} onClick={previousQuestion}>← Previous</Button><Button onClick={() => request(last ? 'complete' : 'next')}>{last ? 'Finish session' : 'Next question →'}</Button></nav>}
      {wide && batch && !ex.skipped && <p className="confidence-hint">Confidence required before continuing.</p>}
 
      {state.storageState?.kind === 'error' && <p role="alert">{state.storageState.message}</p>}
@@ -271,17 +298,17 @@ export function App() {
    </div></div>
    </div>
   </div>
-  <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); helpInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
+  <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(focusEditor); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
-  <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>
-  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="default" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
-  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc"><DialogTitle>Before you start this batch</DialogTitle><DialogDescription id="wellbeing-desc">Asked once per batch and applied to the whole session. Leave “Not set” if you prefer; you can change them later from Session details.</DialogDescription>
+  <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent onCloseAutoFocus={returnToEditor}><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>
+  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent onCloseAutoFocus={returnToEditor}><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="default" className="danger-action" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
+  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); } }}><DialogContent className="wellbeing-dialog" onCloseAutoFocus={returnToEditor} onOpenAutoFocus={event=>{event.preventDefault();requestAnimationFrame(()=>document.querySelector<HTMLInputElement>('.wellbeing-dialog input[type=radio]')?.focus());}} aria-describedby="wellbeing-desc"><DialogTitle>Before you start this batch</DialogTitle><DialogDescription id="wellbeing-desc">Optional. You can change this later.</DialogDescription>
    <SessionScales meta={state.doc.session} onMeta={value => dispatch(actions.setSessionMeta(value))} />
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
-  <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
-  <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
-  <Dialog open={insertOpen} onOpenChange={value => { if (!value) closeInsert(); }}><DialogContent className="insert-dialog" onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (restoreInsert.current && insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); else focusEditor(); }}>
-   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" lang="fa" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'نمایش کمتر' : `نمایش بیشتر (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
+  <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} onReturnFocus={()=>requestAnimationFrame(focusEditor)} />
+  <CompletionDialog answered={answeredCount} skipped={skippedCount} total={state.doc.exercises.length} canAnalyze={exam} onReturnFocus={()=>requestAnimationFrame(focusEditor)} open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
+  <Dialog open={insertOpen} onOpenChange={value => { if (!value) closeInsert(); }}><DialogContent className="insert-dialog" onOpenAutoFocus={event=>{event.preventDefault();dialogRefs.current[0]?.focus();}} onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(focusEditor); }}>
+   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-dialog-actions"><Button onClick={closeInsert}>Close tools · Esc</Button></div>{insertExpanded&&<label className="insert-search">Find a math tool<input value={insertQuery} onChange={event=>{setInsertQuery(event.target.value);setChoice(0);}} /></label>}{insertExpanded&&visibleInsert.length===0&&<p role="status">No tools found.</p>}<div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'Show less' : `Show more (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
  </main>;

@@ -12,3 +12,5 @@ const runtime = createPersistentStore();
 createRoot(root).render(<Provider store={runtime.store}><App /></Provider>);
 
 if (import.meta.hot) import.meta.hot.dispose(() => runtime.dispose());
+
+import "./styles/approved-theme.css";

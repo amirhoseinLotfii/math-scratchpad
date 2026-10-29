@@ -15,15 +15,15 @@ function mount(round = false) {
  const view=render(<div id="math-scratchpad-redux"><Provider store={store}><App/></Provider></div>);
  return {store,...view};
 }
-const click=(name:string)=>name==='⊕ Insert…'?fireEvent.keyDown(screen.getByRole('main'),{key:'/'}):fireEvent.click(screen.queryByRole('button',{name})??screen.getByRole('menuitem',{name}));
+const click=(name:string)=>{if(name==='Exercise menu'){fireEvent.keyDown(screen.getByRole('button',{name}),{key:'ArrowDown'});return;}if(name==='⊕ Insert…'){fireEvent.click(screen.getByRole('button',{name:'More math tools'}));return;}if(name!=='Exercise menu'&&!screen.queryByRole('menuitem',{name})&&screen.queryByRole('menuitem',{name:/Show more/}))fireEvent.click(screen.getByRole('menuitem',{name:/Show more/}));fireEvent.click(screen.queryByRole('button',{name})??screen.getByRole('menuitem',{name}));};
 describe('Minimal original-UI fixes and twenty-question round',()=>{
  it('closes Insert on backdrop or Escape, preserves inside clicks and leaves work intact',async()=>{
   const {store}=mount();const before=JSON.stringify(exerciseOf(store.getState().doc).steps);
-  screen.getByRole('main').focus();await userEvent.keyboard('/');
+  screen.getByRole('main').focus();await userEvent.click(screen.getByRole('button',{name:'More math tools'}));
   await userEvent.click(screen.getByRole('heading',{name:'Insert Math Element'}));expect(screen.getByRole('dialog')).toBeTruthy();
   await userEvent.click(document.querySelector('.modal-overlay')!);expect(screen.queryByRole('dialog')).toBeNull();
   expect(JSON.stringify(exerciseOf(store.getState().doc).steps)).toBe(before);
-  screen.getByRole('main').focus();await userEvent.keyboard('/[Escape]');expect(screen.queryByRole('dialog')).toBeNull();
+  screen.getByRole('main').focus();await userEvent.click(screen.getByRole('button',{name:'More math tools'}));await userEvent.keyboard('[Escape]');expect(screen.queryByRole('dialog')).toBeNull();
  });
  it('removes an empty inserted structure with the keyboard Backspace without leaving visible insertion dots; Undo restores it',()=>{
   const {store,container}=mount();click('⌨ Show Keyboard');click('Add step');click('Insert fraction');
@@ -53,7 +53,7 @@ describe('Minimal original-UI fixes and twenty-question round',()=>{
   expect(exerciseOf(store.getState().doc).confidence).toBe('high');
   const exported=serialize(store.getState()),restored=validateSession(JSON.parse(exported));
   expect(exported).not.toContain('expected');expect(restored.doc.exercises[0].assessment).toBe('fractions-round-1');expect(restored.doc.exercises[1].skipped).toBe(true);
-  expect(screen.getByText('20 answered or skipped',{exact:false}).textContent).toContain('of 20');
+  expect(screen.getByRole('status',{name:/1 of 20 answered, 1 skipped/})).toBeTruthy();
  });
  it('uses the correct answer bank for the new round while retaining the original thirty-question mode',()=>{
   const {store}=mount(true);const ex=exerciseOf(store.getState().doc);

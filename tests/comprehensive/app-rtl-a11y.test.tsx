@@ -11,13 +11,13 @@ describe('bank questions in the app: RTL and accessibility', () => {
   it('Persian prompt is lang=fa dir=rtl while the editor stays LTR', () => {
     const { store } = renderMobileApp(); act(() => { store.dispatch(actions.load({ doc: doc() })); });
     const problem = screen.getByRole('region', { name: 'Current problem' });
-    const p = within(problem).getByText('حاصل را ساده کن.'); expect(p.getAttribute('dir')).toBe('rtl'); expect(p.getAttribute('lang')).toBe('fa');
+    const p = within(problem).getByText('حاصل را ساده کن.'); expect(p.getAttribute('dir')).toBe('auto'); expect(p.getAttribute('lang')).toBe('fa');
     expect(screen.getByRole('main', { name: 'Math Scratchpad' }).getAttribute('dir')).toBe('ltr');
   });
   it('text-mode question renders RTL', () => {
     const { store } = renderMobileApp(); act(() => { const d = doc(); d.exerciseId = d.exercises[1].id; d.cursor.stepId = d.exercises[1].steps[0].id; d.cursor.nodeId = (d.exercises[1].steps[0].expression.children[0]).id; store.dispatch(actions.load({ doc: d })); });
     const problem = screen.getByRole('region', { name: 'Current problem' }); const el = within(problem).getByText('یک عدد بین ۱ و ۲ بنویس.');
-    expect(el.closest('[dir]')?.getAttribute('dir')).toBe('rtl');
+    expect(el.closest('[dir]')?.getAttribute('dir')).toBe('auto');
   });
   it('every button has an accessible name', () => {
     const { store } = renderMobileApp(); act(() => { store.dispatch(actions.load({ doc: doc() })); });

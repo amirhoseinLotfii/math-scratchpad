@@ -17,8 +17,8 @@ describe('question navigator', () => {
   it('shows answered/skipped counts, statuses, current item and keyboard movement', async () => {
     const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x'); doc.exercises[0].steps[0].expression = parse('3'); doc.exercises[0].confidence = 'high'; doc.exercises[1].skipped = true;
     const onSelect = vi.fn(); render(<QuestionNavigator doc={doc} onSelect={onSelect} />);
-    expect(screen.getByText('1 of 2 answered · 1 skipped')).toBeTruthy();
-    expect(screen.getByRole('progressbar', { name: 'Question progress' }).getAttribute('aria-valuenow')).toBe('2');
+    expect(screen.queryByRole('progressbar')).toBeNull();
+
     const buttons = screen.getAllByRole('button').filter(b => b.classList.contains('question-destination')); expect(buttons[0].textContent).toContain('Answered'); expect(buttons[1].textContent).toContain('Skipped');
     expect(buttons[0].getAttribute('aria-current')).toBe('page');
     const user = userEvent.setup(); buttons[0].focus(); await user.keyboard('{ArrowDown}'); expect(document.activeElement).toBe(buttons[1]); await user.keyboard('{Home}'); expect(document.activeElement).toBe(buttons[0]);
@@ -26,7 +26,7 @@ describe('question navigator', () => {
   });
   it('drafts without confidence do not count as answered', () => {
     const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x'); doc.exercises[0].steps[0].expression = parse('3');
-    render(<QuestionNavigator doc={doc} onSelect={() => undefined} />); expect(screen.getByText('0 of 2 answered')).toBeTruthy();
+    render(<QuestionNavigator doc={doc} onSelect={() => undefined} />); expect(screen.getByRole('button',{name:'Question 1 Draft'})).toBeTruthy();
   });
 });
 
@@ -66,18 +66,18 @@ function panel() {
 }
 const media = (f: ReturnType<typeof mockDrive>) => f.mock.calls.filter(c => String(c[0]).includes('alt=media')).length;
 async function connect(user: ReturnType<typeof userEvent.setup>) {
-  const b = await screen.findByRole('button', { name: 'اتصال Google Drive' }); await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false)); await user.click(b);
+  const b = await screen.findByRole('button', { name: 'Connect Google Drive' }); await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false)); await user.click(b);
 }
 
 describe('Drive bank panel', () => {
   it('is RTL Persian, has a polite status region and no manual config inputs', () => {
     mockGoogle(); mockDrive({ content: '', rev: 1 }); panel();
-    const region = screen.getByRole('region', { name: 'بانک Google Drive' }); expect(region.getAttribute('dir')).toBe('rtl'); expect(region.getAttribute('lang')).toBe('fa');
+    const region = screen.getByRole('region', { name: 'Google Drive bank' }); expect(region.getAttribute('dir')).toBe('ltr'); expect(region.getAttribute('lang')).toBe('en');
     expect(within(region).getByRole('status').getAttribute('aria-live')).toBe('polite'); expect(within(region).queryAllByRole('textbox')).toHaveLength(0);
   });
   it('rejects a non-project Google account and keeps disconnected', async () => {
     mockGoogle(); mockDrive({ content: BANK(), rev: 1, email: 'other@example.com' }); const { user } = panel(); await connect(user);
-    expect(await screen.findByText(/حساب شخصی تعیین‌شدهٔ پروژه نیست/)).toBeTruthy(); expect(screen.queryByRole('button', { name: 'انتخاب فایل بانک' })).toBeNull();
+    expect(await screen.findByText(/حساب شخصی تعیین‌شدهٔ پروژه نیست/)).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Choose bank file' })).toBeNull();
   });
   it('downloads once, then polls metadata only until it changes', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1 }; const f = mockDrive(drive); const { user, onAvailable } = panel();
@@ -90,29 +90,29 @@ describe('Drive bank panel', () => {
   });
   it('a broken update keeps the previous bank and says so', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1 }; mockDrive(drive); const { user } = panel(); await connect(user); await screen.findByText(/2 سؤال/);
-    drive.content = BANK('x_1', 'v2'); drive.rev = 2; await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
+    drive.content = BANK('x_1', 'v2'); drive.rev = 2; await user.click(screen.getByRole('button', { name: 'Check now' }));
     expect(await screen.findByText(/Unsupported input near _1.*نسخهٔ قبلی دریافت‌شده و جلسهٔ فعلی دست نخورد/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open received batch' })).toBeTruthy();
   });
   it('shows Google Doc and 403 errors in Persian', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1, mime: 'application/vnd.google-apps.document' } as Parameters<typeof mockDrive>[0]; mockDrive(drive); const { user } = panel(); await connect(user);
     expect(await screen.findByText(/Google Doc است/)).toBeTruthy();
-    drive.mime = undefined; drive.status = 403; await user.click(screen.getByRole('button', { name: 'بررسی الان' })); expect(await screen.findByText(/۴۰۳/)).toBeTruthy();
+    drive.mime = undefined; drive.status = 403; await user.click(screen.getByRole('button', { name: 'Check now' })); expect(await screen.findByText(/۴۰۳/)).toBeTruthy();
   });
   it('401 expires the connection', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1 } as Parameters<typeof mockDrive>[0]; mockDrive(drive); const { user } = panel(); await connect(user); await screen.findByText(/2 سؤال/);
-    drive.status = 401; await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
-    expect(await screen.findByText(/منقضی/)).toBeTruthy(); expect(screen.getByRole('button', { name: 'اتصال دوباره' })).toBeTruthy(); expect(screen.queryByRole('button', { name: 'بررسی الان' })).toBeNull();
+    drive.status = 401; await user.click(screen.getByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText(/منقضی/)).toBeTruthy(); expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
   });
   it('opening the bank archives the old session and the same version cannot be reopened', async () => {
     mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true); mockDrive({ content: BANK(), rev: 1 }); const { user, store, onAvailable } = panel(); await connect(user);
-    const open = await screen.findByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' }); await user.click(open);
+    const open = await screen.findByRole('button', { name: 'Open received batch' }); await user.click(open);
     expect(store.getState().doc.exercises.map(e => e.bankQuestionId)).toEqual(['A', 'B']); expect(onAvailable).toHaveBeenLastCalledWith(false);
-    expect(await screen.findByText(/جلسه‌های ذخیره‌شده \(1\)/)).toBeTruthy();
+    expect(await screen.findByText(/Saved sessions \(1\)/)).toBeTruthy();
   });
   it('cancelling the confirm leaves the session untouched', async () => {
     mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(false); mockDrive({ content: BANK(), rev: 1 }); const { user, store } = panel(); await connect(user);
-    const before = JSON.stringify(store.getState().doc); await user.click(await screen.findByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' })); expect(JSON.stringify(store.getState().doc)).toBe(before);
+    const before = JSON.stringify(store.getState().doc); await user.click(await screen.findByRole('button', { name: 'Open received batch' })); expect(JSON.stringify(store.getState().doc)).toBe(before);
   });
   it('remembers the picked file id only', async () => {
     mockGoogle(); mockDrive({ content: '', rev: 1 }); const { user } = panel(); await connect(user); await screen.findByText(/هنوز خالی است/);

@@ -25,10 +25,10 @@ function mockDrive(state: { content: string; rev: number }) {
   });
 }
 async function connect(user: ReturnType<typeof renderMobileApp>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', {name:/Show more/}));
   await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
-  await waitFor(() => expect((screen.getByRole('button', { name: 'اتصال Google Drive' }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(screen.getByRole('button', { name: 'اتصال Google Drive' }));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Connect Google Drive' }) as HTMLButtonElement).disabled).toBe(false));
+  await user.click(screen.getByRole('button', { name: 'Connect Google Drive' }));
 }
 describe('private Drive bank flow', () => {
   it('uses built-in Google identifiers, shows no manual entry, and ignores old saved ones', async () => {
@@ -37,7 +37,7 @@ describe('private Drive bank flow', () => {
     const { GOOGLE_CLIENT_ID, GOOGLE_APP_ID, GOOGLE_API_KEY } = await import('../../src/features/drive-bank/drive-config');
     expect(getConfig()).toMatchObject({ clientId: GOOGLE_CLIENT_ID, appId: GOOGLE_APP_ID, apiKey: GOOGLE_API_KEY });
     const { user } = renderMobileApp();
-    await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+    await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', {name:/Show more/}));
     await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
     expect(screen.queryByText('تنظیمات یک‌باره')).toBeNull();
     expect(screen.queryByLabelText('شناسه OAuth برنامه')).toBeNull();
@@ -47,7 +47,7 @@ describe('private Drive bank flow', () => {
     mockDrive({ content: JSON.stringify(bank('1+2')), rev: 1 });
     const { store, user } = renderMobileApp(); const previous = store.getState().doc;
     await connect(user);
-    await user.click(await screen.findByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' }));
+    await user.click(await screen.findByRole('button', { name: 'Open received batch' }));
     expect(store.getState().doc.exercises).toHaveLength(2);
     expect(store.getState().doc.session?.bankId).toBe('practice');
     expect(readArchive().some(s => JSON.parse(s.data).doc.session.id === previous.session?.id)).toBe(true);
@@ -62,10 +62,10 @@ describe('private Drive bank flow', () => {
     const before = JSON.stringify(store.getState().doc);
     const mediaCalls = () => fetchSpy.mock.calls.filter(c => String(c[0]).includes('alt=media')).length;
     const n = mediaCalls();
-    await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
     await waitFor(() => expect(mediaCalls()).toBe(n + 1)); // forced check re-downloads
     drive.content = JSON.stringify(bank('1+5', 'v2')); drive.rev = 2;
-    await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
     expect(await screen.findByText(/نسخهٔ v2/)).toBeTruthy();
     expect(JSON.stringify(store.getState().doc)).toBe(before); // no auto switch
     expect(screen.getByRole('button', { name: 'New Drive questions' })).toBeTruthy();

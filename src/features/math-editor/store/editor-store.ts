@@ -2,7 +2,7 @@ import { produce } from 'immer';
 import { createStore } from 'zustand/vanilla';
 import { persist, type PersistOptions } from 'zustand/middleware';
 type PayloadAction<T> = { payload: T };
-import { validScale } from '../model/model';
+import { validScale, answerTypeOf } from '../model/model';
 import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal, elapsedAt } from '../../../model';
 import { parse } from '../../../parser';
 import { diagnosticQuestions } from '../../../diagnostic';
@@ -262,6 +262,12 @@ const handlers = {
       focusFirst(d, line.expression);
       state.notice = '';
     },
+    setAnswerText(state: ScratchState, action: PayloadAction<string>) {
+      const ex = exerciseOf(state.doc), kind = answerTypeOf(ex);
+      if (kind === 'math' || action.payload.length > 10000 || (kind === 'choice' && !ex.choices?.includes(action.payload))) return;
+      ex.answerText = action.payload; delete ex.submittedAt; delete ex.confidence;
+      if (!ex.startedAt) ex.startedAt = isoLocal();
+    },
     setConfidence(state: ScratchState, action: PayloadAction<'high' | 'medium' | 'low'>) {
       const ex = exerciseOf(state.doc); ex.confidence = action.payload; ex.submittedAt = isoLocal();
     },
@@ -310,7 +316,7 @@ const handlers = {
     startFractionRound(state: ScratchState) {
       const previous = clone(state.doc);
       const exercises: Exercise[] = fractionRoundOne.map(q => ({
-        id: uid(), mode: q.source ? 'math' : 'text', source: q.source || ' ', prompt: q.stem, assessment: 'fractions-round-1',
+        id: uid(), answerType: 'math', mode: q.source ? 'math' : 'text', source: q.source || ' ', prompt: q.stem, assessment: 'fractions-round-1',
         diagnosticId: q.id, steps: [blankStep()]
       }));
       state.past.push(previous);

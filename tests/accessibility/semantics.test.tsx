@@ -47,7 +47,7 @@ describe('A11Y-SEM: document, controls and language', () => {
  });
  it('isolates Persian question language from English interface and LTR formula', () => {
   renderMobileApp(); const main = screen.getByRole('main'); expect(main).toHaveAttribute('lang', 'en');
-  const prompt = main.querySelector('.persian-question'); expect(prompt).toHaveAttribute('lang', 'fa'); expect(prompt).toHaveAttribute('dir', 'rtl');
+  const prompt = main.querySelector('.persian-question'); expect(prompt).toHaveAttribute('lang', 'fa'); expect(prompt).toHaveAttribute('dir', 'auto');
   const formula = within(main).getByLabelText('Step 1 expression');
   expect(formula.querySelector('[dir="ltr"]')).not.toBeNull();
   expect([...main.querySelectorAll('button, label, legend, [role="status"]')].filter(x => /[\u0600-\u06ff]/.test(x.textContent ?? ''))).toEqual([]);

@@ -44,8 +44,8 @@ describe('Mobile step controls', () => {
 describe('Quick tools and numeric keypad', () => {
  it('exposes the approved quick-tool order through accessible names', () => {
   mount();
-  const buttons = within(screen.getByRole('group', { name: 'Quick math tools' })).getAllByRole('button');
-  expect(buttons.map(x => x.getAttribute('aria-label'))).toEqual(['Insert fraction', 'Insert parentheses', 'Insert square root', 'Insert power', 'Insert equals']);
+  const buttons = within(screen.getByRole('toolbar', { name: 'Math tools' })).getAllByRole('button');
+  expect(buttons.map(x => x.getAttribute('aria-label'))).toEqual(['Undo','Redo','Insert fraction','Insert number','Insert square root','Insert power','Insert parentheses','Insert +','Insert −','Insert ×','Insert ÷','Insert equals','More math tools']);
  });
  it.each([['Insert fraction', '\\frac'], ['Insert parentheses', '('], ['Insert square root', '\\sqrt'], ['Insert power', '^']])('%s inserts its mathematical structure into active step', (label, notation) => {
   const store = mount(); fireEvent.click(screen.getByRole('button', { name: label }));
@@ -71,7 +71,7 @@ describe('Quick tools and numeric keypad', () => {
  it('More tools opens editing actions without resetting the active caret', () => {
   const store = mount(), before = store.getState().doc.cursor;
   fireEvent.click(screen.getByRole('button', { name: 'More tools' }));
-  expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Undo' })).toHaveLength(2);
   expect(store.getState().doc.cursor).toEqual(before);
  });
 });
@@ -80,7 +80,7 @@ describe('English interface, question RTL and single-question mode', () => {
   mount(); const main = document.querySelector('main')!;
   expect(main.lang).toBe('en');
   const prompt = document.querySelector('.persian-question')!;
-  expect(prompt.getAttribute('lang')).toBe('fa'); expect(prompt.getAttribute('dir')).toBe('rtl');
+  expect(prompt.getAttribute('lang')).toBe('fa'); expect(prompt.getAttribute('dir')).toBe('auto');
   const ui = [...main.querySelectorAll('button, label, legend, [role="status"]')];
   expect(ui.filter(x => /[\u0600-\u06ff]/.test(x.textContent ?? ''))).toEqual([]);
  });
@@ -96,6 +96,6 @@ describe('English interface, question RTL and single-question mode', () => {
   expect(screen.queryByRole('button', { name: 'Copy full session JSON' })).toBeNull();
   expect(store.getState().doc.exercises).toEqual(before);
   act(() => store.dispatch(actions.adjacentExercise(1)));
-  fireEvent.click(menu); expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
+  fireEvent.keyDown(menu,{key:'ArrowDown'});fireEvent.click(screen.getByRole('menuitem',{name:/Show more/})); expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
  });
 });

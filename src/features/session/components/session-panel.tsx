@@ -1,7 +1,7 @@
-import { useId } from 'react';
+import { ScaleGroup } from './scale-group';
 import { usePanelOpen } from '../../../shared/lib/ui-prefs';
 import type { Exercise, SessionMeta } from '../../../model';
-const scale = [1, 2, 3, 4, 5];
+
 export function SessionPanel({ meta, exercise, onEditScales }: {
  meta?: SessionMeta; exercise: Exercise;
  onEditScales: () => void;
@@ -16,9 +16,8 @@ export function SessionPanel({ meta, exercise, onEditScales }: {
  </section></details>;
 }
 export function SessionScales({ meta, onMeta }: { meta?: SessionMeta; onMeta: (value: { anxiety?: number; energy?: number }) => void }) {
- const id = useId();
  return <div className="session-scales">
-   <label htmlFor={`${id}-anxiety`}>Math anxiety (1–5)<select id={`${id}-anxiety`} value={meta?.anxiety ?? ''} onChange={e => onMeta({ anxiety: e.target.value ? Number(e.target.value) : undefined })}><option value="">Not set</option>{scale.map(v => <option key={v} value={v}>{v}</option>)}</select></label>
-   <label htmlFor={`${id}-energy`}>Energy (1–5)<select id={`${id}-energy`} value={meta?.energy ?? ''} onChange={e => onMeta({ energy: e.target.value ? Number(e.target.value) : undefined })}><option value="">Not set</option>{scale.map(v => <option key={v} value={v}>{v}</option>)}</select></label>
-  </div>;
+  <ScaleGroup label="Math anxiety" value={meta?.anxiety} onChange={anxiety=>onMeta({anxiety})}/>
+  <ScaleGroup label="Energy" value={meta?.energy} onChange={energy=>onMeta({energy})}/>
+ </div>;
 }

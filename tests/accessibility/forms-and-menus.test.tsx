@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, screen, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { scanDOM } from '../support/accessibility';
@@ -27,7 +27,7 @@ describe('A11Y-FORM: validation, explanation and error focus', () => {
  });
  it('empty new-problem submission does not create a question and focuses its labelled field', async () => {
   const { user, store } = renderMobileApp({ batch: false });
-  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', {name:/Show more/}));
   await user.click(screen.getByRole('menuitem', { name: 'New Problem' }));
   await user.click(screen.getByRole('button', { name: 'Start' }));
   const field = screen.getByLabelText('Problem');
@@ -36,7 +36,7 @@ describe('A11Y-FORM: validation, explanation and error focus', () => {
  });
  it('invalid imported JSON is explained without losing the typed recovery text or active work', async () => {
   const { user, store } = renderMobileApp(); const answers = store.getState().doc.exercises.map(e => e.steps);
-  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', {name:/Show more/}));
   await user.click(screen.getByRole('menuitem', { name: 'Import session JSON' }));
   const field = screen.getByRole('textbox', { name: 'Copy or paste session JSON' });
   await user.clear(field); await user.type(field, 'not JSON'); await user.click(screen.getByRole('button', { name: 'Restore' }));
@@ -54,13 +54,13 @@ describe('A11Y-MENU: shadcn dropdown interaction contract', () => {
   expect(screen.getByRole('menu')).toBeVisible();
  });
  it('ArrowDown opens menu and moves focus to its first action', async () => {
-  const { user } = renderMobileApp(); screen.getByRole('button', { name: 'Exercise menu' }).focus();
+  const { user } = renderMobileApp(); await vi.waitFor(()=>expect(screen.getByRole('main')).toHaveFocus());screen.getByRole('button', { name: 'Exercise menu' }).focus();
   await user.keyboard('[ArrowDown]'); const menu = screen.getByRole('menu');
   expect(menu.contains(document.activeElement)).toBe(true);
  });
  it('End and Home navigate menu actions without activating them', async () => {
   const { user, store } = renderMobileApp(); const original = store.getState().doc.exerciseId;
-  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', {name:/Show more/}));
   const menu = screen.getByRole('menu'), items = within(menu).getAllByRole('menuitem');
   await user.keyboard('[End]'); expect(items.at(-1)).toHaveFocus();
   await user.keyboard('[Home]'); expect(items[0]).toHaveFocus();
@@ -69,10 +69,10 @@ describe('A11Y-MENU: shadcn dropdown interaction contract', () => {
  it('Escape closes the menu and restores trigger focus', async () => {
   const { user } = renderMobileApp(); const trigger = screen.getByRole('button', { name: 'Exercise menu' });
   await user.click(trigger); await user.keyboard('[Escape]');
-  expect(screen.queryByRole('menu')).toBeNull(); expect(trigger).toHaveFocus();
+  expect(screen.queryByRole('menu')).toBeNull(); await vi.waitFor(()=>expect(trigger).toHaveFocus());
  });
  it('menu has no structural axe violations and includes full export action', async () => {
-  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', {name:/Show more/}));
   const menu = screen.getByRole('menu');
   expect(within(menu).getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
   expect(await scanDOM(menu)).toEqual([]);

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { WorkspaceLayout } from '../../features/workspace/model/workspace-layout';
-const queries = ['(min-width: 900px)', '(min-width: 1600px)'];
+const queries = ['(min-width: 900px)', '(min-width: 1200px)'];
 function snapshot(): WorkspaceLayout {
  if (typeof window.matchMedia !== 'function') return 'phone';
  return window.matchMedia(queries[1]).matches ? 'desktop' : window.matchMedia(queries[0]).matches ? 'laptop' : 'phone';
