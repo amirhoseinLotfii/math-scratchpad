@@ -24,13 +24,13 @@ test('adding a step keeps the active writing area reachable and first-step delet
  await expect(editor).toContainText('123');
 });
 test('quick tools have approved order and editing never exposes inline confidence', async ({ page }) => {
- const quick = page.getByRole('group', { name: 'Quick math tools' });
+ const quick = page.getByRole('toolbar', { name: 'Math tools' });
  await expect(quick.getByRole('button').first()).toHaveAttribute('type', 'button');
- expect(await quick.getByRole('button').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label')))).toEqual(['Insert fraction', 'Insert parentheses', 'Insert square root', 'Insert power', 'Insert equals']);
+ expect(await quick.getByRole('button').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label')))).toEqual(['Undo','Redo','Insert fraction','Insert number','Insert square root','Insert power','Insert parentheses','Insert +','Insert −','Insert ×','Insert ÷','Insert equals','More math tools']);
  await expect(page.getByRole('radio')).toHaveCount(0);
 });
 test('full session export is reachable during editing', async ({ page }) => {
- await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
  await expect(page.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeVisible();
 });
 test('only question prose is Persian and the app interface stays English', async ({ page }) => {
@@ -40,7 +40,7 @@ test('only question prose is Persian and the app interface stays English', async
  expect(foreignUI).toEqual([]);
 });
 test('confidence modal supports keyboard cancellation without losing focus', async ({ page }) => {
- await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
@@ -50,7 +50,7 @@ test('confidence modal supports keyboard cancellation without losing focus', asy
  await expect(dialog).toBeVisible();
  await page.keyboard.press('Escape');
  await expect(dialog).toBeHidden();
- await expect(next).toBeFocused();
+ await expect(page.getByRole('main')).toBeFocused();
 });
 test('phone header keeps desktop setup buttons in the overflow menu', async ({ page }) => {
  await expect(page.getByRole('button', { name: 'New Problem', exact: true })).toBeHidden();

@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -35,7 +36,7 @@ describe('Approved mobile batch workflow', () => {
  it('makes review and full-session export available from the batch menu', async () => {
   mount();
   expect(screen.queryByRole('button', { name: 'Check · Copy for Review' })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' })); await userEvent.click(screen.getByRole('menuitem',{name:/Show more/}));
   expect(screen.getByRole('menuitem', { name: 'Check · Copy for Review' })).toBeTruthy();
   expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
  });
@@ -62,7 +63,7 @@ describe('Confidence dialog cancellation', () => {
   await userEvent.keyboard('[Escape]');
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(store.getState().doc.exercises.map(({ elapsedMs, ...answer }) => answer)).toEqual(before);
-  expect(document.activeElement).toBe(next);
+  await vi.waitFor(()=>expect(screen.getByRole('main')).toHaveFocus());
  });
 });
 
@@ -72,7 +73,7 @@ describe('Session copy and recovery', () => {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } });
   const store = mount();
   const before = JSON.stringify(store.getState().doc.exercises);
-  await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' })); await userEvent.click(screen.getByRole('menuitem',{name:/Show more/}));
   await userEvent.click(screen.getByRole('menuitem', { name: /^Copy full session JSON/ }));
   await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
   const data = JSON.parse(copy.mock.calls[0][0]);
@@ -84,7 +85,7 @@ describe('Session copy and recovery', () => {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error('Denied')) } });
   Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn().mockReturnValue(false) });
   mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' })); await userEvent.click(screen.getByRole('menuitem',{name:/Show more/}));
   await userEvent.click(screen.getByRole('menuitem', { name: /^Copy full session JSON/ }));
   const field = await screen.findByRole('textbox', { name: /session JSON/i });
   expect(JSON.parse((field as HTMLTextAreaElement).value).doc.exercises).toHaveLength(20);

@@ -7,7 +7,7 @@ test('WIDE-01: question, work and navigator follow the approved columns',async({
  await startBatch(page);const width=page.viewportSize()!.width;
  const q=await box(page,'.question-context'),w=await box(page,'.work-pane');
  expect(q.x+q.width).toBeLessThanOrEqual(w.x);expect(q.width).toBeGreaterThanOrEqual(260);expect(w.width).toBeGreaterThanOrEqual(480);
- if(width>=1600){const n=await box(page,'.question-navigator');expect(n.x+n.width).toBeLessThanOrEqual(q.x);await expect(page.getByRole('navigation',{name:'Questions',exact:true})).toBeVisible();}
+ if(width>=1200){const n=await box(page,'.question-navigator');expect(n.x+n.width).toBeLessThanOrEqual(q.x);await expect(page.getByRole('navigation',{name:'Questions',exact:true})).toBeVisible();}
  else await expect(page.getByRole('navigation',{name:'Questions',exact:true})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -28,7 +28,7 @@ test('WIDE-04: visible question context stays available while a long notebook sc
 });
 test('WIDE-05: resizing phone/laptop/desktop preserves typing and restores the right layout',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('123');
- for(const [width,layout] of [[899,'phone'],[900,'laptop'],[1599,'laptop'],[1600,'desktop'],[1920,'desktop']] as const){
+ for(const [width,layout] of [[899,'phone'],[900,'laptop'],[1199,'laptop'],[1200,'desktop'],[1599,'desktop'],[1600,'desktop'],[1920,'desktop']] as const){
   await page.setViewportSize({width,height:900});await expect(page.getByRole('main')).toHaveAttribute('data-layout',layout);await expect(page.getByLabel('Step 1 expression')).toContainText('123');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }
@@ -46,7 +46,7 @@ test('WIDE-07: navigator switches questions without deleting drafts or fabricati
  await expect(page.getByLabel('Step 1 expression')).toContainText('456');await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 test('WIDE-08: slash chooser accepts keyboard selection and returns to work',async({page})=>{
- await startBatch(page);await page.getByRole('main').focus();await page.keyboard.press('/');const d=page.getByRole('dialog',{name:'Insert Math Element'});
+ await startBatch(page);await page.getByRole('main').focus();await page.getByRole('button',{name:'More math tools'}).click();const d=page.getByRole('dialog',{name:'Insert Math Element'});
  await expect(d).toBeVisible();await page.keyboard.press('Enter');await expect(d).toBeHidden();await page.keyboard.type('42');await expect(page.getByLabel('Step 1 expression')).toContainText('42');
 });
 test('WIDE-09: focused numbers respect digit boundaries before moving fields',async({page})=>{
@@ -67,13 +67,13 @@ test('WIDE-12: resetting a different step targets that step and Undo restores it
  await expect(page.getByLabel('Step 2 expression')).toContainText('22');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByLabel('Step 1 expression')).toContainText('11');
 });
 test('WIDE-13: shortcut dialog traps focus, Escape restores the trigger, and work stays unchanged',async({page})=>{
- await startBatch(page);const trigger=page.getByRole('button',{name:'Keyboard shortcuts',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'Keyboard shortcuts'});await expect(dialog).toBeVisible();
+ await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:/Show more/}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Keyboard shortcuts'});await expect(dialog).toBeVisible();
  for(let i=0;i<5;i++)await page.keyboard.press('Tab');expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
- await page.keyboard.press('Escape');await expect(trigger).toBeFocused();await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
+ await page.keyboard.press('Escape');await expect(page.getByRole('main')).toBeFocused();await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
 test('WIDE-14: next-question decision still requires confidence and cancellation preserves work',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('88');const next=page.getByRole('button',{name:/Next question/});await next.click();
- await expect(page.getByRole('radio',{checked:true})).toHaveCount(0);await page.keyboard.press('Escape');await expect(next).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('88');
+ await expect(page.getByRole('radio',{checked:true})).toHaveCount(0);await page.keyboard.press('Escape');await expect(page.getByRole('main')).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('88');
 });
 test('WIDE-15: a committed answer advances, updates status and is retained on return',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('9');await page.getByRole('button',{name:/Next question/}).click();await page.getByRole('radio',{name:'Medium',exact:true}).check();await page.getByRole('button',{name:'Continue',exact:true}).click();
@@ -84,7 +84,7 @@ test('WIDE-16: final completion keeps JSON copy explicit',async({page})=>{
 });
 test('WIDE-17: menu JSON export includes all questions and ordered steps',async({page})=>{
  await page.addInitScript(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('blocked')}}});document.execCommand=()=>false;});
- await startBatch(page);await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('12');await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:/^Copy full session JSON/}).click();
+ await startBatch(page);await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('12');await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:/Show more/}).click();await page.getByRole('menuitem',{name:/^Copy full session JSON/}).click();
  const raw=await page.getByRole('textbox',{name:'Copy or paste session JSON'}).inputValue();const saved=JSON.parse(raw);expect(saved.doc.exercises).toHaveLength(20);expect(saved.doc.exercises[0].steps).toHaveLength(2);
 });
 test('WIDE-18: 200 percent text sizing and long math avoid document overflow',async({page})=>{
@@ -98,7 +98,7 @@ test('WIDE-20: reduced motion and forced colors retain focus and controls',async
  await page.emulateMedia({forcedColors:'active',reducedMotion:'reduce'});await startBatch(page);await inView(page,'Add step');const add=page.getByRole('button',{name:'Add step',exact:true});await add.focus();await expect(add).toBeFocused();expect(await add.evaluate(el=>getComputedStyle(el).forcedColorAdjust)).not.toBe('none');
 });
 test('WIDE-21: shortcut help has no automated WCAG violations',async({page},info)=>{
- await startBatch(page);await page.getByRole('button',{name:'Keyboard shortcuts',exact:true}).click();const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']).analyze();await info.attach('axe-shortcuts',{body:JSON.stringify(result),contentType:'application/json'});expect(result.violations).toEqual([]);
+ await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:/Show more/}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts',exact:true}).click();const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']).analyze();await info.attach('axe-shortcuts',{body:JSON.stringify(result),contentType:'application/json'});expect(result.violations).toEqual([]);
 });
 test('WIDE-22: narrow-height landscape keeps dialog controls reachable',async({page})=>{
  await page.setViewportSize({width:1024,height:480});await startBatch(page);await page.getByRole('button',{name:/Next question/}).click();await inView(page,'Continue');await inView(page,'Cancel');
@@ -121,18 +121,18 @@ test('WIDE-25: the initial notebook fits the viewport without empty page scrolli
 });
 test('WIDE-26: advanced notation is available without a numeric keyboard',async({page})=>{
  await startBatch(page);await page.getByRole('button',{name:'More math tools'}).click();const dialog=page.getByRole('dialog',{name:'Insert Math Element'});
- await dialog.getByRole('button',{name:/نمایش بیشتر/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
+ await dialog.getByRole('button',{name:/Show more/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
  await expect(page.getByLabel('Step 1 expression')).toContainText('7');await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
 test('WIDE-27: End and Home keep the full notation catalog focus visible',async({page})=>{
  await startBatch(page);const trigger=page.getByRole('button',{name:'More math tools'});await trigger.click();const options=page.getByRole('dialog',{name:'Insert Math Element'}).locator('[data-insert-kind]');
  await page.keyboard.press('End');await expect(options.last()).toBeFocused();await expect(options.last()).toBeInViewport();
- await page.keyboard.press('Home');await expect(options.first()).toBeFocused();await expect(options.first()).toBeInViewport();await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
+ await page.keyboard.press('Home');await expect(options.first()).toBeFocused();await expect(options.first()).toBeInViewport();await page.keyboard.press('Escape');await expect(page.getByRole('main')).toBeFocused();
 });
 for(const state of ['single','batch','multi-step','shortcuts'] as const)test(`WIDE-VISUAL ${state}: reviewed layout baseline`,async({page})=>{
  if(state==='single')await page.goto('/');else await startBatch(page);
  if(state==='multi-step'){await page.getByRole('main').focus();await page.keyboard.press('/');await page.keyboard.press('Enter');await page.keyboard.type('12');await page.keyboard.press('ArrowDown');await page.keyboard.type('7');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('42');}
- if(state==='shortcuts')await page.getByRole('button',{name:'Keyboard shortcuts',exact:true}).click();
+ if(state==='shortcuts'){await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:/Show more/}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts',exact:true}).click();}
  await expect(page).toHaveScreenshot(`${state}.png`,{fullPage:true,animations:'disabled',caret:'hide',mask:[page.getByLabel('Question elapsed time')],maxDiffPixelRatio:0.005});
 });
 test('WIDE-KB-13: virtual keyboard is closed by default on desktop and an explicit choice survives reload',async({page})=>{

@@ -19,11 +19,11 @@ function mount(width = 1920, batch = true) {
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('wide workspace: layout and single source of state', () => {
- it.each([[899,'phone'],[900,'laptop'],[1440,'laptop'],[1599,'laptop'],[1600,'desktop'],[2560,'desktop']])('uses the %s viewport layout %s', (width, layout) => {
+ it.each([[899,'phone'],[900,'laptop'],[1440,'desktop'],[1199,'laptop'],[1200,'desktop'],[1599,'desktop'],[1600,'desktop'],[2560,'desktop']])('uses the %s viewport layout %s', (width, layout) => {
   mount(Number(width)); expect(screen.getByRole('main')).toHaveAttribute('data-layout', String(layout));
  });
  it('laptop keeps the dropdown and one question context without a permanent navigator', () => {
-  mount(1440); expect(screen.getByRole('combobox', { name:'Current exercise' })).toBeInTheDocument();
+  mount(1024); expect(screen.getByRole('combobox', { name:'Current exercise' })).toBeInTheDocument();
   expect(screen.queryByRole('navigation', { name:'Questions' })).toBeNull();
   expect(screen.getAllByRole('region', { name:'Question context' })).toHaveLength(1);
   expect(screen.getByRole('region', { name:'Your work' })).toBeInTheDocument();
@@ -74,13 +74,13 @@ describe('wide question navigator',()=>{
 });
 describe('wide toolbar and step behavior',()=>{
  it('offers one quick toolbar in the approved order with undo and redo disabled initially',()=>{
-  mount();const tools=screen.getByRole('group',{name:'Quick math tools'});
-  expect(within(tools).getAllByRole('button').map(b=>b.getAttribute('aria-label'))).toEqual(['Insert fraction','Insert parentheses','Insert square root','Insert power','Insert equals']);
+  mount();const tools=screen.getByRole('toolbar',{name:'Math tools'});
+  expect(within(tools).getAllByRole('button').map(b=>b.getAttribute('aria-label'))).toEqual(['Undo','Redo','Insert fraction','Insert number','Insert square root','Insert power','Insert parentheses','Insert +','Insert −','Insert ×','Insert ÷','Insert equals','More math tools']);
   expect(screen.getByRole('button',{name:'Undo'})).toBeDisabled();expect(screen.getByRole('button',{name:'Redo'})).toBeDisabled();
  });
  it('undo and redo target the current question and return typing to the editor',async()=>{
   const {store,user}=mount();fireEvent.keyDown(screen.getByRole('main'),{key:'5'});
-  await user.click(screen.getByRole('button',{name:'Undo'}));expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('\\square');expect(screen.getByRole('main')).toHaveFocus();
+  await user.click(screen.getByRole('button',{name:'Undo'}));expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('\\square');await vi.waitFor(()=>expect(screen.getByRole('main')).toHaveFocus());
   await user.click(screen.getByRole('button',{name:'Redo'}));expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('5');
  });
  it('Add step stays blank and first step remains protected',async()=>{
@@ -94,10 +94,10 @@ describe('wide toolbar and step behavior',()=>{
  });
  it.each([['Integral','\\int'],['2 by 2 matrix','\\begin{bmatrix}'],['Variable x','x'],['Infinity','\\infty'],['≤','\\le'],['Factorial','!']])('inserts advanced %s directly without a virtual keypad',async(name,expected)=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'More math tools'}));
-  await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:/نمایش بیشتر/}));
+  await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:/Show more/}));
   await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name}));
   expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toContain(expected);
-  expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();expect(screen.getByRole('main')).toHaveFocus();
+  expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();await vi.waitFor(()=>expect(screen.getByRole('main')).toHaveFocus());
  });
  it('pressing Enter on an unrelated toolbar control does not type into a number',()=>{
   const {store}=mount();const before=structuredClone(store.getState().doc);
@@ -106,9 +106,9 @@ describe('wide toolbar and step behavior',()=>{
 });
 describe('wide accessibility and decisions',()=>{
  it('opens named shortcut help and restores invoking focus on Escape',async()=>{
-  const {user}=mount();const trigger=screen.getByRole('button',{name:'Keyboard shortcuts'});await user.click(trigger);
+  const {user}=mount();await user.click(screen.getByRole('button',{name:'Exercise menu'}));await user.click(screen.getByRole('menuitem',{name:/Show more/}));await user.click(screen.getByRole('menuitem',{name:'Keyboard shortcuts'}));
   const dialog=screen.getByRole('dialog',{name:'Keyboard shortcuts'});expect(dialog).toHaveAccessibleDescription();
-  expect(within(dialog).getByText('Move focus')).toBeInTheDocument();await user.keyboard('{Escape}');expect(trigger).toHaveFocus();
+  expect(within(dialog).getByText('Move between controls; enter / leave the toolbar')).toBeInTheDocument();await user.keyboard('{Escape}');await vi.waitFor(()=>expect(screen.getByRole('main')).toHaveFocus());
  });
  it('Next still requires explicit confidence and Cancel preserves draft and question',async()=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'Pause'}));fireEvent.keyDown(screen.getByRole('main'),{key:'8'});const before=structuredClone(store.getState().doc);

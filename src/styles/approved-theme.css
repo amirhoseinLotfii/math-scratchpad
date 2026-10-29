@@ -1,0 +1,139 @@
+/* Approved palette. Loaded last to give every responsive layout the same states. */
+:root {
+ --background:#151719; --foreground:#f0f2f3; --card:#202326; --card-foreground:#f0f2f3;
+ --secondary:#292d30; --secondary-foreground:#f0f2f3; --muted:#292d30; --muted-foreground:#bec5c9;
+ --primary:#86b99b; --primary-hover:#97c8a9; --primary-pressed:#75a98a; --primary-foreground:#101a14;
+ --border:#80888d; --ring:#8cbfff; --destructive:#e8a0a0; --success:#8fa89a; --warning:#e6c27a;
+}
+#math-scratchpad-redux {--ms-bg:var(--background);--ms-surface:var(--card);--ms-key:var(--secondary);--ms-fg:var(--foreground);--ms-muted:var(--muted-foreground);--ms-border:var(--border);--ms-primary:var(--primary);--ms-on-primary:var(--primary-foreground);--ms-highlight:var(--secondary);--ms-warning:var(--warning)}
+#math-scratchpad-redux .scratchpad {background:var(--background)}
+#math-scratchpad-redux :is(.step,.problem,.question-timer,.question-navigator,.setup-panel,.manual-copy,.work-pane,.symbols-panel,.more-tools-panel,.template-preview) {background:var(--card)}
+#math-scratchpad-redux button {background:var(--secondary)}
+#math-scratchpad-redux button:is(.math-gap,.step-title,.button-ghost) {background:transparent}
+#math-scratchpad-redux button.math-token {background:transparent}
+#math-scratchpad-redux button.math-token.token-active {background:var(--secondary);border-color:var(--ring);box-shadow:inset 0 0 0 1px var(--ring)}
+#math-scratchpad-redux button.math-gap.at-gap {background:transparent;color:var(--foreground)}
+:is(.ui-button,#math-scratchpad-redux button):disabled {opacity:1;color:#aab2b7;background:var(--card);border-style:dashed;cursor:not-allowed}
+#math-scratchpad-redux button:not(:disabled):hover,.ui-button:not(:disabled):hover {background:#34393d}
+#math-scratchpad-redux :is(button.primary,button.button-primary),.ui-button.button-primary {background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+#math-scratchpad-redux button.button-primary:not(:disabled):hover,.ui-button.button-primary:not(:disabled):hover {background:var(--primary-hover)}
+#math-scratchpad-redux button.button-primary:not(:disabled):active,.ui-button.button-primary:not(:disabled):active {background:var(--primary-pressed)}
+#math-scratchpad-redux .question-destination[aria-current=page] {background:var(--primary);color:var(--primary-foreground);border-color:var(--primary);box-shadow:none}
+#math-scratchpad-redux .question-destination[aria-current=page] .destination-status {color:var(--primary-foreground)}
+#math-scratchpad-redux .question-state-dot.state-answered,.save-indicator {color:var(--success)}
+#math-scratchpad-redux .step-state.edited {background:var(--secondary);color:var(--muted-foreground);border-color:var(--border)}
+#math-scratchpad-redux .step-state.needs-review {background:var(--secondary);color:var(--warning);border-color:var(--warning)}
+#math-scratchpad-redux .question-timer output {color:var(--foreground)}
+#math-scratchpad-redux .key-grid .operator-key {background:var(--secondary)}
+#math-scratchpad-redux button[aria-pressed=true] {background:var(--secondary);color:var(--foreground);border-color:var(--border);box-shadow:none}
+#math-scratchpad-redux .step-header button.final-marker {display:inline-flex;min-width:48px;padding:6px 8px;min-height:44px}
+#math-scratchpad-redux .step-header button.final-marker[aria-pressed=true] {border-color:var(--ring);color:var(--foreground);outline:1px solid var(--ring)}
+#math-scratchpad-redux .step-header {flex-wrap:wrap;row-gap:6px}
+#math-scratchpad-redux button.keyboard-toggle[aria-expanded=true] {display:inline-flex}
+#math-scratchpad-redux .keyboard-toggle {gap:6px;white-space:nowrap}
+#math-scratchpad-redux textarea,#math-scratchpad-redux select {background:var(--background);color:var(--foreground)}
+#math-scratchpad-redux .problem-source {font-size:clamp(22px,3vw,30px);line-height:1.6;white-space:pre-wrap;unicode-bidi:plaintext;text-align:start;margin:20px 0;overflow-wrap:anywhere}
+#math-scratchpad-redux .persian-question {font-size:16px;line-height:1.85;unicode-bidi:plaintext}
+#math-scratchpad-redux .persian-question:dir(rtl) {text-align:right}
+#math-scratchpad-redux .question-label {margin-bottom:8px;line-height:1.5}
+#math-scratchpad-redux .problem-formula {font-size:28px;padding:16px 0}
+#math-scratchpad-redux .header-progress {white-space:nowrap;font-size:12px;margin:0}
+#math-scratchpad-redux .header-track {width:70px;min-width:36px;height:5px;background:var(--secondary);border-radius:8px;overflow:hidden}
+#math-scratchpad-redux .header-track>div {height:100%;background:var(--primary)}
+#math-scratchpad-redux .exercise-bar {display:block}
+#math-scratchpad-redux .exercise-bar[hidden] {display:none}
+#math-scratchpad-redux .math-tools-row {display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--background);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px}
+#math-scratchpad-redux .math-tools-row button {min-height:44px;min-width:44px;padding:8px;font-size:13px;flex:0 1 auto}
+#math-scratchpad-redux .editor-layout[data-answer-type=text],#math-scratchpad-redux .editor-layout[data-answer-type=choice] {min-height:280px;height:auto;flex:0 0 auto}
+#math-scratchpad-redux .editor-layout:not([data-answer-type=math]) .review-controls {margin-top:24px}
+#math-scratchpad-redux .text-answer textarea {min-height:130px;unicode-bidi:plaintext}
+#math-scratchpad-redux .answer-choices {display:flex;gap:12px;margin:16px 0;flex-wrap:wrap}
+#math-scratchpad-redux .answer-choices button {min-width:104px;min-height:60px;font-size:24px}
+#math-scratchpad-redux .answer-choices button.answer-selected {background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.dropdown-content {max-height:min(80dvh,var(--radix-dropdown-menu-content-available-height));width:min(350px,calc(100vw - 24px));overflow-y:auto;overscroll-behavior:contain;background:var(--card);color:var(--foreground)}
+.dropdown-item {min-height:40px;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.dropdown-item[data-highlighted] {background:#34393d;color:var(--foreground);outline:2px solid var(--ring);outline-offset:-2px}
+.menu-more {display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px}
+.menu-group-title {font:600 12px/1.5 var(--font-sans);color:var(--muted-foreground);margin:10px 10px 4px}
+.session-menu-details {display:flex;align-items:flex-start;flex-direction:column}
+.menu-description {font-size:12px;color:var(--muted-foreground);line-height:1.6;overflow-wrap:anywhere}
+.menu-change {text-decoration:underline;font-size:12px}
+.danger-text {color:var(--destructive)}
+.modal-content {background:var(--card);color:var(--foreground);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+.modal-content .dialog-actions {flex-wrap:wrap}
+.scale-group {border:0;padding:0;margin:0;min-width:0;width:100%}
+.scale-group legend {font-weight:600;font-size:14px;margin-bottom:8px}
+.wellbeing-dialog .session-scales {display:grid;gap:20px;margin:20px 0}
+.scale-pills {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.scale-pills label {position:relative;display:grid;place-items:center;background:var(--secondary);color:var(--foreground);border:1px solid var(--border);border-radius:24px;min-height:44px;cursor:pointer}
+.scale-pills input {position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.scale-pills label.scale-selected {background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.scale-pills label:focus-within {outline:3px solid var(--ring);outline-offset:3px}
+.scale-ends {display:flex;justify-content:space-between;color:var(--muted-foreground);font-size:12px;margin-top:6px}
+.clear-scale {font-size:12px;margin-top:8px;min-height:32px;background:transparent;border:0;color:var(--foreground);text-decoration:underline}
+#math-scratchpad-redux .clear-scale {background:transparent}
+:is(button,input,textarea,select,a,summary,[role=menuitem]):focus-visible {outline:3px solid var(--ring);outline-offset:3px}
+#math-scratchpad-redux .expression:focus-within {outline:2px solid var(--ring);outline-offset:4px;border-radius:4px}
+#math-scratchpad-redux .scratchpad:focus-visible .current-step .expression {outline:2px solid var(--ring);outline-offset:4px;border-radius:4px}
+:is(button,input,textarea,select,a,summary,[role=menuitem]) {scroll-margin:24px}
+@media(max-width:899px){
+ #math-scratchpad-redux .app-header {flex-wrap:wrap;gap:6px}
+ #math-scratchpad-redux .app-header h1 {white-space:nowrap;font-size:20px}
+ #math-scratchpad-redux .header-actions {margin-left:auto}
+ #math-scratchpad-redux .work-heading {margin:8px 0}
+ #math-scratchpad-redux .work-heading h2 {font-size:18px}
+ #math-scratchpad-redux .editor-layout[data-answer-type=math] {min-height:0}
+ #math-scratchpad-redux .math-keyboard {flex:0 0 auto}
+ #math-scratchpad-redux .header-track {width:48px}
+}
+@media(max-width:479px){
+ #math-scratchpad-redux .app-header {flex-wrap:nowrap}
+ #math-scratchpad-redux .app-header h1 {font-size:16px;letter-spacing:-.4px}
+ #math-scratchpad-redux .header-progress {font-size:10px;white-space:normal;min-width:44px;max-width:60px}
+ #math-scratchpad-redux .header-track {display:none}
+ #math-scratchpad-redux .save-indicator {display:none}
+ #math-scratchpad-redux .keyboard-label {display:none}
+ #math-scratchpad-redux .keyboard-toggle {min-width:36px;padding:6px;font-size:18px}
+ #math-scratchpad-redux .header-actions {gap:4px}
+ #math-scratchpad-redux .header-actions .button-icon {width:36px;min-width:36px;flex-basis:36px}
+ #math-scratchpad-redux .step-header .step-state {margin-right:0}
+}
+@media(forced-colors:active){.scale-pills label.scale-selected,#math-scratchpad-redux .answer-selected{border:3px solid Highlight}.scale-pills label:focus-within{outline-color:Highlight}}
+.confidence-options label:has(:checked) {background:var(--secondary);border-color:var(--ring)}
+#math-scratchpad-redux .state-answered {background:transparent;color:var(--success);border-color:var(--success)}
+#math-scratchpad-redux .diagnostic-track {background:var(--secondary)}
+#math-scratchpad-redux .diagnostic-track>div {background:var(--primary)}
+#math-scratchpad-redux .copy-state.changed {color:var(--warning)}
+#math-scratchpad-redux button.add-step {border-color:var(--border)}
+#math-scratchpad-redux .clear-scale {color:var(--foreground)}
+
+.scale-pills label {text-align:center;justify-content:center}
+.scale-pills label>span {width:100%;text-align:center;pointer-events:none}
+@media(min-width:1200px) and (max-width:1599px){
+ #math-scratchpad-redux .workspace:has(.question-navigator) {grid-template-columns:180px 260px minmax(0,1fr);gap:16px}
+}
+#math-scratchpad-redux button.question-destination[aria-current=page]:hover {background:var(--primary-hover);color:var(--primary-foreground)}
+#math-scratchpad-redux button.question-destination[aria-current=page]:active {background:var(--primary-pressed)}
+#math-scratchpad-redux .editor-layout:not([data-answer-type=math]) .notebook-main {min-height:0}
+@media(max-width:479px){
+ #math-scratchpad-redux .app-header h1 {font-size:clamp(13px,3.6vw,16px)}
+ #math-scratchpad-redux .app-header .header-progress {font-size:9px;white-space:nowrap;min-width:0;max-width:none;flex-shrink:0;margin:0}
+ #math-scratchpad-redux .app-header .header-actions {flex-shrink:0}
+ #math-scratchpad-redux .app-header .keyboard-toggle,#math-scratchpad-redux .app-header .header-actions .button-icon {width:32px;min-width:32px;flex-basis:32px;padding:5px}
+}
+#math-scratchpad-redux button.ui-button.question-destination[aria-current=page] {background:var(--primary);color:var(--primary-foreground)}
+#math-scratchpad-redux button.ui-button.question-destination[aria-current=page]:hover {background:var(--primary-hover)}
+#math-scratchpad-redux button.ui-button.question-destination[aria-current=page]:active {background:var(--primary-pressed)}
+#math-scratchpad-redux .question-destination[aria-current=page] .question-state-dot {border-color:var(--primary-foreground);color:var(--primary-foreground)}
+#math-scratchpad-redux .structure-selected {background:var(--secondary);box-shadow:inset 0 0 0 2px var(--ring)}
+@media(min-width:900px){
+ #math-scratchpad-redux .question-navigation button:last-child:not(:disabled):hover {background:var(--primary-hover);color:var(--primary-foreground)}
+ #math-scratchpad-redux .question-navigation button:last-child:not(:disabled):active {background:var(--primary-pressed);color:var(--primary-foreground)}
+}
+.insert-dialog-actions {position:sticky;top:-20px;background:var(--card);padding:8px 0;z-index:1;display:flex;justify-content:flex-end}
+.insert-search {display:grid;gap:6px;margin:12px 0;font-size:14px}
+.insert-search input {min-height:44px;width:100%;box-sizing:border-box;border:1px solid var(--border);background:var(--background);color:var(--foreground);border-radius:8px;padding:8px}
+.ui-button.danger-action,#math-scratchpad-redux button.ui-button.danger-action {background:var(--secondary);color:var(--destructive);border-color:var(--destructive)}
+.ui-button.danger-action:not(:disabled):hover {background:#34393d;color:var(--destructive)}
+.drive-access-details {margin:12px 0}
+.drive-access-details summary {cursor:pointer;min-height:32px}

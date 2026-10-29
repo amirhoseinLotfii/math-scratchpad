@@ -56,10 +56,10 @@ describe('Predictable keyboard editing',()=>{
   expect(latex(s.getState().doc.exercises[1].steps[0].expression)).toBe('34');expect(exerciseOf(s.getState().doc).confidence).toBe('high');expect(exerciseOf(s.getState().doc).elapsedMs).toBe(5000);
  });
  it('slash opens the chooser, Cancel remains reachable with Tab, Escape closes, and typing in text fields is not intercepted',()=>{
-  mount();const main=document.querySelector('main')!;fireEvent.keyDown(main,{key:'/'});expect(screen.getByRole('dialog')).toBeTruthy();
-  const cancel=screen.getByRole('button',{name:'Cancel · Esc'});cancel.focus();fireEvent.keyDown(cancel,{key:'Tab'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'Fraction'}));
+  mount();const main=document.querySelector('main')!;fireEvent.click(screen.getByRole('button',{name:'More math tools'}));expect(screen.getByRole('dialog')).toBeTruthy();
+  const cancel=screen.getByRole('button',{name:'Cancel · Esc'});cancel.focus();fireEvent.keyDown(cancel,{key:'Tab'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'Close tools · Esc'}));
   fireEvent.keyDown(document.activeElement!,{key:'Escape'});expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'Session JSON'}));fireEvent.keyDown(screen.getByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyDown(screen.getByRole('button',{name:'Exercise menu'}),{key:'ArrowDown'});fireEvent.click(screen.getByRole('menuitem',{name:/Show more/}));fireEvent.click(screen.getByRole('menuitem',{name:'Import session JSON'}));fireEvent.keyDown(screen.getByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
  });
  it('arrows on regular buttons never move the math cursor, and composition input does not insert partial text',()=>{
   const s=mount(),before=JSON.stringify(s.getState().doc.cursor);

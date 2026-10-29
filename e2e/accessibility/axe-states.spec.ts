@@ -10,11 +10,11 @@ for (const state of states) test(`AXE ${state}: no WCAG A/AA violations includin
  else if (state === 'batch-edit') await startBatch(page);
  else {
   await page.goto('/');
-  if (state === 'menu') await page.getByRole('button', { name: 'Exercise menu' }).click();
-  if (state === 'symbols') { await page.getByRole('main').focus(); await page.keyboard.type('/'); }
-  if (state === 'new-problem') { await page.getByRole('button', { name: 'Exercise menu' }).click(); await page.getByRole('menuitem', { name: 'New Problem', exact: true }).click(); }
+  if (state === 'menu') await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
+  if (state === 'symbols') { await page.getByRole('main').focus(); await page.getByRole('button',{name:'More math tools'}).click(); }
+  if (state === 'new-problem') { await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click(); await page.getByRole('menuitem', { name: 'New Problem', exact: true }).click(); }
   if (state === 'invalid-json') {
-   await page.getByRole('button', { name: 'Exercise menu' }).click();
+   await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
    await page.getByRole('menuitem', { name: 'Import session JSON' }).click();
    await page.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('not JSON');
    await page.getByRole('button', { name: 'Restore' }).click();

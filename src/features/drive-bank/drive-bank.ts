@@ -1,16 +1,18 @@
 import { ascii, blankStep, leaves, uid, type Document, type Exercise } from '../../model';
 import { newSessionMeta, type ScratchState } from '../../store';
+import { metadataSchema } from '../session/schemas/session-schema';
 import { parse } from '../../parser';
 import { serialize, validateSession } from '../../persistence';
 
 export const BANK_SCHEMA = 'math-scratchpad.bank/1.0';
 export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
-export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string };
+export type BankQuestion = { answerType?: 'math' | 'text' | 'choice'; choices?: string[]; id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string };
 export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[] };
 const safeId = /^[\w.-]{1,80}$/;
 const FORBIDDEN_SEGMENTS = new Set(['answer', 'answers', 'solution', 'solutions', 'key', 'keys', 'expected', 'rubric', 'verification']);
 /** Splits a field name into words (answer_key, answerKey, ANSWER-KEY, answer.key -> answer, key), so "keyboard" or "monkey" are not flagged. */
 export function forbiddenKey(name: string): boolean {
+  if (name === 'answerType') return false; // Response UI metadata, never an answer key.
   const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   return words.some(w => FORBIDDEN_SEGMENTS.has(w)) || words.join('_') === 'final_answer';
 }
@@ -35,9 +37,10 @@ export function validateBank(input: unknown): DriveBank {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw Error('ساختار سؤال معتبر نیست.');
     const q = entry as Record<string, unknown>;
     if (typeof q.id !== 'string' || !safeId.test(q.id) || ids.has(q.id) || !['math', 'text'].includes(String(q.mode)) || typeof q.source !== 'string' || !q.source.trim() || q.source.length > 4000 || (q.prompt !== undefined && (typeof q.prompt !== 'string' || q.prompt.length >= 4000)) || (q.guidance !== undefined && (typeof q.guidance !== 'string' || !q.guidance.trim() || q.guidance.length > 2000))) throw Error('متن، قالب یا شناسهٔ سؤال معتبر نیست.');
+    const response = metadataSchema.parse({answerType: q.answerType, choices: q.choices});
     ids.add(q.id);
     if (q.mode === 'math') parse(ascii(q.source));
-    return { id: q.id, mode: q.mode as 'math' | 'text', source: q.source, ...(typeof q.prompt === 'string' ? { prompt: q.prompt } : {}), ...(typeof q.guidance === 'string' ? { guidance: q.guidance } : {}) };
+    return { ...(response.answerType ? {answerType: response.answerType} : {}), ...(response.choices ? {choices: response.choices} : {}), id: q.id, mode: q.mode as 'math' | 'text', source: q.source, ...(typeof q.prompt === 'string' ? { prompt: q.prompt } : {}), ...(typeof q.guidance === 'string' ? { guidance: q.guidance } : {}) };
   });
   return { schema_version: BANK_SCHEMA, bank_id: data.bank_id, version: data.version, questions };
 }
@@ -51,7 +54,7 @@ export async function snapshotVersion(bank: DriveBank): Promise<string> {
 }
 export function bankDocument(bank: DriveBank, version: string): Document {
   if (!bank.questions.length) throw Error('هنوز سؤالی در بانک موجود نیست.');
-  const exercises: Exercise[] = bank.questions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), steps: [blankStep()] }));
+  const exercises: Exercise[] = bank.questions.map(q => ({ ...(q.answerType ? {answerType: q.answerType} : {}), ...(q.choices ? {choices: [...q.choices]} : {}), id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), steps: [blankStep()] }));
   const first = exercises[0], step = first.steps[0];
   return { session: { ...newSessionMeta(), bankId: bank.bank_id, bankVersion: version }, exercises, exerciseId: first.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
 }

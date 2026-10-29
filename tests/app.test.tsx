@@ -16,7 +16,7 @@ function mount() {
   const view = render(<div id="math-scratchpad-redux"><Provider store={store}><App /></Provider></div>);
   return { ...view, store };
 }
-const click = (name: string) => name === '⊕ Insert…' ? fireEvent.keyDown(screen.getByRole('main'), {key:'/'}) : fireEvent.click(screen.queryByRole('button', { name }) ?? screen.getByRole('menuitem', {name}));
+const click=(name:string)=>{if(name==='Exercise menu'){fireEvent.keyDown(screen.getByRole('button',{name}),{key:'ArrowDown'});return;}if(name==='⊕ Insert…'){fireEvent.click(screen.getByRole('button',{name:'More math tools'}));return;}if(name!=='Exercise menu'&&!screen.queryByRole('menuitem',{name})&&screen.queryByRole('menuitem',{name:/Show more/}))fireEvent.click(screen.getByRole('menuitem',{name:/Show more/}));fireEvent.click(screen.queryByRole('button',{name})??screen.getByRole('menuitem',{name}));};
 function showKeys() { click('⌨ Show Keyboard'); }
 
 describe('Responsive Math Scratchpad', () => {
@@ -97,7 +97,7 @@ describe('Responsive Math Scratchpad', () => {
     fireEvent.keyDown(document.activeElement!,{key:'Enter'});
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{\\square}{\\square}');
-    fireEvent.keyDown(screen.getByRole('main'),{key:'/'});
+    fireEvent.click(screen.getByRole('button',{name:'More math tools'}));
     fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'});
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -136,7 +136,7 @@ describe('Responsive Math Scratchpad', () => {
     expect(store.getState().doc.exercises).toHaveLength(30);
     expect(store.getState().doc.exercises[0].prompt).toContain('هم‌ارز');
     expect(container.querySelector('.scratchpad')?.getAttribute('dir')).toBe('ltr');
-    expect(screen.getByText(/برای هم‌ارز شدن/).getAttribute('dir')).toBe('rtl');
+    expect(screen.getByText(/برای هم‌ارز شدن/).getAttribute('dir')).toBe('auto');
     expect(container.textContent?.toLowerCase()).not.toContain('hint');
     fireEvent.keyDown(container.querySelector('.scratchpad')!,{key:'9'});
     const first=latex(stepOf(store.getState().doc).expression);

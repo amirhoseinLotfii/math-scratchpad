@@ -1,9 +1,10 @@
-import { elapsedAt, latex, type Document } from './model';
+import { answerTypeOf, elapsedAt, latex, type Document } from './model';
 export function reviewPayload(doc: Document) {
   const exercise = doc.exercises.find(x => x.id === doc.exerciseId)!;
   const marked = exercise.steps.find(s => s.final);
   return {
     type: 'math-scratchpad-review', version: 1,
+    ...(answerTypeOf(exercise) !== 'math' ? {answerType: answerTypeOf(exercise), answerText: exercise.answerText ?? ''} : {}),
     problem: { format: exercise.mode === 'text' ? 'persian-text' : 'math-or-latex', text: exercise.source },
     questionId: exercise.bankQuestionId ?? exercise.diagnosticId ?? null,
     prompt: exercise.prompt ?? null,

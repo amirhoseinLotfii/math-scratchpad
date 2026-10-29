@@ -9,7 +9,8 @@ export type Structure =
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
 export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean };
-export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; bankQuestionId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
+export type AnswerType = 'math' | 'text' | 'choice';
+export type Exercise = { answerType?: AnswerType; choices?: string[]; answerText?: string; id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; bankQuestionId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
 export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
 export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor; session?: SessionMeta };
@@ -115,3 +116,8 @@ export function elapsedAt(ex: Pick<Exercise, 'elapsedMs' | 'timerRunningSince' |
   return !ex.timerPaused && Number.isFinite(since) ? base + Math.max(0, now - (since as number)) : base;
 }
 
+
+/** Old banks and sessions infer the response control from their existing mode. */
+export const answerTypeOf = (ex: Pick<Exercise, 'mode' | 'answerType'> & Partial<Pick<Exercise, 'assessment'>>): AnswerType => ex.answerType ?? (ex.assessment === 'fractions-round-1' ? 'math' : ex.mode === 'text' ? 'text' : 'math');
+
+export const legacyMathWork = (ex: Exercise) => ex.answerType === undefined && ex.answerText === undefined && ex.steps.some(s => latex(s.expression) !== '\\square');

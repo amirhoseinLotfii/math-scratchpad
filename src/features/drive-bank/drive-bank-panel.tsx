@@ -10,6 +10,8 @@ import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
 export function DriveBankPanel({ close, open, onAvailable }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void }) {
+  const panel = useRef<HTMLElement>(null);
+  useEffect(()=>{if(open){const frame=requestAnimationFrame(()=>panel.current?.querySelector<HTMLElement>('button:not(:disabled),summary')?.focus());return()=>cancelAnimationFrame(frame);}},[open]);
   const store = useAppStore(), dispatch = useAppDispatch();
   const [config, setConfig] = useState<DriveConfig>(getConfig), [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('برای شروع «اتصال Google Drive» را بزن.'), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
@@ -102,16 +104,16 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
   }
   const current = store.getState().doc.session;
   const same = available && current?.bankId === available.bank.bank_id && current.bankVersion === available.version;
-  return <section className="setup-panel" lang="fa" dir="rtl" aria-label="بانک Google Drive" hidden={!open}>
-    <h2>بانک سؤال در Google Drive</h2>
-    <p>برنامه فقط به فایلی که خودت در پنجرهٔ Google انتخاب می‌کنی دسترسی دارد (مجوز drive.file)، نه به بقیهٔ Drive. وقتی صفحه باز است، هر ۳۰ ثانیه تغییر فایل بررسی می‌شود.</p>
-    <p>فایل انتخاب‌شده: <span dir="ltr">{config.fileName || (config.fileId ? 'انتخاب شده' : '—')}</span>{checkedAt && ` · آخرین بررسی ${checkedAt}`}</p>
-    <p role="status" aria-live="polite">{message}</p>
-    <div className="toolbar"><Button onClick={connect} disabled={busy || !ready}>{connected ? 'اتصال دوباره' : token.current === null && config.fileId ? 'اتصال دوباره' : 'اتصال Google Drive'}</Button>
-      {connected && <Button onClick={choose}>انتخاب فایل بانک</Button>}
-      {connected && config.fileId && <Button onClick={() => { void sync(true); }}>بررسی الان</Button>}
-      {available && available.bank.questions.length > 0 && <Button onClick={startBank} disabled={!!same}>بازکردن دستهٔ دریافت‌شده</Button>}<Button onClick={close}>بستن</Button></div>
-    <p>جلسهٔ در حال حل هیچ‌وقت خودکار عوض نمی‌شود؛ قبل از بازکردن دستهٔ تازه، جلسهٔ فعلی در مرورگر ذخیره می‌شود. مجوز Google حدود یک ساعت معتبر است و بعد از بستن صفحه هم پاک می‌شود؛ پس از آن یک لمس روی «اتصال دوباره» لازم است.</p>
-    {archives.length > 0 && <details><summary>جلسه‌های ذخیره‌شده ({archives.length})</summary>{archives.map((a, index) => <div key={`${a.id}-${a.savedAt}-${index}`}><span dir="ltr">{a.id} · {a.savedAt}</span> <Button onClick={() => restore(a)}>ادامه</Button></div>)}</details>}
+  return <section ref={panel} className="setup-panel" lang="en" dir="ltr" aria-label="Google Drive bank" hidden={!open}>
+    <h2>Google Drive question bank</h2>
+    <details className="drive-access-details"><summary>Access and session details</summary><p lang="fa" dir="auto">برنامه فقط به فایلی که خودت در پنجرهٔ Google انتخاب می‌کنی دسترسی دارد (مجوز drive.file)، نه به بقیهٔ Drive. وقتی صفحه باز است، هر ۳۰ ثانیه تغییر فایل بررسی می‌شود.</p></details>
+    <p>Selected file: <span dir="ltr">{config.fileName || (config.fileId ? 'Selected' : '—')}</span>{checkedAt && ` · Last checked ${checkedAt}`}</p>
+    <p role="status" aria-live="polite" dir="auto" lang="fa">{message}</p>
+    <div className="toolbar"><Button onClick={connect} disabled={busy || !ready}>{connected ? 'Reconnect' : token.current === null && config.fileId ? 'Reconnect' : 'Connect Google Drive'}</Button>
+      {connected && <Button onClick={choose}>Choose bank file</Button>}
+      {connected && config.fileId && <Button onClick={() => { void sync(true); }}>Check now</Button>}
+      {available && available.bank.questions.length > 0 && <Button onClick={startBank} disabled={!!same}>Open received batch</Button>}<Button onClick={close}>Close</Button></div>
+    <details className="drive-access-details"><summary>Session recovery and reconnecting</summary><p dir="auto" lang="fa">جلسهٔ در حال حل هیچ‌وقت خودکار عوض نمی‌شود؛ قبل از بازکردن دستهٔ تازه، جلسهٔ فعلی در مرورگر ذخیره می‌شود. مجوز Google حدود یک ساعت معتبر است و بعد از بستن صفحه هم پاک می‌شود؛ پس از آن یک لمس روی «اتصال دوباره» لازم است.</p></details>
+    {archives.length > 0 && <details><summary>Saved sessions ({archives.length})</summary>{archives.map((a, index) => <div key={`${a.id}-${a.savedAt}-${index}`}><span dir="ltr">{a.id} · {a.savedAt}</span> <Button onClick={() => restore(a)}>Resume</Button></div>)}</details>}
   </section>;
 }

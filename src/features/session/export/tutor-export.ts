@@ -1,4 +1,4 @@
-import { ascii, elapsedAt, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
+import { answerTypeOf, legacyMathWork, ascii, elapsedAt, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
 import { APP_VERSION } from '../../../version';
 import { questionStatus } from '../../workspace/model/workspace-layout';
 
@@ -6,6 +6,7 @@ export const TUTOR_EXPORT_SCHEMA = 'math-scratchpad.session/1.0';
 export const CONFIDENCE_SCORE = { high: 5, medium: 3, low: 1 } as const;
 export type ItemStatus = 'answered' | 'skipped' | 'unanswered';
 export type TutorItem = {
+  answerText?: string; answerType?: 'text' | 'choice';
   item_id: string; index: number; question_id: number | string | null; assessment: string | null;
   prompt: string | null; problem: string; problem_format: 'math-or-latex' | 'persian-text';
   status: ItemStatus; student_answer: string | null; final_answer: string | null; final_step_id: string | null; final_step_number: number | null;
@@ -32,14 +33,16 @@ export function exportItem(ex: Exercise, index: number): TutorItem {
   const final = steps.find(s => s.is_final) ?? null;
   const confidence = ex.confidence ?? 'high';
   const status = itemStatus(ex);
+  const response = legacyMathWork(ex) ? 'math' : answerTypeOf(ex), answer = response === 'math' ? (final && !blankStep(final.latex) ? final.latex : null) : ex.answerText?.trim() ? ex.answerText : null;
   return {
+    ...(response !== 'math' ? {answerText: ex.answerText ?? '', answerType: response} : {}),
     item_id: ex.id, index: index + 1, question_id: ex.bankQuestionId ?? ex.diagnosticId ?? null, assessment: ex.assessment ?? null,
     prompt: ex.prompt ?? null, problem: ex.mode === 'math' ? ascii(ex.source) : ex.source, problem_format: ex.mode === 'text' ? 'persian-text' : 'math-or-latex',
     status,
-    student_answer: final && !blankStep(final.latex) ? final.latex : null,
-    final_answer: final && !blankStep(final.latex) ? final.latex : null,
-    final_step_id: final?.step_id ?? null, final_step_number: final?.number ?? null,
-    steps: status === 'unanswered' ? [] : steps.filter(s => !blankStep(s.latex) || s.is_final),
+    student_answer: answer,
+    final_answer: answer,
+    final_step_id: response === 'math' ? final?.step_id ?? null : null, final_step_number: response === 'math' ? final?.number ?? null : null,
+    steps: status === 'unanswered' || response !== 'math' ? [] : steps.filter(s => !blankStep(s.latex) || s.is_final),
     started_at: ex.startedAt ?? null, submitted_at: ex.submittedAt ?? null,
     solve_time_sec: Number.isFinite(ex.elapsedMs) || Number.isFinite(ex.timerRunningSince) ? Math.round(elapsedAt(ex) / 1000) : null,
     confidence: CONFIDENCE_SCORE[confidence], confidence_label: confidence,

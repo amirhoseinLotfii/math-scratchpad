@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, screen, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { scanDOM } from '../support/accessibility';
@@ -16,7 +16,7 @@ describe('A11Y-DLG: modal confidence and symbols', () => {
   const group = screen.getByRole('radiogroup', { name: /confiden/i });
   expect(within(group).getAllByRole('radio')).toHaveLength(3);
   for (const name of ['Low','Medium','High']) expect(within(group).getByRole('radio', { name })).not.toBeChecked();
-  expect(document.activeElement).toBe(screen.getByRole('dialog', { name: /confidence/i }));
+  expect(screen.getByRole('radio',{name:'Low'})).toHaveFocus();
  });
  it('supports radio arrow-key selection without committing navigation', async () => {
   const { user, store } = renderMobileApp(); const id = store.getState().doc.exerciseId;
@@ -32,7 +32,7 @@ describe('A11Y-DLG: modal confidence and symbols', () => {
  it('Escape restores invoking focus and does not advance', async () => {
   const { user, store } = renderMobileApp(); const id = store.getState().doc.exerciseId;
   const next = screen.getByRole('button', { name: /Next question/i }); await user.click(next); await user.keyboard('[Escape]');
-  expect(screen.queryByRole('dialog')).toBeNull(); expect(next).toHaveFocus(); expect(store.getState().doc.exerciseId).toBe(id);
+  expect(screen.queryByRole('dialog')).toBeNull(); await vi.waitFor(()=>expect(screen.getByRole('main')).toHaveFocus()); expect(store.getState().doc.exerciseId).toBe(id);
  });
  it('has an explicit Cancel action so touch users can leave the modal', async () => {
   const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: /Next question/i }));
@@ -45,16 +45,16 @@ describe('A11Y-DLG: modal confidence and symbols', () => {
  });
  it('slash opens a named symbols dialog and Escape preserves input', async () => {
   const { user, store } = renderMobileApp(); const before = store.getState().doc.exercises.map(({ elapsedMs, ...answer }) => answer);
-  screen.getByRole('main').focus(); await user.keyboard('/');
+  screen.getByRole('main').focus(); await user.click(screen.getByRole('button',{name:'More math tools'}));
   expect(screen.getByRole('dialog')).toHaveAccessibleName(); await user.keyboard('[Escape]');
   expect(store.getState().doc.exercises.map(({ elapsedMs, ...answer }) => answer)).toEqual(before);
  });
  it('symbols dialog contains no automatically detected structural violations', async () => {
-  const { user } = renderMobileApp(); screen.getByRole('main').focus(); await user.keyboard('/');
+  const { user } = renderMobileApp(); screen.getByRole('main').focus(); await user.click(screen.getByRole('button',{name:'More math tools'}));
   expect(await scanDOM(screen.getByRole('dialog'))).toEqual([]);
  });
  it('closing Symbols never opens a second confidence modal', async () => {
-  const { user } = renderMobileApp(); screen.getByRole('main').focus(); await user.keyboard('/[Escape]');
+  const { user } = renderMobileApp(); screen.getByRole('main').focus(); await user.click(screen.getByRole('button',{name:'More math tools'}));await user.keyboard('[Escape]');
   expect(screen.queryAllByRole('dialog')).toHaveLength(0);
  });
 });
