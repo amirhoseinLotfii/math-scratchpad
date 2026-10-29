@@ -27,7 +27,7 @@ test('A11Y-KEY-03: keyboard focus has a visible indicator', async ({ page }) => 
 });
 test('A11Y-KEY-04: Enter on a focused symbol inserts exactly once', async ({ page }) => {
  await startBatch(page);
- const button = page.getByRole('group', { name: 'Quick math tools' }).getByRole('button', { name: 'Insert fraction' });
+ const button = page.getByRole('toolbar', { name: 'Math tools' }).getByRole('button', { name: 'Insert fraction' });
  await button.focus(); await page.keyboard.press('Enter');
  expect(await page.getByLabel('Step 1 expression').locator('.fraction').count()).toBe(1);
 });
@@ -67,10 +67,10 @@ test('A11Y-STAT-01: time ticks do not repeatedly announce to a live region', asy
 });
 test('A11Y-STAT-02: copy success is announced without unexpectedly moving focus', async ({ page, context }) => {
  await context.grantPermissions(['clipboard-read','clipboard-write']); await startBatch(page);
- const trigger = page.getByRole('button', { name: 'Exercise menu' }); await trigger.click();
+ const trigger = page.getByRole('button', { name: 'Exercise menu' }); await trigger.click();await page.getByRole('menuitem',{name:/Show more/}).click();
  await page.getByRole('menuitem', { name: /Copy full session JSON/i }).click();
  await expect(page.getByRole('status').filter({ hasText: /copied/i })).toBeVisible();
- await expect(trigger).toBeFocused();
+ await expect(page.getByRole('main')).toBeFocused();
 });
 test('A11Y-ERR-01: confidence has no default; continuing empty shows an error, choosing one continues', async ({ page }) => {
  const dialog = await openConfidence(page);

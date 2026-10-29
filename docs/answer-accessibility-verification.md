@@ -67,6 +67,8 @@ Advanced tools have an expanded-list search and a close action at the top; Next 
 - PA-1.1-03's source “two million, sixty thousand, nine” was checked in the actual browser.
 - Ctrl+Alt modifier and Cmd+Option-equivalent Meta+Alt modifier are both covered by automated integration tests; **only Ctrl+Alt in Chrome was exercised as a live browser shortcut**.
 
+The existing Playwright source scenarios were aligned with the new disclosure, toolbar roles and editor focus return. They were type-checked, **not executed in this managed preview**. Existing screenshot goldens describe the old palette/layout and still need regeneration/review in the repository browser pipeline before the full release gate can be considered passed.
+
 ### Limits of verification
 
 **Firefox, physical Windows/macOS, real screen-reader output, real Google account authorization and a real device keyboard were not exercised.** No claim of full WCAG conformance or all state×viewport combinations is made. Drive behavior is covered by the existing mocked integration tests, not a new live login. Browser tests use a local disposable QA session with no bank answers.
@@ -76,6 +78,13 @@ Advanced tools have an expanded-list search and a close action at the top; Next 
 | File | Change |
 | --- | --- |
 | `docs/answer-accessibility-verification.md` | Verification report. |
+| `e2e/accessibility/axe-states.spec.ts` | Update assertions for the requested layout, labels, disclosure or focus contract; retain existing functional checks. |
+| `e2e/accessibility/keyboard-and-adaptations.spec.ts` | Update assertions for the requested layout, labels, disclosure or focus contract; retain existing functional checks. |
+| `e2e/mobile-accessibility.spec.ts` | Update assertions for the requested layout, labels, disclosure or focus contract; retain existing functional checks. |
+| `e2e/mobile.spec.ts` | Update assertions for the requested layout, labels, disclosure or focus contract; retain existing functional checks. |
+| `e2e/persistence/local-storage-sync.spec.ts` | Update assertions for the requested layout, labels, disclosure or focus contract; retain existing functional checks. |
+| `e2e/support/mobile-journey.ts` | Reveal Show more before the existing batch-start journey. |
+| `e2e/wide/workspace.spec.ts` | Update assertions for the requested layout, labels, disclosure or focus contract; retain existing functional checks. |
 | `src/App.tsx` | Wire answer types, prompt/source rendering, grouped dropdown, header progress, batch scales, focus recovery, Ctrl/Cmd+Alt navigation and dialog close behavior; remove the Session details card and header shortcuts button. Keep the AST-backed step JSX. |
 | `src/Keyboard.tsx` | Clarify Next field and the template guidance without changing math actions. |
 | `src/features/drive-bank/drive-bank-panel.tsx` | Focus the panel on opening; compact access/recovery descriptions into disclosures and label controls in English; retain Drive operations. |

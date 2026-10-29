@@ -1,7 +1,7 @@
 import { test, expect, type Page, dismissWellbeing } from './support/test';
 async function startBatch(page: Page) {
  await page.goto('/');
- await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
@@ -16,7 +16,7 @@ test('confidence dialog traps Tab and Shift+Tab and restores focus', async ({ pa
  }
  await page.keyboard.press('Shift+Tab');
  expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true);
- await page.keyboard.press('Escape'); await expect(next).toBeFocused();
+ await page.keyboard.press('Escape'); await expect(page.getByRole('main')).toBeFocused();
 });
 test('batch completion requires confidence and offers explicit export actions', async ({ page }) => {
  await startBatch(page);
@@ -33,9 +33,9 @@ test('batch completion requires confidence and offers explicit export actions', 
  await expect(complete.getByRole('button', { name: 'Check · Copy for Review' })).toBeVisible();
 });
 test('menu stays within viewport and does not push the page horizontally', async ({ page }) => {
- await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
  const exportButton = page.getByRole('menuitem', { name: /^Copy full session JSON/ });
- await expect(exportButton).toBeInViewport();
+ await exportButton.scrollIntoViewIfNeeded();await expect(exportButton).toBeInViewport();
  const box = await exportButton.boundingBox();
  expect(box!.x).toBeGreaterThanOrEqual(0);
  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -76,7 +76,7 @@ test('tapping a number never moves to a different question', async ({ page }) =>
 test('clipboard export contains the whole batch rather than only the visible question', async ({ page, context }) => {
  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
  await startBatch(page); await page.locator('main').focus(); await page.keyboard.type('123');
- await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();
  const text = await page.evaluate(() => navigator.clipboard.readText());
  const data = JSON.parse(text);
@@ -88,7 +88,7 @@ test('Add step and tool cards follow the approved vertical reading order', async
  await page.goto('/');
  const step = await page.locator('[data-step-id]').last().boundingBox();
  const add = await page.getByRole('button', { name: 'Add step', exact: true }).boundingBox();
- const tools = await page.getByRole('group', { name: 'Quick math tools' }).boundingBox();
+ const tools = await page.getByRole('toolbar', { name: 'Math tools' }).boundingBox();
  expect(add!.y).toBeGreaterThanOrEqual(step!.y + step!.height);
  expect(tools!.y).toBeGreaterThanOrEqual(add!.y + add!.height);
  expect(add!.height).toBeGreaterThanOrEqual(44);
@@ -115,7 +115,7 @@ test('copy denial exposes a manual JSON fallback without leaving the question', 
  });
  await startBatch(page);
  const before = await page.getByRole('combobox', { name: 'Current exercise' }).inputValue();
- await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('button', { name: 'Exercise menu' }).click();await page.getByRole('menuitem',{name:/Show more/}).click();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();
  const fallback = page.getByRole('textbox', { name: /session JSON/i });
  await expect(fallback).toBeVisible(); expect(JSON.parse(await fallback.inputValue()).doc.exercises).toHaveLength(20);
