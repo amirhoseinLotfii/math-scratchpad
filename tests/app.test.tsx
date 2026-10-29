@@ -6,6 +6,7 @@ import { App } from '../src/App';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
 import { leaves, latex } from '../src/model';
 import { writeClipboard } from '../src/review';
+import { menuAction } from './support/menu-actions';
 
 afterEach(() => {
   cleanup(); vi.restoreAllMocks();
@@ -16,7 +17,7 @@ function mount() {
   const view = render(<div id="math-scratchpad-redux"><Provider store={store}><App /></Provider></div>);
   return { ...view, store };
 }
-const click = (name: string) => name === '⊕ Insert…' ? fireEvent.keyDown(screen.getByRole('main'), {key:'/'}) : fireEvent.click(screen.queryByRole('button', { name }) ?? screen.getByRole('menuitem', {name}));
+const click = (name: string) => name === '⊕ Insert…' ? fireEvent.keyDown(screen.getByRole('main'), {key:'/'}) : fireEvent.click(screen.queryByRole('button', { name: name.startsWith('⌨ Show') ? 'Show Keyboard' : name.startsWith('⌨ Hide') ? 'Hide Keyboard' : name }) ?? menuAction(name));
 function showKeys() { click('⌨ Show Keyboard'); }
 
 describe('Responsive Math Scratchpad', () => {

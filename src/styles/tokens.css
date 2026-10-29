@@ -1,11 +1,13 @@
 :root {
  color-scheme: dark;
- --background: #102019; --foreground: #f2faf5;
- --card: #192d24; --card-foreground: #f2faf5;
- --primary: #c7f5df; --primary-foreground: #102f23;
- --secondary: #283d33; --secondary-foreground: #f2faf5;
- --muted: #24372e; --muted-foreground: #c0d1c6;
- --border: #62776b; --ring: #a7f3cd; --destructive: #ffb4ab;
- --radius: 0.875rem; --font-sans: 'Inter', system-ui, sans-serif;
+ --background: #151719; --foreground: #e7ebe8;
+ --card: #202326; --card-foreground: #e7ebe8;
+ --raised: #292d30;
+ --primary: #86b99b; --primary-foreground: #101a14;
+ --secondary: #292d30; --secondary-foreground: #e7ebe8;
+ --muted: #24282b; --muted-foreground: #b2b9b5;
+ --border: #41474a; --ring: #8cbfff; --destructive: #e7827d;
+ --success: #8fa89a; --warning: #e4b66b;
+ --radius: 0.625rem; --font-sans: 'Inter', system-ui, sans-serif;
  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
 }

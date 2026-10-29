@@ -71,7 +71,7 @@ describe('Quick tools and numeric keypad', () => {
  it('More tools opens editing actions without resetting the active caret', () => {
   const store = mount(), before = store.getState().doc.cursor;
   fireEvent.click(screen.getByRole('button', { name: 'More tools' }));
-  expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+  expect(within(document.querySelector('.editing-tools')!).getByRole('button', { name: 'Undo' })).toBeTruthy();
   expect(store.getState().doc.cursor).toEqual(before);
  });
 });
@@ -96,6 +96,6 @@ describe('English interface, question RTL and single-question mode', () => {
   expect(screen.queryByRole('button', { name: 'Copy full session JSON' })).toBeNull();
   expect(store.getState().doc.exercises).toEqual(before);
   act(() => store.dispatch(actions.adjacentExercise(1)));
-  fireEvent.click(menu); expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
+  fireEvent.click(menu); fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' })); expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
  });
 });

@@ -7,6 +7,7 @@ import { actions, activeInfo, exerciseOf, initialState, makeStore, stepOf } from
 import { elapsedAt, latex, leaves } from '../src/model';
 import { serialize, validateSession } from '../src/persistence';
 import { fingerprint } from '../src/review';
+import { menuAction } from './support/menu-actions';
 const create=()=>makeStore(initialState());
 function mount(){const store=create();render(<Provider store={store}><App/></Provider>);return store;}
 function number(store:ReturnType<typeof create>, value='1234'){
@@ -59,7 +60,7 @@ describe('Predictable keyboard editing',()=>{
   mount();const main=document.querySelector('main')!;fireEvent.keyDown(main,{key:'/'});expect(screen.getByRole('dialog')).toBeTruthy();
   const cancel=screen.getByRole('button',{name:'Cancel · Esc'});cancel.focus();fireEvent.keyDown(cancel,{key:'Tab'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'Fraction'}));
   fireEvent.keyDown(document.activeElement!,{key:'Escape'});expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'Session JSON'}));fireEvent.keyDown(screen.getByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(menuAction('Import session JSON'));fireEvent.keyDown(screen.getByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
  });
  it('arrows on regular buttons never move the math cursor, and composition input does not insert partial text',()=>{
   const s=mount(),before=JSON.stringify(s.getState().doc.cursor);

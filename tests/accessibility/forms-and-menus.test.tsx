@@ -37,6 +37,7 @@ describe('A11Y-FORM: validation, explanation and error focus', () => {
  it('invalid imported JSON is explained without losing the typed recovery text or active work', async () => {
   const { user, store } = renderMobileApp(); const answers = store.getState().doc.exercises.map(e => e.steps);
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
   await user.click(screen.getByRole('menuitem', { name: 'Import session JSON' }));
   const field = screen.getByRole('textbox', { name: 'Copy or paste session JSON' });
   await user.clear(field); await user.type(field, 'not JSON'); await user.click(screen.getByRole('button', { name: 'Restore' }));
@@ -71,9 +72,11 @@ describe('A11Y-MENU: shadcn dropdown interaction contract', () => {
   await user.click(trigger); await user.keyboard('[Escape]');
   expect(screen.queryByRole('menu')).toBeNull(); expect(trigger).toHaveFocus();
  });
- it('menu has no structural axe violations and includes full export action', async () => {
+ it('keeps data actions collapsed until Show more and exposes them accessibly when expanded', async () => {
   const { user } = renderMobileApp(); await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
   const menu = screen.getByRole('menu');
+  expect(within(menu).queryByRole('menuitem', { name: /Copy full session JSON/i })).toBeNull();
+  await user.click(within(menu).getByRole('menuitem', { name: 'Show more' }));
   expect(within(menu).getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
   expect(await scanDOM(menu)).toEqual([]);
  });

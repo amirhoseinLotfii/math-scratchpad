@@ -22,11 +22,13 @@ describe('wide workspace: layout and single source of state', () => {
  it.each([[899,'phone'],[900,'laptop'],[1440,'laptop'],[1599,'laptop'],[1600,'desktop'],[2560,'desktop']])('uses the %s viewport layout %s', (width, layout) => {
   mount(Number(width)); expect(screen.getByRole('main')).toHaveAttribute('data-layout', String(layout));
  });
- it('laptop keeps the dropdown and one question context without a permanent navigator', () => {
-  mount(1440); expect(screen.getByRole('combobox', { name:'Current exercise' })).toBeInTheDocument();
-  expect(screen.queryByRole('navigation', { name:'Questions' })).toBeNull();
+ it('tablet and laptop use the question sidebar from 900px, with mobile retaining its selector', () => {
+  mount(1024); expect(screen.queryByRole('combobox', { name:'Current exercise' })).toBeNull();
+  expect(screen.getByRole('navigation', { name:'Questions' })).toBeInTheDocument();
   expect(screen.getAllByRole('region', { name:'Question context' })).toHaveLength(1);
   expect(screen.getByRole('region', { name:'Your work' })).toBeInTheDocument();
+  cleanup(); mount(899); expect(screen.getByRole('combobox', { name:'Current exercise' })).toBeInTheDocument();
+  expect(screen.queryByRole('navigation', { name:'Questions' })).toBeNull();
  });
  it('desktop exposes all question destinations and exactly one active question', () => {
   mount(); const nav = screen.getByRole('navigation', {name:'Questions'});
@@ -45,9 +47,9 @@ describe('wide workspace: layout and single source of state', () => {
  });
  it('wide defaults do not show a numeric keypad', () => {mount();expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();});
  it('virtual keyboard remains an explicit preference across resizing',async()=>{
-  const {user,resize}=mount();await user.click(screen.getByRole('button',{name:/Show Keyboard/}));
+  const {user,resize}=mount();await user.click(screen.getByRole('button',{name:/Show Keyboard/i}));
   resize(1440);expect(screen.getByRole('group',{name:'Numeric keys'})).toBeInTheDocument();
-  await user.click(screen.getByRole('button',{name:/Hide Keyboard/})); resize(1920);
+  await user.click(screen.getByRole('button',{name:/Hide Keyboard/i})); resize(1920);
   expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();
  });
 });
@@ -106,7 +108,8 @@ describe('wide toolbar and step behavior',()=>{
 });
 describe('wide accessibility and decisions',()=>{
  it('opens named shortcut help and restores invoking focus on Escape',async()=>{
-  const {user}=mount();const trigger=screen.getByRole('button',{name:'Keyboard shortcuts'});await user.click(trigger);
+  const {user}=mount();const trigger=screen.getByRole('button',{name:'Exercise menu'});await user.click(trigger);
+  await user.click(screen.getByRole('menuitem',{name:'Show more'}));await user.click(screen.getByRole('menuitem',{name:'Keyboard shortcuts'}));
   const dialog=screen.getByRole('dialog',{name:'Keyboard shortcuts'});expect(dialog).toHaveAccessibleDescription();
   expect(within(dialog).getByText('Move focus')).toBeInTheDocument();await user.keyboard('{Escape}');expect(trigger).toHaveFocus();
  });

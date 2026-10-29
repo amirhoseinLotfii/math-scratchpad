@@ -37,6 +37,8 @@ describe('Approved mobile batch workflow', () => {
   expect(screen.queryByRole('button', { name: 'Check · Copy for Review' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
   expect(screen.getByRole('menuitem', { name: 'Check · Copy for Review' })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: /^Copy full session JSON/ })).toBeNull();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
   expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
  });
  it('opens completion actions after final-question confidence without silently copying', async () => {
@@ -73,6 +75,7 @@ describe('Session copy and recovery', () => {
   const store = mount();
   const before = JSON.stringify(store.getState().doc.exercises);
   await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
   await userEvent.click(screen.getByRole('menuitem', { name: /^Copy full session JSON/ }));
   await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
   const data = JSON.parse(copy.mock.calls[0][0]);
@@ -85,6 +88,7 @@ describe('Session copy and recovery', () => {
   Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn().mockReturnValue(false) });
   mount();
   await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
   await userEvent.click(screen.getByRole('menuitem', { name: /^Copy full session JSON/ }));
   const field = await screen.findByRole('textbox', { name: /session JSON/i });
   expect(JSON.parse((field as HTMLTextAreaElement).value).doc.exercises).toHaveLength(20);

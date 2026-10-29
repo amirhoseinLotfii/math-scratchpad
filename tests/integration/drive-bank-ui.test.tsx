@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { readArchive } from '../../src/features/drive-bank/drive-bank';
@@ -68,7 +69,8 @@ describe('private Drive bank flow', () => {
     await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
     expect(await screen.findByText(/نسخهٔ v2/)).toBeTruthy();
     expect(JSON.stringify(store.getState().doc)).toBe(before); // no auto switch
-    expect(screen.getByRole('button', { name: 'New Drive questions' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Exercise menu' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' })).toBeEnabled();
     await act(async () => { await Promise.resolve(); });
   });
 });

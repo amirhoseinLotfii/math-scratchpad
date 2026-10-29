@@ -35,17 +35,26 @@ describe('1–2 persisted panels', () => {
   expect(within(nav).getByRole('button', { name: 'Expand questions panel' })).toHaveAttribute('aria-expanded', 'false');
   unmount(); mount(); expect(screen.getByRole('button', { name: 'Expand questions panel' })).toBeInTheDocument();
  });
- it('Session details persists separately from Questions; the side Keyboard shortcuts panel is removed', async () => {
-  const { unmount, user } = mount();
-  const details = screen.getByText('Session details').closest('details')!; expect(details.open).toBe(true);
-  expect(document.querySelector('.shortcut-panel')).toBeNull(); expect(screen.queryByText('Keyboard shortcuts', { selector: 'summary' })).toBeNull();
-  details.open = false; fireEvent(details, new Event('toggle'));
-  expect(localStorage.getItem(UI_PREFS_PREFIX + 'session-details')).toBe('0'); expect(localStorage.getItem(UI_PREFS_PREFIX + 'questions')).toBeNull();
-  unmount(); mount();
-  expect(screen.getByText('Session details').closest('details')!.open).toBe(false);
-  expect(screen.getByRole('button', { name: 'Collapse questions panel' })).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Keyboard shortcuts' })); expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
-  expect(screen.getByLabelText('Question elapsed time')).toBeInTheDocument(); // timer is outside the collapsible panel
+ it('keeps session details in the expanded menu and puts shortcuts under Help', async () => {
+  const { user } = mount();
+  expect(screen.queryByText('Session details')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Keyboard shortcuts' })).toBeNull();
+  expect(document.querySelector('.session-panel')).toBeNull();
+  expect(screen.getByLabelText('Question elapsed time')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  expect(screen.queryByRole('menuitem', { name: 'Session details' })).toBeNull();
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Session details' }));
+  const sessionDetails = screen.getByRole('group', { name: 'Session details' });
+  expect(within(sessionDetails).getByText('Session ID')).toBeInTheDocument();
+  expect(within(sessionDetails).getByText('Math anxiety')).toBeInTheDocument();
+  expect(within(sessionDetails).getByText('Energy')).toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Keyboard shortcuts' }));
+  expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  expect(localStorage.getItem(UI_PREFS_PREFIX + 'session-details')).toBeNull();
  });
  it('still works in memory when localStorage throws', async () => {
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
@@ -77,7 +86,7 @@ describe('4 Enter creates a step', () => {
  });
  it('Enter on buttons, selects and dialogs is not intercepted', async () => {
   const { store, user } = mount({ width: 1440 });
-  fireEvent.keyDown(screen.getByRole('combobox', { name: 'Current exercise' }), { key: 'Enter' });
+  fireEvent.keyDown(within(screen.getByRole('navigation', { name: 'Questions' })).getByRole('button', { name: 'Question 1 Not started' }), { key: 'Enter' });
   fireEvent.keyDown(screen.getByRole('button', { name: 'Add step' }), { key: 'Enter' });
   expect(exerciseOf(store.getState().doc).steps).toHaveLength(1);
   await user.click(screen.getByRole('button', { name: 'More math tools' })); const d = screen.getByRole('dialog', { name: 'Insert Math Element' });
@@ -104,26 +113,36 @@ describe('5 insert dialog “نمایش بیشتر”', () => {
 
 describe('6 header progress', () => {
  it('separates answered from skipped and updates immediately', () => {
-  const { store } = mount(); const header = () => document.querySelector('.header-progress')!.textContent;
-  expect(header()).toBe('0/20 answered');
-  act(() => { store.dispatch(actions.command({ type: 'digit', value: '4' })); }); expect(header()).toBe('0/20 answered'); // draft is not answered
-  act(() => { store.dispatch(actions.setConfidence('low')); }); expect(header()).toBe('1/20 answered');
-  act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.setSkipped(true)); }); expect(header()).toBe('1/20 answered · 1 skipped');
+  const { store } = mount(); const header = () => document.querySelector('.header-progress-copy')!.textContent;
+  expect(header()).toBe('0 of 20 answered');
+  act(() => { store.dispatch(actions.command({ type: 'digit', value: '4' })); }); expect(header()).toBe('0 of 20 answered'); // draft is not answered
+  act(() => { store.dispatch(actions.setConfidence('low')); }); expect(header()).toBe('1 of 20 answered');
+  act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.setSkipped(true)); }); expect(header()).toBe('1 of 20 answered · 1 skipped');
  });
 });
 
 describe('7 anxiety/energy once per batch', () => {
  it('asks once at batch start, applies to the session and survives reload; never invents values', async () => {
   (globalThis as { __askWellbeing?: boolean }).__askWellbeing = true;
-  const { store, user, unmount } = mount(); const dialog = screen.getByRole('dialog', { name: /Before you start/ });
+  const { store, user, unmount } = mount(); const dialog = screen.getByRole('dialog', { name: 'Before you start this batch' });
+  expect(within(dialog).getByText('Optional. You can change this later.')).toBeInTheDocument();
+  expect(within(dialog).getAllByRole('radiogroup')).toHaveLength(2);
+  expect(within(dialog).getAllByRole('radio')).toHaveLength(10);
   expect(store.getState().doc.session?.anxiety).toBeUndefined();
-  await user.selectOptions(within(dialog).getByLabelText(/Math anxiety/), '3'); expect(screen.getByRole('dialog', { name: /Before you start/ })).toBeInTheDocument();
+  await user.click(within(within(dialog).getByRole('radiogroup', { name: 'Math anxiety' })).getByRole('radio', { name: '3' })); expect(screen.getByRole('dialog', { name: 'Before you start this batch' })).toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: 'Start' }));
   expect(store.getState().doc.session).toMatchObject({ anxiety: 3 }); expect(store.getState().doc.session?.energy).toBeUndefined();
   act(() => { store.dispatch(actions.adjacentExercise(1)); }); expect(screen.queryByRole('dialog')).toBeNull();
   const saved = serialize(store.getState()); unmount();
   const st = initialState(); st.doc = validateSession(JSON.parse(saved)).doc; mount({ store: makeStore(st) });
-  expect(screen.queryByRole('dialog')).toBeNull(); expect(screen.getByText(/Math anxiety: 3 · Energy: Not set/)).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' })); await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Session details' }));
+  const details = screen.getByRole('group', { name: 'Session details' });
+  expect(within(details).getByText('Math anxiety')).toBeInTheDocument();
+  expect(within(details).getByText('3')).toBeInTheDocument();
+  expect(within(details).getByText('Energy')).toBeInTheDocument();
+  expect(within(details).getByText('Not set')).toBeInTheDocument();
  });
  it('Skip for now records nothing and does not re-ask in the same batch', async () => {
   (globalThis as { __askWellbeing?: boolean }).__askWellbeing = true;
@@ -134,6 +153,18 @@ describe('7 anxiety/energy once per batch', () => {
   (globalThis as { __askWellbeing?: boolean }).__askWellbeing = true;
   const s = makeStore(initialState()); s.dispatch(actions.startFractionRound()); s.dispatch(actions.setSessionMeta({ anxiety: 2, energy: 4 }));
   mount({ store: s }); expect(screen.queryByRole('dialog')).toBeNull();
+ });
+ it('keeps both scale values unset or stores both explicit selections', async () => {
+  (globalThis as { __askWellbeing?: boolean }).__askWellbeing = true;
+  const { store, user } = mount(); const dialog = screen.getByRole('dialog', { name: 'Before you start this batch' });
+  for (const radio of within(dialog).getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
+  const anxiety = within(within(dialog).getByRole('radiogroup', { name: 'Math anxiety' }));
+  const energy = within(within(dialog).getByRole('radiogroup', { name: 'Energy' }));
+  await user.click(anxiety.getByRole('radio', { name: '2' })); await user.click(energy.getByRole('radio', { name: '5' }));
+  expect(anxiety.getByRole('radio', { name: '2' })).toHaveAttribute('aria-checked', 'true');
+  expect(energy.getByRole('radio', { name: '5' })).toHaveAttribute('aria-checked', 'true');
+  await user.click(within(dialog).getByRole('button', { name: 'Start' }));
+  expect(store.getState().doc.session).toMatchObject({ anxiety: 2, energy: 5 });
  });
 });
 

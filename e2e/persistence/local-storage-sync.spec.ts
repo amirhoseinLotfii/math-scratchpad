@@ -86,5 +86,6 @@ test('SYNC-07: localStorage write failure keeps editing usable and exposes expor
  await expect(page.getByRole('alert').filter({ hasText: /storage|saved|backup/i })).toBeVisible();
  await expect(page.getByLabel('Step 1 expression')).toContainText('987');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).click();
  await expect(page.getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
 });

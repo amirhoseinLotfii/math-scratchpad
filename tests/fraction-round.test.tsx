@@ -9,13 +9,14 @@ import { evaluateSequence, gradeDiagnostic } from '../src/assessment';
 import { parse } from '../src/parser';
 import { latex, leaves } from '../src/model';
 import { serialize, validateSession } from '../src/persistence';
+import { menuAction } from './support/menu-actions';
 afterEach(cleanup);
 function mount(round = false) {
  const store=makeStore(initialState());if(round)store.dispatch(actions.startFractionRound());
  const view=render(<div id="math-scratchpad-redux"><Provider store={store}><App/></Provider></div>);
  return {store,...view};
 }
-const click=(name:string)=>name==='⊕ Insert…'?fireEvent.keyDown(screen.getByRole('main'),{key:'/'}):fireEvent.click(screen.queryByRole('button',{name})??screen.getByRole('menuitem',{name}));
+const click=(name:string)=>name==='⊕ Insert…'?fireEvent.keyDown(screen.getByRole('main'),{key:'/'}):fireEvent.click(screen.queryByRole('button',{name:name.startsWith('⌨ Show')?'Show Keyboard':name.startsWith('⌨ Hide')?'Hide Keyboard':name})??menuAction(name));
 describe('Minimal original-UI fixes and twenty-question round',()=>{
  it('closes Insert on backdrop or Escape, preserves inside clicks and leaves work intact',async()=>{
   const {store}=mount();const before=JSON.stringify(exerciseOf(store.getState().doc).steps);

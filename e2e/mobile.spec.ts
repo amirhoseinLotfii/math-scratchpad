@@ -23,6 +23,12 @@ test('adding a step keeps the active writing area reachable and first-step delet
  await page.keyboard.type('123');
  await expect(editor).toContainText('123');
 });
+test('each phone step keeps its Final control visible and stateful', async ({ page }) => {
+ const final = page.getByRole('button', { name: 'Mark Step 1 as final' });
+ await expect(final).toBeVisible(); await expect(final).toHaveAttribute('aria-pressed', 'false');
+ await final.click(); await expect(final).toHaveAttribute('aria-pressed', 'true');
+ await expect(final).toContainText('Final ✓');
+});
 test('quick tools have approved order and editing never exposes inline confidence', async ({ page }) => {
  const quick = page.getByRole('group', { name: 'Quick math tools' });
  await expect(quick.getByRole('button').first()).toHaveAttribute('type', 'button');
@@ -31,6 +37,7 @@ test('quick tools have approved order and editing never exposes inline confidenc
 });
 test('full session export is reachable during editing', async ({ page }) => {
  await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).click();
  await expect(page.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeVisible();
 });
 test('only question prose is Persian and the app interface stays English', async ({ page }) => {
@@ -41,6 +48,7 @@ test('only question prose is Persian and the app interface stays English', async
 });
 test('confidence modal supports keyboard cancellation without losing focus', async ({ page }) => {
  await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);

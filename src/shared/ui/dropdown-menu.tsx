@@ -11,3 +11,7 @@ export const DropdownMenuItem = forwardRef<ElementRef<typeof Primitive.Item>, Co
  <Primitive.Item ref={ref} className={cn('dropdown-item', className)} {...props} />
 ));
 DropdownMenuItem.displayName = 'DropdownMenuItem';
+export const DropdownMenuLabel = forwardRef<ElementRef<typeof Primitive.Label>, ComponentPropsWithoutRef<typeof Primitive.Label>>(({ className, ...props }, ref) => (
+ <Primitive.Label ref={ref} className={cn('dropdown-label', className)} {...props} />
+));
+DropdownMenuLabel.displayName = 'DropdownMenuLabel';

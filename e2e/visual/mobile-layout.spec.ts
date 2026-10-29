@@ -6,7 +6,7 @@ for (const state of ['single-edit', 'batch-edit', 'confidence'] as const) {
   else if (state === 'confidence') await openConfidence(page);
   else await page.goto('/');
   await expect(page).toHaveScreenshot(`${state}.png`, {
-   fullPage: true, animations: 'disabled', caret: 'hide', mask: [page.getByLabel('Question elapsed time')],
+   fullPage: true, animations: 'disabled', caret: 'hide',
    maxDiffPixelRatio: 0.005,
   });
  });

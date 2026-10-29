@@ -22,22 +22,33 @@ describe('tutor export and session UI', () => {
  });
  it('records anxiety, energy and help used', async () => {
   const { store, user } = renderMobileApp();
-  await user.click(screen.getByRole('button', { name: 'Change' }));
-  const dialog = await screen.findByRole('dialog', { name: /Before you start/ });
-  await user.selectOptions(within(dialog).getByLabelText(/Math anxiety/), '2');
-  await user.selectOptions(within(dialog).getByLabelText(/Energy/), '4');
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Session details' }));
+  const session = screen.getByRole('group', { name: 'Session details' });
+  await user.click(within(session).getByRole('menuitem', { name: 'Change' }));
+  const dialog = await screen.findByRole('dialog', { name: /Change session ratings/ });
+  await user.click(within(within(dialog).getByRole('radiogroup', { name: 'Math anxiety' })).getByRole('radio', { name: '2' }));
+  await user.click(within(within(dialog).getByRole('radiogroup', { name: 'Energy' })).getByRole('radio', { name: '4' }));
   await user.click(within(dialog).getByRole('button', { name: 'Start' }));
   expect(store.getState().doc.session).toMatchObject({ anxiety: 2, energy: 4 });
-  expect(screen.getByText(/Math anxiety: 2 · Energy: 4/)).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Session details' }));
+  const details = screen.getByRole('group', { name: 'Session details' });
+  expect(within(details).getByText('2')).toBeTruthy();
+  expect(within(details).getByText('4')).toBeTruthy();
  });
  it('reset current session requires confirmation', async () => {
   const { store, user } = renderMobileApp();
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
   await user.click(screen.getByRole('menuitem', { name: 'Reset current session' }));
   const dialog = await screen.findByRole('dialog', { name: /Reset current session/ });
   await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
   expect(store.getState().doc.exercises).toHaveLength(20);
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
   await user.click(screen.getByRole('menuitem', { name: 'Reset current session' }));
   await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reset session' }));
   expect(store.getState().doc.exercises).toHaveLength(1);
