@@ -3,7 +3,8 @@ import { actions, initialState, makeStore } from '../../src/store';
 import { buildTutorExport, missingFinalAnswers, TUTOR_EXPORT_SCHEMA } from '../../src/features/session/export/tutor-export';
 import { createPersistentStore, SESSION_KEY, clearAppStorage } from '../../src/features/session/persistence/persistent-store';
 import { serialize, validateSession } from '../../src/persistence';
-import { isoLocal } from '../../src/model';
+import { blankStep, isoLocal } from '../../src/model';
+import { readFileSync } from 'node:fs';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/;
 function round() { const s = makeStore(initialState()); s.dispatch(actions.startFractionRound()); return s; }
@@ -19,6 +20,32 @@ describe('tutor export schema', () => {
   expect(data.items).toHaveLength(20);
   expect(Object.keys(data.items[0]).sort()).toEqual(['assessment','confidence','confidence_label','final_answer','final_step_id','final_step_number','guidance_available','guidance_opened','guidance_opened_at','hint_note','hint_used','independent','index','item_id','problem','problem_format','prompt','question_id','solve_time_sec','started_at','status','steps','student_answer','submitted_at'].sort());
   expect(data.items[0].status).toBe('unanswered'); expect(data.totals.unanswered).toBe(20);
+ });
+ it('keeps the legacy v7 export shape and parses a saved v7 export fixture', () => {
+  const legacyFixture = JSON.parse(readFileSync('tests/fixtures/tutor-export-v7.json', 'utf8')) as Record<string, any>;
+  expect(legacyFixture.schema_version).toBe(TUTOR_EXPORT_SCHEMA);
+  expect(legacyFixture.items).toHaveLength(1);
+  const s = makeStore(initialState()), doc = s.getState().doc;
+  doc.session = { id: 'legacy-session-v7', startedAt: '2026-10-30T11:00:00.000Z', bankId: 'legacy-v7-bank', bankVersion: 'v7' };
+  doc.exercises[0] = { ...doc.exercises[0], id: 'legacy-item-1', bankQuestionId: 'V7-Q01', source: '2+2', mode: 'math', steps: [blankStep()] };
+  const current = buildTutorExport(doc, new Date('2026-10-30T12:00:00.000Z'));
+  expect(Object.keys(current).sort()).toEqual(Object.keys(legacyFixture).sort());
+  expect(Object.keys(current.items[0]).sort()).toEqual(Object.keys(legacyFixture.items[0]).sort());
+  expect(current.items[0]).toMatchObject({ item_id: 'legacy-item-1', question_id: 'V7-Q01', problem: '2+2', status: 'unanswered', steps: [] });
+  expect(JSON.parse(JSON.stringify(legacyFixture)).items[0].final_answer).toBeNull();
+ });
+ it('adds stage, concept ID, and safe lesson metadata without exporting Learn check responses', () => {
+  const s = makeStore(initialState()), ex = s.getState().doc.exercises[0];
+  ex.stage = 'practice'; ex.conceptId = 'PC-1.1-C1'; ex.bankQuestionId = 'PC-1.1-P01';
+  const data = buildTutorExport(s.getState().doc, new Date('2026-10-30T12:00:00.000Z'), {
+   lessonProgress: [{ lessonId: 'PC-1.1', status: 'practising', completedConceptIds: ['PC-1.1-C1'], skippedChecks: [{ questionId: 'PC-1.1-L01', at: '2026-10-30T11:30:00.000Z' }], learnSkipped: { at: '2026-10-30T11:00:00.000Z' }, learnDoneAt: '2026-10-30T11:15:00.000Z', practiceStartedAt: '2026-10-30T11:20:00.000Z' }],
+   lessonPanelEvents: [{ questionId: 'PC-1.1-P01', openedAt: '2026-10-30T11:25:00.000Z', closedAt: '2026-10-30T11:26:00.000Z' }],
+  });
+  expect(data.items[0]).toMatchObject({ stage: 'practice', conceptId: 'PC-1.1-C1' });
+  expect(data.lessonProgress?.[0]).toMatchObject({ lessonId: 'PC-1.1', status: 'practising', learnSkipped: { at: '2026-10-30T11:00:00.000Z' } });
+  expect(data.lessonPanelEvents?.[0].closedAt).toBe('2026-10-30T11:26:00.000Z');
+  expect(JSON.stringify(data)).not.toContain('Option B');
+  expect(JSON.stringify(data)).not.toContain('checkAnswers');
  });
  it('marks the final answer, records timestamps, verbatim steps and solve time', () => {
   const s = round(); answer(s, '12');
@@ -94,6 +121,14 @@ describe('local storage save / restore / reset / migration', () => {
   const restored = validateSession(JSON.parse(serialize(s.getState())));
   expect(restored.doc.session).toEqual(s.getState().doc.session);
   expect(buildTutorExport(restored.doc).items[0]).toEqual(buildTutorExport(s.getState().doc).items[0]);
+ });
+ it('keeps additive lesson attempt metadata compatible with backup import/export', () => {
+  const s = round();
+  const backup = JSON.parse(serialize(s.getState()));
+  backup.doc.exercises[0].stage = 'learn';
+  backup.doc.exercises[0].conceptId = 'PC-1.1-C1';
+  const restored = validateSession(backup);
+  expect(restored.doc.exercises[0]).toMatchObject({ stage: 'learn', conceptId: 'PC-1.1-C1' });
  });
  it('rejects malformed metadata safely', () => {
   const s = round(); const raw = JSON.parse(serialize(s.getState()));

@@ -43,6 +43,18 @@ describe('private Drive bank flow', () => {
     expect(screen.queryByText('تنظیمات یک‌باره')).toBeNull();
     expect(screen.queryByLabelText('شناسه OAuth برنامه')).toBeNull();
   });
+  it('explains invalid lesson data and leaves ordinary bank questions available', async () => {
+    mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const invalidLessons = { ...bank('1+2'), lessons: [{ id: 'BROKEN-LESSON', book: 'Sample book', section: '1.1', title: 42, concepts: [] }] };
+    mockDrive({ content: JSON.stringify(invalidLessons), rev: 1 });
+    const { user } = renderMobileApp();
+    await connect(user);
+    expect(await screen.findByText(/بخشی از دادهٔ درس قابل‌خواندن نبود؛ می‌توانی با سؤال‌های بانک ادامه بدهی/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' }));
+    expect(screen.getByRole('region', { name: 'Current problem' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+    expect(screen.queryByRole('menuitem', { name: 'Lessons' })).toBeNull();
+  });
   it('picks the file, reads the bank, and archives the active work before switching', async () => {
     mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockDrive({ content: JSON.stringify(bank('1+2')), rev: 1 });

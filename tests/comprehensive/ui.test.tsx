@@ -60,9 +60,9 @@ function mockDrive(state: { content: string; rev: number; status?: number; email
   });
 }
 function panel() {
-  const store = makeStore(initialState()); const onAvailable = vi.fn();
-  const view = render(<Provider store={store}><DriveBankPanel open close={() => undefined} onAvailable={onAvailable} /></Provider>);
-  return { store, onAvailable, view, user: userEvent.setup() };
+  const store = makeStore(initialState()); const onAvailable = vi.fn(), onBankReady = vi.fn();
+  const view = render(<Provider store={store}><DriveBankPanel open close={() => undefined} onAvailable={onAvailable} onBankReady={onBankReady} /></Provider>);
+  return { store, onAvailable, onBankReady, view, user: userEvent.setup() };
 }
 const media = (f: ReturnType<typeof mockDrive>) => f.mock.calls.filter(c => String(c[0]).includes('alt=media')).length;
 async function connect(user: ReturnType<typeof userEvent.setup>) {
@@ -80,9 +80,9 @@ describe('Drive bank panel', () => {
     expect(await screen.findByText(/حساب شخصی تعیین‌شدهٔ پروژه نیست/)).toBeTruthy(); expect(screen.queryByRole('button', { name: 'انتخاب فایل بانک' })).toBeNull();
   });
   it('downloads once, then polls metadata only until it changes', async () => {
-    mockGoogle(); const drive = { content: BANK(), rev: 1 }; const f = mockDrive(drive); const { user, onAvailable } = panel();
+    mockGoogle(); const drive = { content: BANK(), rev: 1 }; const f = mockDrive(drive); const { user, onAvailable, onBankReady } = panel();
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    await connect(user); expect(await screen.findByText(/2 سؤال آماده است/)).toBeTruthy(); expect(onAvailable).toHaveBeenLastCalledWith(true);
+    await connect(user); expect(await screen.findByText(/2 سؤال آماده است/)).toBeTruthy(); expect(onAvailable).toHaveBeenLastCalledWith(true); expect(onBankReady.mock.lastCall?.[0]).toMatchObject({ bank_id: 'GEN' });
     const n = media(f);
     await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); }); await waitFor(() => expect(f.mock.calls.length).toBeGreaterThan(3)); expect(media(f)).toBe(n);
     drive.content = BANK('1+5', 'v2'); drive.rev = 2;

@@ -2,15 +2,18 @@ import { ascii, blankStep, leaves, uid, type Document, type Exercise } from '../
 import { newSessionMeta, type ScratchState } from '../../store';
 import { parse } from '../../parser';
 import { serialize, validateSession } from '../../persistence';
+import { parseDifficulty, parseLessons } from '../lessons/parse';
+import type { Lesson, QuestionLessonFields } from '../lessons/types';
 
 export const BANK_SCHEMA = 'math-scratchpad.bank/1.0';
 export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
-export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string };
-export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[] };
+export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string; answerType?: 'math' | 'text' | 'choice'; choices?: string[] } & QuestionLessonFields;
+export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[]; lessons?: Lesson[]; parseWarnings?: string[] };
 const safeId = /^[\w.-]{1,80}$/;
-const FORBIDDEN_SEGMENTS = new Set(['answer', 'answers', 'solution', 'solutions', 'key', 'keys', 'expected', 'rubric', 'verification']);
+const FORBIDDEN_SEGMENTS = new Set(['answer', 'answers', 'solution', 'solutions', 'correct', 'key', 'keys', 'expected', 'rubric', 'verification']);
 /** Splits a field name into words (answer_key, answerKey, ANSWER-KEY, answer.key -> answer, key), so "keyboard" or "monkey" are not flagged. */
 export function forbiddenKey(name: string): boolean {
+  if (name.toLowerCase() === 'answertype') return false;
   const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   return words.some(w => FORBIDDEN_SEGMENTS.has(w)) || words.join('_') === 'final_answer';
 }
@@ -24,34 +27,111 @@ export function findForbiddenKey(value: unknown, path = '', depth = 0): string |
   }
   return null;
 }
+
+const OMIT = Symbol('omit-answer-like-content');
+function stripAnswerLikeFields(value: unknown, path: string, warnings: string[], depth = 0): unknown | typeof OMIT {
+  if (depth > 64) {
+    warnings.push(`${path || 'bank'}: content deeper than 64 levels was ignored`);
+    return OMIT;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, index) => stripAnswerLikeFields(item, `${path}[${index}]`, warnings, depth + 1)).filter(item => item !== OMIT);
+  }
+  if (!value || typeof value !== 'object') return value;
+  const clean = Object.create(null) as Record<string, unknown>;
+  for (const [key, item] of Object.entries(value)) {
+    const here = path ? `${path}.${key}` : key;
+    if (forbiddenKey(key)) {
+      warnings.push(`${here}: answer-like field was removed`);
+      continue;
+    }
+    const next = stripAnswerLikeFields(item, here, warnings, depth + 1);
+    if (next !== OMIT) clean[key] = next;
+  }
+  return clean;
+}
+
 export function validateBank(input: unknown): DriveBank {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('ساختار بانک معتبر نیست.');
-  const data = input as Record<string, unknown>;
-  const leaked = findForbiddenKey(data);
-  if (leaked) throw Error(`بانک سؤال نباید پاسخ یا کلید داشته باشد (فیلد «${leaked}»). فایل رد شد.`);
+  const warnings: string[] = [];
+  const stripped = stripAnswerLikeFields(input, '', warnings);
+  if (!stripped || typeof stripped !== 'object' || Array.isArray(stripped)) throw Error('ساختار بانک معتبر نیست.');
+  const data = stripped as Record<string, unknown>;
   if (data.schema_version !== BANK_SCHEMA || typeof data.bank_id !== 'string' || !safeId.test(data.bank_id) || typeof data.version !== 'string' || !safeId.test(data.version) || !Array.isArray(data.questions) || data.questions.length > 40) throw Error('شناسه، نسخه یا ساختار بانک معتبر نیست.');
-  const ids = new Set<string>();
-  const questions = data.questions.map((entry): BankQuestion => {
+  const ids = new Set<string>(), questions: BankQuestion[] = [];
+  for (const [index, entry] of data.questions.entries()) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw Error('ساختار سؤال معتبر نیست.');
     const q = entry as Record<string, unknown>;
-    if (typeof q.id !== 'string' || !safeId.test(q.id) || ids.has(q.id) || !['math', 'text'].includes(String(q.mode)) || typeof q.source !== 'string' || !q.source.trim() || q.source.length > 4000 || (q.prompt !== undefined && (typeof q.prompt !== 'string' || q.prompt.length >= 4000)) || (q.guidance !== undefined && (typeof q.guidance !== 'string' || !q.guidance.trim() || q.guidance.length > 2000))) throw Error('متن، قالب یا شناسهٔ سؤال معتبر نیست.');
+    if (typeof q.id !== 'string' || !safeId.test(q.id) || !['math', 'text'].includes(String(q.mode)) || typeof q.source !== 'string' || !q.source.trim() || q.source.length > 4000 || (q.prompt !== undefined && (typeof q.prompt !== 'string' || q.prompt.length >= 4000)) || (q.guidance !== undefined && (typeof q.guidance !== 'string' || !q.guidance.trim() || q.guidance.length > 2000))) throw Error('متن، قالب یا شناسهٔ سؤال معتبر نیست.');
+    if (ids.has(q.id)) { warnings.push(`questions[${index}]: duplicate question id ${q.id} was ignored`); continue; }
     ids.add(q.id);
     if (q.mode === 'math') parse(ascii(q.source));
-    return { id: q.id, mode: q.mode as 'math' | 'text', source: q.source, ...(typeof q.prompt === 'string' ? { prompt: q.prompt } : {}), ...(typeof q.guidance === 'string' ? { guidance: q.guidance } : {}) };
-  });
-  return { schema_version: BANK_SCHEMA, bank_id: data.bank_id, version: data.version, questions };
+    const question: BankQuestion = { id: q.id, mode: q.mode as 'math' | 'text', source: q.source, ...(typeof q.prompt === 'string' ? { prompt: q.prompt } : {}), ...(typeof q.guidance === 'string' ? { guidance: q.guidance } : {}) };
+    if (q.answerType === 'math' || q.answerType === 'text' || q.answerType === 'choice') question.answerType = q.answerType;
+    else if (q.answerType !== undefined) warnings.push(`questions[${index}].answerType: unsupported answer type was ignored`);
+    if (q.choices !== undefined) {
+      if (Array.isArray(q.choices) && q.choices.length >= 2 && q.choices.length <= 12 && q.choices.every(choice => typeof choice === 'string' && choice.trim().length > 0 && choice.length <= 500)) question.choices = q.choices as string[];
+      else warnings.push(`questions[${index}].choices: invalid choices were ignored`);
+    }
+    if (question.answerType === 'choice' && !question.choices) {
+      warnings.push(`questions[${index}].choices: choice answer type requires at least two valid options`);
+      delete question.answerType;
+    }
+    if (typeof q.lessonId === 'string' && safeId.test(q.lessonId)) question.lessonId = q.lessonId;
+    else if (q.lessonId !== undefined) warnings.push(`questions[${index}].lessonId: invalid lesson reference was ignored`);
+    if (typeof q.conceptId === 'string' && safeId.test(q.conceptId)) question.conceptId = q.conceptId;
+    else if (q.conceptId !== undefined) warnings.push(`questions[${index}].conceptId: invalid concept reference was ignored`);
+    if (q.stage === 'learn' || q.stage === 'practice') question.stage = q.stage;
+    else if (q.stage !== undefined) warnings.push(`questions[${index}].stage: invalid stage was ignored`);
+    const difficulty = parseDifficulty(q.difficulty);
+    if (difficulty !== undefined) question.difficulty = difficulty;
+    else if (q.difficulty !== undefined) warnings.push(`questions[${index}].difficulty: invalid difficulty was ignored`);
+    questions.push(question);
+  }
+
+  const parsedLessons = parseLessons(data.lessons, questions.map(question => question.id));
+  warnings.push(...parsedLessons.warnings);
+  const lessonById = new Map(parsedLessons.lessons.map(lesson => [lesson.id, lesson]));
+  const conceptToLesson = new Map<string, string>();
+  for (const lesson of parsedLessons.lessons) for (const concept of lesson.concepts) conceptToLesson.set(concept.id, lesson.id);
+  for (const [index, question] of questions.entries()) {
+    if (question.lessonId && !lessonById.has(question.lessonId)) {
+      warnings.push(`questions[${index}].lessonId: missing lesson ${question.lessonId}; lesson link was ignored`);
+      delete question.lessonId;
+      delete question.conceptId;
+      if (question.stage === 'learn') question.stage = 'practice';
+    } else if (question.conceptId && (!question.lessonId || conceptToLesson.get(question.conceptId) !== question.lessonId)) {
+      warnings.push(`questions[${index}].conceptId: concept is not in the referenced lesson; question is treated as practice`);
+      delete question.conceptId;
+      question.stage = 'practice';
+    }
+    if (question.stage === 'learn' && (!question.lessonId || !question.conceptId)) {
+      warnings.push(`questions[${index}]: learn question has no valid lesson and concept; question is treated as practice`);
+      question.stage = 'practice';
+    }
+  }
+
+  return {
+    schema_version: BANK_SCHEMA,
+    bank_id: data.bank_id,
+    version: data.version,
+    questions,
+    ...(data.lessons !== undefined ? { lessons: parsedLessons.lessons } : {}),
+    ...(warnings.length ? { parseWarnings: warnings } : {}),
+  };
 }
 
 /** Include a content digest in the version, even if the author forgot to bump it. */
 export async function snapshotVersion(bank: DriveBank): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(bank));
+  const { parseWarnings: _warnings, ...content } = bank;
+  const bytes = new TextEncoder().encode(JSON.stringify(content));
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   const suffix = Array.from(new Uint8Array(hash)).slice(0, 8).map(x => x.toString(16).padStart(2, '0')).join('');
   return `${bank.version.slice(0, 80)}-${suffix}`;
 }
-export function bankDocument(bank: DriveBank, version: string): Document {
-  if (!bank.questions.length) throw Error('هنوز سؤالی در بانک موجود نیست.');
-  const exercises: Exercise[] = bank.questions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), steps: [blankStep()] }));
+export function bankDocument(bank: DriveBank, version: string, includedQuestions: BankQuestion[] = bank.questions.filter(question => question.stage !== 'learn')): Document {
+  if (!includedQuestions.length) throw Error('هنوز سؤالی برای تمرین در بانک موجود نیست.');
+  const exercises: Exercise[] = includedQuestions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), stage: q.stage ?? 'practice', ...(q.conceptId ? { conceptId: q.conceptId } : {}), steps: [blankStep()] }));
   const first = exercises[0], step = first.steps[0];
   return { session: { ...newSessionMeta(), bankId: bank.bank_id, bankVersion: version }, exercises, exerciseId: first.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
 }
@@ -89,7 +169,9 @@ export function parseBankText(body: string): DriveBank | typeof EMPTY_BANK {
   if (!body.replace(/^\uFEFF/, '').trim()) return EMPTY_BANK;
   let json: unknown;
   try { json = JSON.parse(body.replace(/^\uFEFF/, '')); } catch { throw Error('محتوای فایل بانک JSON معتبر نیست؛ جلسهٔ فعلی تغییری نکرد.'); }
-  return validateBank(json);
+  const bank = validateBank(json);
+  if (import.meta.env.DEV && bank.parseWarnings?.length) console.warn('[Math Scratchpad] Bank content warnings:', bank.parseWarnings);
+  return bank;
 }
 export type DriveMeta = { id: string; name: string; mimeType: string; size?: string; md5Checksum?: string; modifiedTime?: string; headRevisionId?: string; version?: string; trashed?: boolean };
 const validFileId = (id: string) => /^[A-Za-z0-9_-]{10,150}$/.test(id);

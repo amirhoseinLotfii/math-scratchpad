@@ -1,0 +1,48 @@
+{
+  "schema_version": "math-scratchpad.session/1.0",
+  "app": "math-scratchpad",
+  "app_version": "0.6.0",
+  "exported_at": "2026-10-30T12:00:00.000+00:00",
+  "session_id": "legacy-session-v7",
+  "bank_id": "legacy-v7-bank",
+  "bank_version": "v7",
+  "anxiety": null,
+  "energy": null,
+  "started_at": "2026-10-30T11:00:00.000+00:00",
+  "ended_at": null,
+  "totals": {
+    "items": 1,
+    "answered": 0,
+    "skipped": 0,
+    "unanswered": 1,
+    "missing_final_answer": 0
+  },
+  "items": [
+    {
+      "item_id": "legacy-item-1",
+      "index": 1,
+      "question_id": "V7-Q01",
+      "assessment": null,
+      "prompt": null,
+      "problem": "2+2",
+      "problem_format": "math-or-latex",
+      "status": "unanswered",
+      "student_answer": null,
+      "final_answer": null,
+      "final_step_id": null,
+      "final_step_number": null,
+      "steps": [],
+      "started_at": null,
+      "submitted_at": null,
+      "solve_time_sec": null,
+      "confidence": 5,
+      "confidence_label": "high",
+      "hint_used": false,
+      "hint_note": null,
+      "guidance_available": false,
+      "guidance_opened": false,
+      "guidance_opened_at": null,
+      "independent": true
+    }
+  ]
+}

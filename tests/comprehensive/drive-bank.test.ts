@@ -31,20 +31,21 @@ describe('validateBank: questions', () => {
     ['numeric prompt', q('Q1', { prompt: 3 })], ['prompt too long', q('Q1', { prompt: 'a'.repeat(4000) })],
   ])('rejects %s', (_, item) => expect(() => validateBank(bank({ questions: [item] }))).toThrow(BADQ));
   it.each([null, 'x', [1]])('rejects non-object question %j', item => expect(() => validateBank(bank({ questions: [item] }))).toThrow('ساختار سؤال معتبر نیست.'));
-  it('rejects duplicate question ids', () => expect(() => validateBank(bank({ questions: [q('A'), q('A')] }))).toThrow(BADQ));
-  it.each(['answer', 'answers', 'expected', 'solution', 'key', 'rubric', 'verification', 'ANSWER', 'Solution'])('rejects forbidden question field %s', k => expect(() => validateBank(bank({ questions: [q('Q1', { [k]: '3' })] }))).toThrow(KEY));
-  it('rejects forbidden field even when its value is empty/null', () => expect(() => validateBank(bank({ questions: [q('Q1', { answer: null })] }))).toThrow(KEY));
+  it('keeps the first duplicate question id and reports later copies', () => { const out = validateBank(bank({ questions: [q('A', { prompt: 'first' }), q('A', { prompt: 'later' })] })); expect(out.questions).toHaveLength(1); expect(out.questions[0].prompt).toBe('first'); expect(out.parseWarnings?.join(' ')).toContain('duplicate question id A'); });
+  it.each(['answer', 'answers', 'expected', 'solution', 'key', 'rubric', 'verification', 'ANSWER', 'Solution'])('strips forbidden question field %s and warns', k => { const out = validateBank(bank({ questions: [q('Q1', { [k]: '3' })] })); expect(out.questions[0]).not.toHaveProperty(k); expect(out.parseWarnings?.join(' ')).toContain(`questions[0].${k}`); });
+  it('strips forbidden fields even when their value is empty or null', () => { const out = validateBank(bank({ questions: [q('Q1', { answer: null, solution: '' })] })); expect(out.questions[0]).not.toHaveProperty('answer'); expect(out.questions[0]).not.toHaveProperty('solution'); expect(out.parseWarnings).toHaveLength(2); });
   it('math mode sources must parse, text mode sources are free text', () => {
     expect(() => validateBank(bank({ questions: [q('Q1', { source: '(1+2' })] }))).toThrow('Close the parenthesis.');
     expect(validateBank(bank({ questions: [q('Q1', { mode: 'text', source: 'یک عدد [ ] بنویس |x|' })] })).questions[0].mode).toBe('text');
     expect(validateBank(bank({ questions: [q('Q1', { source: '۱+۲' })] })).questions[0].source).toBe('۱+۲');
   });
   it('keeps prompt only when it is a string', () => { expect(validateBank(bank({ questions: [q('Q1', { prompt: 'حل کن' })] })).questions[0].prompt).toBe('حل کن'); expect(validateBank(bank()).questions[0]).not.toHaveProperty('prompt'); });
-  it('BUG-9 rejects a top-level answers/key field and names the field', () => { expect(() => validateBank(bank({ answers: { Q01: '3' } }))).toThrow(KEY); expect(() => validateBank(bank({ answers: 1 }))).toThrow('«answers»'); });
-  it.each(['answer_key', 'answerKey', 'AnswerKey', 'ANSWER_KEY', 'final_answer', 'finalAnswer', 'FINAL-ANSWER', 'expected_value', 'expectedValue', 'solutions', 'solution.steps', 'keys', 'Key', 'model_solution', 'correctAnswer', 'student answer', 'rubric', 'Expected'])('BUG-9 rejects field %j on a question', k => expect(() => validateBank(bank({ questions: [q('Q1', { [k]: '3' })] }))).toThrow(KEY));
-  it('BUG-9 rejects forbidden fields at any depth, including inside arrays', () => {
-    expect(() => validateBank(bank({ meta: { notes: [{ deep: { answerKey: 1 } }] } }))).toThrow('meta.notes[0].deep.answerKey');
-    expect(() => validateBank(bank({ questions: [q('Q1', { extra: { solution: 'x' } })] }))).toThrow('questions[0].extra.solution');
+  it('strips a top-level answers field and records a warning', () => { const out = validateBank(bank({ answers: { Q01: '3' } })); expect(out).not.toHaveProperty('answers'); expect(out.parseWarnings?.[0]).toContain('answers'); });
+  it.each(['answer_key', 'answerKey', 'AnswerKey', 'ANSWER_KEY', 'final_answer', 'finalAnswer', 'FINAL-ANSWER', 'expected_value', 'expectedValue', 'solutions', 'solution.steps', 'keys', 'Key', 'model_solution', 'correctAnswer', 'student answer', 'rubric', 'Expected'])('strips answer-like field %j from a question', k => { const out = validateBank(bank({ questions: [q('Q1', { [k]: '3' })] })); expect(out.questions[0]).not.toHaveProperty(k); expect(out.parseWarnings?.length).toBeGreaterThan(0); });
+  it('strips forbidden fields at any depth, including inside arrays', () => {
+    const out = validateBank(bank({ meta: { notes: [{ deep: { answerKey: 1 } }] }, questions: [q('Q1', { extra: { solution: 'x' } })] }));
+    expect(out.parseWarnings?.join(' ')).toContain('meta.notes[0].deep.answerKey');
+    expect(out.parseWarnings?.join(' ')).toContain('questions[0].extra.solution');
   });
   it.each(['keyboard', 'keyword', 'monkey', 'turkey', 'keystroke', 'hotkeyHint', 'answered_count', 'expectedness', 'solver', 'source_note', 'prompt_hint'])('BUG-9 does not flag the harmless field %j', k => {
     expect(() => validateBank(bank({ [k]: 'x', questions: [q('Q1')] }))).not.toThrow();
@@ -75,6 +76,7 @@ describe('snapshotVersion and bankDocument', () => {
     const a = validateBank(bank()); expect(await snapshotVersion(a)).toBe(await snapshotVersion(validateBank(bank())));
     expect(await snapshotVersion(a)).toMatch(/^v1-[0-9a-f]{16}$/);
     expect(await snapshotVersion(a)).not.toBe(await snapshotVersion(validateBank(bank({ questions: [q('Q01', { prompt: 'p' })] }))));
+    expect(await snapshotVersion(a)).toBe(await snapshotVersion({ ...a, parseWarnings: ['dev-only notice'] }));
   });
   it('snapshot version stays within the session id limit and survives persistence', async () => {
     const b = validateBank(bank({ version: 'v'.repeat(80) })); const v = await snapshotVersion(b); const doc = bankDocument(b, v);
@@ -85,6 +87,13 @@ describe('snapshotVersion and bankDocument', () => {
     expect(doc.exercises.map(e => [e.bankQuestionId, e.mode, e.steps.length])).toEqual([['A', 'math', 1], ['B', 'text', 1]]);
     expect(doc.exercises[0].prompt).toBe('p'); expect(doc.exerciseId).toBe(doc.exercises[0].id); expect(doc.session).toMatchObject({ bankId: 'B1', bankVersion: 'x' });
     expect(() => bankDocument(validateBank(bank({ questions: [] })), 'x')).toThrow('هنوز سؤالی');
+  });
+  it('keeps Learn-stage checks out of the main Practice session while preserving default-practice banks', () => {
+    const b = validateBank({ ...bank(),
+      lessons: [{ id: 'LESSON', book: 'Book', section: '1.1', title: 'Lesson', concepts: [{ id: 'CONCEPT', title: 'Concept', blocks: [], checkQuestionIds: ['CHECK'] }] }],
+      questions: [q('CHECK', { lessonId: 'LESSON', conceptId: 'CONCEPT', stage: 'learn' }), q('PRACTICE', { stage: 'practice' }), q('LEGACY')],
+    });
+    expect(bankDocument(b, 'x').exercises.map(exercise => exercise.bankQuestionId)).toEqual(['PRACTICE', 'LEGACY']);
   });
 });
 

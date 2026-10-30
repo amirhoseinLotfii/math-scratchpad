@@ -9,7 +9,7 @@ import { getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
-export function DriveBankPanel({ close, open, onAvailable }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void }) {
+export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void }) {
   const store = useAppStore(), dispatch = useAppDispatch();
   const [config, setConfig] = useState<DriveConfig>(getConfig), [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('برای شروع «اتصال Google Drive» را بزن.'), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
@@ -39,10 +39,13 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
       const parsed = parseBankText(await readPrivateBankText(fileId, t.accessToken));
       if (!active.current) return;
       fingerprint.current = fp;
-      if (parsed === EMPTY_BANK) { setAvailable(null); announce(null); setMessage('اتصال برقرار است؛ فایل بانک هنوز خالی است.'); return; }
+      if (parsed === EMPTY_BANK) { setAvailable(null); announce(null); onBankReady?.(null, ''); setMessage('اتصال برقرار است؛ فایل بانک هنوز خالی است.'); return; }
       const version = await snapshotVersion(parsed);
       setAvailable({ bank: parsed, version }); announce(parsed, version);
-      setMessage(parsed.questions.length ? `بانک ${parsed.bank_id} (نسخهٔ ${parsed.version}) دریافت شد؛ ${parsed.questions.length} سؤال آماده است.` : 'اتصال برقرار است؛ بانک هنوز سؤالی ندارد.');
+      onBankReady?.(parsed, version);
+      const readyMessage = parsed.questions.length ? `بانک ${parsed.bank_id} (نسخهٔ ${parsed.version}) دریافت شد؛ ${parsed.questions.length} سؤال آماده است.` : 'اتصال برقرار است؛ بانک هنوز سؤالی ندارد.';
+      const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
+      setMessage(`${readyMessage}${hasLessonWarnings ? ' بخشی از دادهٔ درس قابل‌خواندن نبود؛ می‌توانی با سؤال‌های بانک ادامه بدهی.' : ''}`);
     } catch (e) {
       if (!active.current) return;
       const text = e instanceof Error ? e.message : 'دریافت بانک ناموفق بود.';
@@ -91,7 +94,7 @@ export function DriveBankPanel({ close, open, onAvailable }: { close: () => void
     try {
       const doc = bankDocument(available.bank, available.version);
       archiveSession(store.getState());
-      dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(true)));
+      dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(true))); onBankReady?.(available.bank, available.version);
       setArchives(readArchive()); onAvailable(false); setMessage('دستهٔ جدید باز شد؛ جلسهٔ قبلی در همین مرورگر حفظ شد.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'ذخیرهٔ جلسهٔ قبلی ناموفق بود.'} دستهٔ جدید باز نشد.`); }
   }

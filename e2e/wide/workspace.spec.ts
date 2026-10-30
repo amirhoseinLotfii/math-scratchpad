@@ -132,7 +132,7 @@ test('WIDE-27: End and Home keep the full notation catalog focus visible',async(
 });
 for(const state of ['single','batch','multi-step','shortcuts'] as const)test(`WIDE-VISUAL ${state}: reviewed layout baseline`,async({page})=>{
  if(state==='single')await page.goto('/');else await startBatch(page);
- if(state==='multi-step'){await page.getByRole('main').focus();await page.keyboard.press('/');await page.keyboard.press('Enter');await page.keyboard.type('12');await page.keyboard.press('ArrowDown');await page.keyboard.type('7');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('42');}
+ if(state==='multi-step'){const main=page.getByRole('main');await main.focus();await page.keyboard.press('/');const insert=page.getByRole('dialog',{name:'Insert Math Element'});await expect(insert).toBeVisible();await page.keyboard.press('Enter');await expect(insert).toBeHidden();await expect(main).toBeFocused();await page.keyboard.type('12');await expect(page.getByLabel('Step 1 expression')).toContainText('12');await page.keyboard.press('ArrowDown');await page.keyboard.type('7');await expect(page.getByLabel('Step 1 expression')).toContainText('7');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('42');await expect(page.getByLabel('Step 2 expression')).toContainText('42');}
  if(state==='shortcuts'){await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();}
  await expect(page).toHaveScreenshot(`${state}.png`,{fullPage:true,animations:'disabled',caret:'hide',maxDiffPixelRatio:0.005});
 });
