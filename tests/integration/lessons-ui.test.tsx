@@ -57,6 +57,16 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Diagram showing a triangle');
   });
 
+  it('renders supported lesson arrays as an accessible table and keeps unknown syntax visible', () => {
+    const { rerender } = render(<LessonBlockView block={{ type: 'math', latex: String.raw`\begin{array}{|c|c|} \hline Input & Output \\ \hline 1 & 2 \\ \hline \end{array}` }} blockKey="table" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByRole('region', { name: 'Lesson table' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('columnheader', { name: 'Input' })).toHaveAttribute('scope', 'col');
+    expect(screen.getByRole('cell', { name: '2' })).toBeVisible();
+    const unknown = String.raw`\begin{array}{cc} \hline x & y \\ \hline \frac{1}{2} & 3 \end{array}`;
+    rerender(<LessonBlockView block={{ type: 'math', latex: unknown }} blockKey="unknown" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByText(unknown)).toBeVisible();
+  });
+
   it('keeps a completed lesson summary reachable and offers Review lesson', async () => {
     const bank = sampleBank();
     mount(bank, 'SAMPLE-1.1', {

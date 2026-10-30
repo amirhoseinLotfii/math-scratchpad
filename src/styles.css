@@ -656,6 +656,11 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-block p { margin: 4px 0; line-height: 1.8; }
 #math-scratchpad-redux .lesson-note { border-inline-start: 3px solid var(--warning); }
 #math-scratchpad-redux .lesson-formula, #math-scratchpad-redux .lesson-check-source { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding-block: 4px; direction: ltr; unicode-bidi: isolate; }
+#math-scratchpad-redux .lesson-table-scroll, .lesson-reference-dialog .lesson-table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+#math-scratchpad-redux .lesson-table-scroll:focus-visible, .lesson-reference-dialog .lesson-table-scroll:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+#math-scratchpad-redux .lesson-table-scroll table, .lesson-reference-dialog .lesson-table-scroll table { border-collapse: collapse; width: max-content; max-width: none; font-variant-numeric: tabular-nums; }
+#math-scratchpad-redux .lesson-table-scroll th, #math-scratchpad-redux .lesson-table-scroll td, .lesson-reference-dialog .lesson-table-scroll th, .lesson-reference-dialog .lesson-table-scroll td { border: 1px solid var(--border); padding: 8px 12px; text-align: start; white-space: nowrap; }
+#math-scratchpad-redux .lesson-table-scroll th, .lesson-reference-dialog .lesson-table-scroll th { background: var(--raised); }
 #math-scratchpad-redux .lesson-raw-math { display: inline-block; max-width: 100%; padding: 7px 9px; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--raised); font: 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
 #math-scratchpad-redux .lesson-example { background: var(--raised); }
 #math-scratchpad-redux .lesson-example-progress { margin: 10px 0 6px; color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }

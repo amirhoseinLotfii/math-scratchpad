@@ -2,6 +2,7 @@ import { Fragment, useId, useMemo, useState } from 'react';
 import { Formula } from '../../Formula';
 import { parse } from '../../parser';
 import { Button } from '../../shared/ui/button';
+import { parseLessonTable } from './lesson-table';
 import type { Concept, ExampleBlock, LessonBlock, Lang } from './types';
 
 function direction(lang?: Lang): 'rtl' | 'ltr' | 'auto' {
@@ -9,7 +10,13 @@ function direction(lang?: Lang): 'rtl' | 'ltr' | 'auto' {
 }
 
 export function LessonMath({ latex, label }: { latex: string; label: string }) {
+  const table = useMemo(() => parseLessonTable(latex), [latex]);
   const expression = useMemo(() => { try { return parse(latex); } catch { return null; } }, [latex]);
+  if (table) return <div className="lesson-table-scroll" role="region" aria-label="Lesson table" tabIndex={0} dir="ltr">
+    <table><thead><tr>{table[0].map((cell, index) => <th key={index} scope="col"><bdi dir="auto">{cell}</bdi></th>)}</tr></thead>
+      <tbody>{table.slice(1).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, index) => <td key={index}><bdi dir="auto">{cell}</bdi></td>)}</tr>)}</tbody>
+    </table>
+  </div>;
   if (!expression) return <code className="lesson-raw-math" dir="ltr">{latex}</code>;
   return <div className="lesson-formula" dir="ltr" role="math" aria-label={label}>
     <Formula sequence={expression} stepId={`lesson-${label}`} path={label} top readOnly />

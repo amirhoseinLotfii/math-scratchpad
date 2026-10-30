@@ -17,6 +17,9 @@ bank.lessons![0].concepts[0].blocks.push({
   text: 'این متن فارسیِ آزمایشی برای بررسی راست‌چین‌شدن و شکست طبیعی سطرهاست. عبارت‌های ریاضی و نویسه‌های لاتین باید در جای خود چپ‌به‌راست بمانند. '.repeat(3),
 });
 if (new URLSearchParams(location.search).get('empty') === '1') bank.lessons = [];
+if (new URLSearchParams(location.search).get('table') === '1') bank.lessons![0].concepts[0].blocks.unshift({
+  type: 'math', latex: String.raw`\begin{array}{|c|c|c|c|c|c|c|c|c|c|c|c|c|} \hline Input & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 \\ \hline Output & 2 & 4 & 6 & 8 & 10 & 12 & 14 & 16 & 18 & 20 & 22 & 24 \\ \hline \end{array}`,
+});
 const version = 'sample-v1-browser-preview';
 const store = makeStore(initialState());
 store.dispatch(actions.load({ doc: bankDocument(bank, version) }));
