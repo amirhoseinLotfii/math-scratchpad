@@ -90,7 +90,7 @@ test('A11Y-POINTER-01: cancelling a press does not reset the answer', async ({ p
  await expect(expression).toHaveText(before!);
 });
 test('A11Y-FOCUS-CHANGE-01: focusing navigation does not advance or open a dialog', async ({ page }) => {
- await startBatch(page); const selector = page.getByRole('combobox', { name: 'Current exercise' }); const before = await selector.inputValue();
+ await startBatch(page); const selector = page.getByRole('combobox', { name: 'Select question' }); const before = await selector.inputValue();
  await page.getByRole('button', { name: /Next question/i }).focus();
  await expect(selector).toHaveValue(before); await expect(page.getByRole('dialog')).toHaveCount(0);
 });

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from '../../src/parser';
 import { blankStep } from '../../src/model';
-import { validateBank, type DriveBank } from '../../src/features/drive-bank/drive-bank';
+import { snapshotVersion, validateBank, type DriveBank } from '../../src/features/drive-bank/drive-bank';
 import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, readLessonExportData, readLessonProgress, saveLessonProgress } from '../../src/features/lessons/lesson-progress-store';
 import type { LessonProgress } from '../../src/features/lessons/types';
 
@@ -73,6 +73,25 @@ describe('namespaced Learn progress storage', () => {
     expect(readLessonProgress(source, 'sample-v1-other', localStorage, NOW).progressById).toEqual({});
     expect(readLessonProgress({ ...source, bank_id: 'another-sample-lessons' }, VERSION, localStorage, NOW).progressById).toEqual({});
     expect(lessonProgressStorageKey(source.bank_id, VERSION)).not.toBe(lessonProgressStorageKey(source.bank_id, 'sample-v1-other'));
+  });
+
+  it('retains the previous progress record when normalized lesson content changes', async () => {
+    const source = bank();
+    const oldVersion = await snapshotVersion(source);
+    const saved = emptyLessonProgressState(source.bank_id, oldVersion);
+    saved.progressById['SAMPLE-1.1'] = progress();
+    expect(saveLessonProgress(source, oldVersion, saved).saved).toBe(true);
+    const oldKey = lessonProgressStorageKey(source.bank_id, oldVersion);
+    const before = localStorage.getItem(oldKey);
+    const revised = structuredClone(source);
+    revised.lessons![0].concepts[0].blocks.push({ type: 'image-description', lang: 'fa', text: 'توضیح آزمایشی' });
+    const newVersion = await snapshotVersion(revised);
+    expect(newVersion).not.toBe(oldVersion);
+    const fresh = readLessonProgress(revised, newVersion, localStorage, NOW);
+    expect(fresh.progressById).toEqual({});
+    expect(saveLessonProgress(revised, newVersion, fresh).saved).toBe(true);
+    expect(localStorage.getItem(oldKey)).toBe(before);
+    expect(readLessonProgress(source, oldVersion, localStorage, NOW).progressById['SAMPLE-1.1']).toEqual(saved.progressById['SAMPLE-1.1']);
   });
 
   it('preserves Learning, skip-to-practice, Practising, and Done states with their timestamps', () => {

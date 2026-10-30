@@ -1,4 +1,4 @@
-import { elapsedAt, latex, type Document } from './model';
+import { elapsedAt, stepLatex, type Document } from './model';
 export function reviewPayload(doc: Document) {
   const exercise = doc.exercises.find(x => x.id === doc.exerciseId)!;
   const marked = exercise.steps.find(s => s.final);
@@ -11,9 +11,9 @@ export function reviewPayload(doc: Document) {
     // Only present when guidance was opened, so fingerprints of older copies stay stable.
     ...(exercise.guidanceOpenedAt ? { helpUsed: true, guidanceOpened: true } : {}),
     trackedVisibleMs: Number.isFinite(exercise.elapsedMs) || Number.isFinite(exercise.timerRunningSince) ? elapsedAt(exercise) : null,
-    steps: exercise.steps.map((s, i) => ({ number: i + 1, latex: latex(s.expression), isFinal: s.final })),
+    steps: exercise.steps.map((s, i) => ({ number: i + 1, latex: stepLatex(s), isFinal: s.final })),
     reviewThroughStep: exercise.steps.findIndex(s => s.id === doc.cursor.stepId) + 1,
-    finalAnswer: marked ? { step: exercise.steps.indexOf(marked) + 1, latex: latex(marked.expression) } : null
+    finalAnswer: marked ? { step: exercise.steps.indexOf(marked) + 1, latex: stepLatex(marked) } : null
   };
 }
 export const fingerprint = (doc: Document) => JSON.stringify({ ...reviewPayload(doc), trackedVisibleMs: undefined });

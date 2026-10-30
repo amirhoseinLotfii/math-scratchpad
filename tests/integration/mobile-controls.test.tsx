@@ -79,7 +79,7 @@ describe('English interface, question RTL and single-question mode', () => {
  it('keeps only question prose RTL/Persian', () => {
   mount(); const main = document.querySelector('main')!;
   expect(main.lang).toBe('en');
-  const prompt = document.querySelector('.persian-question')!;
+  const prompt = document.querySelector('.question-statement')!;
   expect(prompt.getAttribute('lang')).toBe('fa'); expect(prompt.getAttribute('dir')).toBe('rtl');
   const ui = [...main.querySelectorAll('button, label, legend, [role="status"]')];
   expect(ui.filter(x => /[\u0600-\u06ff]/.test(x.textContent ?? ''))).toEqual([]);

@@ -30,7 +30,7 @@ test('connected Learn flow, reference panel and responsive layouts', async ({ pa
     await lessonButton.click();
     const reference = page.getByRole('dialog', { name: 'Sample lesson' });
     await expect(reference).toBeVisible();
-    await expect(reference.locator('[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
+    await expect(reference.locator('.lesson-reference-content .lesson-block-paragraph[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
     await expect(reference.getByText('Another sample concept')).toBeVisible();
     await expect(reference.getByRole('radio')).toHaveCount(0);
     if (viewport.width === 390 && viewport.height === 844) {
@@ -79,7 +79,7 @@ test('connected Learn flow, reference panel and responsive layouts', async ({ pa
   await page.keyboard.press('Enter');
   const learn = page.locator('.lesson-screen');
   await expect(learn.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
-  await expect(learn.locator('[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
+  await expect(learn.locator('.lesson-block-paragraph[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
   const learnA11y = await new AxeBuilder({ page }).include('.lesson-screen').analyze();
   expect(learnA11y.violations.filter(item => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
   await page.screenshot({ path: '/tmp/math-scratchpad-phase3-learn-mobile-390x640.png', fullPage: true });

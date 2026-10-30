@@ -43,7 +43,7 @@ describe('Approved mobile batch workflow', () => {
  });
  it('opens completion actions after final-question confidence without silently copying', async () => {
   const store = mount();
-  fireEvent.change(screen.getByRole('combobox', { name: 'Current exercise' }), { target: { value: store.getState().doc.exercises.at(-1)!.id } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Select question' }), { target: { value: store.getState().doc.exercises.at(-1)!.id } });
   await userEvent.click(screen.getByRole('button', { name: /Finish session/i }));
   const confidence = screen.getByRole('dialog', { name: /confidence/i });
   await userEvent.click(within(confidence).getByRole('radio', { name: 'Medium' }));

@@ -52,12 +52,29 @@ describe('lesson-aware bank parser', () => {
     ] })])]));
     const blocks = parsed.lessons?.[0].concepts[0].blocks;
     expect(blocks).toEqual([
-      { type: 'unsupported', originalType: 'future-widget' },
-      { type: 'unsupported', originalType: 'math' },
-      { type: 'unsupported', originalType: 'image' },
+      expect.objectContaining({ type: 'unsupported', originalType: 'future-widget', source: expect.stringContaining('not supported') }),
+      expect.objectContaining({ type: 'unsupported', originalType: 'math', source: expect.stringContaining('"type": "math"') }),
+      expect.objectContaining({ type: 'unsupported', originalType: 'image', source: expect.stringContaining('"src": "/image.png"') }),
       { type: 'math', latex: '\\frac{' },
     ]);
     expect(parsed.parseWarnings).toHaveLength(3);
+    expect(parsed.parseWarnings?.[0]).toContain('unsupported block type: future-widget');
+    expect(parsed.parseWarnings?.[1]).toContain('math block requires non-empty latex');
+    expect(parsed.parseWarnings?.[2]).toContain('image block requires non-empty alt text');
+  });
+
+  it('retains description-only images, captions and examples without reveal steps', () => {
+    const parsed = validateBank(rawBank([question('Q1')], [lesson('L1', [concept('C1', { blocks: [
+      { type: 'image', lang: 'fa', text: 'توضیح تصویر' },
+      { type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' },
+      { type: 'example', lang: 'fa', text: 'متن مثال' },
+    ] })])]));
+    expect(parsed.lessons?.[0].concepts[0].blocks).toEqual([
+      { type: 'image-description', lang: 'fa', text: 'توضیح تصویر' },
+      { type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' },
+      { type: 'example', lang: 'fa', text: 'متن مثال', steps: [] },
+    ]);
+    expect(parsed.parseWarnings?.join(' ')).toContain('image source is missing');
   });
 
   it('drops missing check references and exposes valid learn checks only', () => {

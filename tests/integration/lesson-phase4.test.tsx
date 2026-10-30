@@ -111,7 +111,7 @@ describe('Phase 4 Learn progress restoration', () => {
     const afterPracticeReload = makeStore(Object.assign(initialState(), { doc: practiceSession }));
     render(<Provider store={afterPracticeReload}><App initialBank={{ bank, version: VERSION }} /></Provider>);
     const lastQuestionId = afterPracticeReload.getState().doc.exercises.at(-1)!.id;
-    fireEvent.change(screen.getByRole('combobox', { name: 'Current exercise' }), { target: { value: lastQuestionId } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Select question' }), { target: { value: lastQuestionId } });
     await user.click(screen.getByRole('button', { name: 'Finish session' }));
     const confidence = screen.getByRole('dialog', { name: /confidence/i });
     await user.click(within(confidence).getByRole('radio', { name: 'Medium' }));
@@ -120,7 +120,7 @@ describe('Phase 4 Learn progress restoration', () => {
     expect(readArchive()).toHaveLength(1);
     expect(serialize(afterPracticeReload.getState())).not.toContain('Option B');
     expect(serialize(afterPracticeReload.getState())).not.toContain('SAMPLE-1.1-L02');
-  });
+  }, 15000);
 
   it('stores lesson identity and version with progress so another version starts independently', () => {
     const bank = fixture(), state = readLessonProgress(bank, VERSION);

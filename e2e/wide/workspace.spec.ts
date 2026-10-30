@@ -122,7 +122,7 @@ test('WIDE-25: the initial notebook fits the viewport without empty page scrolli
 });
 test('WIDE-26: advanced notation is available without a numeric keyboard',async({page})=>{
  await startBatch(page);await page.getByRole('button',{name:'More math tools'}).click();const dialog=page.getByRole('dialog',{name:'Insert Math Element'});
- await dialog.getByRole('button',{name:/نمایش بیشتر/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
+ await dialog.getByRole('button',{name:/Show more/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
  await expect(page.getByLabel('Step 1 expression')).toContainText('7');await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
 test('WIDE-27: End and Home keep the full notation catalog focus visible',async({page})=>{
@@ -131,7 +131,12 @@ test('WIDE-27: End and Home keep the full notation catalog focus visible',async(
  await page.keyboard.press('Home');await expect(options.first()).toBeFocused();await expect(options.first()).toBeInViewport();await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
 });
 for(const state of ['single','batch','multi-step','shortcuts'] as const)test(`WIDE-VISUAL ${state}: reviewed layout baseline`,async({page})=>{
+ await page.clock.install();
+ await page.clock.setFixedTime('2026-01-01T00:00:00Z');
  if(state==='single')await page.goto('/');else await startBatch(page);
+ await page.clock.setFixedTime('2026-01-01T00:00:03Z');
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByLabel('Question elapsed time')).toHaveText('00:03');
  if(state==='multi-step'){const main=page.getByRole('main');await main.focus();await page.keyboard.press('/');const insert=page.getByRole('dialog',{name:'Insert Math Element'});await expect(insert).toBeVisible();await page.keyboard.press('Enter');await expect(insert).toBeHidden();await expect(main).toBeFocused();await page.keyboard.type('12');await expect(page.getByLabel('Step 1 expression')).toContainText('12');await page.keyboard.press('ArrowDown');await page.keyboard.type('7');await expect(page.getByLabel('Step 1 expression')).toContainText('7');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('42');await expect(page.getByLabel('Step 2 expression')).toContainText('42');}
  if(state==='shortcuts'){await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();}
  await expect(page).toHaveScreenshot(`${state}.png`,{fullPage:true,animations:'disabled',caret:'hide',maxDiffPixelRatio:0.005});

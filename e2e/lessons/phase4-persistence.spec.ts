@@ -48,7 +48,7 @@ test('Learn progress restores in the connected app and its lesson status survive
   await page.reload();
   const finalSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
   if (await finalSetup.isVisible().catch(() => false)) await finalSetup.getByRole('button', { name: 'Skip for now' }).click();
-  const practiceMenu = page.getByRole('combobox', { name: 'Current exercise' });
+  const practiceMenu = page.getByRole('combobox', { name: 'Select question' });
   const lastQuestion = await practiceMenu.locator('option').last().getAttribute('value');
   await practiceMenu.selectOption(lastQuestion!);
   await page.getByRole('button', { name: 'Finish session' }).click();

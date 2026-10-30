@@ -17,9 +17,19 @@ bank.lessons![0].concepts[0].blocks.push({
   text: 'این متن فارسیِ آزمایشی برای بررسی راست‌چین‌شدن و شکست طبیعی سطرهاست. عبارت‌های ریاضی و نویسه‌های لاتین باید در جای خود چپ‌به‌راست بمانند. '.repeat(3),
 });
 if (new URLSearchParams(location.search).get('empty') === '1') bank.lessons = [];
+if (new URLSearchParams(location.search).get('table') === '1') bank.lessons![0].concepts[0].blocks.unshift({
+  type: 'math', latex: String.raw`\begin{array}{|c|c|c|c|c|c|c|c|c|c|c|c|c|} \hline Input & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 \\ \hline Output & 2 & 4 & 6 & 8 & 10 & 12 & 14 & 16 & 18 & 20 & 22 & 24 \\ \hline \end{array}`,
+});
+if (new URLSearchParams(location.search).get('notation') === '1') bank.lessons![0].concepts[0].blocks.unshift(
+  { type: 'math', latex: String.raw`\{(\text{odd},1),\ (\text{even},2)\}` },
+  { type: 'math', latex: String.raw`\begin{array}{ll} x & \text{ورودی} \\ y & \text{خروجی} \end{array}` },
+  { type: 'math', latex: String.raw`f(x)=x^2;\quad \text{(a) } \sqrt[3]{x}` },
+);
 const version = 'sample-v1-browser-preview';
 const store = makeStore(initialState());
 store.dispatch(actions.load({ doc: bankDocument(bank, version) }));
+// Keep a clean keyboard-entry route for editor browser checks that are not about the scale modal.
+if (new URLSearchParams(location.search).has('no-wellbeing')) store.dispatch(actions.setSessionMeta({ anxiety: 3, energy: 3 }));
 store.dispatch(actions.keyboard(true));
 
 createRoot(document.getElementById('math-scratchpad-redux')!).render(

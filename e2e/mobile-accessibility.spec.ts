@@ -14,7 +14,7 @@ test('confidence dialog traps Tab and Shift+Tab and restores focus', async ({ pa
 });
 test('batch completion requires confidence and offers explicit export actions', async ({ page }) => {
  await startBatch(page);
- const selector = page.getByRole('combobox', { name: 'Current exercise' });
+ const selector = page.getByRole('combobox', { name: 'Select question' });
  const last = await selector.locator('option').last().getAttribute('value');
  await selector.selectOption(last!);
  await page.getByRole('button', { name: /Finish session/i }).click();
@@ -34,6 +34,20 @@ test('menu stays within viewport and does not push the page horizontally', async
  const box = await exportButton.boundingBox();
  expect(box!.x).toBeGreaterThanOrEqual(0);
  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+});
+test('batch progress and question selector stay readable at narrow phone widths', async ({ page }, info) => {
+ if (!['mobile-320', 'mobile-390'].includes(info.project.name)) test.skip();
+ await startBatch(page);
+ const title = page.locator('.app-header .brand'), progress = page.locator('.header-progress'), actions = page.locator('.header-actions');
+ const selector = page.getByRole('combobox', { name: 'Select question' });
+ await expect(progress).toContainText('0 of 20 answered');
+ const [titleBox, progressBox, actionsBox, selectorBox] = await Promise.all([title.boundingBox(), progress.boundingBox(), actions.boundingBox(), selector.boundingBox()]);
+ expect(titleBox && progressBox && actionsBox && selectorBox).toBeTruthy();
+ const overlaps = (a: NonNullable<typeof titleBox>, b: NonNullable<typeof progressBox>) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+ expect(overlaps(titleBox!, progressBox!)).toBe(false);
+ expect(overlaps(actionsBox!, progressBox!)).toBe(false);
+ expect(selectorBox!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 40);
+ expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 test('200 percent text size preserves controls and avoids page overflow', async ({ page }) => {
  await page.goto('/'); await page.addStyleTag({ content: '#math-scratchpad-redux { font-size: 200% !important } #math-scratchpad-redux button { font-size: 2rem !important }' });
@@ -62,7 +76,7 @@ test('rotation preserves the current answer and keeps next-question control reac
 });
 test('tapping a number never moves to a different question', async ({ page }) => {
  await startBatch(page);
- const selector = page.getByRole('combobox', { name: 'Current exercise' }); const before = await selector.inputValue();
+ const selector = page.getByRole('combobox', { name: 'Select question' }); const before = await selector.inputValue();
  const keys = page.locator('[aria-label="Numeric keys"]');
  for (const name of ['1','2','3']) await keys.getByRole('button', { name, exact: true }).tap();
  await expect(page.getByLabel('Step 1 expression')).toContainText('123');
@@ -110,13 +124,13 @@ test('copy denial exposes a manual JSON fallback without leaving the question', 
   document.execCommand = () => false;
  });
  await startBatch(page);
- const before = await page.getByRole('combobox', { name: 'Current exercise' }).inputValue();
+ const before = await page.getByRole('combobox', { name: 'Select question' }).inputValue();
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();
  const fallback = page.getByRole('textbox', { name: /session JSON/i });
  await expect(fallback).toBeVisible(); expect(JSON.parse(await fallback.inputValue()).doc.exercises).toHaveLength(20);
- await expect(page.getByRole('combobox', { name: 'Current exercise' })).toHaveValue(before);
+ await expect(page.getByRole('combobox', { name: 'Select question' })).toHaveValue(before);
 });
 test('larger available height does not leave unused space below the keypad actions', async ({ page }) => {
  await page.setViewportSize({ width: 390, height: 1500 }); await startBatch(page);

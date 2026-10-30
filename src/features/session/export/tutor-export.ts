@@ -1,4 +1,4 @@
-import { ascii, elapsedAt, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
+import { ascii, elapsedAt, isoLocal, validScale, stepLatex, type Document, type Exercise } from '../../../model';
 import { APP_VERSION } from '../../../version';
 import { questionStatus } from '../../workspace/model/workspace-layout';
 import type { LessonExportData } from '../../lessons/lesson-progress-store';
@@ -32,7 +32,7 @@ export function itemStatus(ex: Exercise): ItemStatus {
 /** Help = tutor help checkbox OR in-app guidance opened (opening is permanent). */
 export const helped = (ex: Exercise) => ex.hintUsed === true || !!ex.guidanceOpenedAt;
 export function exportItem(ex: Exercise, index: number): TutorItem {
-  const steps = ex.steps.map((s, i) => ({ step_id: s.id, number: i + 1, latex: latex(s.expression), is_final: s.final }));
+  const steps = ex.steps.map((s, i) => ({ step_id: s.id, number: i + 1, latex: stepLatex(s), is_final: s.final }));
   const final = steps.find(s => s.is_final) ?? null;
   const confidence = ex.confidence ?? 'high';
   const status = itemStatus(ex);

@@ -11,13 +11,13 @@ export function parse(input: string): Sequence {
   const braced = new WeakSet<MathNode>();
   const space = () => { while (p < text.length && /\s/.test(text[p])) p++; };
   /** A LaTeX argument: {..}, or a single token. With `single`, a bare number contributes one digit (\frac12 = \frac{1}{2}). */
-  function group(single = false): Sequence {
+  function group(single = false, allowEmpty = false): Sequence {
     space();
     if (text[p] !== '{') {
       if (single && /[0-9]/.test(text[p] ?? '')) { if (++count > 600) throw Error('Expression is too large.'); return seq([num(text[p++])]); }
       return seq([atom()]);
     }
-    p++; const body = sequence('}'); if (text[p++] !== '}') throw Error('Close the LaTeX brace.'); return body;
+    p++; const body = sequence('}', allowEmpty); if (text[p++] !== '}') throw Error('Close the LaTeX brace.'); return body;
   }
   function nested<T>(fn: () => T): T { if (++depth > 16) throw Error('Expression nesting is too deep.'); const result = fn(); depth--; return result; }
   /** Function argument: (..) is used as the argument itself, not wrapped in a second pair of parentheses. */
@@ -55,10 +55,15 @@ export function parse(input: string): Sequence {
     if (c === '\\') {
       const found = text.slice(p).match(/^\\([a-zA-Z]+)/); if (!found) throw Error('Check the LaTeX command.');
       p += found[0].length; const command = found[1];
-      if (['frac', 'dfrac', 'tfrac'].includes(command)) return nested(() => frac(group(true), group(true)));
+      if (command === 'placeholder') {
+        if (text[p] === '[') { const end = text.indexOf(']', p + 1); if (end < 0) throw Error('Close the placeholder option.'); p = end + 1; }
+        if (text[p] === '{') { p++; sequence('}', true); if (text[p++] !== '}') throw Error('Close the placeholder.'); }
+        return num();
+      }
+      if (['frac', 'dfrac', 'tfrac'].includes(command)) return nested(() => frac(group(true, true), group(true, true)));
       if (command === 'sqrt') {
         space(); if (text[p] === '[') throw Error('nth roots like \\sqrt[3]{x} are not supported yet; write the power form, e.g. {x}^{\\frac{1}{3}}.');
-        return { id: uid(), type: 'root', body: nested(() => group(true)) };
+        return { id: uid(), type: 'root', body: nested(() => group(true, true)) };
       }
       if (FUNCTIONS.includes(command)) return template(command, [argument(command)]);
       if (command === 'abs') return template('abs', [argument('abs')]);
@@ -70,19 +75,19 @@ export function parse(input: string): Sequence {
     throw Error(`Unsupported input near ${text.slice(p, p + 12)}.`);
   }
   const base = (prev: MathNode): Sequence => braced.has(prev) && prev.type === 'group' ? prev.body : seq([prev]);
-  function sequence(stop: string | null): Sequence {
+  function sequence(stop: string | null, allowEmpty = false): Sequence {
     const children: MathNode[] = [];
     while (true) {
       space(); if (p >= text.length || text[p] === stop) break;
       const c = text[p];
       const command = text.slice(p).match(/^\\(times|cdot|div|leq|geq|neq|le|ge|ne)(?![a-zA-Z])/);
-      if (command) { p += command[0].length; children.push(op(({ times: '×', cdot: '×', div: '÷', leq: '≤', geq: '≥', neq: '≠', le: '≤', ge: '≥', ne: '≠' } as Record<string, string>)[command[1]])); continue; }
-      if ('+-−*×÷=<>≤≥≠,،'.includes(c)) { p++; children.push(op(({ '-': '−', '*': '×', '،': ',' } as Record<string, string>)[c] ?? c)); continue; }
+      if (command) { p += command[0].length; children.push(op(({ times: '×', cdot: '·', div: '÷', leq: '≤', geq: '≥', neq: '≠', le: '≤', ge: '≥', ne: '≠' } as Record<string, string>)[command[1]])); continue; }
+      if ('+-−*×÷·=<>≤≥≠,،'.includes(c)) { p++; children.push(op(({ '-': '−', '*': '×', '،': ',' } as Record<string, string>)[c] ?? c)); continue; }
       if (c === '/' || c === '^' || c === '%' || c === '!') {
         p++; const prev = children.pop(); if (!prev || prev.type === 'operator') throw Error('Put a value before this operator.');
         if (c === '%') children.push(template('percent', [base(prev)]));
         else if (c === '!') children.push(template('factorial', [base(prev)]));
-        else if (c === '^') children.push({ id: uid(), type: 'power', base: base(prev), exponent: nested(group) });
+        else if (c === '^') children.push({ id: uid(), type: 'power', base: base(prev), exponent: nested(() => group(false, true)) });
         else {
           let denominator = atom(); space();
           if (text[p] === '^') { p++; denominator = { id: uid(), type: 'power', base: base(denominator), exponent: nested(group) }; }
@@ -93,7 +98,8 @@ export function parse(input: string): Sequence {
       children.push(atom());
     }
     const flat = children.flatMap(n => braced.has(n) && n.type === 'group' ? n.body.children : [n]);
-    if (!flat.length) throw Error('Enter a formula first.'); return seq(flat);
+    if (!flat.length) { if (allowEmpty) return seq([num()]); throw Error('Enter a formula first.'); }
+    return seq(flat);
   }
   const answer = sequence(null); space(); if (p !== text.length) throw Error('Check the closing symbols.'); return answer;
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { readArchive } from '../../src/features/drive-bank/drive-bank';
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async () => true }));
@@ -11,7 +11,7 @@ afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useR
 function mockGoogle() {
   const picker = { ViewId: { DOCS: 'docs' }, DocsViewMode: { LIST: 'list' }, Action: { PICKED: 'picked', CANCEL: 'cancel' },
     DocsView: class { setMimeTypes() { return this; } setMode() { return this; } setQuery() { return this; } },
-    PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey() { return this; } setAppId() { return this; } setOrigin() { return this; } setTitle() { return this; }
+    PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey() { return this; } setAppId() { return this; } setOrigin() { return this; } setLocale() { return this; } setTitle() { return this; }
       setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb({ action: 'picked', docs: [{ id: 'private-file-123', name: 'MATH_QUESTION_BANK.json' }] }) }; } } };
   window.gapi = {};
   window.google = { picker, accounts: { oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (cfg: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => cfg.callback({ access_token: 'token', expires_in: 3600 }) }) } } };
@@ -28,8 +28,8 @@ function mockDrive(state: { content: string; rev: number }) {
 async function connect(user: ReturnType<typeof renderMobileApp>['user']) {
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
-  await waitFor(() => expect((screen.getByRole('button', { name: 'اتصال Google Drive' }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(screen.getByRole('button', { name: 'اتصال Google Drive' }));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Connect Google Drive' }) as HTMLButtonElement).disabled).toBe(false));
+  await user.click(screen.getByRole('button', { name: 'Connect Google Drive' }));
 }
 describe('private Drive bank flow', () => {
   it('uses built-in Google identifiers, shows no manual entry, and ignores old saved ones', async () => {
@@ -40,8 +40,8 @@ describe('private Drive bank flow', () => {
     const { user } = renderMobileApp();
     await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
     await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
-    expect(screen.queryByText('تنظیمات یک‌باره')).toBeNull();
-    expect(screen.queryByLabelText('شناسه OAuth برنامه')).toBeNull();
+    expect(screen.queryByText('one-time setup')).toBeNull();
+    expect(screen.queryByLabelText('OAuth client ID')).toBeNull();
   });
   it('explains invalid lesson data and leaves ordinary bank questions available', async () => {
     mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -49,18 +49,20 @@ describe('private Drive bank flow', () => {
     mockDrive({ content: JSON.stringify(invalidLessons), rev: 1 });
     const { user } = renderMobileApp();
     await connect(user);
-    expect(await screen.findByText(/بخشی از دادهٔ درس قابل‌خواندن نبود؛ می‌توانی با سؤال‌های بانک ادامه بدهی/)).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' }));
+    expect(await screen.findByText(/Some lesson content could not be read\. You can continue with the bank questions\./)).toBeTruthy();
+    expect(await screen.findByText('Bank content notes (1)')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Open received batch' }));
     expect(screen.getByRole('region', { name: 'Current problem' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
-    expect(screen.queryByRole('menuitem', { name: 'Lessons' })).toBeNull();
+    await user.click(screen.getByRole('menuitem', { name: 'Lessons' }));
+    expect(within(screen.getByRole('dialog', { name: 'Lessons' })).getByRole('status')).toHaveTextContent('This bank has no lessons yet');
   });
   it('picks the file, reads the bank, and archives the active work before switching', async () => {
     mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockDrive({ content: JSON.stringify(bank('1+2')), rev: 1 });
     const { store, user } = renderMobileApp(); const previous = store.getState().doc;
     await connect(user);
-    await user.click(await screen.findByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' }));
+    await user.click(await screen.findByRole('button', { name: 'Open received batch' }));
     expect(store.getState().doc.exercises).toHaveLength(2);
     expect(store.getState().doc.session?.bankId).toBe('practice');
     expect(readArchive().some(s => JSON.parse(s.data).doc.session.id === previous.session?.id)).toBe(true);
@@ -71,18 +73,18 @@ describe('private Drive bank flow', () => {
     const drive = { content: '', rev: 1 }; const fetchSpy = mockDrive(drive);
     const { store, user } = renderMobileApp();
     await connect(user);
-    expect(await screen.findByText(/هنوز خالی است/)).toBeTruthy();
+    expect(await screen.findByText('Connected. The selected bank file is empty.')).toBeTruthy();
     const before = JSON.stringify(store.getState().doc);
     const mediaCalls = () => fetchSpy.mock.calls.filter(c => String(c[0]).includes('alt=media')).length;
     const n = mediaCalls();
-    await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
     await waitFor(() => expect(mediaCalls()).toBe(n + 1)); // forced check re-downloads
     drive.content = JSON.stringify(bank('1+5', 'v2')); drive.rev = 2;
-    await user.click(screen.getByRole('button', { name: 'بررسی الان' }));
-    expect(await screen.findByText(/نسخهٔ v2/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText(/version v2/)).toBeTruthy();
     expect(JSON.stringify(store.getState().doc)).toBe(before); // no auto switch
     expect(screen.getByRole('button', { name: 'Exercise menu' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Open received batch' })).toBeEnabled();
     await act(async () => { await Promise.resolve(); });
   });
 });

@@ -3,7 +3,7 @@ import { createStore } from 'zustand/vanilla';
 import { persist, type PersistOptions } from 'zustand/middleware';
 type PayloadAction<T> = { payload: T };
 import { validScale } from '../model/model';
-import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, nodes, num, op, seq, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal, elapsedAt } from '../../../model';
+import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, MAX_SESSION_EXERCISES, nodes, num, op, seq, stepLatex, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal, elapsedAt } from '../../../model';
 import { parse } from '../../../parser';
 import { diagnosticQuestions } from '../../../diagnostic';
 import { fractionRoundOne } from '../../../fractionRoundOne';
@@ -151,8 +151,8 @@ function applyCommand(state: ScratchState, cmd: Command) {
     } else { const copy = freshNode(item.node); item.parent.children.splice(item.index + 1, 0, copy); c.selected = copy.id; c.nodeId = null; c.sequenceId = null; }
   } else if (cmd.type === 'paste') { if (state.structureClipboard) put(d, freshNode(state.structureClipboard)); }
   else if (cmd.type === 'newProblem' || cmd.type === 'newExercise') {
-    if (d.exercises.length >= 40) throw Error('Maximum 40 exercises. Export a backup before starting another session.');
-    const step = blankStep(); const source = cmd.type === 'newProblem' ? latex(current.expression) : cmd.source.trim();
+    if (d.exercises.length >= MAX_SESSION_EXERCISES) throw Error(`Maximum ${MAX_SESSION_EXERCISES} exercises. Export a backup before starting another session.`);
+    const step = blankStep(); const source = cmd.type === 'newProblem' ? stepLatex(current) : cmd.source.trim();
     if (!source || source.length > 4000) throw Error('Enter a problem (at most 4000 characters).');
     const next: Exercise = { id: uid(), source, mode: cmd.type === 'newProblem' ? 'math' : cmd.mode, steps: [step] };
     if (cmd.type === 'newExercise' && cmd.expression) step.expression = clone(cmd.expression);
@@ -167,6 +167,23 @@ function restoreExerciseEdit(doc: Document, snapshot: Document) {
   doc.cursor = clone(snapshot.cursor);
 }
 const handlers = {
+    /** Persist a lossless math input snapshot alongside the legacy AST. */
+    mathInput(state: ScratchState, action: PayloadAction<{ stepId: string; value: string; expression?: Sequence }>) {
+      const exercise = exerciseOf(state.doc), index = exercise.steps.findIndex(step => step.id === action.payload.stepId);
+      const step = exercise.steps[index];
+      if (!step || action.payload.value.length > 4000 || step.mathLatex === action.payload.value) return;
+      const before = clone(state.doc);
+      step.mathLatex = action.payload.value;
+      if (action.payload.expression) step.expression = clone(action.payload.expression);
+      else if (/^\s*(?:\\placeholder(?:\[[^\]]*\])?\{\}\s*)*$/.test(action.payload.value)) step.expression = blank();
+      step.edited = true;
+      if (!exercise.startedAt) exercise.startedAt = isoLocal();
+      invalidate(state.doc, index);
+      state.past.push(before); if (state.past.length > 80) state.past.shift();
+      state.future = state.future.filter(snapshot => snapshot.exerciseId !== exercise.id);
+      state.doc.cursor.stepId = step.id;
+      state.notice = '';
+    },
     command(state: ScratchState, action: PayloadAction<Command>) {
       const before = clone(state.doc), exId = state.doc.exerciseId, index = exerciseOf(state.doc).steps.indexOf(stepOf(state.doc));
       try {
@@ -178,6 +195,7 @@ const handlers = {
           const previousStep = exerciseOf(before).steps[index];
           const changedStep = exerciseOf(state.doc).steps.find(step => step.id === previousStep.id);
           if (changedStep && JSON.stringify(previousStep.expression) !== JSON.stringify(changedStep.expression)) {
+            delete changedStep.mathLatex;
             changedStep.edited = true; invalidate(state.doc, index);
           } else if (!changedStep) invalidate(state.doc, index);
         }
@@ -277,7 +295,7 @@ const handlers = {
     autoFinal(state: ScratchState) {
       const ex = exerciseOf(state.doc);
       if (ex.skipped || ex.steps.some(s => s.final)) return;
-      const lastWork = [...ex.steps].reverse().find(s => latex(s.expression) !== '\\square');
+      const lastWork = [...ex.steps].reverse().find(s => stepLatex(s) !== '\\square');
       if (lastWork) lastWork.final = true;
     },
     setSessionMeta(state: ScratchState, action: PayloadAction<Partial<Omit<SessionMeta, 'id' | 'startedAt'>>>) {
