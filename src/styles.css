@@ -5,7 +5,7 @@
   --ms-key: #2b302f;
   --ms-fg: #f2f6f3;
   --ms-muted: #b8c5bf;
-  --ms-border: #424d47;
+  --ms-border: #707a75;
   --ms-primary: #d0f5e2;
   --ms-on-primary: #163d2e;
   --ms-highlight: #254c3d;
@@ -22,7 +22,7 @@
 #math-scratchpad-redux h3 { font-size: 18px; line-height: 1.4; margin: 8px 0; font-weight: 600; }
 #math-scratchpad-redux p { margin: 8px 0; line-height: 1.5; overflow-wrap: anywhere; }
 #math-scratchpad-redux .small { color: var(--ms-muted); font-size: 12px; }
-#math-scratchpad-redux .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.3px; color: var(--ms-muted); margin: 0 0 10px; }
+#math-scratchpad-redux .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 1.3px; color: var(--ms-muted); margin: 0 0 10px; }
 #math-scratchpad-redux button, #math-scratchpad-redux select, #math-scratchpad-redux textarea, #math-scratchpad-redux summary { font: inherit; color: inherit; }
 #math-scratchpad-redux button { min-width: 44px; min-height: 48px; border: 1px solid var(--ms-border); background: linear-gradient(160deg, #303634, var(--ms-key)); border-radius: var(--ms-radius); padding: 10px 14px; touch-action: manipulation; overflow-wrap: anywhere; }
 #math-scratchpad-redux button:disabled { opacity: .42; }
@@ -50,7 +50,7 @@
 #math-scratchpad-redux .current-step { border-color: #719b85; }
 #math-scratchpad-redux .step-title { font-weight: 600; border: 0; background: transparent; padding-left: 0; white-space: nowrap; }
 #math-scratchpad-redux .step-header { flex-wrap: wrap; }
-#math-scratchpad-redux .step-state { font-size: 11px; margin-right: auto; }
+#math-scratchpad-redux .step-state { font-size: 12px; margin-right: auto; }
 #math-scratchpad-redux .step-state.needs-review, #math-scratchpad-redux .step-state.edited { padding: 5px 7px; border-radius: 7px; }
 #math-scratchpad-redux .step-state.needs-review { color: var(--ms-warning); background: #402e17; border: 1px solid #8c6936; }
 #math-scratchpad-redux .step-state.edited { color: var(--ms-primary); background: #203c2f; border: 1px solid #567b65; }
@@ -133,7 +133,7 @@
   #math-scratchpad-redux .step { padding: 8px; }
   #math-scratchpad-redux .step-header { gap: 4px; }
   #math-scratchpad-redux .step-header > button { padding-inline: 7px; }
-  #math-scratchpad-redux .step-state { font-size: 11px; }
+  #math-scratchpad-redux .step-state { font-size: 12px; }
   #math-scratchpad-redux .step-state.needs-review, #math-scratchpad-redux .step-state.edited { padding: 4px; }
   #math-scratchpad-redux .key-grid, #math-scratchpad-redux .navigation-grid { gap: 6px; }
   #math-scratchpad-redux .key-grid button { min-height: 50px; }
@@ -257,7 +257,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .step { padding: 10px; background: var(--card); }
 #math-scratchpad-redux .step-header { flex-wrap: nowrap; gap: 4px; }
 #math-scratchpad-redux .step-title { margin-right: auto; padding-left: 0; }
-#math-scratchpad-redux .step-state { font-size: 10px; padding: 0; }
+#math-scratchpad-redux .step-state { font-size: 12px; padding: 0; }
 #math-scratchpad-redux .step-header .final-marker { display: none; }
 #math-scratchpad-redux .expression { min-height: 74px; padding: 8px 0; }
 #math-scratchpad-redux .selection { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); padding: 0; margin: 0; border: 0; }
@@ -268,7 +268,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .fraction-glyph > span:first-child { border-bottom: 1.5px solid; }
 #math-scratchpad-redux .math-keyboard { flex: 1; display: flex; flex-direction: column; padding: 0; margin: 0; border: 0; background: transparent; }
 #math-scratchpad-redux .keyboard-toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
-#math-scratchpad-redux .keyboard-toolbar button { font-size: 11px; padding: 6px 4px; min-width: 0; min-height: 44px; gap: 4px; }
+#math-scratchpad-redux .keyboard-toolbar button { font-size: 12px; padding: 6px 4px; min-width: 0; min-height: 44px; gap: 4px; }
 #math-scratchpad-redux .keyboard-toolbar button > span { font-size: 18px; }
 #math-scratchpad-redux .key-grid { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(48px, 1fr)); gap: 7px; margin: 0; }
 #math-scratchpad-redux .key-grid button { min-width: 44px; min-height: 48px; padding: 5px 3px; font-size: 24px; }
@@ -281,7 +281,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .question-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 #math-scratchpad-redux .question-navigation button { font-size: 13px; min-height: 48px; }
 #math-scratchpad-redux [role='status']:empty, #math-scratchpad-redux .copy-state:empty { display: none; }
-#math-scratchpad-redux .copy-state, #math-scratchpad-redux [role='status'] { font-size: 11px; margin: 6px 0 0; }
+#math-scratchpad-redux .copy-state, #math-scratchpad-redux [role='status'] { font-size: 12px; margin: 6px 0 0; }
 #math-scratchpad-redux p[role='alert'], .modal-content [role='alert'] { color: var(--destructive); }
 .modal-overlay { position: fixed; inset: 0; z-index: 50; background: #000b; }
 .modal-content { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; z-index: 51; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); padding: 20px; font: 16px/1.5 var(--font-sans); box-sizing: border-box; }
@@ -447,7 +447,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   --ms-key: #292d30;
   --ms-fg: #e7ebe8;
   --ms-muted: #b2b9b5;
-  --ms-border: #41474a;
+  --ms-border: #707a75;
   --ms-primary: #86b99b;
   --ms-on-primary: #101a14;
   --ms-highlight: #343c37;
@@ -509,13 +509,13 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .dropdown-content.notebook-menu { width: min(330px, calc(100vw - 16px)); max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 8px; }
 .dropdown-item.menu-primary-action { background: var(--primary); color: var(--primary-foreground); font-weight: 650; }
 .dropdown-item.menu-primary-action[data-highlighted] { background: #97c8a9; color: var(--primary-foreground); }
-.dropdown-label.menu-section-heading { display: block; padding: 12px 10px 5px; color: var(--muted-foreground); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.dropdown-label.menu-section-heading { display: block; padding: 12px 10px 5px; color: var(--muted-foreground); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .dropdown-label.menu-section-heading:not(:first-child) { margin-top: 5px; border-top: 1px solid var(--border); }
 .dropdown-label.menu-section-heading.danger-heading { color: var(--destructive); }
 .session-details-panel { margin: 0 8px 6px 30px; padding: 4px 0 8px 10px; border-left: 1px solid var(--border); }
 .session-details-panel .menu-info-value { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 5px 2px; color: var(--muted-foreground); font-size: 13px; line-height: 1.35; }
 .session-details-panel .menu-info-value span:last-child { color: var(--foreground); text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.dropdown-item.menu-disclosure { justify-content: space-between; color: var(--muted-foreground); }
+.dropdown-item.menu-disclosure { justify-content: space-between; color: var(--muted-foreground); text-align: start; }
 .menu-disclosure .menu-chevron { width: 16px; height: 16px; transition: transform 140ms ease; }
 .menu-disclosure .menu-chevron-open { transform: rotate(180deg); }
 .dropdown-item.menu-danger { color: var(--destructive); }
@@ -575,7 +575,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   #math-scratchpad-redux .header-actions .local-draft-label { display: none; }
   #math-scratchpad-redux .keyboard-toggle, #math-scratchpad-redux .keyboard-toggle[aria-expanded="true"] { display: inline-flex; width: 44px; min-width: 44px; padding: 10px; }
   #math-scratchpad-redux .keyboard-toggle span { display: none; }
-  #math-scratchpad-redux .header-progress { flex: 0 1 auto; gap: 3px; font-size: 10px; }
+  #math-scratchpad-redux .header-progress { flex: 0 1 auto; gap: 3px; font-size: 12px; }
   #math-scratchpad-redux .header-progress-track { height: 3px; }
   #math-scratchpad-redux .question-heading { margin-bottom: 10px; }
   #math-scratchpad-redux .problem { padding: 6px 12px; }
@@ -714,7 +714,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-choice-options label:has(:checked) span::before { content: '✓'; margin-inline-end: 7px; color: var(--success); font-size: 16px; }
 #math-scratchpad-redux .lesson-choice-options label span { font-size: 24px; line-height: 1.2; }
 #math-scratchpad-redux .lesson-confidence-options { display: grid; grid-template-columns: repeat(5, minmax(44px, 1fr)); gap: 6px; max-width: 360px; }
-#math-scratchpad-redux .lesson-confidence-options label { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 48px; padding: 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); cursor: pointer; font-variant-numeric: tabular-nums; }
+#math-scratchpad-redux .lesson-confidence-options label { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 44px; min-height: 48px; padding: 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); cursor: pointer; font-variant-numeric: tabular-nums; }
 #math-scratchpad-redux .lesson-check-text-answer { display: grid; gap: 5px; min-width: 0; margin-block: 12px 8px; }
 #math-scratchpad-redux .lesson-check-text-answer label { color: var(--muted-foreground); font-size: 13px; font-weight: 600; }
 #math-scratchpad-redux .lesson-check-text-answer textarea { width: 100%; min-width: 0; min-height: 96px; margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); color: var(--foreground); font: inherit; line-height: 1.65; resize: vertical; }
@@ -730,7 +730,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-answer-step.current-step { border-color: var(--primary); }
 #math-scratchpad-redux .lesson-answer-step > header { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
 #math-scratchpad-redux .lesson-step-title { min-height: 40px; padding: 4px; }
-#math-scratchpad-redux .lesson-answer-step .step-state { color: var(--muted-foreground); font-size: 11px; }
+#math-scratchpad-redux .lesson-answer-step .step-state { color: var(--muted-foreground); font-size: 12px; }
 #math-scratchpad-redux .lesson-answer-step .step-state.needs-review { color: var(--warning); }
 #math-scratchpad-redux .lesson-answer-step .step-state.edited { color: var(--success); }
 #math-scratchpad-redux .lesson-answer-step .final-marker { min-height: 40px; padding: 5px 8px; font-size: 12px; }
