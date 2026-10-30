@@ -63,6 +63,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
+ const resetCancelRef = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const batch = state.doc.exercises.length > 1, last = exerciseIndex === state.doc.exercises.length - 1;
@@ -196,6 +197,22 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   setPracticeLessonId(null);
  }
  function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
+ function focusCurrentMathControl() {
+  requestAnimationFrame(() => {
+   const cursor = store.getState().doc.cursor;
+   const step = Array.from(document.querySelectorAll<HTMLElement>('[data-step-id]')).find(element => element.dataset.stepId === cursor.stepId);
+   if (!step) { focusEditor(); return; }
+   let target: HTMLButtonElement | undefined;
+   if (cursor.sequenceId) {
+    target = Array.from(step.querySelectorAll<HTMLButtonElement>('.math-gap')).find(element => element.dataset.sequenceId === cursor.sequenceId && Number(element.dataset.gapIndex) === cursor.index);
+   } else if (cursor.nodeId) {
+    target = Array.from(step.querySelectorAll<HTMLButtonElement>('[data-node-id]')).find(element => element.dataset.nodeId === cursor.nodeId);
+   }
+   if (!target) { focusEditor(); return; }
+   target.focus({ preventScroll: true });
+   target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
+ }
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
@@ -265,12 +282,9 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const action = decisionRef.current; if (!action) return;
   decisionRef.current = null; if (action !== 'copy') dispatch(actions.autoFinal()); dispatch(actions.setConfidence(value)); setDecision(null); commit(action);
  }
- function addStep() {
-  dispatch(actions.command({ type: 'newStep' })); focusEditor();
-  requestAnimationFrame(() => document.querySelector(`[data-step-id="${store.getState().doc.cursor.stepId}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' }));
- }
- function resetStep(id: string) { dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'clear' })); focusEditor(); }
- function deleteStep(id: string) { if (id === ex.steps[0].id) return; dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'deleteStep' })); focusEditor(); }
+ function addStep() { dispatch(actions.command({ type: 'newStep' })); focusCurrentMathControl(); }
+ function resetStep(id: string) { dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'clear' })); focusCurrentMathControl(); }
+ function deleteStep(id: string) { if (id === ex.steps[0].id) return; dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'deleteStep' })); focusCurrentMathControl(); }
  const start = problemForm.handleSubmit(value => {
   try {
    if (value.mode === 'math') parse(value.source);
@@ -288,7 +302,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable) return;
   const inMath = target === editorRoot.current || !!target.closest('.expression'); if (!inMath) return;
   if (event.ctrlKey || event.metaKey) {
-   if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); }
+   if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); focusEditor(); }
    else if (key.toLowerCase() === 'y') { event.preventDefault(); dispatch(actions.redo()); } return;
   }
   if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); return; }
@@ -414,8 +428,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
   <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>
-  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="default" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
-  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); setEditingScales(false); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc" onCloseAutoFocus={event => { if (editingScales && menuInvoker.current) { event.preventDefault(); menuInvoker.current.focus({preventScroll:true}); } }}><DialogTitle>{editingScales ? 'Change session ratings' : 'Before you start this batch'}</DialogTitle><DialogDescription id="wellbeing-desc">Optional. You can change this later.</DialogDescription>
+  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent onOpenAutoFocus={event => { event.preventDefault(); resetCancelRef.current?.focus({ preventScroll: true }); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }}><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button ref={resetCancelRef} onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="danger" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
+  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); setEditingScales(false); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { if (editingScales) menuInvoker.current?.focus({ preventScroll: true }); else focusEditor(); }); }}><DialogTitle>{editingScales ? 'Change session ratings' : 'Before you start this batch'}</DialogTitle><DialogDescription id="wellbeing-desc">Optional. You can change this later.</DialogDescription>
    <SessionScales meta={state.doc.session} onMeta={value => dispatch(actions.setSessionMeta(value))} />
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />

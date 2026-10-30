@@ -8,6 +8,8 @@
   --ms-border: #424d47;
   --ms-primary: #d0f5e2;
   --ms-on-primary: #163d2e;
+  --ms-danger: #a82924;
+  --ms-on-danger: #ffffff;
   --ms-highlight: #254c3d;
   --ms-warning: #f4c16f;
   --ms-radius: 14px;
@@ -229,6 +231,9 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .ui-button, #math-scratchpad-redux button.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; min-height: 48px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--secondary); color: var(--foreground); font: 500 14px/1.35 var(--font-sans); cursor: pointer; touch-action: manipulation; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .ui-button svg { width: 20px; height: 20px; flex: 0 0 20px; }
 .ui-button.button-primary, #math-scratchpad-redux button.ui-button.button-primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); font-weight: 650; }
+.ui-button.button-danger, #math-scratchpad-redux button.ui-button.button-danger { background: var(--ms-danger); color: var(--ms-on-danger); border-color: var(--ms-danger); font-weight: 650; }
+.ui-button.button-danger:hover, #math-scratchpad-redux button.ui-button.button-danger:hover { background: #922018; border-color: #922018; }
+.ui-button.button-danger:active, #math-scratchpad-redux button.ui-button.button-danger:active { background: #7e1b16; border-color: #7e1b16; }
 .ui-button.button-ghost, #math-scratchpad-redux button.ui-button.button-ghost { background: transparent; border-color: transparent; }
 .ui-button.button-icon, #math-scratchpad-redux button.ui-button.button-icon { width: 44px; min-height: 44px; padding: 10px; flex: 0 0 44px; }
 .ui-button:disabled, #math-scratchpad-redux button:disabled { opacity: .48; cursor: not-allowed; }
@@ -450,6 +455,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   --ms-border: #41474a;
   --ms-primary: #86b99b;
   --ms-on-primary: #101a14;
+  --ms-danger: #b42318;
+  --ms-on-danger: #ffffff;
   --ms-highlight: #343c37;
   --ms-warning: #e4b66b;
   --ms-success: #8fa89a;

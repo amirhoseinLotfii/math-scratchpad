@@ -46,6 +46,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const [summary, setSummary] = useState(initialProgress?.summaryOpen ?? (lesson.concepts.length === 0 || initialProgress?.status === 'done' || (!!initialProgress?.learnDoneAt && lesson.concepts.length > 0 && lesson.concepts.every(concept => initialProgress.completedConceptIds.includes(concept.id)))));
   const [skipQuestion, setSkipQuestion] = useState<BankQuestion | null>(null);
   const [skipPracticeOpen, setSkipPracticeOpen] = useState(false);
+  const skipCheckInvoker = useRef<HTMLElement | null>(null);
+  const skipPracticeInvoker = useRef<HTMLButtonElement>(null);
   const mathStores = useRef(new Map<string, ScratchStore>());
   const headingRef = useRef<HTMLHeadingElement>(null);
   const summaryHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -230,24 +232,24 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
           mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
           answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
           skipped={progress.skippedChecks.some(item => item.questionId === question.id)}
-          onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => setSkipQuestion(allQuestions.get(questionId) ?? null)} />)}
+          onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => { skipCheckInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setSkipQuestion(allQuestions.get(questionId) ?? null); }} />)}
       </section>}
       <nav className="lesson-concept-navigation" aria-label="Concept navigation">
         <Button onClick={goPrevious} disabled={conceptIndex === 0}>← Previous concept</Button>
         <Button className="lesson-primary-action" onClick={goNext} disabled={!conceptComplete}>Next concept →</Button>
       </nav>
-      {practiceQuestions.length > 0 && <Button className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>Skip to practice</Button>}
+      {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>Skip to practice</Button>}
     </> : null}
 
     <Dialog open={!!skipQuestion} onOpenChange={open => { if (!open) setSkipQuestion(null); }}>
-      <DialogContent aria-describedby="lesson-skip-description">
+      <DialogContent aria-describedby="lesson-skip-description" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { const target = skipCheckInvoker.current; if (target?.isConnected) target.focus({ preventScroll: true }); else headingRef.current?.focus({ preventScroll: true }); }); }}>
         <DialogTitle>Skip this check?</DialogTitle>
         <DialogDescription id="lesson-skip-description">Skip this check? It will be logged.</DialogDescription>
         <div className="dialog-actions"><Button onClick={() => setSkipQuestion(null)}>Cancel</Button><Button variant="default" className="lesson-primary-action" onClick={confirmSkip}>Skip check</Button></div>
       </DialogContent>
     </Dialog>
     <Dialog open={skipPracticeOpen} onOpenChange={setSkipPracticeOpen}>
-      <DialogContent aria-describedby="lesson-skip-practice-description">
+      <DialogContent aria-describedby="lesson-skip-practice-description" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { const target = skipPracticeInvoker.current; if (target?.isConnected) target.focus({ preventScroll: true }); else headingRef.current?.focus({ preventScroll: true }); }); }}>
         <DialogTitle>Skip to practice?</DialogTitle>
         <DialogDescription id="lesson-skip-practice-description">This choice will be recorded for this lesson.</DialogDescription>
         <div className="dialog-actions"><Button onClick={() => setSkipPracticeOpen(false)}>Cancel</Button><Button variant="default" className="lesson-primary-action" onClick={confirmSkipToPractice}>Skip to practice</Button></div>
