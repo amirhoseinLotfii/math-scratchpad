@@ -25,6 +25,14 @@ if (new URLSearchParams(location.search).get('notation') === '1') bank.lessons![
   { type: 'math', latex: String.raw`\begin{array}{ll} x & \text{ورودی} \\ y & \text{خروجی} \end{array}` },
   { type: 'math', latex: String.raw`f(x)=x^2;\quad \text{(a) } \sqrt[3]{x}` },
 );
+if (new URLSearchParams(location.search).has('bidi')) {
+  bank.lessons![0].title = 'توابع و تابع‌نما (Functions and Function Notation)';
+  bank.lessons![0].concepts[0].title = 'تعریف تابع (Function Definition and Notation)';
+  bank.lessons![0].concepts[0].blocks.push({
+    type: 'paragraph', lang: 'fa',
+    text: 'در این توضیح، عبارت انگلیسی (Functions and Function Notation) و (domain and range) با ترتیب درست نمایش داده می‌شوند.',
+  });
+}
 const version = 'sample-v1-browser-preview';
 const store = makeStore(initialState());
 store.dispatch(actions.load({ doc: bankDocument(bank, version) }));

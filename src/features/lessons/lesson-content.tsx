@@ -17,19 +17,21 @@ export function contentDirection(text: string, lang?: Lang): 'rtl' | 'ltr' | 'au
 }
 
 export function LessonText({ text, lang }: { text: string; lang?: Lang }) {
-  const textLang = languageForText(text, lang), textDir = contentDirection(text, textLang);
+  const textLang = languageForText(text, lang);
   return <>{splitLessonText(text).map((part, partIndex) => {
     if (part.type === 'math') return <bdi className="lesson-inline-math" key={`math-${partIndex}`} dir="ltr"><MathDisplay latex={part.latex} display={false} /></bdi>;
     if (textLang !== 'fa') return part.text;
-    const tokenPattern = /[A-Za-z][A-Za-z0-9._/-]*|[0-9]+(?:[.,/-][0-9]+)*/g;
+    // Keep a complete Latin phrase (including its spaces and punctuation) in one
+    // isolate. Word-by-word isolates make bidi resolution reorder spaces and brackets.
+    const latinRun = /[([{]?[A-Za-z0-9](?:[A-Za-z0-9 \t.,:;!?\u0027’“”()[\]{}<>/+=\-–—]*[A-Za-z0-9)\]}])?/g;
     const pieces: React.ReactNode[] = [];
-    let at = 0, tokenIndex = 0;
-    for (const match of part.text.matchAll(tokenPattern)) {
-      if (match.index > at) pieces.push(<bdi key={`text-${partIndex}-${tokenIndex++}`} lang={textLang} dir={textDir}>{part.text.slice(at, match.index)}</bdi>);
-      pieces.push(<bdi key={`latin-${partIndex}-${tokenIndex++}`} lang="en" dir="ltr">{match[0]}</bdi>);
+    let at = 0, runIndex = 0;
+    for (const match of part.text.matchAll(latinRun)) {
+      if (match.index > at) pieces.push(part.text.slice(at, match.index));
+      pieces.push(<bdi key={`latin-${partIndex}-${runIndex++}`} lang="en" dir="ltr">{match[0]}</bdi>);
       at = match.index + match[0].length;
     }
-    if (at < part.text.length || !pieces.length) pieces.push(<bdi key={`text-${partIndex}-${tokenIndex}`} lang={textLang} dir={textDir}>{part.text.slice(at)}</bdi>);
+    if (at < part.text.length || !pieces.length) pieces.push(part.text.slice(at));
     return <Fragment key={`part-${partIndex}`}>{pieces}</Fragment>;
   })}</>;
 }
