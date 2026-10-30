@@ -1,6 +1,7 @@
 import { ascii, elapsedAt, isoLocal, validScale, latex, type Document, type Exercise } from '../../../model';
 import { APP_VERSION } from '../../../version';
 import { questionStatus } from '../../workspace/model/workspace-layout';
+import type { LessonExportData } from '../../lessons/lesson-progress-store';
 
 export const TUTOR_EXPORT_SCHEMA = 'math-scratchpad.session/1.0';
 export const CONFIDENCE_SCORE = { high: 5, medium: 3, low: 1 } as const;
@@ -13,12 +14,15 @@ export type TutorItem = {
   started_at: string | null; submitted_at: string | null; solve_time_sec: number | null;
   confidence: 5 | 3 | 1; confidence_label: 'high' | 'medium' | 'low';
   hint_used: boolean; hint_note: string | null; guidance_available: boolean; guidance_opened: boolean; guidance_opened_at: string | null; independent: boolean;
+  stage?: 'learn' | 'practice'; conceptId?: string;
 };
 export type TutorExport = {
   schema_version: string; app: 'math-scratchpad'; app_version: string; exported_at: string;
   session_id: string; bank_id?: string; bank_version?: string; anxiety: number | null; energy: number | null; started_at: string; ended_at: string | null;
   totals: { items: number; answered: number; skipped: number; unanswered: number; missing_final_answer: number };
   items: TutorItem[];
+  lessonProgress?: LessonExportData['lessonProgress'];
+  lessonPanelEvents?: LessonExportData['lessonPanelEvents'];
 };
 const blankStep = (text: string) => text === '\\square' || text.trim() === '';
 export function itemStatus(ex: Exercise): ItemStatus {
@@ -44,13 +48,14 @@ export function exportItem(ex: Exercise, index: number): TutorItem {
     solve_time_sec: Number.isFinite(ex.elapsedMs) || Number.isFinite(ex.timerRunningSince) ? Math.round(elapsedAt(ex) / 1000) : null,
     confidence: CONFIDENCE_SCORE[confidence], confidence_label: confidence,
     hint_used: helped(ex), hint_note: ex.hintNote ?? null, guidance_available: !!ex.guidance, guidance_opened: !!ex.guidanceOpenedAt, guidance_opened_at: ex.guidanceOpenedAt ?? null, independent: !helped(ex),
+    ...(ex.stage ? { stage: ex.stage } : {}), ...(ex.conceptId ? { conceptId: ex.conceptId } : {}),
   };
 }
 /** Items with work (not skipped) that have no marked final answer. */
 export function missingFinalAnswers(doc: Document) {
   return doc.exercises.map((ex, i) => ({ ex, i })).filter(({ ex }) => itemStatus(ex) === 'answered' && !exportItem(ex, 0).final_answer).map(({ i }) => i + 1);
 }
-export function buildTutorExport(doc: Document, now = new Date()): TutorExport {
+export function buildTutorExport(doc: Document, now = new Date(), lessonData?: LessonExportData): TutorExport {
   const items = doc.exercises.map(exportItem);
   const meta = doc.session;
   const count = (s: ItemStatus) => items.filter(x => x.status === s).length;
@@ -60,6 +65,7 @@ export function buildTutorExport(doc: Document, now = new Date()): TutorExport {
     started_at: meta?.startedAt ?? items.map(x => x.started_at).filter(Boolean).sort()[0] ?? isoLocal(now), ended_at: meta?.endedAt ?? null,
     totals: { items: items.length, answered: count('answered'), skipped: count('skipped'), unanswered: count('unanswered'), missing_final_answer: missingFinalAnswers(doc).length },
     items,
+    ...(lessonData ? { lessonProgress: lessonData.lessonProgress, lessonPanelEvents: lessonData.lessonPanelEvents } : {}),
   };
 }
 export function downloadText(name: string, text: string) {

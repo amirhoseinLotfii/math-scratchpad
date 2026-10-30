@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen } from 'lucide-react';
@@ -32,8 +32,15 @@ import { buildTutorExport, downloadText, missingFinalAnswers } from './features/
 import { clearAppStorage } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
+import { archiveSession, bankDocument, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
-import { wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
+import { getLesson, getPracticeQuestions } from './features/lessons/selectors';
+import type { Lesson, LessonProgress } from './features/lessons/types';
+import { LessonScreen } from './features/lessons/lesson-screen';
+import { LessonPicker } from './features/lessons/lesson-picker';
+import { LessonReferenceDialog } from './features/lessons/lesson-reference-dialog';
+import { emptyLessonProgressState, lessonExportDataFromState, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
+import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
 
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
@@ -44,7 +51,8 @@ const INSERT_OPTIONS = [
 type Decision = 'next' | 'complete' | 'copy';
 /** Number of insert tools shown before “نمایش بیشتر”. */
 export const INSERT_VISIBLE = 8;
-export function App() {
+/** `initialBank` is used by isolated browser previews/tests; normal app startup loads through DriveBankPanel. */
+export function App({ initialBank }: { initialBank?: { bank: DriveBank; version: string } } = {}) {
  const layout = useWorkspaceLayout(), wide = layout !== 'phone';
  const insertOptions = useMemo(() => wide ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({name:item.title,kind:item.key}))] : INSERT_OPTIONS, [wide]);
  const [shortcutsOpen, setShortcutsOpen] = useState(false), [insertExpanded, setInsertExpanded] = useState(false);
@@ -60,6 +68,16 @@ export function App() {
  const [driveBankOpen, setDriveBankOpen] = useState(false);
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [, setDriveBankAvailable] = useState(false);
+ const [loadedBank, setLoadedBank] = useState<{ bank: DriveBank; version: string } | null>(initialBank ?? null);
+ const loadedBankRef = useRef(loadedBank); loadedBankRef.current = loadedBank;
+ const [lessonPickerOpen, setLessonPickerOpen] = useState(false), [lessonScreen, setLessonScreen] = useState<Lesson | null>(null);
+ const [referenceLesson, setReferenceLesson] = useState<Lesson | null>(null), [referenceWasRunning, setReferenceWasRunning] = useState(false);
+ const [lessonProgressState, setLessonProgressState] = useState<LessonProgressState>(() => initialBank ? readLessonProgress(initialBank.bank, initialBank.version) : emptyLessonProgressState('', ''));
+ const lessonProgressRef = useRef(lessonProgressState); lessonProgressRef.current = lessonProgressState;
+ const [lessonPersistenceMessage, setLessonPersistenceMessage] = useState(lessonProgressState.warning);
+ const lessonProgressById = lessonProgressState.progressById;
+ const [practiceLessonId, setPracticeLessonId] = useState<string | null>(null), [practiceStartError, setPracticeStartError] = useState('');
+ const lessonButton = useRef<HTMLButtonElement>(null);
  const [confirmExam, setConfirmExam] = useState(false), [confirmFractions, setConfirmFractions] = useState(false);
  const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);
  const [decision, setDecision] = useState<Decision | null>(null), [complete, setComplete] = useState(false);
@@ -83,11 +101,98 @@ export function App() {
  const selectionLabel = state.doc.cursor.sequenceId ? `Step ${currentIndex + 1} · Main-line insertion` : selected ? `Step ${currentIndex + 1}${selected.path}${state.doc.cursor.selected ? ' · Whole structure' : ' · Caret ' + state.doc.cursor.offset}` : '';
  const copied = !state.copies[ex.id] ? '' : state.copies[ex.id] === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
  const problemExpression = useMemo(() => { if (ex.mode !== 'math') return null; try { return parse(ex.source); } catch { return null; } }, [ex.mode, ex.source]);
- const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || state.storageState?.kind === 'conflict';
+ const matchingBank = loadedBank && state.doc.session?.bankId === loadedBank.bank.bank_id && state.doc.session?.bankVersion === loadedBank.version ? loadedBank : null;
+ const currentBankQuestion = matchingBank && ex.bankQuestionId ? matchingBank.bank.questions.find(question => question.id === ex.bankQuestionId) : undefined;
+ const linkedLesson = currentBankQuestion?.stage !== 'learn' ? getLesson(matchingBank?.bank ?? {}, currentBankQuestion?.lessonId) : undefined;
+ const activePracticeLessonId = practiceLessonId ?? (currentBankQuestion?.stage !== 'learn' && currentBankQuestion?.lessonId && lessonProgressById[currentBankQuestion.lessonId]?.status === 'practising' ? currentBankQuestion.lessonId : null);
+ const lessons = loadedBank?.bank.lessons ?? [];
+ const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
  useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); setGuidanceOpen(false); }, [ex.id]);
  useEffect(() => { setChoice(0); }, [wide]);
  useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
  function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
+ function bankReady(bank: DriveBank | null, version: string) {
+  if (!bank) {
+   setLoadedBank(null);
+   const empty = emptyLessonProgressState('', ''); lessonProgressRef.current = empty; setLessonProgressState(empty); setLessonPersistenceMessage('');
+   return;
+  }
+  const current = loadedBank;
+  if (current?.bank.bank_id === bank.bank_id && current.version === version) { setLoadedBank({ bank, version }); return; }
+  const restored = readLessonProgress(bank, version);
+  setLoadedBank({ bank, version }); lessonProgressRef.current = restored; setLessonProgressState(restored); setLessonPersistenceMessage(restored.warning);
+ }
+ const updateLessonProgressState = useCallback((next: LessonProgressState) => {
+  lessonProgressRef.current = next; setLessonProgressState(next);
+  const activeBank = loadedBankRef.current;
+  if (!activeBank || activeBank.bank.bank_id !== next.bankId || activeBank.version !== next.bankVersion) return;
+  const result = saveLessonProgress(activeBank.bank, activeBank.version, next);
+  setLessonPersistenceMessage(result.saved ? (next.persistenceBlocked ? next.warning : '') : result.message);
+ }, []);
+ const rememberLessonProgress = useCallback((progress: LessonProgress) => {
+  const current = lessonProgressRef.current;
+  updateLessonProgressState({ ...current, progressById: { ...current.progressById, [progress.lessonId]: progress } });
+ }, [updateLessonProgressState]);
+ function openLesson(lesson: Lesson) {
+  const before = lessonProgressById[lesson.id];
+  if (!before) rememberLessonProgress({ lessonId: lesson.id, status: 'learning', currentConceptIndex: 0, completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() });
+  setLessonPickerOpen(false);
+  setLessonScreen(lesson);
+ }
+ function closeLesson() {
+  setLessonScreen(null);
+  requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true }));
+ }
+ function openReference(lesson: Lesson) {
+  const current = store.getState().doc.exercises.find(item => item.id === store.getState().doc.exerciseId);
+  const wasRunning = !!current && !current.timerPaused && Number.isFinite(current.timerRunningSince);
+  setReferenceWasRunning(wasRunning);
+  if (currentBankQuestion && currentBankQuestion.stage !== 'learn') {
+   const progress = lessonProgressRef.current;
+   updateLessonProgressState({ ...progress, activePanelEvent: { questionId: currentBankQuestion.id, openedAt: isoLocal() } });
+  }
+  if (wasRunning && current) dispatch(actions.timerPause({ exerciseId: current.id, now: Date.now(), paused: true }));
+  setReferenceLesson(lesson);
+ }
+ function closeReference() {
+  setReferenceLesson(null);
+  const progress = lessonProgressRef.current;
+  if (progress.activePanelEvent) {
+   const closedAt = isoLocal();
+   updateLessonProgressState({ ...progress, activePanelEvent: undefined, lessonPanelEvents: [...progress.lessonPanelEvents, { ...progress.activePanelEvent, closedAt: closedAt < progress.activePanelEvent.openedAt ? progress.activePanelEvent.openedAt : closedAt }] });
+  }
+  if (referenceWasRunning) {
+   const current = store.getState().doc.exercises.find(item => item.id === store.getState().doc.exerciseId);
+   if (current?.timerPaused) dispatch(actions.timerPause({ exerciseId: current.id, now: Date.now(), paused: false }));
+  }
+  setReferenceWasRunning(false);
+ }
+ function startLessonPractice(lesson: Lesson, progress: LessonProgress) {
+  const targetBank = loadedBank;
+  if (!targetBank) { setPracticeStartError('The lesson bank is not available for this session. Reconnect to the same bank version and try again.'); return; }
+  const questions = getPracticeQuestions(targetBank.bank, lesson.id);
+  if (!questions.length) { setPracticeStartError('No practice questions yet'); return; }
+  try {
+   const doc = bankDocument(targetBank.bank, targetBank.version, questions);
+   archiveSession(store.getState());
+   dispatch(actions.load({ doc }));
+   dispatch(actions.keyboard(initialKeyboardOpen(true)));
+   dispatch(actions.notice('Lesson practice started.'));
+   rememberLessonProgress(progress);
+   setPracticeLessonId(lesson.id);
+   setPracticeStartError('');
+   setLessonScreen(null);
+   setShowResults(false); setManual(''); setComplete(false);
+  } catch (error) {
+   setPracticeStartError(error instanceof Error ? error.message : 'Could not start lesson practice. The current session was kept.');
+  }
+ }
+ function markLessonPracticeDone() {
+  if (!activePracticeLessonId) return;
+  const progress = lessonProgressRef.current.progressById[activePracticeLessonId];
+  if (progress) rememberLessonProgress({ ...progress, status: 'done', summaryOpen: true });
+  setPracticeLessonId(null);
+ }
  function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
@@ -117,7 +222,16 @@ export function App() {
   const doc = store.getState().doc, missing = missingFinalAnswers(doc);
   if (!force && missing.length) { setExportWarning(missing); return; }
   setExportWarning(null);
-  const data = buildTutorExport(doc), text = JSON.stringify(data, null, 2);
+  const meta = doc.session;
+  let lessonExport: LessonExportData | undefined;
+  if (meta?.bankId && meta.bankVersion) {
+   if (loadedBank?.bank.bank_id === meta.bankId && loadedBank.version === meta.bankVersion && loadedBank.bank.lessons?.length) lessonExport = lessonExportDataFromState(lessonProgressRef.current);
+   else {
+    const saved = readLessonExportData(meta.bankId, meta.bankVersion);
+    if (saved.found) lessonExport = saved.data;
+   }
+  }
+  const data = buildTutorExport(doc, new Date(), lessonExport), text = JSON.stringify(data, null, 2);
   const copiedOk = await writeClipboard(text), saved = downloadText(`math-session-${data.session_id}.json`, text);
   if (!copiedOk) { jsonForm.reset({ json: text }); setBackup(true); }
   dispatch(actions.notice(`Tutor export ready${copiedOk ? ' · copied' : ''}${saved ? ' · downloaded' : ''}.`));
@@ -136,7 +250,7 @@ export function App() {
  }
  function commit(action: Decision) {
   if (action === 'next') { dispatch(actions.adjacentExercise(1)); setManual(''); setShowResults(false); }
-  else if (action === 'complete') setComplete(true);
+  else if (action === 'complete') { markLessonPracticeDone(); setComplete(true); }
   else void copyReview();
  }
  function request(action: Decision) {
@@ -204,7 +318,7 @@ export function App() {
  async function copyReport() { const text = examGrades.map(({question,result}) => `Q${question.id} | ${question.stem}\nExpected: ${question.expected}\n${result?.numeric ?? 'skipped'}`).join('\n\n'); if (await writeClipboard(text)) dispatch(actions.notice('Diagnostic report copied.')); else setManual(text); }
  const mathTools = <MathTools wide={wide} canUndo={state.past.some(d => d.exerciseId === ex.id)} canRedo={state.future.some(d => d.exerciseId === ex.id)} onUndo={() => { dispatch(actions.undo()); focusEditor(); }} onRedo={() => { dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
-  <div className="app-content" inert={modalOpen}>
+  <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
     {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Answered questions" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>
      <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>
@@ -214,6 +328,7 @@ export function App() {
       <DropdownMenuItem onSelect={() => { setDriveBankInitialized(true); setDriveBankOpen(true); }}><HardDrive aria-hidden="true" />Google Drive · بانک سؤال</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => setSetup(true)}><NotebookPen aria-hidden="true" />New Problem</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => dispatch(actions.setSkipped(!ex.skipped))}>{ex.skipped ? <RotateCcw aria-hidden="true" /> : <SkipForward aria-hidden="true" />}{ex.skipped ? 'Unskip question' : 'Skip question'}</DropdownMenuItem>
+      {matchingBank && lessons.length > 0 && <DropdownMenuItem onSelect={() => setLessonPickerOpen(true)}><BookOpen aria-hidden="true" />Lessons</DropdownMenuItem>}
       <DropdownMenuItem className="menu-disclosure" aria-expanded={menuMore} aria-controls={menuMore ? 'more-notebook-actions' : undefined} onSelect={event => { event.preventDefault(); setMenuMore(value => !value); }}><span>Show more</span><ChevronDown className={menuMore ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" /></DropdownMenuItem>
       {menuMore && <div id="more-notebook-actions" className="menu-more-content">
        <DropdownMenuLabel className="menu-section-heading">Session</DropdownMenuLabel>
@@ -248,7 +363,8 @@ export function App() {
      </DropdownMenuContent></DropdownMenu>
     </div></header>
 
-   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => setDriveBankOpen(false)} onAvailable={setDriveBankAvailable} />}
+   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => setDriveBankOpen(false)} onAvailable={setDriveBankAvailable} onBankReady={bankReady} />}
+   {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
    {(confirmExam || confirmFractions) && <section className="setup-panel" aria-label={confirmFractions ? 'Confirm fraction round start' : 'Confirm diagnostic start'}><h2>Start {confirmFractions ? 'Round 1 · 20 fraction questions' : 'diagnostic'}?</h2><p>Export Session JSON first to keep your current work.</p><div className="toolbar"><Button variant="default" onClick={() => { dispatch(confirmFractions ? actions.startFractionRound() : actions.startDiagnostic()); if (!wide) dispatch(actions.keyboard(true)); setConfirmExam(false); setConfirmFractions(false); setShowResults(false); }}>{confirmFractions ? 'Start 20 Questions' : 'Start 30 Questions'}</Button><Button onClick={() => { setConfirmExam(false); setConfirmFractions(false); }}>Cancel</Button></div></section>}
    {setup && <section className="setup-panel" aria-label="New exercise"><h2>New exercise</h2><form onSubmit={start} noValidate>
@@ -261,7 +377,7 @@ export function App() {
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
    {batch && <section className="exercise-bar" hidden={layout !== 'phone'} aria-label="Exercise navigation"><label>Question {exerciseIndex + 1} of {state.doc.exercises.length}<select aria-label="Current exercise" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} / {state.doc.exercises.length}{entry.skipped ? ' · Skipped' : entry.steps.some(s => s.final) ? ' · Final' : ' · Unanswered'}</option>)}</select></label>
     <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={completed} className="diagnostic-track"><div style={{ width: `${completed / state.doc.exercises.length * 100}%` }} /></div><p className="small progress-text">{completed} of {state.doc.exercises.length} answered or skipped · Answers hidden until Finish</p></section>}
-    <section className="problem" aria-label="Current problem">{wide && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}{ex.guidance && <details className="question-guidance" lang="fa" dir="rtl" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>راهنمای سؤال{ex.guidanceOpenedAt ? <span className="small guidance-used"> · استفاده شد</span> : null}</summary><p>{ex.guidance}</p></details>}</section>
+    <section className="problem" aria-label="Current problem">{(wide || linkedLesson || fractions) && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}{linkedLesson && <Button ref={lessonButton} className="lesson-reference-trigger" onClick={() => openReference(linkedLesson)}><BookOpen aria-hidden="true" />Lesson</Button>}</div>}{ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.prompt}</p>}{problemExpression ? <div className="problem-formula" aria-label="Original problem"><Formula sequence={problemExpression} stepId="problem" top readOnly /></div> : !ex.prompt && <p className="persian-question" lang="fa" dir="rtl">{ex.source}</p>}{ex.guidance && <details className="question-guidance" lang="fa" dir="rtl" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>راهنمای سؤال{ex.guidanceOpenedAt ? <span className="small guidance-used"> · استفاده شد</span> : null}</summary><p>{ex.guidance}</p></details>}</section>
     <QuestionTimer key={ex.id} exerciseId={ex.id} />
     </div>
     <div className={`editor-layout work-pane ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? 'Your work' : undefined}><div className="notebook-main">
@@ -291,6 +407,9 @@ export function App() {
    </div></div>
    </div>
   </div>
+  {lessonScreen && <div className="learn-workspace"><LessonScreen bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress) => startLessonPractice(lesson, progress)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} /></div>}
+  <LessonPicker open={lessonPickerOpen} lessons={lessons} progressByLesson={lessonProgressById} onOpenChange={setLessonPickerOpen} onChoose={openLesson} onCloseAutoFocus={event => { event.preventDefault(); if (!lessonScreen) menuInvoker.current?.focus({ preventScroll: true }); }} />
+  {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
   <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>

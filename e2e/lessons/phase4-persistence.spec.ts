@@ -1,0 +1,61 @@
+import { expect, test } from '@playwright/test';
+
+test('Learn progress restores in the connected app and its lesson status survives Practice reload', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile-390', 'This test exercises the connected flow at its reference mobile viewport.');
+  await page.setViewportSize({ width: 390, height: 640 });
+  await page.goto('/');
+  await page.evaluate(() => localStorage.clear());
+  await page.goto('/e2e/fixtures/lesson-connected-preview.html');
+
+  const setup = page.getByRole('dialog', { name: 'Before you start this batch' });
+  if (await setup.isVisible().catch(() => false)) await setup.getByRole('button', { name: 'Skip for now' }).click();
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Lessons' }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Not started/ }).click();
+  await page.getByRole('radio', { name: 'Option B' }).check();
+  await page.getByRole('radio', { name: 'Confidence 4' }).check();
+  await page.getByRole('button', { name: 'Next concept →' }).click();
+  const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+  await editor.getByRole('button', { name: '8', exact: true }).click();
+  await expect(editor.locator('.lesson-answer-step.current-step .token-active')).toBeInViewport();
+  await expect(page.getByRole('group', { name: 'Question expression' })).toBeInViewport();
+  const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, page: document.documentElement.scrollWidth }));
+  expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
+
+  const progressKey = 'math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview';
+  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), progressKey);
+  expect(saved.lessons['SAMPLE-1.1']).toMatchObject({ status: 'learning', currentConceptIndex: 1, answeredCheckIds: ['SAMPLE-1.1-L01', 'SAMPLE-1.1-L02'] });
+  await page.reload();
+  const restartedSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
+  if (await restartedSetup.isVisible().catch(() => false)) await restartedSetup.getByRole('button', { name: 'Skip for now' }).click();
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Lessons' }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Learning/ }).click();
+  await expect(page.getByRole('heading', { name: 'Second sample concept' })).toBeVisible();
+  const restoredEditor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+  await expect(restoredEditor.locator('.lesson-answer-steps')).toContainText('8');
+  await expect(restoredEditor.getByRole('button', { name: 'Hide Keyboard' })).toBeVisible();
+  await page.getByRole('button', { name: '← Previous concept' }).click();
+  await expect(page.getByRole('radio', { name: 'Option B' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Confidence 4' })).toBeChecked();
+  await page.getByRole('button', { name: 'Next concept →' }).click();
+  await page.getByRole('button', { name: 'Next concept →' }).click();
+  await page.getByRole('button', { name: 'Start practice' }).click();
+  await expect(page.getByText('Sample practice 1.')).toBeVisible();
+  const archive = await page.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-drive-session-archive-v1') ?? '[]'));
+  expect(archive).toHaveLength(1);
+
+  await page.reload();
+  const finalSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
+  if (await finalSetup.isVisible().catch(() => false)) await finalSetup.getByRole('button', { name: 'Skip for now' }).click();
+  const practiceMenu = page.getByRole('combobox', { name: 'Current exercise' });
+  const lastQuestion = await practiceMenu.locator('option').last().getAttribute('value');
+  await practiceMenu.selectOption(lastQuestion!);
+  await page.getByRole('button', { name: 'Finish session' }).click();
+  const confidence = page.getByRole('dialog', { name: /confidence/i });
+  await confidence.getByRole('radio', { name: 'Medium' }).click();
+  await confidence.getByRole('button', { name: /continue/i }).click();
+  const completedProgress = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), progressKey);
+  expect(completedProgress.lessons['SAMPLE-1.1'].status).toBe('done');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-drive-session-archive-v1') ?? '[]').length)).toBe(1);
+});

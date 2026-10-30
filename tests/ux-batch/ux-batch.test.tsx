@@ -172,7 +172,8 @@ describe('8 question guidance', () => {
  it('bank guidance is optional and backward compatible', () => {
   expect(validateBank(BANK).questions[0].guidance).toBeTruthy(); expect(validateBank(BANK).questions[1]).not.toHaveProperty('guidance');
   expect(() => validateBank({ ...BANK, questions: [{ id: 'X', mode: 'math', source: '1', guidance: 5 }] })).toThrow();
-  expect(() => validateBank({ ...BANK, questions: [{ id: 'X', mode: 'math', source: '1', solution: 'x' }] })).toThrow(/پاسخ یا کلید/);
+  const sanitized = validateBank({ ...BANK, questions: [{ id: 'X', mode: 'math', source: '1', solution: 'x' }] });
+  expect(sanitized.questions[0]).not.toHaveProperty('solution'); expect(sanitized.parseWarnings?.join(' ')).toContain('solution');
  });
  it('opening marks helped permanently; closing keeps it; exports accurately; no guidance → no area', async () => {
   const store = bankStore(); const { user } = mount({ store });

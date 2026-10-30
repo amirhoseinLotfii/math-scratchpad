@@ -17,9 +17,13 @@ describe('Drive question bank', () => {
   it('changes the snapshot version when content changes even with the same declared version', async () => {
     expect(await snapshotVersion(validateBank(sample))).not.toBe(await snapshotVersion(validateBank({ ...sample, questions: [{ ...sample.questions[0], source: '1+3' }] })));
   });
-  it('rejects duplicate IDs and answer keys', () => {
-    expect(() => validateBank({ ...sample, questions: [sample.questions[0], sample.questions[0]] })).toThrow();
-    expect(() => validateBank({ ...sample, questions: [{ ...sample.questions[0], expected: '3' }] })).toThrow();
+  it('keeps the first duplicate ID and strips answer-like fields with warnings', () => {
+    const duplicated = validateBank({ ...sample, questions: [sample.questions[0], sample.questions[0]] });
+    expect(duplicated.questions).toHaveLength(1);
+    expect(duplicated.parseWarnings?.join(' ')).toContain('duplicate question id Q01');
+    const sanitized = validateBank({ ...sample, questions: [{ ...sample.questions[0], expected: '3' }] });
+    expect(sanitized.questions[0]).not.toHaveProperty('expected');
+    expect(sanitized.parseWarnings?.join(' ')).toContain('expected');
   });
   it('keeps earlier snapshots of the same session, and surfaces storage failures before switching', () => {
     const state = initialState(); archiveSession(state); state.doc.exercises[0].source = '1+2'; archiveSession(state);

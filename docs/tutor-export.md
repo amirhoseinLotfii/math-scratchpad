@@ -14,4 +14,12 @@ Each item: `item_id`, `index` (1-based), `question_id` (bank number|null), `asse
 (final marked / confidence confirmed), `solve_time_sec` (visible-time timer), `confidence` (5 high · 3 medium · 1 low; default 5),
 `confidence_label`, `hint_used`, `hint_note`, `independent` (= not `hint_used`).
 
+Learn-enabled exports add optional fields without changing the legacy fields above:
+
+- Each bank-linked `items[]` entry may include `stage` (`learn` or `practice`) and `conceptId`.
+- Top-level `lessonProgress[]` includes lesson status, completed concept IDs, skipped check IDs with timestamps, and Learn/practice timestamps (`learnSkipped`, `learnDoneAt`, and `practiceStartedAt` when present).
+- Top-level `lessonPanelEvents[]` records the practice question ID and ISO-8601 open/close timestamps for each completed Lesson reference panel visit.
+
+Inline Learn check responses and revealed example steps stay in the separate local Learn progress store. They are not added to the Practice session backup or tutor export. Exports created without lesson data keep the original top-level and per-item shape.
+
 `final_answer: null` on an `answered` item means the student did not mark a final step; the tutor must ask for it, not guess.

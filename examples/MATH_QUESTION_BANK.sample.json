@@ -1,0 +1,83 @@
+{
+  "schema_version": "math-scratchpad.bank/1.0",
+  "bank_id": "sample-lessons",
+  "version": "sample-v1",
+  "lessons": [
+    {
+      "id": "SAMPLE-1.1",
+      "book": "Sample book",
+      "section": "1.1",
+      "title": "Sample lesson",
+      "concepts": [
+        {
+          "id": "SAMPLE-1.1-C1",
+          "title": "First sample concept",
+          "blocks": [
+            { "type": "heading", "text": "Sample concept heading", "lang": "en" },
+            { "type": "paragraph", "text": "Sample instructional content.", "lang": "en" },
+            { "type": "math", "latex": "x+1" }
+          ],
+          "checkQuestionIds": ["SAMPLE-1.1-L01"]
+        },
+        {
+          "id": "SAMPLE-1.1-C2",
+          "title": "Second sample concept",
+          "blocks": [
+            { "type": "heading", "text": "Another sample concept", "lang": "en" }
+          ],
+          "checkQuestionIds": ["SAMPLE-1.1-L02"]
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "SAMPLE-1.1-L01",
+      "mode": "math",
+      "answerType": "choice",
+      "choices": ["Option A", "Option B"],
+      "lessonId": "SAMPLE-1.1",
+      "conceptId": "SAMPLE-1.1-C1",
+      "stage": "learn",
+      "source": "x+1",
+      "prompt": "Sample choice check."
+    },
+    {
+      "id": "SAMPLE-1.1-L02",
+      "mode": "math",
+      "answerType": "math",
+      "lessonId": "SAMPLE-1.1",
+      "conceptId": "SAMPLE-1.1-C2",
+      "stage": "learn",
+      "source": "x+1",
+      "prompt": "Sample math check."
+    },
+    {
+      "id": "SAMPLE-1.1-P01",
+      "mode": "math",
+      "lessonId": "SAMPLE-1.1",
+      "stage": "practice",
+      "difficulty": 1,
+      "source": "1+1",
+      "prompt": "Sample practice 1."
+    },
+    {
+      "id": "SAMPLE-1.1-P02",
+      "mode": "math",
+      "lessonId": "SAMPLE-1.1",
+      "stage": "practice",
+      "difficulty": 2,
+      "source": "2+2",
+      "prompt": "Sample practice 2."
+    },
+    {
+      "id": "SAMPLE-1.1-P03",
+      "mode": "math",
+      "lessonId": "SAMPLE-1.1",
+      "stage": "practice",
+      "difficulty": 3,
+      "source": "3+3",
+      "prompt": "Sample practice 3."
+    }
+  ]
+}

@@ -5,10 +5,10 @@ import { makeStructure, seq, symbolList, topics } from './model';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { actions, activeInfo } from './store';
 import { Button } from './shared/ui/button';
-export function Keyboard() {
+export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {}) {
  const s = useAppSelector(s => s), dispatch = useAppDispatch();
  const [more, setMore] = useState(false);
- function focusEditor() { document.querySelector<HTMLElement>('main.scratchpad')?.focus({ preventScroll: true }); }
+ function focusEditor() { if (onFocusEditor) onFocusEditor(); else document.querySelector<HTMLElement>('main.scratchpad')?.focus({ preventScroll: true }); }
  function symbol(key: string) {
   if (/^[xynt]$/.test(key)) dispatch(actions.command({ type: 'identifier', value: key }));
   else if (key === 'infinity' || key === 'sigma') dispatch(actions.command({ type: 'identifier', value: key === 'sigma' ? 'σ' : '∞' }));
