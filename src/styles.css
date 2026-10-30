@@ -568,6 +568,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 @container (max-width: 479px) {
   #math-scratchpad-redux .scratchpad { padding-inline: 10px; }
   #math-scratchpad-redux .app-header { gap: 6px; margin-bottom: 12px; }
+  #math-scratchpad-redux .exercise-bar { display: block; padding-bottom: 12px; }
+  #math-scratchpad-redux .exercise-bar label { display: block; }
   #math-scratchpad-redux h1 { font-size: clamp(15px, 4.5cqi, 18px); white-space: nowrap; }
   #math-scratchpad-redux .header-actions { gap: 4px; }
   #math-scratchpad-redux .header-actions .local-draft-label { display: none; }
@@ -596,6 +598,17 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   #math-scratchpad-redux .key-grid { grid-template-rows: repeat(4, minmax(48px, 1fr)); gap: 6px; }
   #math-scratchpad-redux .key-grid button { min-height: 48px; }
   #math-scratchpad-redux .review-controls { margin-top: 8px; }
+}
+@container (max-width: 359px) {
+  #math-scratchpad-redux .app-header:has(.header-progress) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand actions" "progress progress";
+    gap: 5px 8px;
+  }
+  #math-scratchpad-redux .app-header:has(.header-progress) .brand { grid-area: brand; }
+  #math-scratchpad-redux .app-header:has(.header-progress) .header-actions { grid-area: actions; }
+  #math-scratchpad-redux .app-header:has(.header-progress) .header-progress { grid-area: progress; width: 100%; }
 }
 @container (max-width: 379px) {
   #math-scratchpad-redux .math-tools-row { flex-wrap: wrap; }

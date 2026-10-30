@@ -35,6 +35,20 @@ test('menu stays within viewport and does not push the page horizontally', async
  expect(box!.x).toBeGreaterThanOrEqual(0);
  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
+test('batch progress and question selector stay readable at narrow phone widths', async ({ page }, info) => {
+ if (!['mobile-320', 'mobile-390'].includes(info.project.name)) test.skip();
+ await startBatch(page);
+ const title = page.locator('.app-header .brand'), progress = page.locator('.header-progress'), actions = page.locator('.header-actions');
+ const selector = page.getByRole('combobox', { name: 'Select question' });
+ await expect(progress).toContainText('0 of 20 answered');
+ const [titleBox, progressBox, actionsBox, selectorBox] = await Promise.all([title.boundingBox(), progress.boundingBox(), actions.boundingBox(), selector.boundingBox()]);
+ expect(titleBox && progressBox && actionsBox && selectorBox).toBeTruthy();
+ const overlaps = (a: NonNullable<typeof titleBox>, b: NonNullable<typeof progressBox>) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+ expect(overlaps(titleBox!, progressBox!)).toBe(false);
+ expect(overlaps(actionsBox!, progressBox!)).toBe(false);
+ expect(selectorBox!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 40);
+ expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 test('200 percent text size preserves controls and avoids page overflow', async ({ page }) => {
  await page.goto('/'); await page.addStyleTag({ content: '#math-scratchpad-redux { font-size: 200% !important } #math-scratchpad-redux button { font-size: 2rem !important }' });
  await expect(page.getByRole('button', { name: 'Add step', exact: true })).toBeVisible();
