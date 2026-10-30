@@ -38,7 +38,7 @@ export function LessonPicker({ open, lessons, progressByLesson, onOpenChange, on
               return <li key={lesson.id}>
                 <Button className="lesson-picker-item" onClick={() => onChoose(lesson)}>
                   <BookOpen aria-hidden="true" />
-                  <span className="lesson-picker-title">{lesson.title}</span>
+                  <span className="lesson-picker-title" dir="auto">{lesson.title}</span>
                   <span className={`lesson-status lesson-status-${status}`} aria-label={`Status: ${statusLabel[status]}`}>{statusLabel[status]}</span>
                 </Button>
               </li>;

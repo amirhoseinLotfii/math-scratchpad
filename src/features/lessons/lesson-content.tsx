@@ -22,7 +22,7 @@ function LessonExample({ block, blockKey, revealed, onReveal }: {
   const id = useId();
   const count = Math.min(block.steps.length, Math.max(0, revealed));
   return <section className="lesson-block lesson-example" aria-label={block.title || 'Worked example'}>
-    {block.title && <h4>{block.title}</h4>}
+    {block.title && <h4 lang={block.lang} dir={direction(block.lang)}>{block.title}</h4>}
     {block.text && <p lang={block.lang} dir={direction(block.lang)}>{block.text}</p>}
     {block.latex && <LessonMath latex={block.latex} label={block.title || 'Worked example'} />}
     <p className="lesson-example-progress" aria-live="polite">

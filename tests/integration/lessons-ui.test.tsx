@@ -9,6 +9,7 @@ import { validateBank, type BankQuestion, type DriveBank } from '../../src/featu
 import { LessonScreen } from '../../src/features/lessons/lesson-screen';
 import { LessonPicker } from '../../src/features/lessons/lesson-picker';
 import { LessonBlockView } from '../../src/features/lessons/lesson-content';
+import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
 import type { LessonProgress } from '../../src/features/lessons/types';
 
 afterEach(cleanup);
@@ -222,5 +223,25 @@ describe('lesson learning screen', () => {
     expect(container.querySelector('p')).toHaveAttribute('lang', 'fa');
     rerender(<LessonBlockView block={{ type: 'paragraph', text: 'Mixed sample text' }} blockKey="auto" revealed={0} onReveal={() => undefined} />);
     expect(container.querySelector('p')).toHaveAttribute('dir', 'auto');
+  });
+
+  it('sets direction for Persian lesson, concept, picker and example titles', () => {
+    const bank = sampleBank();
+    const lesson = bank.lessons![0];
+    lesson.title = 'تابع‌ها و نمادگذاری';
+    lesson.concepts[0].title = 'مفهوم تابع';
+    mount(bank);
+    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('dir', 'auto');
+    expect(screen.getByRole('heading', { name: lesson.concepts[0].title })).toHaveAttribute('dir', 'auto');
+    cleanup();
+    render(<LessonPicker open lessons={[lesson]} progressByLesson={{}} onOpenChange={() => undefined} onChoose={() => undefined} />);
+    expect(screen.getByText(lesson.title)).toHaveAttribute('dir', 'auto');
+    cleanup();
+    render(<Provider store={makeStore(initialState())}><LessonReferenceDialog lesson={lesson} bank={bank} onOpenChange={() => undefined} /></Provider>);
+    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('dir', 'auto');
+    expect(screen.getByRole('heading', { name: lesson.concepts[0].title })).toHaveAttribute('dir', 'auto');
+    cleanup();
+    render(<LessonBlockView block={{ type: 'example', lang: 'fa', title: 'مثال 1', steps: [] }} blockKey="example" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByRole('heading', { name: 'مثال 1' })).toHaveAttribute('dir', 'rtl');
   });
 });

@@ -32,12 +32,12 @@ export function LessonReferenceDialog({ lesson, bank, onOpenChange, onCloseAutoF
   return <Dialog open={!!lesson} onOpenChange={onOpenChange}>
     <DialogContent className="lesson-reference-dialog" aria-describedby="lesson-reference-description" onCloseAutoFocus={onCloseAutoFocus}>
       {lesson && <>
-        <DialogTitle>{lesson.title}</DialogTitle>
+        <DialogTitle dir="auto">{lesson.title}</DialogTitle>
         <DialogDescription id="lesson-reference-description"><span dir="ltr">{lesson.book} · {lesson.section}{lesson.pages ? ` · pp. ${lesson.pages}` : ''}</span> · Read-only lesson reference. Checks cannot be answered here.</DialogDescription>
         <div className="lesson-reference-content" role="region" aria-label="Lesson content" tabIndex={0}>
           {lesson.concepts.map((concept, conceptIndex) => <section className="lesson-reference-concept" key={concept.id} aria-labelledby={`reference-concept-${concept.id}`}>
             <p className="lesson-section-label">Concept {conceptIndex + 1}</p>
-            <h2 id={`reference-concept-${concept.id}`}>{concept.title}</h2>
+            <h2 id={`reference-concept-${concept.id}`} dir="auto">{concept.title}</h2>
             <div className="lesson-concept-blocks">
               {concept.blocks.map((block, index) => <LessonBlockView
                 key={`${concept.id}:${index}`}
