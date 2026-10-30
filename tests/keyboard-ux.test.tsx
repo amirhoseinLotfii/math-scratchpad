@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
 import { QuestionTimer } from '../src/QuestionTimer';
@@ -7,6 +8,7 @@ import { actions, activeInfo, exerciseOf, initialState, makeStore, stepOf } from
 import { elapsedAt, latex, leaves } from '../src/model';
 import { serialize, validateSession } from '../src/persistence';
 import { fingerprint } from '../src/review';
+import { parse } from '../src/parser';
 import { menuAction } from './support/menu-actions';
 const create=()=>makeStore(initialState());
 function mount(){const store=create();render(<Provider store={store}><App/></Provider>);return store;}
@@ -60,6 +62,9 @@ describe('Predictable keyboard editing',()=>{
   mount();const main=document.querySelector('main')!;fireEvent.keyDown(main,{key:'/'});expect(screen.getByRole('dialog')).toBeTruthy();
   const cancel=screen.getByRole('button',{name:'Cancel · Esc'});cancel.focus();fireEvent.keyDown(cancel,{key:'Tab'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'Fraction'}));
   fireEvent.keyDown(document.activeElement!,{key:'Escape'});expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(menuAction('Show more'));fireEvent.click(menuAction('Keyboard shortcuts'));
+  expect(screen.getByText('Open Insert Math Element; choose Fraction to insert a fraction')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Close'}));
   fireEvent.click(menuAction('Import session JSON'));fireEvent.keyDown(screen.getByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
  });
  it('arrows on regular buttons never move the math cursor, and composition input does not insert partial text',()=>{
@@ -82,6 +87,22 @@ describe('Predictable keyboard editing',()=>{
   expect(s.getState().doc.cursor.sequenceId).toBe(expression.querySelector('[data-sequence]')!.getAttribute('data-sequence'));
   fireEvent.keyDown(gap,{key:'7'});
   expect(latex(stepOf(s.getState().doc).expression)).toBe('\\frac{2}{3}7+\\frac{1}{4}');
+ });
+ it('inserting parentheses after an operator keeps later terms outside the group',()=>{
+  const s=create(),step=stepOf(s.getState().doc);step.expression=parse('1+45+6');
+  const operator=step.expression.children[1];
+  s.dispatch(actions.select({stepId:step.id,nodeId:operator.id}));
+  s.dispatch(actions.command({type:'operator',value:'−'}));
+  s.dispatch(actions.command({type:'insert',value:'group'}));
+  s.dispatch(actions.command({type:'digit',value:'3'}));
+  expect(latex(stepOf(s.getState().doc).expression)).toBe('1-\\left(3\\right)45+6');
+ });
+ it('wrapping the current term in parentheses does not absorb neighboring expression terms',()=>{
+  const s=create(),step=stepOf(s.getState().doc);step.expression=parse('3+45+6');
+  const firstTerm=step.expression.children[0];
+  s.dispatch(actions.select({stepId:step.id,nodeId:firstTerm.id}));
+  s.dispatch(actions.command({type:'insert',value:'group'}));
+  expect(latex(stepOf(s.getState().doc).expression)).toBe('\\left(3\\right)+45+6');
  });
  it('single-question review requests confidence in a modal and persists the explicit choice',async()=>{
   const s=mount(); expect(screen.queryAllByRole('radio')).toHaveLength(0);

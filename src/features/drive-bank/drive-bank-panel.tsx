@@ -4,6 +4,7 @@ import { useAppDispatch, useAppStore } from '../../hooks';
 import { actions } from '../../store';
 import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { EMPTY_BANK, archiveSession, bankDocument, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBankText, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
 import { getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
@@ -16,8 +17,10 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
   const [available, setAvailable] = useState<{ bank: DriveBank; version: string } | null>(null);
   const [checkedAt, setCheckedAt] = useState('');
   const [archives, setArchives] = useState<ArchivedSession[]>([]);
+  const [confirmation, setConfirmation] = useState<{ kind: 'batch' } | { kind: 'restore'; saved: ArchivedSession } | null>(null);
   const token = useRef<Token | null>(null), fingerprint = useRef(''), active = useRef(true), syncing = useRef(false);
   const panel = useRef<HTMLElement>(null), connectButton = useRef<HTMLButtonElement>(null);
+  const confirmationTrigger = useRef<HTMLElement | null>(null), cancelConfirmation = useRef<HTMLButtonElement>(null);
   const cfg = useRef(config); cfg.current = config;
   useEffect(() => { active.current = true; try { setArchives(readArchive()); } catch { setMessage('Saved sessions could not be read. No data was changed.'); } return () => { active.current = false; token.current = null; }; }, []);
   useEffect(() => {
@@ -98,7 +101,6 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
   }
   function startBank() {
     if (!available || !available.bank.questions.length) return;
-    if (!window.confirm('Open a new question batch? The current session will be saved in this browser and can be restored from Saved sessions.')) return;
     try {
       const doc = bankDocument(available.bank, available.version);
       archiveSession(store.getState());
@@ -107,9 +109,18 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`); }
   }
   function restore(saved: ArchivedSession) {
-    if (!window.confirm('Restore this saved session? The current session will also be saved.')) return;
     try { const parsed = validateSession(JSON.parse(saved.data)); archiveSession(store.getState()); dispatch(actions.load(parsed)); setArchives(readArchive()); setMessage('The saved session was restored.'); }
     catch (e) { setMessage(e instanceof Error ? e.message : 'The saved session could not be restored.'); }
+  }
+  function requestConfirmation(kind: 'batch' | 'restore', trigger: HTMLElement, saved?: ArchivedSession) {
+    confirmationTrigger.current = trigger;
+    setConfirmation(kind === 'batch' ? { kind } : saved ? { kind, saved } : null);
+  }
+  function confirmRequestedAction() {
+    const action = confirmation;
+    setConfirmation(null);
+    if (action?.kind === 'batch') startBank();
+    else if (action?.kind === 'restore') restore(action.saved);
   }
   const current = store.getState().doc.session;
   const same = available && current?.bankId === available.bank.bank_id && current.bankVersion === available.version;
@@ -122,8 +133,31 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
     <div className="toolbar"><Button ref={connectButton} onClick={connect} disabled={busy || !ready}>{connected || (token.current === null && config.fileId) ? 'Reconnect' : 'Connect Google Drive'}</Button>
       {connected && <Button onClick={choose}>Choose bank file</Button>}
       {connected && config.fileId && <Button onClick={() => { void sync(true); }}>Check now</Button>}
-      {available && available.bank.questions.length > 0 && <Button onClick={startBank} disabled={!!same}>Open received batch</Button>}<Button onClick={close}>Close</Button></div>
+      {available && available.bank.questions.length > 0 && <Button onClick={event => requestConfirmation('batch', event.currentTarget)} disabled={!!same}>Open received batch</Button>}<Button onClick={close}>Close</Button></div>
     <p>The active session never changes automatically. Before a new batch opens, the current session is saved in this browser. Google authorization lasts about one hour and is cleared when the page closes; reconnect when it expires.</p>
-    {archives.length > 0 && <details><summary>Saved sessions ({archives.length})</summary>{archives.map((a, index) => <div key={`${a.id}-${a.savedAt}-${index}`}><span dir="ltr">{a.id} · {a.savedAt}</span> <Button onClick={() => restore(a)}>Resume</Button></div>)}</details>}
+    {archives.length > 0 && <details><summary>Saved sessions ({archives.length})</summary>{archives.map((a, index) => <div key={`${a.id}-${a.savedAt}-${index}`}><span dir="ltr">{a.id} · {a.savedAt}</span> <Button onClick={event => requestConfirmation('restore', event.currentTarget, a)}>Resume</Button></div>)}</details>}
+    <Dialog open={!!confirmation} onOpenChange={open => { if (!open) setConfirmation(null); }}>
+      <DialogContent
+        aria-describedby="drive-session-confirmation-description"
+        onOpenAutoFocus={event => { event.preventDefault(); cancelConfirmation.current?.focus({ preventScroll: true }); }}
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          const trigger = confirmationTrigger.current;
+          if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+          else panel.current?.focus({ preventScroll: true });
+        }}
+      >
+        <DialogTitle>{confirmation?.kind === 'batch' ? 'Open a new question batch?' : 'Restore this saved session?'}</DialogTitle>
+        <DialogDescription id="drive-session-confirmation-description">
+          {confirmation?.kind === 'batch'
+            ? 'The current session will be saved in this browser and can be restored from Saved sessions.'
+            : 'The current session will also be saved.'}
+        </DialogDescription>
+        <div className="dialog-actions">
+          <Button ref={cancelConfirmation} onClick={() => setConfirmation(null)}>Cancel</Button>
+          <Button variant="default" onClick={confirmRequestedAction}>{confirmation?.kind === 'batch' ? 'Open batch' : 'Restore session'}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </section>;
 }

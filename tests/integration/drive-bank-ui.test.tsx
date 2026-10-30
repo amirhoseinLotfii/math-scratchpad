@@ -44,7 +44,7 @@ describe('private Drive bank flow', () => {
     expect(screen.queryByLabelText('OAuth client ID')).toBeNull();
   });
   it('explains invalid lesson data and leaves ordinary bank questions available', async () => {
-    mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockGoogle();
     const invalidLessons = { ...bank('1+2'), lessons: [{ id: 'BROKEN-LESSON', book: 'Sample book', section: '1.1', title: 42, concepts: [] }] };
     mockDrive({ content: JSON.stringify(invalidLessons), rev: 1 });
     const { user } = renderMobileApp();
@@ -52,24 +52,27 @@ describe('private Drive bank flow', () => {
     expect(await screen.findByText(/Some lesson content could not be read\. You can continue with the bank questions\./)).toBeTruthy();
     expect(await screen.findByText('Bank content notes (1)')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Open received batch' }));
+    await user.click(await screen.findByRole('button', { name: 'Open batch' }));
     expect(screen.getByRole('region', { name: 'Current problem' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
     await user.click(screen.getByRole('menuitem', { name: 'Lessons' }));
     expect(within(screen.getByRole('dialog', { name: 'Lessons' })).getByRole('status')).toHaveTextContent('This bank has no lessons yet');
   });
   it('picks the file, reads the bank, and archives the active work before switching', async () => {
-    mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockGoogle();
     mockDrive({ content: JSON.stringify(bank('1+2')), rev: 1 });
     const { store, user } = renderMobileApp(); const previous = store.getState().doc;
     await connect(user);
     await user.click(await screen.findByRole('button', { name: 'Open received batch' }));
+    expect(await screen.findByRole('dialog', { name: 'Open a new question batch?' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Open batch' }));
     expect(store.getState().doc.exercises).toHaveLength(2);
     expect(store.getState().doc.session?.bankId).toBe('practice');
     expect(readArchive().some(s => JSON.parse(s.data).doc.session.id === previous.session?.id)).toBe(true);
     expect(JSON.parse(localStorage.getItem('math-scratchpad-drive-config-v1')!).fileId).toBe('private-file-123');
   });
   it('shows an empty file as waiting, then picks up a content change on the next poll without touching the open session', async () => {
-    mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockGoogle();
     const drive = { content: '', rev: 1 }; const fetchSpy = mockDrive(drive);
     const { store, user } = renderMobileApp();
     await connect(user);

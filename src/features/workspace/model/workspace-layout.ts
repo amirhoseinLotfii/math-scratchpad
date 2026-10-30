@@ -7,6 +7,6 @@ export function questionStatus(exercise: Exercise): 'Skipped' | 'Answered' | 'Dr
  return hasWork ? exercise.confidence ? 'Answered' : 'Draft' : 'Not started';
 }
 export const keyboardHelp = [
- ['/', 'Insert symbols'], ['Ctrl / Cmd + Z', 'Undo'], ['Ctrl / Cmd + Shift + Z', 'Redo'],
+ ['/', 'Open Insert Math Element; choose Fraction to insert a fraction'], ['Ctrl / Cmd + Z', 'Undo'], ['Ctrl / Cmd + Shift + Z', 'Redo'],
  ['Alt + Enter', 'Mark step as final answer'], ['Tab', 'Move focus'], ['← →', 'Move through digits'], ['Esc', 'Close dialog'],
 ] as const;
