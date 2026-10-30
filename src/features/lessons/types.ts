@@ -1,16 +1,17 @@
 import type { Step } from '../../model';
 
 export type Lang = 'fa' | 'en';
-export type BlockType = 'heading' | 'paragraph' | 'definition' | 'example' | 'note' | 'math' | 'image';
+export type BlockType = 'heading' | 'paragraph' | 'definition' | 'example' | 'note' | 'math' | 'image' | 'image-description';
 
 interface BlockBase { type: BlockType; lang?: Lang }
 export interface TextBlock extends BlockBase { type: 'heading' | 'paragraph' | 'note'; text: string }
 export interface DefinitionBlock extends BlockBase { type: 'definition'; text: string; latex?: string }
 export interface ExampleBlock extends BlockBase { type: 'example'; title?: string; text?: string; latex?: string; steps: string[] }
-export interface MathBlock extends BlockBase { type: 'math'; latex: string }
+export interface MathBlock extends BlockBase { type: 'math'; latex: string; text?: string }
 export interface ImageBlock extends BlockBase { type: 'image'; src: string; alt: string }
+export interface ImageDescriptionBlock extends BlockBase { type: 'image-description'; text: string }
 export interface UnsupportedBlock { type: 'unsupported'; originalType: string }
-export type LessonBlock = TextBlock | DefinitionBlock | ExampleBlock | MathBlock | ImageBlock | UnsupportedBlock;
+export type LessonBlock = TextBlock | DefinitionBlock | ExampleBlock | MathBlock | ImageBlock | ImageDescriptionBlock | UnsupportedBlock;
 
 export interface Concept { id: string; title: string; pages?: string; blocks: LessonBlock[]; checkQuestionIds: string[] }
 export interface Lesson { id: string; book: string; section: string; title: string; pages?: string; concepts: Concept[] }

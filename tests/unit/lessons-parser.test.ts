@@ -60,6 +60,20 @@ describe('lesson-aware bank parser', () => {
     expect(parsed.parseWarnings).toHaveLength(3);
   });
 
+  it('retains description-only images, captions and examples without reveal steps', () => {
+    const parsed = validateBank(rawBank([question('Q1')], [lesson('L1', [concept('C1', { blocks: [
+      { type: 'image', lang: 'fa', text: 'توضیح تصویر' },
+      { type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' },
+      { type: 'example', lang: 'fa', text: 'متن مثال' },
+    ] })])]));
+    expect(parsed.lessons?.[0].concepts[0].blocks).toEqual([
+      { type: 'image-description', lang: 'fa', text: 'توضیح تصویر' },
+      { type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' },
+      { type: 'example', lang: 'fa', text: 'متن مثال', steps: [] },
+    ]);
+    expect(parsed.parseWarnings?.join(' ')).toContain('image source is missing');
+  });
+
   it('drops missing check references and exposes valid learn checks only', () => {
     const parsed = validateBank(rawBank([
       question('CHECK', { lessonId: 'L1', conceptId: 'C1', stage: 'learn' }),

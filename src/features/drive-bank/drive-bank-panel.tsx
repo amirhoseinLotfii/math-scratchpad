@@ -45,7 +45,9 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
       onBankReady?.(parsed, version);
       const readyMessage = parsed.questions.length ? `بانک ${parsed.bank_id} (نسخهٔ ${parsed.version}) دریافت شد؛ ${parsed.questions.length} سؤال آماده است.` : 'اتصال برقرار است؛ بانک هنوز سؤالی ندارد.';
       const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
-      setMessage(`${readyMessage}${hasLessonWarnings ? ' بخشی از دادهٔ درس قابل‌خواندن نبود؛ می‌توانی با سؤال‌های بانک ادامه بدهی.' : ''}`);
+      const current = store.getState().doc.session;
+      const changed = current?.bankId === parsed.bank_id && !!current.bankVersion && current.bankVersion !== version;
+      setMessage(`${readyMessage}${hasLessonWarnings ? ' بخشی از دادهٔ درس قابل‌خواندن نبود؛ می‌توانی با سؤال‌های بانک ادامه بدهی.' : ''}${changed ? ' نسخهٔ بانک با جلسهٔ فعلی تفاوت دارد؛ جلسهٔ فعلی تغییر نکرده است.' : ''}${parsed.lessons?.length ? ' پیشرفت درس برای هر نسخهٔ بانک جداگانه است و خودکار به نسخهٔ دیگر منتقل نمی‌شود.' : ''}`);
     } catch (e) {
       if (!active.current) return;
       const text = e instanceof Error ? e.message : 'دریافت بانک ناموفق بود.';

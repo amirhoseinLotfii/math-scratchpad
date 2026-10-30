@@ -28,21 +28,27 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
   }
   if (rawType === 'example') {
     const optionalTextValid = (key: 'title' | 'text' | 'latex', max: number) => block[key] === undefined || (typeof block[key] === 'string' && block[key].length <= max);
-    if (!Array.isArray(block.steps) || block.steps.length > 100 || !block.steps.every(step => typeof step === 'string' && step.length <= 20000)
+    if ((block.steps !== undefined && (!Array.isArray(block.steps) || block.steps.length > 100 || !block.steps.every(step => typeof step === 'string' && step.length <= 20000)))
       || !optionalTextValid('title', 500) || !optionalTextValid('text', 20000) || !optionalTextValid('latex', 20000)) return unsupported();
+    if (block.steps === undefined && ![block.title, block.text, block.latex].some(item => boundedText(item))) return unsupported();
     return withLang({
       type: 'example',
       ...(typeof block.title === 'string' ? { title: block.title } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : {}),
       ...(typeof block.latex === 'string' ? { latex: block.latex } : {}),
-      steps: block.steps as string[],
+      steps: (block.steps ?? []) as string[],
     });
   }
   if (rawType === 'math') {
     if (!boundedText(block.latex)) return unsupported();
-    return withLang({ type: 'math', latex: block.latex });
+    if (block.text !== undefined && (typeof block.text !== 'string' || block.text.length > 20000)) warning(warnings, `${path}.text`, 'invalid caption was ignored');
+    return withLang({ type: 'math', latex: block.latex, ...(boundedText(block.text) ? { text: block.text } : {}) });
   }
   if (rawType === 'image') {
+    if ((block.src === undefined || block.src === '') && boundedText(block.text)) {
+      warning(warnings, path, 'image source is missing; description retained');
+      return withLang({ type: 'image-description', text: block.text });
+    }
     if (!boundedText(block.src, 2000) || !boundedText(block.alt, 500)) return unsupported();
     return withLang({ type: 'image', src: block.src, alt: block.alt });
   }

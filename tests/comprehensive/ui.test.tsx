@@ -94,6 +94,22 @@ describe('Drive bank panel', () => {
     expect(await screen.findByText(/Unsupported input near _1.*نسخهٔ قبلی دریافت‌شده و جلسهٔ فعلی دست نخورد/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'بازکردن دستهٔ دریافت‌شده' })).toBeTruthy();
   });
+  it('warns when a fetched bank version differs from the active session', async () => {
+    mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store } = panel();
+    const doc = bankDocument(validateBank(JSON.parse(BANK())), 'v1-old');
+    store.dispatch(actions.load({ doc }));
+    const before = structuredClone(store.getState().doc);
+    await connect(user);
+    expect(await screen.findByText(/نسخهٔ بانک با جلسهٔ فعلی تفاوت دارد.*جلسهٔ فعلی تغییر نکرده است/)).toBeTruthy();
+    expect(store.getState().doc).toEqual(before);
+  });
+  it('explains that Learn progress is scoped by bank version even without an active bank session', async () => {
+    mockGoogle(); const raw = JSON.parse(BANK());
+    raw.lessons = [{ id: 'L1', book: 'Sample', section: '1', title: 'Lesson', concepts: [] }];
+    mockDrive({ content: JSON.stringify(raw), rev: 1 }); const { user } = panel();
+    await connect(user);
+    expect(await screen.findByText(/پیشرفت درس برای هر نسخهٔ بانک جداگانه است.*خودکار به نسخهٔ دیگر منتقل نمی‌شود/)).toBeTruthy();
+  });
   it('shows Google Doc and 403 errors in Persian', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1, mime: 'application/vnd.google-apps.document' } as Parameters<typeof mockDrive>[0]; mockDrive(drive); const { user } = panel(); await connect(user);
     expect(await screen.findByText(/Google Doc است/)).toBeTruthy();

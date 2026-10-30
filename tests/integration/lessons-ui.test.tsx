@@ -57,6 +57,19 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Diagram showing a triangle');
   });
 
+  it('shows an unavailable-image description and a math caption without inventing a picture', () => {
+    const { rerender } = render(<LessonBlockView block={{ type: 'image-description', lang: 'fa', text: 'توضیح شکل' }} blockKey="description" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByText('Image unavailable')).toBeVisible();
+    expect(screen.getByText('توضیح شکل')).toHaveAttribute('dir', 'rtl');
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    rerender(<Provider store={makeStore(initialState())}><LessonBlockView block={{ type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' }} blockKey="caption" revealed={0} onReveal={() => undefined} /></Provider>);
+    expect(screen.getByText('جدول نمونه')).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByRole('math')).toBeVisible();
+    rerender(<LessonBlockView block={{ type: 'example', lang: 'fa', text: 'مثال آزمایشی', steps: [] }} blockKey="example" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByText('مثال آزمایشی')).toBeVisible();
+    expect(screen.queryByText('Try it yourself first')).not.toBeInTheDocument();
+  });
+
   it('renders supported lesson arrays as an accessible table and keeps unknown syntax visible', () => {
     const { rerender } = render(<LessonBlockView block={{ type: 'math', latex: String.raw`\begin{array}{|c|c|} \hline Input & Output \\ \hline 1 & 2 \\ \hline \end{array}` }} blockKey="table" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByRole('region', { name: 'Lesson table' })).toHaveAttribute('tabindex', '0');

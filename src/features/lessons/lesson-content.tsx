@@ -32,9 +32,9 @@ function LessonExample({ block, blockKey, revealed, onReveal }: {
     {block.title && <h4 lang={block.lang} dir={direction(block.lang)}>{block.title}</h4>}
     {block.text && <p lang={block.lang} dir={direction(block.lang)}>{block.text}</p>}
     {block.latex && <LessonMath latex={block.latex} label={block.title || 'Worked example'} />}
-    <p className="lesson-example-progress" aria-live="polite">
+    {block.steps.length > 0 && <p className="lesson-example-progress" aria-live="polite">
       {count === 0 ? 'Try it yourself first' : count === block.steps.length ? `All ${count} steps shown` : `${count} of ${block.steps.length} steps shown`}
-    </p>
+    </p>}
     <div className="lesson-example-steps" id={`${id}-steps`}>
       {block.steps.slice(0, count).map((step, index) => <div className={`lesson-example-step ${index === count - 1 ? 'is-latest' : ''}`} key={`${blockKey}-${index}`} aria-current={index === count - 1 ? 'step' : undefined}>
         <span className="lesson-example-step-label">Step {index + 1}</span>
@@ -63,8 +63,9 @@ export function LessonBlockView({ block, blockKey, revealed, onReveal }: {
     <h4>Definition</h4><p>{block.text}</p>{block.latex && <LessonMath latex={block.latex} label="Definition formula" />}
   </section>;
   if (block.type === 'example') return <LessonExample block={block} blockKey={blockKey} revealed={revealed} onReveal={onReveal} />;
-  if (block.type === 'math') return <LessonMath latex={block.latex} label="Lesson formula" />;
+  if (block.type === 'math') return block.text ? <figure className="lesson-math-figure"><figcaption lang={block.lang} dir={direction(block.lang)}>{block.text}</figcaption><LessonMath latex={block.latex} label="Lesson formula" /></figure> : <LessonMath latex={block.latex} label="Lesson formula" />;
   if (block.type === 'image') return <LessonImage src={block.src} alt={block.alt} />;
+  if (block.type === 'image-description') return <figure className="lesson-image-fallback"><figcaption><span>Image unavailable</span><p lang={block.lang} dir={direction(block.lang)}>{block.text}</p></figcaption></figure>;
   return <p className="lesson-unsupported" role="note">Unsupported block</p>;
 }
 
