@@ -29,11 +29,17 @@ function mountWithBank() {
 }
 
 describe('Phase 3 Learn integration', () => {
-  it('keeps Learn entry points hidden until a lesson bank is available', async () => {
+  it('offers a clear Learn empty state and opens the existing Drive bank flow when no bank is loaded', async () => {
     render(<Provider store={makeStore(initialState())}><App /></Provider>);
     expect(screen.queryByRole('button', { name: 'Lesson' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
-    expect(screen.queryByRole('menuitem', { name: 'Lessons' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Lessons' }));
+    const picker = screen.getByRole('dialog', { name: 'Lessons' });
+    expect(within(picker).getByRole('status')).toHaveTextContent('No question bank is loaded');
+    await userEvent.click(within(picker).getByRole('button', { name: 'Load bank' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Lessons' })).not.toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'Google Drive question bank' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Google Drive question bank' })).toBeVisible();
   });
 
   it('opens a read-only reference without changing work, pauses the timer, and returns focus', async () => {
@@ -123,7 +129,7 @@ describe('Phase 3 Learn integration', () => {
     await user.click(screen.getByRole('button', { name: 'Skip to practice' }));
     await user.click(within(screen.getByRole('dialog', { name: 'Skip to practice?' })).getByRole('button', { name: 'Skip to practice' }));
     await waitFor(() => expect(screen.getByText('Sample practice 1.')).toBeVisible());
-    fireEvent.change(screen.getByRole('combobox', { name: 'Current exercise' }), { target: { value: store.getState().doc.exercises.at(-1)!.id } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Select question' }), { target: { value: store.getState().doc.exercises.at(-1)!.id } });
     await user.click(screen.getByRole('button', { name: 'Finish session' }));
     const confidence = screen.getByRole('dialog', { name: /confidence/i });
     await user.click(within(confidence).getByRole('radio', { name: 'Medium' }));

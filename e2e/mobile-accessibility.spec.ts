@@ -14,7 +14,7 @@ test('confidence dialog traps Tab and Shift+Tab and restores focus', async ({ pa
 });
 test('batch completion requires confidence and offers explicit export actions', async ({ page }) => {
  await startBatch(page);
- const selector = page.getByRole('combobox', { name: 'Current exercise' });
+ const selector = page.getByRole('combobox', { name: 'Select question' });
  const last = await selector.locator('option').last().getAttribute('value');
  await selector.selectOption(last!);
  await page.getByRole('button', { name: /Finish session/i }).click();
@@ -62,7 +62,7 @@ test('rotation preserves the current answer and keeps next-question control reac
 });
 test('tapping a number never moves to a different question', async ({ page }) => {
  await startBatch(page);
- const selector = page.getByRole('combobox', { name: 'Current exercise' }); const before = await selector.inputValue();
+ const selector = page.getByRole('combobox', { name: 'Select question' }); const before = await selector.inputValue();
  const keys = page.locator('[aria-label="Numeric keys"]');
  for (const name of ['1','2','3']) await keys.getByRole('button', { name, exact: true }).tap();
  await expect(page.getByLabel('Step 1 expression')).toContainText('123');
@@ -110,13 +110,13 @@ test('copy denial exposes a manual JSON fallback without leaving the question', 
   document.execCommand = () => false;
  });
  await startBatch(page);
- const before = await page.getByRole('combobox', { name: 'Current exercise' }).inputValue();
+ const before = await page.getByRole('combobox', { name: 'Select question' }).inputValue();
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();
  const fallback = page.getByRole('textbox', { name: /session JSON/i });
  await expect(fallback).toBeVisible(); expect(JSON.parse(await fallback.inputValue()).doc.exercises).toHaveLength(20);
- await expect(page.getByRole('combobox', { name: 'Current exercise' })).toHaveValue(before);
+ await expect(page.getByRole('combobox', { name: 'Select question' })).toHaveValue(before);
 });
 test('larger available height does not leave unused space below the keypad actions', async ({ page }) => {
  await page.setViewportSize({ width: 390, height: 1500 }); await startBatch(page);

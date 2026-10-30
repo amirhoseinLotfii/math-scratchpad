@@ -5,7 +5,7 @@
 ## راه‌اندازی
 شناسهٔ OAuth (Client ID)، شمارهٔ پروژه و کلید API مربوط به Picker داخل خود برنامه (`src/features/drive-bank/drive-config.ts`) قرار دارند و هیچ ورود دستی لازم نیست؛ تنظیمات قدیمی ذخیره‌شده در مرورگر نادیده گرفته می‌شوند. کلید API عمومی است و فقط به HTTP referrer `https://amirhoseinlotfii.github.io/*` و Google Picker API محدود است. هیچ client secret یا توکنی لازم نیست و ذخیره نمی‌شود.
 
-در برنامه: منو ← `Google Drive · بانک سؤال` ← «اتصال Google Drive» را بزن و فایل `MATH_QUESTION_BANK.json` را انتخاب کن.
+در برنامه: منو ← `Google Drive · Question bank` ← `Connect Google Drive` را بزن و فایل `MATH_QUESTION_BANK.json` را از پنجرهٔ `Select MATH_QUESTION_BANK.json` انتخاب کن.
 
 پیکربندی Google Cloud (پروژهٔ `math-scratchpad`، فقط برای نگهدارنده): Google Drive API و Google Picker API فعال؛ OAuth consent screen از نوع External در حالت Testing با حساب شخصی در Test users و scope `drive.file`؛ OAuth client از نوع Web application با Authorized JavaScript origin `https://amirhoseinlotfii.github.io`.
 
@@ -22,6 +22,6 @@
 }
 ```
 
-هر سؤال با `id` یکتا، `mode` برابر `math` یا `text`، فیلد `source` و فیلد اختیاری `prompt` تعریف می‌شود. حداکثر ۴۰ سؤال در هر نسخه مجاز است. متن سؤال و کلید پاسخ جدا هستند؛ فیلدهای پاسخ در بانک پذیرفته نمی‌شوند. نسخهٔ نهایی شامل اثرانگشت محتواست تا حتی اگر شمارهٔ نسخه فراموش شود، دو محتوای متفاوت یک نسخه تلقی نشوند.
+هر سؤال با `id` یکتا، `mode` برابر `math` یا `text`، فیلد `source` و فیلد اختیاری `prompt` تعریف می‌شود. حداکثر ۱۰۰ سؤال در هر نسخه مجاز است؛ جلسه و بایگانی آن نیز همین سقف را می‌پذیرند تا یک بخش درسی با بیش از ۴۰ تمرین در یک بانک بماند. متن سؤال و کلید پاسخ جدا هستند؛ فیلدهای پاسخ در بانک پذیرفته نمی‌شوند. نسخهٔ نهایی شامل اثرانگشت محتواست تا حتی اگر شمارهٔ نسخه فراموش شود، دو محتوای متفاوت یک نسخه تلقی نشوند.
 
 در خروجی، زمان و استقلال همان داده‌هایی هستند که برنامه واقعاً ثبت کرده است. دریافت بانک جدید پاسخ قبلی را به چت یا Notion ارسال نمی‌کند؛ خروجی مربی همچنان باید توسط کاربر به گفتگو فرستاده شود.

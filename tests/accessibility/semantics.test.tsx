@@ -47,7 +47,7 @@ describe('A11Y-SEM: document, controls and language', () => {
  });
  it('isolates Persian question language from English interface and LTR formula', () => {
   renderMobileApp(); const main = screen.getByRole('main'); expect(main).toHaveAttribute('lang', 'en');
-  const prompt = main.querySelector('.persian-question'); expect(prompt).toHaveAttribute('lang', 'fa'); expect(prompt).toHaveAttribute('dir', 'rtl');
+  const prompt = main.querySelector('.question-statement'); expect(prompt).toHaveAttribute('lang', 'fa'); expect(prompt).toHaveAttribute('dir', 'rtl');
   const formula = within(main).getByLabelText('Step 1 expression');
   expect(formula.querySelector('[dir="ltr"]')).not.toBeNull();
   expect([...main.querySelectorAll('button, label, legend, [role="status"]')].filter(x => /[\u0600-\u06ff]/.test(x.textContent ?? ''))).toEqual([]);
@@ -63,7 +63,7 @@ describe('A11Y-SEM: document, controls and language', () => {
   expect(time.closest('[aria-live="assertive"], [role="alert"]')).toBeNull();
  });
  it('exposes progress value and question count to assistive technologies', () => {
-  renderMobileApp(); const progress = screen.getByRole('progressbar', { name: /progress/i });
+  renderMobileApp(); const progress = screen.getByRole('progressbar', { name: 'Answered questions' });
   expect(Number(progress.getAttribute('aria-valuemin'))).toBe(0);
   expect(Number(progress.getAttribute('aria-valuemax'))).toBeGreaterThan(0);
   expect(progress).toHaveAttribute('aria-valuenow');

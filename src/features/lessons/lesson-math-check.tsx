@@ -5,7 +5,7 @@ import { Provider } from '../../app/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
 import { Keyboard } from '../../Keyboard';
 import { actions, activeInfo, exerciseOf, initialState, makeStore } from '../../store';
-import { blankStep, leaves, latex, uid, type Step } from '../../model';
+import { blankStep, leaves, stepIsBlank, uid, type Step } from '../../model';
 import { Button } from '../../shared/ui/button';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
 import type { BankQuestion } from '../drive-bank/drive-bank';
@@ -38,7 +38,7 @@ function Editor({ question, store, onAnswered }: { question: BankQuestion; store
   const exercise = exerciseOf(state.doc);
   const currentStepIndex = exercise.steps.findIndex(step => step.id === state.doc.cursor.stepId);
   const selected = activeInfo(state.doc);
-  const answered = exercise.steps.some(step => latex(step.expression) !== '\\square');
+  const answered = exercise.steps.some(step => !stepIsBlank(step));
 
   useEffect(() => onAnswered(question.id, { type: 'math', steps: exercise.steps }), [answered, exercise.steps, onAnswered, question.id]);
 
@@ -63,9 +63,8 @@ function Editor({ question, store, onAnswered }: { question: BankQuestion; store
   function handleKey(event: KeyboardEvent<HTMLElement>) {
     event.stopPropagation();
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
-    const target = event.target as HTMLElement;
+    const target = event.target as HTMLElement, key = event.key;
     if (target !== root.current && !target.closest('.expression')) return;
-    const key = event.key;
     if (event.ctrlKey || event.metaKey) {
       if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); }
       else if (key.toLowerCase() === 'y') { event.preventDefault(); dispatch(actions.redo()); }

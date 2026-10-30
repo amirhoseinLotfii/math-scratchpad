@@ -9,7 +9,7 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
 
   for (const view of ['concept', 'checks', 'summary', 'loading', 'unavailable', 'empty-picker', 'image-error'] as const) {
     await page.goto(`/e2e/fixtures/lesson-preview.html?view=${view}`);
-    if (view === 'image-error') await expect(page.getByRole('status')).toHaveText('Sample diagram alternative text');
+    if (view === 'image-error') await expect(page.getByRole('status')).toContainText('Sample diagram alternative text');
     const results = await new AxeBuilder({ page }).withTags(tags).analyze();
     await info.attach(`phase5-axe-${view}`, { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
     expect(results.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? '')), `${view} should not have serious or critical automated accessibility findings`).toEqual([]);
@@ -40,6 +40,8 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
   await page.getByRole('radio', { name: 'Option A' }).click();
   await page.getByRole('button', { name: 'Next concept →' }).click();
   const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+  await expect(editor.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
+  await expect(editor.locator('math-field')).toHaveCount(0);
   const activeCaret = editor.locator('.lesson-answer-step.current-step .token-active');
   await activeCaret.scrollIntoViewIfNeeded();
   await expect(activeCaret).toBeInViewport();
@@ -48,11 +50,16 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
   expect(editorA11y.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
 });
 
-test('the empty lesson bank hides the Lessons menu entry while regular practice remains visible', async ({ page }, info) => {
+test('an empty lesson list remains discoverable and offers the Drive bank action', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile-390', 'Check empty-bank behavior once at the mobile reference viewport.');
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?empty=1');
   await dismissWellbeing(page);
   await expect(page.getByText('Sample practice 1.')).toBeVisible();
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Lessons' })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Lessons' }).click();
+  const picker = page.getByRole('dialog', { name: 'Lessons' });
+  await expect(picker.getByRole('status')).toHaveText('This bank has no lessons yet.');
+  await expect(picker.getByRole('button', { name: 'Load bank' })).toBeVisible();
+  await picker.getByRole('button', { name: 'Load bank' }).click();
+  await expect(page.getByRole('region', { name: 'Google Drive question bank' })).toBeVisible();
 });

@@ -15,7 +15,7 @@ test('MIGRATE-UX: an old in-progress draft (Q5, Step 1 "+6", 2:05 tracked) survi
   const draft = oldDraft();
   await page.addInitScript(({ key, raw }) => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem(key, raw); } }, { key: storageKey, raw: JSON.stringify(draft) });
   await page.goto('/');
-  await expect(page.locator('select[aria-label="Current exercise"]')).toHaveValue(draft.state.session.doc.exerciseId);
+  await expect(page.locator('select[aria-label="Select question"]')).toHaveValue(draft.state.session.doc.exerciseId);
   await expect(page.getByLabel('Step 1 expression')).toContainText('+6');
   const time = page.getByLabel('Question elapsed time');
   await expect(time).toHaveText(/^0?2:0[5-9]$/);

@@ -9,28 +9,31 @@ const warning = (warnings: string[], path: string, reason: string) => warnings.p
 function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlock {
   const block = isRecord(value) ? value : {};
   const rawType = typeof block.type === 'string' ? block.type : 'unknown';
-  const unsupported = (): LessonBlock => {
-    warning(warnings, path, `unsupported or incomplete block (${rawType})`);
-    return { type: 'unsupported', originalType: rawType };
+  const unsupported = (reason: string): LessonBlock => {
+    warning(warnings, path, reason);
+    let source: string | undefined;
+    try { source = JSON.stringify(value, null, 2); } catch { source = String(value); }
+    return { type: 'unsupported', originalType: rawType, ...(source ? { source } : {}) };
   };
+  if (!isRecord(value)) return unsupported('block must be a JSON object');
   const lang = block.lang === 'fa' || block.lang === 'en' ? block.lang as Lang : undefined;
   if (block.lang !== undefined && lang === undefined) warning(warnings, `${path}.lang`, 'unsupported language was ignored');
   const withLang = <T extends object>(result: T): T & { lang?: Lang } => lang ? { ...result, lang } : result;
 
   if (rawType === 'heading' || rawType === 'paragraph' || rawType === 'note') {
-    if (!boundedText(block.text)) return unsupported();
+    if (!boundedText(block.text)) return unsupported(`${rawType} block requires non-empty text (maximum 20000 characters)`);
     return withLang({ type: rawType as 'heading' | 'paragraph' | 'note', text: block.text });
   }
   if (rawType === 'definition') {
-    if (!boundedText(block.text)) return unsupported();
-    if (block.latex !== undefined && (typeof block.latex !== 'string' || block.latex.length > 20000)) return unsupported();
+    if (!boundedText(block.text)) return unsupported('definition block requires non-empty text (maximum 20000 characters)');
+    if (block.latex !== undefined && (typeof block.latex !== 'string' || block.latex.length > 20000)) return unsupported('definition latex must be text of at most 20000 characters');
     return withLang({ type: 'definition', text: block.text, ...(typeof block.latex === 'string' ? { latex: block.latex } : {}) });
   }
   if (rawType === 'example') {
     const optionalTextValid = (key: 'title' | 'text' | 'latex', max: number) => block[key] === undefined || (typeof block[key] === 'string' && block[key].length <= max);
     if ((block.steps !== undefined && (!Array.isArray(block.steps) || block.steps.length > 100 || !block.steps.every(step => typeof step === 'string' && step.length <= 20000)))
-      || !optionalTextValid('title', 500) || !optionalTextValid('text', 20000) || !optionalTextValid('latex', 20000)) return unsupported();
-    if (block.steps === undefined && ![block.title, block.text, block.latex].some(item => boundedText(item))) return unsupported();
+      || !optionalTextValid('title', 500) || !optionalTextValid('text', 20000) || !optionalTextValid('latex', 20000)) return unsupported('example fields are invalid; steps must be an array of at most 100 text items and optional title/text/latex fields must fit their limits');
+    if (block.steps === undefined && ![block.title, block.text, block.latex].some(item => boundedText(item))) return unsupported('example block requires steps or non-empty title, text, or latex');
     return withLang({
       type: 'example',
       ...(typeof block.title === 'string' ? { title: block.title } : {}),
@@ -40,7 +43,7 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
     });
   }
   if (rawType === 'math') {
-    if (!boundedText(block.latex)) return unsupported();
+    if (!boundedText(block.latex)) return unsupported('math block requires non-empty latex (maximum 20000 characters)');
     if (block.text !== undefined && (typeof block.text !== 'string' || block.text.length > 20000)) warning(warnings, `${path}.text`, 'invalid caption was ignored');
     return withLang({ type: 'math', latex: block.latex, ...(boundedText(block.text) ? { text: block.text } : {}) });
   }
@@ -49,10 +52,11 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
       warning(warnings, path, 'image source is missing; description retained');
       return withLang({ type: 'image-description', text: block.text });
     }
-    if (!boundedText(block.src, 2000) || !boundedText(block.alt, 500)) return unsupported();
+    if (!boundedText(block.src, 2000)) return unsupported('image block requires a source URL or a text description');
+    if (!boundedText(block.alt, 500)) return unsupported('image block requires non-empty alt text (maximum 500 characters)');
     return withLang({ type: 'image', src: block.src, alt: block.alt });
   }
-  return unsupported();
+  return unsupported(`unsupported block type: ${rawType}`);
 }
 
 function parseBlocks(value: unknown, path: string, warnings: string[]): LessonBlock[] {

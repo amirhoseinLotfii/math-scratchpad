@@ -6,8 +6,6 @@ import { Button } from '../../../shared/ui/button';
 import { questionStatus } from '../model/workspace-layout';
 export function QuestionNavigator({ doc, onSelect }: { doc: Document; onSelect: (id: string) => void }) {
  const [open, setOpen] = usePanelOpen('questions', true), listId = useId();
- const answered = doc.exercises.filter(ex => questionStatus(ex) === 'Answered').length, skipped = doc.exercises.filter(ex => ex.skipped).length;
- const settled = doc.exercises.filter(ex => ['Answered','Skipped'].includes(questionStatus(ex))).length;
  function keys(event: KeyboardEvent<HTMLElement>) {
   if (!['ArrowDown','ArrowUp','Home','End'].includes(event.key)) return;
   const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('.question-destination'));
@@ -17,8 +15,6 @@ export function QuestionNavigator({ doc, onSelect }: { doc: Document; onSelect: 
  }
  return <nav className="question-navigator" data-collapsed={open ? undefined : 'true'} aria-label="Questions" onKeyDown={keys}>
   <div className="navigator-heading"><h2>Questions</h2><Button size="icon" variant="ghost" className="navigator-toggle" aria-expanded={open} aria-controls={listId} aria-label={open ? 'Collapse questions panel' : 'Expand questions panel'} title={open ? 'Collapse questions panel' : 'Expand questions panel'} onClick={() => setOpen(!open)}>{open ? <ChevronLeft aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}</Button></div>
-  <p className="small navigator-counts">{answered} of {doc.exercises.length} answered{skipped ? ` · ${skipped} skipped` : ''}</p>
-  <div role="progressbar" aria-label="Question progress" aria-valuemin={0} aria-valuemax={doc.exercises.length} aria-valuenow={settled} className="diagnostic-track"><div style={{width:`${settled / doc.exercises.length * 100}%`}} /></div>
   <ol id={listId} hidden={!open}>{doc.exercises.map((ex,index) => { const status = questionStatus(ex); return <li key={ex.id}>
    <Button variant="ghost" className="question-destination" aria-current={doc.exerciseId === ex.id ? 'page' : undefined} onClick={() => onSelect(ex.id)}>
     <span className={`question-state-dot state-${status.toLowerCase().replace(' ','-')}`} aria-hidden="true">{status === 'Answered' ? '✓' : status === 'Skipped' ? '−' : ''}</span>

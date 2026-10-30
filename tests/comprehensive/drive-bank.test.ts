@@ -1,26 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BANK_SCHEMA, EMPTY_BANK, ARCHIVE_KEY, archiveSession, bankDocument, driveError, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBank, readPrivateBankText, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
+import { BANK_SCHEMA, EMPTY_BANK, ARCHIVE_KEY, archiveSession, bankDocument, driveError, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBank, readPrivateBankText, snapshotVersion, validateBank, MAX_QUESTIONS_PER_BANK } from '../../src/features/drive-bank/drive-bank';
 import { getConfig, saveConfig, requestToken, pickFile, DRIVE_SCOPE } from '../../src/features/drive-bank/google';
 import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from '../../src/features/drive-bank/drive-config';
 import { permittedAccount } from '../../src/features/drive-bank/identity';
 import { initialState } from '../../src/store';
-import { validateSession } from '../../src/persistence';
+import { serialize, validateSession } from '../../src/persistence';
 
 const q = (id: string, extra: Record<string, unknown> = {}) => ({ id, mode: 'math', source: '1+2', ...extra });
 const bank = (extra: Record<string, unknown> = {}) => ({ schema_version: BANK_SCHEMA, bank_id: 'B1', version: 'v1', questions: [q('Q01')], ...extra });
-const INVALID = 'شناسه، نسخه یا ساختار بانک معتبر نیست.', BADQ = 'متن، قالب یا شناسهٔ سؤال معتبر نیست.', KEY = 'بانک سؤال نباید پاسخ یا کلید داشته باشد';
+const INVALID = 'Invalid bank', KEY = 'answer-like content was removed';
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); delete window.google; });
 
 describe('validateBank: top level', () => {
   it('accepts a minimal valid bank and an empty question list', () => { expect(validateBank(bank()).questions).toHaveLength(1); expect(validateBank(bank({ questions: [] })).questions).toEqual([]); });
-  it.each([null, undefined, 1, 'x', [], [bank()]])('rejects non-object %j', v => expect(() => validateBank(v)).toThrow('ساختار بانک معتبر نیست.'));
+  it.each([null, undefined, 1, 'x', [], [bank()]])('rejects non-object %j', v => expect(() => validateBank(v)).toThrow('JSON object'));
   it.each([
     ['missing schema_version', { schema_version: undefined }], ['wrong schema_version', { schema_version: 'math-scratchpad.bank/2.0' }],
     ['missing bank_id', { bank_id: undefined }], ['bank_id with space', { bank_id: 'B 1' }], ['bank_id with slash', { bank_id: 'a/b' }], ['bank_id too long', { bank_id: 'a'.repeat(81) }], ['empty bank_id', { bank_id: '' }], ['numeric bank_id', { bank_id: 5 }],
     ['missing version', { version: undefined }], ['numeric version', { version: 3 }], ['version with unicode', { version: 'نسخه' }],
-    ['questions not array', { questions: {} }], ['41 questions', { questions: Array.from({ length: 41 }, (_, i) => q(`Q${i}`)) }],
+    ['questions not array', { questions: {} }],
   ])('rejects %s', (_, patch) => expect(() => validateBank(bank(patch))).toThrow(INVALID));
-  it('accepts exactly 40 questions and ids with . - _', () => { expect(validateBank(bank({ bank_id: 'GEN-2026.10_28', questions: Array.from({ length: 40 }, (_, i) => q(`Q-${i}.a_b`)) })).questions).toHaveLength(40); });
+  it('accepts the full 100-question section limit and ids with . - _', () => { expect(validateBank(bank({ bank_id: 'GEN-2026.10_28', questions: Array.from({ length: MAX_QUESTIONS_PER_BANK }, (_, i) => q(`Q-${i}.a_b`)) })).questions).toHaveLength(100); });
+  it('rejects a bank above the explicit question limit', () => { expect(() => validateBank(bank({ questions: Array.from({ length: 101 }, (_, i) => q(`Q${i}`)) }))).toThrow('up to 100 questions'); });
+  it('loads, archives, serializes, and restores a 73-question lesson section', () => {
+    const parsed = validateBank(bank({ questions: Array.from({ length: 73 }, (_, i) => q(`PC-1.1-P${String(i + 1).padStart(2, '0')}`)) }));
+    const state = initialState(); state.doc = bankDocument(parsed, 'section-v1');
+    expect(validateSession(JSON.parse(serialize(state))).doc.exercises).toHaveLength(73);
+    archiveSession(state);
+    expect(validateSession(JSON.parse(readArchive()[0].data)).doc.exercises).toHaveLength(73);
+  });
   it('drops unknown fields from output', () => { const out = validateBank(bank({ extra: 1, questions: [q('Q1', { note: 'x' })] })); expect(out).not.toHaveProperty('extra'); expect(out.questions[0]).not.toHaveProperty('note'); });
 });
 
@@ -29,8 +37,12 @@ describe('validateBank: questions', () => {
     ['bad id', q('Q 1')], ['empty id', q('')], ['numeric id', { ...q('x'), id: 1 }], ['bad mode', q('Q1', { mode: 'latex' })], ['missing mode', { id: 'Q1', source: '1' }],
     ['empty source', q('Q1', { source: '  ' })], ['source too long', q('Q1', { mode: 'text', source: 'a'.repeat(4001) })], ['numeric source', q('Q1', { source: 1 })],
     ['numeric prompt', q('Q1', { prompt: 3 })], ['prompt too long', q('Q1', { prompt: 'a'.repeat(4000) })],
-  ])('rejects %s', (_, item) => expect(() => validateBank(bank({ questions: [item] }))).toThrow(BADQ));
-  it.each([null, 'x', [1]])('rejects non-object question %j', item => expect(() => validateBank(bank({ questions: [item] }))).toThrow('ساختار سؤال معتبر نیست.'));
+  ])('rejects %s with a question path', (_, item) => expect(() => validateBank(bank({ questions: [item] }))).toThrow(/questions\[0\]/));
+  it.each([null, 'x', [1]])('rejects non-object question %j with its index', item => expect(() => validateBank(bank({ questions: [item] }))).toThrow('questions[0]: a question must be a JSON object'));
+  it('reports the question id, field, and math parser reason when question data is invalid', () => {
+    expect(() => validateBank(bank({ questions: [q('Q-17', { mode: 'latex' })] }))).toThrow('questions[0] (Q-17): mode');
+    expect(() => validateBank(bank({ questions: [q('Q-18', { source: '(1+2' })] }))).toThrow('questions[0] (Q-18): invalid math source. Close the parenthesis.');
+  });
   it('keeps the first duplicate question id and reports later copies', () => { const out = validateBank(bank({ questions: [q('A', { prompt: 'first' }), q('A', { prompt: 'later' })] })); expect(out.questions).toHaveLength(1); expect(out.questions[0].prompt).toBe('first'); expect(out.parseWarnings?.join(' ')).toContain('duplicate question id A'); });
   it.each(['answer', 'answers', 'expected', 'solution', 'key', 'rubric', 'verification', 'ANSWER', 'Solution'])('strips forbidden question field %s and warns', k => { const out = validateBank(bank({ questions: [q('Q1', { [k]: '3' })] })); expect(out.questions[0]).not.toHaveProperty(k); expect(out.parseWarnings?.join(' ')).toContain(`questions[0].${k}`); });
   it('strips forbidden fields even when their value is empty or null', () => { const out = validateBank(bank({ questions: [q('Q1', { answer: null, solution: '' })] })); expect(out.questions[0]).not.toHaveProperty('answer'); expect(out.questions[0]).not.toHaveProperty('solution'); expect(out.parseWarnings).toHaveLength(2); });
@@ -62,8 +74,8 @@ describe('validateBank: questions', () => {
 describe('parseBankText', () => {
   it('empty, whitespace and BOM-only files are EMPTY_BANK', () => { for (const t of ['', '  \n', '\uFEFF', '\uFEFF  ']) expect(parseBankText(t)).toBe(EMPTY_BANK); });
   it('accepts a BOM-prefixed JSON bank', () => expect(parseBankText('\uFEFF' + JSON.stringify(bank()))).not.toBe(EMPTY_BANK));
-  it.each(['{', 'not json', '{"a":1,}', "{'a':1}"])('invalid JSON %j gives the Persian JSON error', t => expect(() => parseBankText(t)).toThrow('JSON معتبر نیست'));
-  it('rejects files over 1,000,000 characters before parsing', () => expect(() => parseBankText(' '.repeat(1000001))).toThrow('بیش از حد بزرگ'));
+  it.each(['{', 'not json', '{"a":1,}', "{'a':1}"])('invalid JSON %j gives an English error', t => expect(() => parseBankText(t)).toThrow('not valid JSON'));
+  it('rejects files over 1,000,000 characters before parsing', () => expect(() => parseBankText(' '.repeat(1000001))).toThrow('too large'));
   it('reproduces the missing schema_version incident', () => { const b: Record<string, unknown> = bank(); delete b.schema_version; expect(() => parseBankText(JSON.stringify(b))).toThrow(INVALID); });
   it('the bracket incident file (N2c-PL02 with [ ]) is now accepted, while a truly bad question still rejects the whole file', () => {
     expect(parseBankText(JSON.stringify(bank({ questions: [q('A'), q('N2c-PL02', { source: '20-[3\\times(5-2)]' })] })))).not.toBe(EMPTY_BANK);
@@ -86,7 +98,7 @@ describe('snapshotVersion and bankDocument', () => {
     const b = validateBank(bank({ questions: [q('A', { prompt: 'p' }), q('B', { mode: 'text', source: 'متن' })] })); const doc = bankDocument(b, 'x');
     expect(doc.exercises.map(e => [e.bankQuestionId, e.mode, e.steps.length])).toEqual([['A', 'math', 1], ['B', 'text', 1]]);
     expect(doc.exercises[0].prompt).toBe('p'); expect(doc.exerciseId).toBe(doc.exercises[0].id); expect(doc.session).toMatchObject({ bankId: 'B1', bankVersion: 'x' });
-    expect(() => bankDocument(validateBank(bank({ questions: [] })), 'x')).toThrow('هنوز سؤالی');
+    expect(() => bankDocument(validateBank(bank({ questions: [] })), 'x')).toThrow('No practice questions');
   });
   it('keeps Learn-stage checks out of the main Practice session while preserving default-practice banks', () => {
     const b = validateBank({ ...bank(),
@@ -101,7 +113,7 @@ describe('archive', () => {
   it('readArchive handles missing, corrupt and malformed storage', () => {
     expect(readArchive()).toEqual([]);
     localStorage.setItem(ARCHIVE_KEY, '{bad'); expect(() => readArchive()).toThrow();
-    localStorage.setItem(ARCHIVE_KEY, JSON.stringify([{ id: 1 }])); expect(() => readArchive()).toThrow('قابل خواندن نیستند');
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify([{ id: 1 }])); expect(() => readArchive()).toThrow('Saved sessions could not be read');
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify({})); expect(() => readArchive()).toThrow();
   });
   it('does not duplicate identical snapshots and keeps the data restorable', () => {
@@ -112,9 +124,9 @@ describe('archive', () => {
 
 describe('Drive HTTP helpers', () => {
   const meta = { id: 'abcdefghij12', name: 'b.json', mimeType: 'application/json', md5Checksum: 'm', headRevisionId: 'r', version: '1', size: '10', modifiedTime: 't' };
-  it.each([[401, 'منقضی'], [403, '۴۰۳'], [404, '۴۰۴'], [429, '429'], [500, '500'], [503, '503'], [418, '(418)']])('driveError %i', (code, text) => expect(driveError(code, 'X').message).toContain(text));
+  it.each([[401, 'expired'], [403, '(403)'], [404, '(404)'], [429, '429'], [500, '500'], [503, '503'], [418, '(418)']])('driveError %i', (code, text) => expect(driveError(code, 'X').message).toContain(text));
   it.each(['short', 'has space 12345', '../../etc/passwd', 'a'.repeat(151)])('rejects invalid file id %j without fetching', async id => {
-    const f = vi.spyOn(globalThis, 'fetch'); await expect(readDriveMeta(id, 't')).rejects.toThrow('شناسهٔ فایل Drive معتبر نیست.'); await expect(readPrivateBankText(id, 't')).rejects.toThrow(); expect(f).not.toHaveBeenCalled();
+    const f = vi.spyOn(globalThis, 'fetch'); await expect(readDriveMeta(id, 't')).rejects.toThrow('Invalid Google Drive file ID'); await expect(readPrivateBankText(id, 't')).rejects.toThrow(); expect(f).not.toHaveBeenCalled();
   });
   it('sends bearer token, no-store and requests only metadata fields', async () => {
     const f = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(meta)));
@@ -124,11 +136,11 @@ describe('Drive HTTP helpers', () => {
   });
   it('rejects trashed files and Google Docs', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ ...meta, trashed: true }))).mockResolvedValueOnce(new Response(JSON.stringify({ ...meta, mimeType: 'application/vnd.google-apps.document' })));
-    await expect(readDriveMeta(meta.id, 't')).rejects.toThrow('سطل زباله'); await expect(readDriveMeta(meta.id, 't')).rejects.toThrow('Google Doc');
+    await expect(readDriveMeta(meta.id, 't')).rejects.toThrow('Google Drive trash'); await expect(readDriveMeta(meta.id, 't')).rejects.toThrow('Google Doc');
   });
   it('maps HTTP errors for metadata and content', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('', { status: 403 })).mockResolvedValueOnce(new Response('', { status: 404 }));
-    await expect(readDriveMeta(meta.id, 't')).rejects.toThrow('۴۰۳'); await expect(readPrivateBankText(meta.id, 't')).rejects.toThrow('۴۰۴');
+    await expect(readDriveMeta(meta.id, 't')).rejects.toThrow('denied access (403)'); await expect(readPrivateBankText(meta.id, 't')).rejects.toThrow('(404)');
   });
   it('readPrivateBank parses downloaded text', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify(bank()))).mockResolvedValueOnce(new Response(''));
@@ -155,19 +167,19 @@ describe('Google config and auth helpers', () => {
     expect(GOOGLE_CLIENT_ID).toMatch(/^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/); expect(GOOGLE_APP_ID).toMatch(/^\d+$/); expect(GOOGLE_CLIENT_ID.startsWith(GOOGLE_APP_ID + '-')).toBe(true); expect(GOOGLE_API_KEY).toMatch(/^AIza[\w-]{35}$/);
   });
   const oauth = (resp: Record<string, unknown>, granted = true) => { const init = vi.fn((cfg: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => cfg.callback(resp) })); window.google = { accounts: { oauth2: { initTokenClient: init, hasGrantedAllScopes: () => granted } } }; return init; };
-  it('requestToken reports when GIS is not loaded', () => { const done = vi.fn(); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('آماده نیست'); });
+  it('requestToken reports when GIS is not loaded', () => { const done = vi.fn(); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('not ready'); });
   it('requestToken returns a token that expires a minute early, and asks for drive.file only', () => {
     const init = oauth({ access_token: 'A', expires_in: '3600' }); const done = vi.fn(); const t0 = Date.now(); requestToken('cid', { hint: 'h' }, done);
     const tok = done.mock.calls[0][0].token; expect(tok.accessToken).toBe('A'); expect(tok.expiresAt).toBeGreaterThanOrEqual(t0 + 3540000 - 5); expect(tok.expiresAt).toBeLessThanOrEqual(Date.now() + 3540000);
     expect(init.mock.calls[0][0]).toMatchObject({ client_id: 'cid', login_hint: 'h' }); expect((init.mock.calls[0][0] as unknown as { scope: string }).scope).toContain(DRIVE_SCOPE); expect((init.mock.calls[0][0] as unknown as { scope: string }).scope).not.toMatch(/auth\/drive(\s|$)/);
   });
   it('requestToken explains access_denied, other errors and a missing Drive grant', () => {
-    let done = vi.fn(); oauth({ error: 'access_denied' }); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('Test users');
+    let done = vi.fn(); oauth({ error: 'access_denied' }); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('test user');
     done = vi.fn(); oauth({ error: 'invalid_client' }); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('invalid_client');
     done = vi.fn(); oauth({ access_token: 'A' }, false); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('Drive');
   });
   it('requestToken maps popup errors', () => {
-    for (const [type, text] of [['popup_closed', 'بسته شد'], ['popup_failed_to_open', 'Pop-ups'], ['weird', 'انجام نشد']]) {
+    for (const [type, text] of [['popup_closed', 'closed'], ['popup_failed_to_open', 'Pop-ups'], ['weird', 'failed']]) {
       const done = vi.fn(); window.google = { accounts: { oauth2: { initTokenClient: (cfg: { error_callback: (e: unknown) => void }) => ({ requestAccessToken: () => cfg.error_callback({ type }) }) } } };
       requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain(text);
     }
@@ -175,10 +187,10 @@ describe('Google config and auth helpers', () => {
   it('pickFile reports a missing Picker, picked file and cancel', () => {
     let done = vi.fn(); pickFile(getConfig(), 't', done); expect(done.mock.calls[0][0].error).toContain('Picker');
     const make = (result: unknown) => ({ ViewId: { DOCS: 'd' }, DocsViewMode: { LIST: 'l' }, Action: { PICKED: 'picked', CANCEL: 'cancel' }, DocsView: class { setMimeTypes() { return this; } setMode() { return this; } setQuery() { return this; } },
-      PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey(k: string) { expect(k).toBe(GOOGLE_API_KEY); return this; } setAppId(a: string) { expect(a).toBe(GOOGLE_APP_ID); return this; } setOrigin() { return this; } setTitle() { return this; } setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb(result) }; } } });
+      PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey(k: string) { expect(k).toBe(GOOGLE_API_KEY); return this; } setAppId(a: string) { expect(a).toBe(GOOGLE_APP_ID); return this; } setOrigin() { return this; } setLocale(locale: string) { expect(locale).toBe('en'); return this; } setTitle(title: string) { expect(title).toBe('Select MATH_QUESTION_BANK.json'); return this; } setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb(result) }; } } });
     done = vi.fn(); window.google = { picker: make({ action: 'picked', docs: [{ id: 'F1', name: 'n' }] }) }; pickFile(getConfig(), 't', done); expect(done.mock.calls[0][0]).toEqual({ id: 'F1', name: 'n' });
     done = vi.fn(); window.google = { picker: make({ action: 'picked', docs: [] }) }; pickFile(getConfig(), 't', done); expect(done.mock.calls[0][0].error).toBeTruthy();
-    done = vi.fn(); window.google = { picker: make({ action: 'cancel' }) }; pickFile(getConfig(), 't', done); expect(done.mock.calls[0][0].error).toContain('لغو');
+    done = vi.fn(); window.google = { picker: make({ action: 'cancel' }) }; pickFile(getConfig(), 't', done); expect(done.mock.calls[0][0].error).toContain('canceled');
     done = vi.fn(); window.google = { picker: make({ action: 'loaded' }) }; pickFile(getConfig(), 't', done); expect(done).not.toHaveBeenCalled();
   });
   it('permittedAccount requires a verified, matching email', async () => {

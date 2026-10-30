@@ -6,11 +6,12 @@ import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
 import { getLearnChecks, getPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
-import { LessonConceptContent } from './lesson-content';
+import { contentDirection, languageForText, LessonConceptContent, LessonText } from './lesson-content';
 import { createLessonMathStore } from './lesson-math-check';
+import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
-import { latex } from '../../model';
+import { stepIsBlank } from '../../model';
 
 type Props = {
   bank: DriveBank | null;
@@ -28,6 +29,12 @@ type ReadyProps = Props & { bank: DriveBank; lesson: Lesson };
 
 function newProgress(lessonId: string): LessonProgress {
   return { lessonId, status: 'learning', currentConceptIndex: 0, completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
+}
+
+function ReviewQuestionContent({ question }: { question: BankQuestion }) {
+  if (question.prompt) return <span lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></span>;
+  if (question.mode === 'math') return <bdi dir="ltr"><MathDisplay latex={question.source} label="Question expression" display={false} /></bdi>;
+  return <span lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></span>;
 }
 
 function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage }: ReadyProps) {
@@ -86,7 +93,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
 
   const setAnswer = useCallback((questionId: string, value: LessonCheckAnswer | null) => {
     const answered = value === null ? false : value.type === 'math'
-      ? value.steps.some(step => latex(step.expression) !== '\\square')
+      ? value.steps.some(step => !stepIsBlank(step))
       : !!value.value.trim();
     const before = progressRef.current;
     const checkAnswers = { ...before.checkAnswers };
@@ -190,7 +197,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     <header className="lesson-header">
       <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />Back to question</Button>
       <p className="lesson-book-line" dir="ltr">{lesson.book} · {lesson.section}{pages}</p>
-      <h1 dir="auto">{lesson.title}</h1>
+      <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={lesson.title} /></h1>
       {!summary && currentConcept && <p className="lesson-progress" aria-live="polite">Concept {conceptIndex + 1} of {lesson.concepts.length}</p>}
       {summary && <p className="lesson-progress" aria-live="polite">Learning summary</p>}
       {practiceError && <p className="lesson-practice-error" role="alert">{practiceError}</p>}
@@ -200,11 +207,11 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     {summary ? <section className="lesson-summary" aria-labelledby="lesson-summary-title">
       <div className="lesson-summary-heading"><BookOpen aria-hidden="true" /><h2 id="lesson-summary-title" ref={summaryHeadingRef} tabIndex={-1}>Lesson summary</h2></div>
       <ul className="lesson-summary-concepts">{lesson.concepts.map((concept, index) => <li key={concept.id}>
-        <span><span dir="ltr">{index + 1}. </span><bdi dir="auto">{concept.title}</bdi></span>
+        <span><span dir="ltr">{index + 1}. </span><bdi lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={concept.title} /></bdi></span>
         <span className="lesson-summary-count">{getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id)).length}/{getLearnChecks(bank, concept.id).length} checks answered</span>
       </li>)}</ul>
       {lesson.concepts.some(concept => getLearnChecks(bank, concept.id).some(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1)) && <section className="lesson-summary-review" aria-label="Checks to review">
-        <h3>Review</h3><ul>{lesson.concepts.flatMap(concept => getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1).map(question => <li key={question.id}>{question.id} · {question.prompt || question.source}</li>))}</ul>
+        <h3>Review</h3><ul>{lesson.concepts.flatMap(concept => getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1).map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi> · <ReviewQuestionContent question={question} /></li>))}</ul>
       </section>}
       {progress.skippedChecks.length > 0 && <section className="lesson-summary-skipped" aria-label="Skipped checks">
         <h3>Skipped checks</h3><ul>{progress.skippedChecks.map(item => <li key={item.questionId}>{item.questionId}</li>)}</ul>
@@ -214,7 +221,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     </section> : currentConcept ? <>
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
         <div className="lesson-concept-heading"><p className="lesson-section-label">Concept {conceptIndex + 1}</p>{currentConcept.pages && <span className="lesson-pages">pp. {currentConcept.pages.replace(/(\d)\s*-\s*(\d)/, '$1–$2')}</span>}</div>
-        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} dir="auto">{currentConcept.title}</h2>
+        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={languageForText(currentConcept.title)} dir={contentDirection(currentConcept.title)}><LessonText text={currentConcept.title} /></h2>
         <LessonConceptContent concept={currentConcept} revealedSteps={progress.revealedSteps} onReveal={revealStep} />
       </section>
       {checks.length > 0 && <section className="lesson-checks" aria-label="Mini checks">

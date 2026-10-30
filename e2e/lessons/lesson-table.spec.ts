@@ -28,3 +28,22 @@ test('lesson tables stay readable and scroll locally at practical viewport sizes
     }
   }
 });
+
+test('read-only lesson notation displays sets, unruled arrays and indexed roots', async ({ page }, info) => {
+  test.skip(info.project.name !== 'mobile-390');
+  await page.setViewportSize({ width: 390, height: 640 });
+  await page.goto('/e2e/fixtures/lesson-connected-preview.html?notation=1');
+  const start = page.getByRole('dialog', { name: 'Before you start this batch' });
+  if (await start.isVisible().catch(() => false)) await start.getByRole('button', { name: 'Skip for now' }).click();
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Lessons' }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+  const lesson = page.locator('.lesson-screen');
+  await expect(lesson.getByText('{(odd,1), (even,2)}')).toBeVisible();
+  const table = lesson.getByRole('region', { name: 'Lesson table' });
+  await expect(table.getByRole('cell', { name: 'ورودی' })).toBeVisible();
+  await expect(table.getByRole('columnheader')).toHaveCount(0);
+  await expect(lesson.locator('.math-display-root[aria-label="3 root of x"]')).toHaveCount(1);
+  await expect(lesson.locator('.math-display-fallback')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

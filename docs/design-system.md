@@ -32,6 +32,7 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 ## Implemented image-to-product details (0.4.0)
 
 - Original math problems render with the same formula renderer in read-only mode; source text remains unchanged in review payloads. Unsupported imports remain visible as source text.
+- Lesson prose is never sent through the math parser. Only explicit inline delimiters are parsed as formulas; supported read-only notation uses the existing AST renderer, while unsupported notation stays visible with an explicit fallback label.
 - Problem and template previews contain no editable buttons, insertion gaps or active caret. Editable steps still have a single direct-interaction surface.
 - Every step is a separate rounded card. `Edited` records an actual expression change and survives session transfer; Undo restores that state. Editing earlier math preserves later expressions and marks them `Needs review`.
 - Adding a blank step or toggling the final-answer flag does not invalidate math in other steps.
@@ -44,4 +45,4 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 
 Targets and CSS rules do not prove mobile usability. Confirm actual wrapping, target bounds, host composer occlusion, TalkBack announcements and contrast in the Android host before calling accessibility or device support complete.
 
-Design references: [Android accessibility](https://developer.android.com/design/ui/mobile/guides/foundations/accessibility), [W3C text direction](https://www.w3.org/International/questions/qa-html-dir), [WCAG reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html), [MathLive commands](https://mathlive.io/mathfield/guides/commands/).
+Design references: [Android accessibility](https://developer.android.com/design/ui/mobile/guides/foundations/accessibility), [W3C text direction](https://www.w3.org/International/questions/qa-html-dir), [MDN `dir`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/dir), [WAI modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/), and [WCAG reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). The current app-owned formula editor and read-only renderer remain in use; external math libraries are deferred.

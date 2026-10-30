@@ -10,6 +10,7 @@ import { LessonScreen } from '../../src/features/lessons/lesson-screen';
 import { LessonPicker } from '../../src/features/lessons/lesson-picker';
 import { LessonBlockView } from '../../src/features/lessons/lesson-content';
 import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
+import { MathDisplay } from '../../src/MathDisplay';
 import type { LessonProgress } from '../../src/features/lessons/types';
 
 afterEach(cleanup);
@@ -47,7 +48,7 @@ describe('lesson learning screen', () => {
 
   it('explains the empty lesson list when the picker is opened directly', () => {
     render(<LessonPicker open lessons={[]} progressByLesson={{}} onOpenChange={() => undefined} onChoose={() => undefined} />);
-    expect(screen.getByRole('status')).toHaveTextContent('No lessons in this bank');
+    expect(screen.getByRole('status')).toHaveTextContent('This bank has no lessons yet');
     expect(screen.getByRole('button', { name: 'Close' })).toBeVisible();
   });
 
@@ -59,7 +60,7 @@ describe('lesson learning screen', () => {
 
   it('shows an unavailable-image description and a math caption without inventing a picture', () => {
     const { rerender } = render(<LessonBlockView block={{ type: 'image-description', lang: 'fa', text: 'توضیح شکل' }} blockKey="description" revealed={0} onReveal={() => undefined} />);
-    expect(screen.getByText('Image unavailable')).toBeVisible();
+    expect(screen.getByText('Image description')).toBeVisible();
     expect(screen.getByText('توضیح شکل')).toHaveAttribute('dir', 'rtl');
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     rerender(<Provider store={makeStore(initialState())}><LessonBlockView block={{ type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' }} blockKey="caption" revealed={0} onReveal={() => undefined} /></Provider>);
@@ -70,14 +71,47 @@ describe('lesson learning screen', () => {
     expect(screen.queryByText('Try it yourself first')).not.toBeInTheDocument();
   });
 
-  it('renders supported lesson arrays as an accessible table and keeps unknown syntax visible', () => {
+  it('renders supported lesson arrays as an accessible table and keeps unsupported syntax visible', () => {
     const { rerender } = render(<LessonBlockView block={{ type: 'math', latex: String.raw`\begin{array}{|c|c|} \hline Input & Output \\ \hline 1 & 2 \\ \hline \end{array}` }} blockKey="table" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByRole('region', { name: 'Lesson table' })).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('columnheader', { name: 'Input' })).toHaveAttribute('scope', 'col');
     expect(screen.getByRole('cell', { name: '2' })).toBeVisible();
-    const unknown = String.raw`\begin{array}{cc} \hline x & y \\ \hline \frac{1}{2} & 3 \end{array}`;
-    rerender(<LessonBlockView block={{ type: 'math', latex: unknown }} blockKey="unknown" revealed={0} onReveal={() => undefined} />);
-    expect(screen.getByText(unknown)).toBeVisible();
+    const anotherTable = String.raw`\begin{array}{cc} \hline x & y \\ \hline \frac{1}{2} & 3 \end{array}`;
+    rerender(<LessonBlockView block={{ type: 'math', latex: anotherTable }} blockKey="another-table" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByRole('cell', { name: '3' })).toBeVisible();
+    expect(screen.getByRole('math', { name: 'Mathematical table entry' })).toBeVisible();
+    const unsupported = String.raw`\begin{matrix}x & y\end{matrix}`;
+    rerender(<LessonBlockView block={{ type: 'math', latex: unsupported }} blockKey="unsupported" revealed={0} onReveal={() => undefined} />);
+    expect(screen.getByText(unsupported)).toBeVisible();
+    expect(screen.getByText('Formula preview unavailable. Original notation:')).toBeVisible();
+  });
+
+  it('renders escaped sets, indexed roots and equation fragments without changing the editor', () => {
+    const store = makeStore(initialState());
+    const input = String.raw`f(x)=x^2;\quad \text{(a) } \sqrt[3]{x}`;
+    const before = structuredClone(store.getState().doc);
+    const { rerender } = render(<Provider store={store}><LessonBlockView block={{ type: 'math', latex: input }} blockKey="notation" revealed={0} onReveal={() => undefined} /></Provider>);
+    expect(document.querySelector('[role="math"]')).toHaveAttribute('aria-label', 'Lesson formula');
+    expect(screen.getByText('(a)')).toBeVisible();
+    expect(document.querySelector('.math-display-root')).toHaveAttribute('aria-label', '3 root of x');
+    expect(store.getState().doc).toEqual(before);
+    const set = String.raw`\{(\text{odd},1),\ (\text{even},2)\}`;
+    rerender(<Provider store={store}><LessonBlockView block={{ type: 'math', latex: set }} blockKey="set" revealed={0} onReveal={() => undefined} /></Provider>);
+    expect(screen.getByText('{(odd,1), (even,2)}')).toBeVisible();
+    expect(store.getState().doc).toEqual(before);
+  });
+
+  it('uses the existing read-only formula renderer for powers, products, fractions, roots, and visible fallback', () => {
+    const { rerender, container } = render(<Provider store={makeStore(initialState())}><MathDisplay latex={String.raw`7^2\cdot\frac{1}{2}+\sqrt{9}`} label="Formula sample" /></Provider>);
+    const math = screen.getByRole('math', { name: 'Formula sample' });
+    expect(math.querySelector('.power')).toBeVisible();
+    expect(math.querySelector('.fraction')).toBeVisible();
+    expect(math.querySelector('.radical')).toBeVisible();
+    expect(math.textContent).toContain('·');
+    expect(container.querySelector('math-field')).toBeNull();
+    rerender(<Provider store={makeStore(initialState())}><MathDisplay latex={String.raw`\begin{matrix}x&y\end{matrix}`} /></Provider>);
+    expect(screen.getByRole('note')).toHaveTextContent('Formula preview unavailable. Original notation:');
+    expect(screen.getByText(String.raw`\begin{matrix}x&y\end{matrix}`)).toBeVisible();
   });
 
   it('keeps a completed lesson summary reachable and offers Review lesson', async () => {
@@ -245,7 +279,7 @@ describe('lesson learning screen', () => {
     expect(container.querySelector('p')).toHaveAttribute('dir', 'rtl');
     expect(container.querySelector('p')).toHaveAttribute('lang', 'fa');
     rerender(<LessonBlockView block={{ type: 'paragraph', text: 'Mixed sample text' }} blockKey="auto" revealed={0} onReveal={() => undefined} />);
-    expect(container.querySelector('p')).toHaveAttribute('dir', 'auto');
+    expect(container.querySelector('p')).toHaveAttribute('dir', 'ltr');
   });
 
   it('sets direction for Persian lesson, concept, picker and example titles', () => {
@@ -254,15 +288,16 @@ describe('lesson learning screen', () => {
     lesson.title = 'تابع‌ها و نمادگذاری';
     lesson.concepts[0].title = 'مفهوم تابع';
     mount(bank);
-    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('dir', 'auto');
-    expect(screen.getByRole('heading', { name: lesson.concepts[0].title })).toHaveAttribute('dir', 'auto');
+    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('lang', 'fa');
+    expect(screen.getByRole('heading', { name: lesson.concepts[0].title })).toHaveAttribute('dir', 'rtl');
     cleanup();
     render(<LessonPicker open lessons={[lesson]} progressByLesson={{}} onOpenChange={() => undefined} onChoose={() => undefined} />);
-    expect(screen.getByText(lesson.title)).toHaveAttribute('dir', 'auto');
+    expect(screen.getByText(lesson.title)).toHaveAttribute('dir', 'rtl');
     cleanup();
     render(<Provider store={makeStore(initialState())}><LessonReferenceDialog lesson={lesson} bank={bank} onOpenChange={() => undefined} /></Provider>);
-    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('dir', 'auto');
-    expect(screen.getByRole('heading', { name: lesson.concepts[0].title })).toHaveAttribute('dir', 'auto');
+    expect(screen.getByRole('heading', { name: lesson.title })).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByRole('heading', { name: lesson.concepts[0].title })).toHaveAttribute('dir', 'rtl');
     cleanup();
     render(<LessonBlockView block={{ type: 'example', lang: 'fa', title: 'مثال 1', steps: [] }} blockKey="example" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByRole('heading', { name: 'مثال 1' })).toHaveAttribute('dir', 'rtl');

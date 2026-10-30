@@ -8,7 +8,8 @@ export type Structure =
   | { id: string; type: 'matrix'; size: number; cells: Sequence[] }
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
-export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean };
+/** Optional lossless LaTeX snapshot for compatibility with newer math editor data. */
+export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean; mathLatex?: string };
 export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; diagnosticId?: number; bankQuestionId?: string; /** Optional bank lesson metadata. Older session JSON remains valid without it. */ stage?: 'learn' | 'practice'; conceptId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
 export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
@@ -32,6 +33,8 @@ export const frac = (numerator = blank(), denominator = blank()): Structure => (
 export const template = (kind: string, args: Sequence[]): Structure => ({ id: uid(), type: 'template', kind, args });
 export const blankStep = (): Step => ({ id: uid(), expression: blank(), final: false, status: 'unchecked' });
 export const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
+/** Bound both bank batches and their archived practice sessions. Existing smaller sessions remain unchanged. */
+export const MAX_SESSION_EXERCISES = 100;
 export const example = String.raw`\frac{2}{3} + \frac{1}{4}`;
 export const templateCounts: Record<string, number> = { integral: 4, sum: 3, limit: 3, derivative: 2, choose: 2, percent: 1, factorial: 1, abs: 1, mean: 1, f: 1, sin: 1, cos: 1, tan: 1, ln: 1, log: 1, exp: 1, det: 1, probability: 1 };
 export const ascii = (s: string) => s.replace(/[۰-۹]/g, c => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c))).replace(/[٠-٩]/g, c => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
@@ -107,6 +110,17 @@ export const topics: Record<string, SymbolItem[]> = {
   'Probability & stats': [symbol('probability', 'P(A)', 'Probability'), symbol('factorial', 'n!', 'Factorial'), symbol('choose', 'nCk', 'Binomial coefficient'), symbol('mean', 'x̄', 'Mean'), symbol('sigma', 'σ', 'Sigma')]
 };
 export const symbolList = Object.values(topics).flat();
+
+/** Preserve an exact LaTeX snapshot when present; the AST remains the compatibility representation. */
+export function stepLatex(step: Pick<Step, 'expression' | 'mathLatex'>): string {
+  const raw = step.mathLatex;
+  if (raw === undefined) return latex(step.expression);
+  return /^\s*(?:\\placeholder(?:\[[^\]]*\])?\{\}\s*)*$/.test(raw) ? '\\square' : raw;
+}
+
+export function stepIsBlank(step: Pick<Step, 'expression' | 'mathLatex'>): boolean {
+  return stepLatex(step) === '\\square';
+}
 
 /** Total question time: closed segments (elapsedMs) plus the open wall-clock segment, if any. */
 export function elapsedAt(ex: Pick<Exercise, 'elapsedMs' | 'timerRunningSince' | 'timerPaused'>, now = Date.now()): number {

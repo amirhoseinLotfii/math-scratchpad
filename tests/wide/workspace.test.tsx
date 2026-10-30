@@ -23,11 +23,11 @@ describe('wide workspace: layout and single source of state', () => {
   mount(Number(width)); expect(screen.getByRole('main')).toHaveAttribute('data-layout', String(layout));
  });
  it('tablet and laptop use the question sidebar from 900px, with mobile retaining its selector', () => {
-  mount(1024); expect(screen.queryByRole('combobox', { name:'Current exercise' })).toBeNull();
+  mount(1024); expect(screen.queryByRole('combobox', { name:'Select question' })).toBeNull();
   expect(screen.getByRole('navigation', { name:'Questions' })).toBeInTheDocument();
   expect(screen.getAllByRole('region', { name:'Question context' })).toHaveLength(1);
   expect(screen.getByRole('region', { name:'Your work' })).toBeInTheDocument();
-  cleanup(); mount(899); expect(screen.getByRole('combobox', { name:'Current exercise' })).toBeInTheDocument();
+  cleanup(); mount(899); expect(screen.getByRole('combobox', { name:'Select question' })).toBeInTheDocument();
   expect(screen.queryByRole('navigation', { name:'Questions' })).toBeNull();
  });
  it('desktop exposes all question destinations and exactly one active question', () => {
@@ -96,7 +96,7 @@ describe('wide toolbar and step behavior',()=>{
  });
  it.each([['Integral','\\int'],['2 by 2 matrix','\\begin{bmatrix}'],['Variable x','x'],['Infinity','\\infty'],['≤','\\le'],['Factorial','!']])('inserts advanced %s directly without a virtual keypad',async(name,expected)=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'More math tools'}));
-  await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:/نمایش بیشتر/}));
+  await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:/Show more/}));
   await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name}));
   expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toContain(expected);
   expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();expect(screen.getByRole('main')).toHaveFocus();

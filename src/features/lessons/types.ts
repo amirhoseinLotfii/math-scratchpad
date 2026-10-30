@@ -10,7 +10,7 @@ export interface ExampleBlock extends BlockBase { type: 'example'; title?: strin
 export interface MathBlock extends BlockBase { type: 'math'; latex: string; text?: string }
 export interface ImageBlock extends BlockBase { type: 'image'; src: string; alt: string }
 export interface ImageDescriptionBlock extends BlockBase { type: 'image-description'; text: string }
-export interface UnsupportedBlock { type: 'unsupported'; originalType: string }
+export interface UnsupportedBlock { type: 'unsupported'; originalType: string; source?: string }
 export type LessonBlock = TextBlock | DefinitionBlock | ExampleBlock | MathBlock | ImageBlock | ImageDescriptionBlock | UnsupportedBlock;
 
 export interface Concept { id: string; title: string; pages?: string; blocks: LessonBlock[]; checkQuestionIds: string[] }

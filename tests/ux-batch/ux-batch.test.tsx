@@ -94,20 +94,20 @@ describe('4 Enter creates a step', () => {
  });
 });
 
-describe('5 insert dialog “نمایش بیشتر”', () => {
+describe('5 insert dialog “Show more”', () => {
  it('shows 8 tools, expands to the full catalog, collapses again; arrows stay within visible tools', async () => {
   const { user } = mount(); await user.click(screen.getByRole('button', { name: 'More math tools' }));
   const d = screen.getByRole('dialog', { name: 'Insert Math Element' }), tools = () => d.querySelectorAll('[data-insert-kind]');
   expect(tools()).toHaveLength(INSERT_VISIBLE); expect(INSERT_VISIBLE).toBeGreaterThanOrEqual(6); expect(INSERT_VISIBLE).toBeLessThanOrEqual(8);
   expect(tools()[0]).toHaveFocus(); fireEvent.keyDown(tools()[0], { key: 'ArrowLeft' }); expect(tools()[INSERT_VISIBLE - 1]).toHaveFocus();
-  const more = within(d).getByRole('button', { name: /نمایش بیشتر/ }); expect(more).toHaveAttribute('aria-expanded', 'false');
+  const more = within(d).getByRole('button', { name: /Show more/ }); expect(more).toHaveAttribute('aria-expanded', 'false');
   await user.click(more); expect(tools().length).toBeGreaterThan(INSERT_VISIBLE); expect(within(d).getByRole('button', { name: 'Integral' })).toBeInTheDocument();
-  await user.click(within(d).getByRole('button', { name: 'نمایش کمتر' })); expect(tools()).toHaveLength(INSERT_VISIBLE);
+  await user.click(within(d).getByRole('button', { name: 'Show fewer' })); expect(tools()).toHaveLength(INSERT_VISIBLE);
  });
  it('phone also gets a collapsed list with the full catalog reachable', async () => {
   const { user } = mount({ width: 390 }); fireEvent.keyDown(screen.getByRole('main'), { key: '/' });
   const d = screen.getByRole('dialog', { name: 'Insert Math Element' }); expect(d.querySelectorAll('[data-insert-kind]')).toHaveLength(INSERT_VISIBLE);
-  await user.click(within(d).getByRole('button', { name: /نمایش بیشتر/ })); expect(d.querySelectorAll('[data-insert-kind]')).toHaveLength(10);
+  await user.click(within(d).getByRole('button', { name: /Show more/ })); expect(d.querySelectorAll('[data-insert-kind]')).toHaveLength(10);
  });
 });
 
@@ -177,7 +177,7 @@ describe('8 question guidance', () => {
  });
  it('opening marks helped permanently; closing keeps it; exports accurately; no guidance → no area', async () => {
   const store = bankStore(); const { user } = mount({ store });
-  const summary = screen.getByText('راهنمای سؤال'); const details = summary.closest('details')!; expect(details.open).toBe(false);
+  const summary = screen.getByText('Question guidance'); const details = summary.closest('details')!; expect(details.open).toBe(false);
   expect(buildTutorExport(store.getState().doc).items[0]).toMatchObject({ independent: true, guidance_opened: false, guidance_available: true });
   await user.click(summary); expect(details.open).toBe(true);
   const at = exerciseOf(store.getState().doc).guidanceOpenedAt; expect(at).toBeTruthy();
@@ -186,7 +186,7 @@ describe('8 question guidance', () => {
   expect(item).toMatchObject({ hint_used: true, independent: false, guidance_opened: true, guidance_opened_at: at });
   expect(reviewPayload(store.getState().doc)).toMatchObject({ helpUsed: true, guidanceOpened: true });
   expect(JSON.stringify(buildTutorExport(store.getState().doc))).not.toContain('ترتیب عملیات'); // guidance text not exported
-  act(() => { store.dispatch(actions.adjacentExercise(1)); }); expect(screen.queryByText('راهنمای سؤال')).toBeNull();
+  act(() => { store.dispatch(actions.adjacentExercise(1)); }); expect(screen.queryByText('Question guidance')).toBeNull();
   const restored = validateSession(JSON.parse(serialize(store.getState()))).doc; expect(restored.exercises[0].guidanceOpenedAt).toBe(at);
  });
 });

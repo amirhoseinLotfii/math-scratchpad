@@ -122,7 +122,7 @@ test('WIDE-25: the initial notebook fits the viewport without empty page scrolli
 });
 test('WIDE-26: advanced notation is available without a numeric keyboard',async({page})=>{
  await startBatch(page);await page.getByRole('button',{name:'More math tools'}).click();const dialog=page.getByRole('dialog',{name:'Insert Math Element'});
- await dialog.getByRole('button',{name:/نمایش بیشتر/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
+ await dialog.getByRole('button',{name:/Show more/}).click();await dialog.getByRole('button',{name:'Integral',exact:true}).click();await expect(dialog).toBeHidden();await page.keyboard.type('7');
  await expect(page.getByLabel('Step 1 expression')).toContainText('7');await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
 test('WIDE-27: End and Home keep the full notation catalog focus visible',async({page})=>{

@@ -37,9 +37,9 @@ describe('Drive question bank', () => {
     await readPrivateBank('privateFileId123', 'temporary-token');
     expect(fetchSpy).toHaveBeenCalledWith('https://www.googleapis.com/drive/v3/files/privateFileId123?alt=media', expect.objectContaining({ headers: { Authorization: 'Bearer temporary-token' }, cache: 'no-store' }));
   });
-  it('treats an empty Drive file as "no questions yet" and bad JSON as a Persian error', () => {
+  it('treats an empty Drive file as "no questions yet" and gives a clear English JSON error', () => {
     expect(parseBankText('')).toBe(EMPTY_BANK); expect(parseBankText('\uFEFF  \n')).toBe(EMPTY_BANK);
-    expect(() => parseBankText('{oops')).toThrow('JSON معتبر نیست');
+    expect(() => parseBankText('{oops')).toThrow('The bank file is not valid JSON. The current session was not changed.');
   });
   it('detects content change from Drive metadata without downloading', async () => {
     const meta = { id: 'privateFileId123', name: 'MATH_QUESTION_BANK.json', mimeType: 'application/json', md5Checksum: 'a', headRevisionId: 'r1', version: '5' };
@@ -49,9 +49,9 @@ describe('Drive question bank', () => {
     expect(metaFingerprint(got)).toBe(metaFingerprint({ ...meta }));
     expect(metaFingerprint(got)).not.toBe(metaFingerprint({ ...meta, md5Checksum: 'b', headRevisionId: 'r2', version: '6' }));
   });
-  it('maps Drive HTTP errors to Persian guidance', async () => {
+  it('maps Drive HTTP errors to clear English guidance', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
-    await expect(readDriveMeta('privateFileId123', 'tok')).rejects.toThrow('دوباره انتخاب');
+    await expect(readDriveMeta('privateFileId123', 'tok')).rejects.toThrow('Choose it again.');
   });
   it('does not archive a session while storage is conflicted', () => {
     const state = initialState(); state.storageState = { kind: 'conflict', message: 'conflict' };

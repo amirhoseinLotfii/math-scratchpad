@@ -1,10 +1,10 @@
-import { useId, useMemo } from 'react';
+import { useId } from 'react';
 import { Button } from '../../shared/ui/button';
-import { parse } from '../../parser';
-import { Formula } from '../../Formula';
+import { MathDisplay } from '../../MathDisplay';
 import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
 import { LessonMathCheck } from './lesson-math-check';
+import { contentDirection, languageForText, LessonText } from './lesson-content';
 import type { LessonCheckAnswer } from './types';
 
 export function LessonCheck({ question, mathStore, answer, answered, confidence, skipped, onAnswer, onConfidence, onSkip }: {
@@ -19,19 +19,16 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
   onSkip: (id: string) => void;
 }) {
   const id = useId();
-  const source = useMemo(() => {
-    if (question.mode !== 'math') return null;
-    try { return parse(question.source); } catch { return null; }
-  }, [question.mode, question.source]);
+  const sourceIsMath = question.mode === 'math';
   const answerType = question.answerType ?? (question.mode === 'text' ? 'text' : 'math');
   const choices = question.choices ?? [];
   const completed = skipped || answered;
 
   return <article className="lesson-check" aria-labelledby={`${id}-title`}>
     <header className="lesson-check-header"><h3 id={`${id}-title`}>Check · {question.id}</h3>{skipped && <span className="lesson-check-skipped">Skipped</span>}{!skipped && completed && <span className="lesson-check-answered">Answered</span>}</header>
-    {question.prompt && <p className="lesson-check-prompt" dir="auto">{question.prompt}</p>}
-    {source ? <div className="lesson-check-source" role="group" aria-label="Question expression" dir="ltr"><Formula sequence={source} stepId={`lesson-check-source-${question.id}`} top readOnly /></div>
-      : <p className="lesson-check-source-text" dir="auto">{question.source}</p>}
+    {question.prompt && <p className="lesson-check-prompt" lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
+    {sourceIsMath ? <div className="lesson-check-source" role="group" aria-label="Question expression" dir="ltr"><MathDisplay latex={question.source} label="Question expression" /></div>
+      : <p className="lesson-check-source-text" lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></p>}
 
     {!skipped && answerType === 'math' && mathStore && <LessonMathCheck question={question} store={mathStore} onAnswered={onAnswer} />}
     {!skipped && answerType === 'text' && <div className="lesson-check-text-answer">
