@@ -2,6 +2,7 @@ import { expect, test, type Page } from '../support/test';
 import { actions, initialState, makeStore } from '../../src/store';
 import { serialize } from '../../src/persistence';
 import { parse } from '../../src/parser';
+import { stepLatex } from '../../src/model';
 import { legacyStorageKey, storageKey } from '../support/mobile-journey';
 async function seedLegacy(page: Page) {
  const s = makeStore(initialState()); s.dispatch(actions.startFractionRound());
@@ -27,8 +28,9 @@ test('SYNC-01: legacy Redux v2 draft migrates into validated Zustand persistence
 test('SYNC-02: reload preserves typed math, question and ordered steps', async ({ page }) => {
  await seedLegacy(page); await page.goto('/'); await page.getByRole('main').focus(); await page.keyboard.type('123');
  await page.getByRole('button', { name: 'Add step', exact: true }).click(); await expect(page.getByRole('button', { name: 'Step 2 number empty' })).toBeFocused(); await page.keyboard.type('456');
- await expect.poll(async () => (await readSaved(page))?.state.session.doc.exercises[0].steps.length).toBe(2);
- const saved = await readSaved(page); await page.reload();
+ await expect(page.getByLabel('Step 2 expression')).toContainText('456');
+ await expect.poll(async () => { const saved = await readSaved(page); const step = saved?.state.session.doc.exercises[0].steps[1]; return step ? stepLatex(step) : null; }).toBe('456');
+ const saved = await readSaved(page); expect(saved.state.session.doc.exercises[0].steps).toHaveLength(2); await page.reload();
  await expect(page.getByLabel('Step 1 expression')).toContainText('123'); await expect(page.getByLabel('Step 2 expression')).toContainText('456');
  expect((await readSaved(page)).state.session.doc.exerciseId).toBe(saved.state.session.doc.exerciseId);
 });
