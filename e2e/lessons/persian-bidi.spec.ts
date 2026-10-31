@@ -45,7 +45,7 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     await reference.getByRole('button', { name: 'بازگشت به سؤال' }).click();
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();
-    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /توابع و تابع‌نما/ }).click();
+    await page.getByRole('dialog', { name: 'درس‌ها' }).getByRole('button', { name: /توابع و تابع‌نما/ }).click();
 
     const lessonTitle = page.locator('.lesson-header h1');
     await expect(lessonTitle).toHaveText(persianTitle);
