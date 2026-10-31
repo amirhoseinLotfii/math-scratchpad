@@ -54,7 +54,9 @@ describe('Responsive Math Scratchpad', () => {
     const input = field(), value = input.value, operator = value.indexOf('+');
     input.selection = [operator, operator + 1]; input.position = operator + 1; input.focus();
     fireEvent.keyDown(input, { key: '×' });
-    expect(stepLatex(stepOf(store.getState().doc))).toBe(value.replace('+', '×'));
+    // The physical-key adapter stores MathLive's canonical LaTeX for a
+    // multiplication sign, while preserving the surrounding formula.
+    expect(stepLatex(stepOf(store.getState().doc))).toBe(value.replace('+', String.raw`\times `));
   });
   it('keeps one shared keyboard below the phone editing tools, never nested in a step', () => {
     const {container} = mount(); showKeys();

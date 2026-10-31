@@ -319,7 +319,11 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    const stepId = mathfieldTarget.getAttribute('data-step-id');
    const step = stepId && store.getState().doc.exercises.flatMap(exercise => exercise.steps).find(item => item.id === stepId);
    const firstCharacter = /^[0-9.]$/.test(key) || /^[a-zA-Z]$/.test(key) || ['+','-','−','*','×','÷','='].includes(key);
-   if (step && stepLatex(step) === '\\square' && firstCharacter && !event.ctrlKey && !event.metaKey && !event.altKey) {
+   // Route printable math tokens through MathLive's insertion API. Its native
+   // first-key placeholder replacement can defer `input` while a React-controlled
+   // Step is still blank, causing later keydowns to be split between native and
+   // adapter insertion during rapid physical typing.
+   if (step && firstCharacter && !event.ctrlKey && !event.metaKey && !event.altKey) {
     const normalized = ({ '-':'−', '*':'×' } as Record<string,string>)[key] ?? key;
     if (insertMathSymbol(step.id, normalized)) { event.preventDefault(); return; }
    }

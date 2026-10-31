@@ -35,6 +35,7 @@ if (typeof customElements !== 'undefined' && !customElements.get('math-field')) 
     private saveUndo() { this.undoStack.push(this.currentValue); this.redoStack = []; }
     private keydown = (event: Event) => {
       const keyEvent = event as KeyboardEvent;
+      if (keyEvent.defaultPrevented) return;
       if ((keyEvent.ctrlKey || keyEvent.metaKey) && keyEvent.key.toLowerCase() === 'a') {
         keyEvent.preventDefault(); this.selection = [0, this.lastOffset]; this.position = this.lastOffset; return;
       }
