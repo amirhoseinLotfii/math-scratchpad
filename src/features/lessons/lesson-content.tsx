@@ -86,7 +86,7 @@ function LessonExample({ block, blockKey, revealed, onReveal }: {
 function LessonImage({ src, alt, lang }: { src: string; alt: string; lang?: Lang }) {
   const [failed, setFailed] = useState(false);
   return failed
-    ? <figure className="lesson-image-fallback" role="status"><span className="lesson-image-fallback-label">Image unavailable · Description</span><figcaption lang={languageForText(alt, lang)} dir={contentDirection(alt, lang)}><LessonText text={alt} lang={lang} /></figcaption></figure>
+    ? <figure className="lesson-image-fallback"><span className="lesson-image-fallback-label" role="status">Image unavailable.</span><figcaption><details><summary>Show image description</summary><p lang={languageForText(alt, lang)} dir={contentDirection(alt, lang)}><LessonText text={alt} lang={lang} /></p></details></figcaption></figure>
     : <img className="lesson-image" src={src} alt={alt} lang={languageForText(alt, lang)} onError={() => setFailed(true)} />;
 }
 

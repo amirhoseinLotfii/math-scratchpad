@@ -52,10 +52,12 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeVisible();
   });
 
-  it('shows image alternative text when a lesson image fails', () => {
+  it('offers the image description when a lesson image fails', async () => {
     render(<LessonBlockView block={{ type: 'image', src: '/missing-lesson-image.png', alt: 'Diagram showing a triangle' }} blockKey="broken-image" revealed={0} onReveal={() => undefined} />);
     fireEvent.error(screen.getByRole('img', { name: 'Diagram showing a triangle' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Diagram showing a triangle');
+    expect(screen.getByRole('status')).toHaveTextContent('Image unavailable.');
+    await userEvent.click(screen.getByText('Show image description'));
+    expect(screen.getByText('Diagram showing a triangle')).toBeVisible();
   });
 
   it('shows an unavailable-image description and a math caption without inventing a picture', () => {
