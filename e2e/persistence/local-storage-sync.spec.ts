@@ -1,4 +1,4 @@
-import { expect, test, type Page, mathField, mathValue, tapMathKeys } from '../support/test';
+import { expect, test, type Page, mathField, mathValue, clickMathKeys } from '../support/test';
 import { actions, initialState, makeStore } from '../../src/store';
 import { serialize } from '../../src/persistence';
 import { parse } from '../../src/parser';
@@ -27,8 +27,8 @@ test('SYNC-01: legacy Redux v2 draft migrates into validated Zustand persistence
 });
 test('SYNC-02: reload preserves typed math, question and ordered steps', async ({ page }) => {
  await seedLegacy(page); await page.goto('/');
- const first = mathField(page); await tapMathKeys(page, '123');
- await page.getByRole('button', { name: 'Add step', exact: true }).click(); const second = mathField(page, 2); await expect(second).toBeFocused(); await tapMathKeys(page, '456');
+ const first = mathField(page); await clickMathKeys(page, '123');
+ await page.getByRole('button', { name: 'Add step', exact: true }).click(); const second = mathField(page, 2); await expect(second).toBeFocused(); await clickMathKeys(page, '456');
  await expect.poll(() => mathValue(second)).toContain('456');
  await expect.poll(async () => { const saved = await readSaved(page); const step = saved?.state.session.doc.exercises[0].steps[1]; return step ? stepLatex(step) : null; }).toBe('456');
  const saved = await readSaved(page); expect(saved.state.session.doc.exercises[0].steps).toHaveLength(2); await page.reload();
@@ -38,7 +38,7 @@ test('SYNC-02: reload preserves typed math, question and ordered steps', async (
 test('SYNC-03: another clean tab receives a saved draft without reloading', async ({ page, context }) => {
  await seedLegacy(page); await page.goto('/'); await expectSaved(page);
  const other = await context.newPage(); await other.goto('/');
- const first = mathField(page); await tapMathKeys(page, '777');
+ const first = mathField(page); await clickMathKeys(page, '777');
  await expect.poll(() => mathValue(mathField(other))).toContain('777');
  await expect(other.getByRole('dialog', { name: /draft conflict/i })).toHaveCount(0);
 });
@@ -48,7 +48,7 @@ test('SYNC-04: storage events do not bounce forever between clean tabs', async (
  const other = await context.newPage(); await other.goto('/');
  await expect(other.getByRole('button', { name: 'Resume', exact: true })).toBeVisible(); // pause is shared through the saved session
  await other.clock.install(); await other.clock.runFor(1000);
- const first = mathField(page); await tapMathKeys(page, '222');
+ const first = mathField(page); await clickMathKeys(page, '222');
  await expect.poll(() => mathValue(mathField(other))).toContain('222');
  const before = await readSaved(other); await other.clock.runFor(2000); const after = await readSaved(other);
  expect(after.state.sync.revision).toBe(before.state.sync.revision);
@@ -92,7 +92,7 @@ test('SYNC-07: localStorage write failure keeps editing usable and exposes expor
    return original.call(this, key, value);
   };
  });
- await page.goto('/'); const first = mathField(page); await tapMathKeys(page, '987');
+ await page.goto('/'); const first = mathField(page); await clickMathKeys(page, '987');
  await expect(page.getByRole('alert').filter({ hasText: /storage|saved|backup/i })).toBeVisible();
  await expect.poll(() => mathValue(first)).toContain('987');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
