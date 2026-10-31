@@ -1,18 +1,16 @@
-import { MathDisplay } from '../../MathDisplay';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { Button } from '../../shared/ui/button';
 import type { BankQuestion } from '../drive-bank/drive-bank';
 import { getLearnChecks } from './selectors';
 import type { DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson } from './types';
-import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, LessonBlockView, LessonText } from './lesson-content';
+import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, LessonBlockView, LessonSourceAttribution, LessonText, QuestionSource } from './lesson-content';
 
 function ReadOnlyQuestion({ question }: { question: BankQuestion }) {
   return <article className="lesson-reference-check">
     <h4>Check · {question.id}</h4>
     {question.prompt && <p lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
-    {question.mode === 'math' ? <div className="lesson-check-source" dir="ltr" role="group" aria-label="Question expression"><MathDisplay latex={question.source} label="Question expression" /></div>
-      : <p className="lesson-check-source-text" lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></p>}
+    <QuestionSource source={question.source} mode={question.mode} label="Question expression" textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />
     {question.answerType === 'choice' && question.choices && <ul className="lesson-reference-choices" dir="ltr" aria-label="Available options">{question.choices.map((choice, index) => <li key={`${question.id}-${index}`}>{choice}</li>)}</ul>}
   </article>;
 }
@@ -28,6 +26,7 @@ export function LessonReferenceDialog({ lesson, bank, onOpenChange, onCloseAutoF
       {lesson && <>
         <DialogTitle lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></DialogTitle>
         <p className="lesson-reference-metadata" dir="ltr">{lesson.book} · {lesson.section}{lesson.pages ? ` · pp. ${lesson.pages}` : ''}</p>
+        <LessonSourceAttribution book={lesson.book} />
         <DialogDescription id="lesson-reference-description">Read-only lesson reference. Checks cannot be answered here.</DialogDescription>
         <div className="lesson-reference-content" role="region" aria-label="Lesson content" tabIndex={0}>
           {lesson.concepts.map((concept, conceptIndex) => <section className="lesson-reference-concept" key={concept.id} aria-labelledby={`reference-concept-${concept.id}`}>

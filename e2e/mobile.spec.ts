@@ -21,6 +21,7 @@ test('adding a step keeps the active writing area reachable and first-step delet
  const editor = mathField(page, 2);
  await expect(editor).toBeInViewport();
  await editor.click();
+ await expect.poll(() => editor.evaluate(element => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
  await page.keyboard.type('123');
  await expect.poll(() => editor.evaluate(element => (element as HTMLElement & { value: string }).value)).toContain('123');
 });

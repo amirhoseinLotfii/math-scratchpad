@@ -54,7 +54,8 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
     }
     if (!boundedText(block.src, 2000)) return unsupported('image block requires a source URL or a text description');
     if (!boundedText(block.alt, 500)) return unsupported('image block requires non-empty alt text (maximum 500 characters)');
-    return withLang({ type: 'image', src: block.src, alt: block.alt });
+    if (block.caption !== undefined && !boundedText(block.caption, 2000)) return unsupported('image caption must be non-empty text of at most 2000 characters');
+    return withLang({ type: 'image', src: block.src, alt: block.alt, ...(typeof block.caption === 'string' ? { caption: block.caption } : {}) });
   }
   return unsupported(`unsupported block type: ${rawType}`);
 }

@@ -1,10 +1,9 @@
 import { useId } from 'react';
 import { Button } from '../../shared/ui/button';
-import { MathDisplay } from '../../MathDisplay';
 import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
 import { LessonMathCheck } from './lesson-math-check';
-import { contentDirection, languageForText, LessonText } from './lesson-content';
+import { contentDirection, languageForText, LessonText, QuestionSource } from './lesson-content';
 import type { LessonCheckAnswer } from './types';
 
 export function LessonCheck({ question, mathStore, answer, answered, confidence, skipped, onAnswer, onConfidence, onSkip }: {
@@ -19,7 +18,6 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
   onSkip: (id: string) => void;
 }) {
   const id = useId();
-  const sourceIsMath = question.mode === 'math';
   const answerType = question.answerType ?? (question.mode === 'text' ? 'text' : 'math');
   const choices = question.choices ?? [];
   const completed = skipped || answered;
@@ -27,8 +25,7 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
   return <article className="lesson-check" aria-labelledby={`${id}-title`}>
     <header className="lesson-check-header"><h3 id={`${id}-title`}>Check · {question.id}</h3>{skipped && <span className="lesson-check-skipped">Skipped</span>}{!skipped && completed && <span className="lesson-check-answered">Answered</span>}</header>
     {question.prompt && <p className="lesson-check-prompt" lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
-    {sourceIsMath ? <div className="lesson-check-source" role="group" aria-label="Question expression" dir="ltr"><MathDisplay latex={question.source} label="Question expression" /></div>
-      : <p className="lesson-check-source-text" lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></p>}
+    <QuestionSource source={question.source} mode={question.mode} label="Question expression" textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />
 
     {!skipped && answerType === 'math' && mathStore && <LessonMathCheck question={question} store={mathStore} onAnswered={onAnswer} />}
     {!skipped && answerType === 'text' && <div className="lesson-check-text-answer">

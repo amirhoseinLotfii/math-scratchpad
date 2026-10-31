@@ -77,6 +77,16 @@ describe('lesson-aware bank parser', () => {
     expect(parsed.parseWarnings?.join(' ')).toContain('image source is missing');
   });
 
+  it('retains a valid image source, Persian alt text and figure caption', () => {
+    const parsed = validateBank(rawBank([question('Q1')], [lesson('L1', [concept('C1', { blocks: [
+      { type: 'image', lang: 'fa', src: 'https://openstax.org/figure.webp', alt: 'نمودار یک تابع', caption: 'شکل ۱: تابع' },
+    ] })])]));
+    expect(parsed.lessons?.[0].concepts[0].blocks).toEqual([
+      { type: 'image', lang: 'fa', src: 'https://openstax.org/figure.webp', alt: 'نمودار یک تابع', caption: 'شکل ۱: تابع' },
+    ]);
+    expect(parsed.parseWarnings).toBeUndefined();
+  });
+
   it('drops missing check references and exposes valid learn checks only', () => {
     const parsed = validateBank(rawBank([
       question('CHECK', { lessonId: 'L1', conceptId: 'C1', stage: 'learn' }),

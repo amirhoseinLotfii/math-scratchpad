@@ -3,7 +3,7 @@ import { MathDisplay } from '../../MathDisplay';
 import { Button } from '../../shared/ui/button';
 import { parseLessonTable } from './lesson-table';
 import { splitLessonText } from './lesson-notation';
-import type { Concept, ExampleBlock, LessonBlock, Lang } from './types';
+import type { Concept, ExampleBlock, Lesson, LessonBlock, Lang } from './types';
 
 export function languageForText(text: string, lang?: Lang): Lang | undefined {
   if (lang) return lang;
@@ -67,6 +67,35 @@ export function LessonMath({ latex, label }: { latex: string; label: string }) {
   </div>;
 }
 
+const mathIdentifiers = new Set(['a', 'b', 'c', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'sin', 'cos', 'tan', 'log', 'ln', 'sqrt']);
+
+/** Identify unmistakable TeX and compact equations inside text-mode question sources. */
+export function isMathQuestionSource(source: string, mode: 'math' | 'text'): boolean {
+  if (mode === 'math') return true;
+  const text = source.trim();
+  if (!text) return false;
+  if (parseLessonTable(text)) return true;
+  if (/\\(?:begin\{(?:array|matrix|cases)\}|text\{|quad\b|qquad\b|frac\b|sqrt\b|left\b|right\b|cdot\b|times\b)/.test(text) || /\\[{}]/.test(text)) return true;
+  const identifiers = text.match(/[A-Za-z]+/g)?.map(value => value.toLowerCase()) ?? [];
+  const compactMath = /^[\sA-Za-z0-9()+\-*/=.,;:?^_|{}\[\]\\∛√]+$/u.test(text)
+    && /[=+*/^]|(?:^|\s)-\d/u.test(text)
+    && identifiers.every(identifier => mathIdentifiers.has(identifier));
+  return compactMath;
+}
+
+export function QuestionSource({ source, mode, label = 'Question expression', mathLabel = label, textClassName, mathClassName }: {
+  source: string;
+  mode: 'math' | 'text';
+  label?: string;
+  mathLabel?: string;
+  textClassName: string;
+  mathClassName: string;
+}) {
+  if (!source.trim()) return null;
+  if (isMathQuestionSource(source, mode)) return <div className={`${mathClassName} lesson-question-math`} dir="ltr" role="group" aria-label={label}>{mode === 'math' ? <MathDisplay latex={source} label={mathLabel} /> : <LessonMath latex={source} label={mathLabel} />}</div>;
+  return <p className={textClassName} lang={languageForText(source)} dir={contentDirection(source)}><LessonText text={source} /></p>;
+}
+
 function LessonExample({ block, blockKey, revealed, onReveal }: {
   block: ExampleBlock; blockKey: string; revealed: number; onReveal: (value: number) => void;
 }) {
@@ -90,11 +119,19 @@ function LessonExample({ block, blockKey, revealed, onReveal }: {
   </section>;
 }
 
-function LessonImage({ src, alt, lang }: { src: string; alt: string; lang?: Lang }) {
+function LessonImage({ src, alt, caption, lang }: { src: string; alt: string; caption?: string; lang?: Lang }) {
   const [failed, setFailed] = useState(false);
+  const captionView = caption && <figcaption className="lesson-image-caption" lang={languageForText(caption, lang)} dir={contentDirection(caption, lang)}><LessonText text={caption} lang={lang} /></figcaption>;
   return failed
-    ? <figure className="lesson-image-fallback"><span className="lesson-image-fallback-label" role="status">Image unavailable.</span><figcaption><details><summary>Show image description</summary><p lang={languageForText(alt, lang)} dir={contentDirection(alt, lang)}><LessonText text={alt} lang={lang} /></p></details></figcaption></figure>
-    : <img className="lesson-image" src={src} alt={alt} lang={languageForText(alt, lang)} onError={() => setFailed(true)} />;
+    ? <figure className="lesson-image-fallback"><span className="lesson-image-fallback-label" role="status">Image unavailable.</span>{captionView}<figcaption><details><summary>Show image description</summary><p lang={languageForText(alt, lang)} dir={contentDirection(alt, lang)}><LessonText text={alt} lang={lang} /></p></details></figcaption></figure>
+    : <figure className="lesson-image-figure"><img className="lesson-image" src={src} alt={alt} lang={languageForText(alt, lang)} onError={() => setFailed(true)} />{captionView}</figure>;
+}
+
+export function LessonSourceAttribution({ book }: { book: Lesson['book'] }) {
+  if (!/openstax.*precalculus\s*2e/i.test(book)) return null;
+  return <p className="lesson-source-attribution">
+    متن و شکل‌های این درس از <a href="https://openstax.org/books/precalculus-2e/pages/1-1-functions-and-function-notation" target="_blank" rel="noreferrer">OpenStax، کتاب Precalculus 2e، بخش ۱٫۱</a> گرفته و به فارسی ترجمه یا بازآرایی شده‌اند. © Rice University. مجوز: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a>.
+  </p>;
 }
 
 export function LessonBlockView({ block, blockKey, revealed, onReveal }: {
@@ -108,8 +145,8 @@ export function LessonBlockView({ block, blockKey, revealed, onReveal }: {
   </section>;
   if (block.type === 'example') return <LessonExample block={block} blockKey={blockKey} revealed={revealed} onReveal={onReveal} />;
   if (block.type === 'math') return block.text ? <figure className="lesson-math-figure"><figcaption lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></figcaption><LessonMath latex={block.latex} label="Lesson formula" /></figure> : <LessonMath latex={block.latex} label="Lesson formula" />;
-  if (block.type === 'image') return <LessonImage src={block.src} alt={block.alt} lang={block.lang} />;
-  if (block.type === 'image-description') return <figure className="lesson-image-fallback"><figcaption><span className="lesson-image-fallback-label">Image description</span><p lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></p></figcaption></figure>;
+  if (block.type === 'image') return <LessonImage src={block.src} alt={block.alt} caption={block.caption} lang={block.lang} />;
+  if (block.type === 'image-description') return <figure className="lesson-image-fallback"><span className="lesson-image-fallback-label" role="status">Image unavailable.</span><figcaption><details><summary>Show image description</summary><p lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></p></details></figcaption></figure>;
   if (block.type === 'unsupported') return <aside className="lesson-unsupported" role="note">
     <p>Unsupported block: {block.originalType}. Original content is shown as data.</p>
     {block.source && <pre dir="ltr">{block.source}</pre>}

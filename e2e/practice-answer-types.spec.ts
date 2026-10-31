@@ -19,7 +19,7 @@ test('Practice text and choice answers remain usable across narrow, tablet and d
     await expect(prompt).toBeVisible();
     await expect(prompt).toHaveAttribute('dir', 'rtl');
     await expect(prompt).toHaveCSS('text-align', 'right');
-    await expect(page.getByText('{(1,4), (2,4), (3,5)}')).toBeVisible();
+    await expect(page.getByRole('math', { name: 'Original question expression' })).toBeVisible();
     const header = page.locator('.app-header');
     const titleBox = await header.locator('h1').boundingBox();
     const progressBox = await header.locator('.header-progress-copy').boundingBox();

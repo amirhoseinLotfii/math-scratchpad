@@ -8,7 +8,7 @@ export interface TextBlock extends BlockBase { type: 'heading' | 'paragraph' | '
 export interface DefinitionBlock extends BlockBase { type: 'definition'; text: string; latex?: string }
 export interface ExampleBlock extends BlockBase { type: 'example'; title?: string; text?: string; latex?: string; steps: string[] }
 export interface MathBlock extends BlockBase { type: 'math'; latex: string; text?: string }
-export interface ImageBlock extends BlockBase { type: 'image'; src: string; alt: string }
+export interface ImageBlock extends BlockBase { type: 'image'; src: string; alt: string; caption?: string }
 export interface ImageDescriptionBlock extends BlockBase { type: 'image-description'; text: string }
 export interface UnsupportedBlock { type: 'unsupported'; originalType: string; source?: string }
 export type LessonBlock = TextBlock | DefinitionBlock | ExampleBlock | MathBlock | ImageBlock | ImageDescriptionBlock | UnsupportedBlock;
