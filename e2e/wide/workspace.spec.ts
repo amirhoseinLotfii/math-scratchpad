@@ -48,7 +48,7 @@ test('WIDE-07: navigator switches questions without deleting drafts or fabricati
 });
 test('WIDE-08: slash chooser accepts keyboard selection and returns to work',async({page})=>{
  await startBatch(page);await page.getByRole('main').focus();await page.keyboard.press('/');const d=page.getByRole('dialog',{name:'Insert Math Element'});
- await expect(d).toBeVisible();await page.keyboard.press('Enter');await expect(d).toBeHidden();await page.keyboard.type('42');await expect(page.getByLabel('Step 1 expression')).toContainText('42');
+ await expect(d).toBeVisible();await page.keyboard.press('Enter');await expect(d).toBeHidden();await expect(page.getByRole('main')).toBeFocused();await page.keyboard.type('42');await expect(page.getByLabel('Step 1 expression')).toContainText('42');
 });
 test('WIDE-09: focused numbers respect digit boundaries before moving fields',async({page})=>{
  await page.goto('/');const numerator=page.getByRole('button',{name:/Step 1.*Numerator number 2/}).first();await numerator.click();await page.keyboard.type('34');
