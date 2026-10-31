@@ -1,6 +1,24 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
+test('desktop exercise menu opens the lesson picker with keyboard navigation', async ({ page }) => {
+  await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
+  await expect(page.getByText('Sample practice 1.')).toBeVisible();
+
+  const trigger = page.getByRole('button', { name: 'Exercise menu' });
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  const lessonsItem = page.getByRole('menuitem', { name: 'Lessons' });
+  await expect(lessonsItem).toBeVisible();
+  await page.keyboard.press('Home');
+  for (let item = 0; item < 10 && !(await lessonsItem.evaluate(element => element === document.activeElement)); item++) {
+    await page.keyboard.press('ArrowDown');
+  }
+  await expect(lessonsItem).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Lessons' })).toBeVisible();
+});
+
 test('desktop lesson reference keeps section navigation clear, collapsible and keyboard accessible', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
