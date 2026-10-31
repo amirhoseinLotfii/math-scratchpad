@@ -107,8 +107,8 @@ test('Learn layouts and interactions stay readable across phone, tablet, and des
   await expect.poll(() => secondField.evaluate(element => document.activeElement === element)).toBe(true);
   await page.keyboard.type('1234');
   await expect.poll(() => mathLatex(secondField)).toBe('1234');
-  await page.getByRole('button', { name: 'Mark Step 2 as final' }).click();
-  await expect(page.getByRole('button', { name: 'Mark Step 2 as final' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Final answer, Step 2' }).click();
+  await expect(page.getByRole('button', { name: 'Final answer, Step 2' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Step 1', exact: true }).click();
   const firstField = page.locator('.lesson-answer-step').first().locator('math-field');
   await firstField.click();
