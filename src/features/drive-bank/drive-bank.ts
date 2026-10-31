@@ -146,7 +146,7 @@ export async function snapshotVersion(bank: DriveBank): Promise<string> {
 }
 export function bankDocument(bank: DriveBank, version: string, includedQuestions: BankQuestion[] = bank.questions.filter(question => question.stage !== 'learn')): Document {
   if (!includedQuestions.length) throw Error('No practice questions are available in this bank yet.');
-  const exercises: Exercise[] = includedQuestions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), stage: q.stage ?? 'practice', ...(q.conceptId ? { conceptId: q.conceptId } : {}), steps: [blankStep()] }));
+  const exercises: Exercise[] = includedQuestions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, answerType: q.answerType ?? (q.mode === 'text' ? 'text' : 'math'), ...(q.answerType === 'choice' && q.choices ? { choices: [...q.choices] } : {}), ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), stage: q.stage ?? 'practice', ...(q.conceptId ? { conceptId: q.conceptId } : {}), steps: [blankStep()] }));
   const first = exercises[0], step = first.steps[0];
   return { session: { ...newSessionMeta(), bankId: bank.bank_id, bankVersion: version }, exercises, exerciseId: first.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
 }
