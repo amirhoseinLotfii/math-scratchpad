@@ -39,18 +39,27 @@ export function MathLiveStepInput({
     if (!field) return;
     let disposed = false;
     let attached = false;
+    const pendingInitialKeys: string[] = [];
     const input = () => onInputRef.current(field.value);
     const focus = () => onFocusRef.current();
     const keydown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (!/^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(field.value)) return;
+      const currentValue = typeof field.value === 'string' && field.value !== '' ? field.value : fieldValue(valueRef.current);
+      if (!/^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(currentValue)) return;
       // MathLive's native first-key insertion can leave the blank placeholder
-      // unchanged on some mobile Chromium builds. Route only this initial key
-      // through the shared adapter; subsequent typing stays native to MathLive.
+      // unchanged on some mobile Chromium builds. Also catch keys before a
+      // lazily upgraded field is ready, then replay them after registration.
       if (mathLatexForSymbol(event.key) === undefined) return;
       event.preventDefault();
+      if (!attached) {
+        pendingInitialKeys.push(event.key);
+        return;
+      }
       insertMathSymbol(stepId, event.key);
     };
+    // Listen before awaiting custom-element upgrade so a fast first keystroke
+    // cannot disappear in the gap between React rendering and MathLive setup.
+    field.addEventListener('keydown', keydown, true);
     const attach = () => {
       if (disposed || typeof field.executeCommand !== 'function') return;
       attached = true;
@@ -64,7 +73,7 @@ export function MathLiveStepInput({
       if (field.value.includes('\\placeholder')) field.executeCommand('moveToNextPlaceholder');
       field.addEventListener('input', input);
       field.addEventListener('focus', focus);
-      field.addEventListener('keydown', keydown);
+      for (const key of pendingInitialKeys.splice(0)) insertMathSymbol(stepId, key);
     };
 
     // A React layout effect can run before a lazily registered custom element is
@@ -78,9 +87,9 @@ export function MathLiveStepInput({
       if (attached) {
         field.removeEventListener('input', input);
         field.removeEventListener('focus', focus);
-        field.removeEventListener('keydown', keydown);
         if (mathfieldForStep(stepId) === field) registerMathfield(stepId, null);
       }
+      field.removeEventListener('keydown', keydown, true);
     };
   }, [stepId]);
 
