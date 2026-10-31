@@ -210,7 +210,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    }
    if (!target) { focusEditor(); return; }
    target.focus({ preventScroll: true });
-   target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+   target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
  }
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
