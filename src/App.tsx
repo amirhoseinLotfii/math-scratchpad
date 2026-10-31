@@ -63,6 +63,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
+ const resetCancelRef = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const batch = state.doc.exercises.length > 1, last = exerciseIndex === state.doc.exercises.length - 1;
@@ -103,6 +104,9 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const copied = !state.copies[ex.id] ? '' : state.copies[ex.id] === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
  const matchingBank = loadedBank && state.doc.session?.bankId === loadedBank.bank.bank_id && state.doc.session?.bankVersion === loadedBank.version ? loadedBank : null;
  const currentBankQuestion = matchingBank && ex.bankQuestionId ? matchingBank.bank.questions.find(question => question.id === ex.bankQuestionId) : undefined;
+ const answerType = ex.answerType ?? currentBankQuestion?.answerType ?? (currentBankQuestion?.mode === 'text' ? 'text' : 'math');
+ const answerChoices = ex.choices ?? currentBankQuestion?.choices ?? [];
+ const isMathAnswer = answerType === 'math';
  const linkedLesson = currentBankQuestion?.stage !== 'learn' ? getLesson(matchingBank?.bank ?? {}, currentBankQuestion?.lessonId) : undefined;
  const activePracticeLessonId = practiceLessonId ?? (currentBankQuestion?.stage !== 'learn' && currentBankQuestion?.lessonId && lessonProgressById[currentBankQuestion.lessonId]?.status === 'practising' ? currentBankQuestion.lessonId : null);
  const lessons = loadedBank?.bank.lessons ?? [];
@@ -196,6 +200,22 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   setPracticeLessonId(null);
  }
  function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
+ function focusCurrentMathControl() {
+  requestAnimationFrame(() => {
+   const cursor = store.getState().doc.cursor;
+   const step = Array.from(document.querySelectorAll<HTMLElement>('[data-step-id]')).find(element => element.dataset.stepId === cursor.stepId);
+   if (!step) { focusEditor(); return; }
+   let target: HTMLButtonElement | undefined;
+   if (cursor.sequenceId) {
+    target = Array.from(step.querySelectorAll<HTMLButtonElement>('.math-gap')).find(element => element.dataset.sequenceId === cursor.sequenceId && Number(element.dataset.gapIndex) === cursor.index);
+   } else if (cursor.nodeId) {
+    target = Array.from(step.querySelectorAll<HTMLButtonElement>('[data-node-id]')).find(element => element.dataset.nodeId === cursor.nodeId);
+   }
+   if (!target) { focusEditor(); return; }
+   target.focus({ preventScroll: true });
+   target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  });
+ }
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
@@ -265,12 +285,9 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const action = decisionRef.current; if (!action) return;
   decisionRef.current = null; if (action !== 'copy') dispatch(actions.autoFinal()); dispatch(actions.setConfidence(value)); setDecision(null); commit(action);
  }
- function addStep() {
-  dispatch(actions.command({ type: 'newStep' })); focusEditor();
-  requestAnimationFrame(() => document.querySelector(`[data-step-id="${store.getState().doc.cursor.stepId}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' }));
- }
- function resetStep(id: string) { dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'clear' })); focusEditor(); }
- function deleteStep(id: string) { if (id === ex.steps[0].id) return; dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'deleteStep' })); focusEditor(); }
+ function addStep() { dispatch(actions.command({ type: 'newStep' })); focusCurrentMathControl(); }
+ function resetStep(id: string) { dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'clear' })); focusCurrentMathControl(); }
+ function deleteStep(id: string) { if (id === ex.steps[0].id) return; dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'deleteStep' })); focusCurrentMathControl(); }
  const start = problemForm.handleSubmit(value => {
   try {
    if (value.mode === 'math') parse(value.source);
@@ -288,7 +305,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable) return;
   const inMath = target === editorRoot.current || !!target.closest('.expression'); if (!inMath) return;
   if (event.ctrlKey || event.metaKey) {
-   if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); }
+   if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); focusEditor(); }
    else if (key.toLowerCase() === 'y') { event.preventDefault(); dispatch(actions.redo()); } return;
   }
   if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); return; }
@@ -322,8 +339,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
-    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Answered questions" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>
-     <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>
+    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>
+     {isMathAnswer && <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>}
      <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onClick={() => setMenu(value => !value)}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu">
       <DropdownMenuItem className="menu-primary-action" onSelect={() => request('copy')}><ClipboardCheck aria-hidden="true" />Check · Copy for Review</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => { void exportTutor(); }}><FileJson2 aria-hidden="true" />Export for tutor (JSON)</DropdownMenuItem>
@@ -381,22 +398,34 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     <section className="problem" aria-label="Current problem">{(wide || linkedLesson || fractions) && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}{linkedLesson && <Button ref={lessonButton} className="lesson-reference-trigger" onClick={() => openReference(linkedLesson)}><BookOpen aria-hidden="true" />Lesson</Button>}</div>}{ex.prompt && <p className="question-statement" lang={languageForText(ex.prompt)} dir={contentDirection(ex.prompt)}><LessonText text={ex.prompt} /></p>}{ex.mode === 'math' ? <div className="problem-formula" aria-label="Original problem" dir="ltr"><MathDisplay latex={ex.source} label="Original question expression" /></div> : !ex.prompt && <p className="question-statement" lang={languageForText(ex.source)} dir={contentDirection(ex.source)}><LessonText text={ex.source} /></p>}{ex.guidance && <details className="question-guidance" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>Question guidance{ex.guidanceOpenedAt ? <span className="small guidance-used"> · Used</span> : null}</summary><p lang={languageForText(ex.guidance)} dir={contentDirection(ex.guidance)}><LessonText text={ex.guidance} /></p></details>}</section>
     <QuestionTimer key={ex.id} exerciseId={ex.id} />
     </div>
-    <div className={`editor-layout work-pane ${state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? 'Your work' : undefined}><div className="notebook-main">
-    {wide && mathTools}
-    {wide && <div className="work-heading"><h2>Your work</h2><p className="small">Write each step. Review when you're ready.</p></div>}
+    <div className={`editor-layout work-pane ${isMathAnswer && state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? (isMathAnswer ? 'Your work' : 'Your response') : undefined}><div className="notebook-main">
+    {wide && isMathAnswer && mathTools}
+    {wide && <div className="work-heading"><h2>{isMathAnswer ? 'Your work' : 'Your response'}</h2>{isMathAnswer && <p className="small">Write each step. Review when you're ready.</p>}</div>}
 
-    <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => <article className={`step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id} data-step-id={step.id}>
+    {isMathAnswer ? <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => <article className={`step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id} data-step-id={step.id}>
      <header className="step-header"><Button className="step-title" variant="ghost" onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); focusEditor(); }}>Step {i + 1}</Button><span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
       <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); dispatch(actions.command({ type: 'final' })); }}>Final{step.final ? ' ✓' : ''}</Button>
       <Button size="icon" variant="ghost" aria-label={`Reset Step ${i + 1}`} title={`Reset Step ${i + 1}`} onClick={() => resetStep(step.id)}><RotateCcw aria-hidden="true" /></Button><Button size="icon" variant="ghost" disabled={i === 0} aria-label={`Delete Step ${i + 1}`} title={i === 0 ? 'The first step cannot be deleted' : `Delete Step ${i + 1}`} onClick={() => deleteStep(step.id)}><Trash2 aria-hidden="true" /></Button>
      </header><div className="expression" aria-label={`Step ${i + 1} expression`}><Formula sequence={step.expression} stepId={step.id} path={`Step ${i + 1}`} top /></div>
      {step.id === state.doc.cursor.stepId && <p className="selection small"><span className="selection-dot" aria-hidden="true" />{selectionLabel}</p>}
-    </article>)}</section>
-    <p className={`small final-status ${ex.steps.some(step => step.final) ? '' : 'missing'}`} role="status">{(() => { const final = ex.steps.findIndex(step => step.final); return final < 0 ? 'No final answer marked yet · press Alt+Enter or “Final” on a step' : `Final answer: Step ${final + 1}`; })()}</p>
-    <Button className="add-step" onClick={addStep}><Plus aria-hidden="true" />Add step</Button>
-    {!wide && mathTools}
-    {state.keyboardOpen && <Keyboard />}
+    </article>)}</section> : answerType === 'text' ? <div className="lesson-check-text-answer practice-response">
+     <label htmlFor={`practice-answer-${ex.id}`}>Answer</label>
+     <textarea id={`practice-answer-${ex.id}`} aria-label="Answer" dir="auto" maxLength={4000} value={ex.answerText ?? ''} onChange={event => dispatch(actions.setAnswerText({ value: event.target.value, answerType: 'text' }))} />
+    </div> : <fieldset className="lesson-check-choice practice-response">
+     <legend>Choose one option</legend><div className="lesson-choice-options" role="radiogroup" aria-label="Answer choices">
+      {answerChoices.map((answerChoice, index) => <label className={ex.answerText === answerChoice ? 'lesson-choice-selected' : ''} key={`${ex.id}-${index}`} dir="ltr">
+       <input type="radio" name={`practice-answer-${ex.id}`} value={answerChoice} checked={ex.answerText === answerChoice} onChange={() => dispatch(actions.setAnswerText({ value: answerChoice, answerType: 'choice', choices: answerChoices }))} /><span>{answerChoice}</span>
+      </label>)}
+     </div>
+    </fieldset>}
+    {isMathAnswer && <>
+     <p className={`small final-status ${ex.steps.some(step => step.final) ? '' : 'missing'}`} role="status">{(() => { const final = ex.steps.findIndex(step => step.final); return final < 0 ? 'No final answer marked yet · press Alt+Enter or “Final” on a step' : `Final answer: Step ${final + 1}`; })()}</p>
+     <Button className="add-step" onClick={addStep}><Plus aria-hidden="true" />Add step</Button>
+     {!wide && mathTools}
+     {state.keyboardOpen && <Keyboard />}
+    </>}
     <footer className="review-controls">{wide && <p className="wide-keyboard-hint"><kbd>/</kbd> Open math tools · <kbd>Ctrl / Cmd + Z</kbd> Undo · <kbd>Tab</kbd> Move focus</p>}{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
+
      <p className={`copy-state ${copied === 'Changed since copy' ? 'changed' : ''}`}>{copied}</p><p className="small" role="status" aria-live="polite">{state.notice}</p>
      {batch && <nav className="question-navigation" aria-label="Question navigation"><Button disabled={exerciseIndex === 0} onClick={() => { dispatch(actions.adjacentExercise(-1)); setManual(''); }}>← Previous</Button><Button onClick={() => request(last ? 'complete' : 'next')}>{last ? 'Finish session' : 'Next question →'}</Button></nav>}
      {wide && batch && !ex.skipped && <p className="confidence-hint">Confidence required before continuing.</p>}
@@ -414,8 +443,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
   <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>
-  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="default" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
-  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); setEditingScales(false); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc" onCloseAutoFocus={event => { if (editingScales && menuInvoker.current) { event.preventDefault(); menuInvoker.current.focus({preventScroll:true}); } }}><DialogTitle>{editingScales ? 'Change session ratings' : 'Before you start this batch'}</DialogTitle><DialogDescription id="wellbeing-desc">Optional. You can change this later.</DialogDescription>
+  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent onOpenAutoFocus={event => { event.preventDefault(); resetCancelRef.current?.focus({ preventScroll: true }); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }}><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button ref={resetCancelRef} onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="danger" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
+  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); setEditingScales(false); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { if (editingScales) menuInvoker.current?.focus({ preventScroll: true }); else focusEditor(); }); }}><DialogTitle>{editingScales ? 'Change session ratings' : 'Before you start this batch'}</DialogTitle><DialogDescription id="wellbeing-desc">Optional. You can change this later.</DialogDescription>
    <SessionScales meta={state.doc.session} onMeta={value => dispatch(actions.setSessionMeta(value))} />
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />

@@ -40,7 +40,7 @@ test('batch progress and question selector stay readable at narrow phone widths'
  await startBatch(page);
  const title = page.locator('.app-header .brand'), progress = page.locator('.header-progress'), actions = page.locator('.header-actions');
  const selector = page.getByRole('combobox', { name: 'Select question' });
- await expect(progress).toContainText('0 of 20 answered');
+ await expect(progress).toContainText('0 of 20 practice questions answered');
  const [titleBox, progressBox, actionsBox, selectorBox] = await Promise.all([title.boundingBox(), progress.boundingBox(), actions.boundingBox(), selector.boundingBox()]);
  expect(titleBox && progressBox && actionsBox && selectorBox).toBeTruthy();
  const overlaps = (a: NonNullable<typeof titleBox>, b: NonNullable<typeof progressBox>) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
