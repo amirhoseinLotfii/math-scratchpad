@@ -92,7 +92,7 @@ export function QuestionSource({ source, mode, label = 'Question expression', ma
   mathClassName: string;
 }) {
   if (!source.trim()) return null;
-  if (isMathQuestionSource(source, mode)) return <div className={`${mathClassName} lesson-question-math`} dir="ltr" role="group" aria-label={label}><LessonMath latex={source} label={mathLabel} /></div>;
+  if (isMathQuestionSource(source, mode)) return <div className={`${mathClassName} lesson-question-math`} dir="ltr" role="group" aria-label={label}>{mode === 'math' ? <MathDisplay latex={source} label={mathLabel} /> : <LessonMath latex={source} label={mathLabel} />}</div>;
   return <p className={textClassName} lang={languageForText(source)} dir={contentDirection(source)}><LessonText text={source} /></p>;
 }
 
