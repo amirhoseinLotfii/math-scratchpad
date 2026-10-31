@@ -1,4 +1,4 @@
-import { test, expect, dismissWellbeing } from './support/test';
+import { test, expect, dismissWellbeing, mathField } from './support/test';
 test.beforeEach(async ({ page }) => { await page.goto('/'); });
 test('touch controls fit the mobile container and preserve keypad order', async ({ page }) => {
  if (!(await page.locator('[aria-label="Numeric keys"]').isVisible())) await page.getByRole('button', { name: /Show Keyboard/ }).click();
@@ -18,10 +18,11 @@ test('adding a step keeps the active writing area reachable and first-step delet
  await expect(page.getByRole('button', { name: 'Delete Step 1' })).toBeDisabled();
  await page.getByRole('button', { name: 'Add step', exact: true }).click();
  await expect(page.getByRole('button', { name: 'Delete Step 2' })).toBeEnabled();
- const editor = page.getByLabel('Step 2 expression');
+ const editor = mathField(page, 2);
  await expect(editor).toBeInViewport();
+ await editor.click();
  await page.keyboard.type('123');
- await expect(editor).toContainText('123');
+ await expect.poll(() => editor.evaluate(element => (element as HTMLElement & { value: string }).value)).toContain('123');
 });
 test('each phone step keeps its Final control visible and stateful', async ({ page }) => {
  const final = page.getByRole('button', { name: 'Mark Step 1 as final' });

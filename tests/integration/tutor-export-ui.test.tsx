@@ -5,14 +5,14 @@ afterEach(cleanup);
 describe('tutor export and session UI', () => {
  it('Alt+Enter marks the current step as final answer from the keyboard', async () => {
   const { store } = renderMobileApp();
-  const editor = screen.getByRole('main', { name: 'Math Scratchpad' });
+  const editor = screen.getByLabelText('Step 1 expression');
   fireEvent.keyDown(editor, { key: '5' }); fireEvent.keyDown(editor, { key: 'Enter', altKey: true });
   expect(store.getState().doc.exercises[0].steps[0].final).toBe(true);
   expect(screen.getByText(/Final answer: Step 1/)).toBeTruthy();
  });
  it('warns before export when an answered item has no final answer', async () => {
   const { store, user } = renderMobileApp();
-  fireEvent.keyDown(screen.getByRole('main', { name: 'Math Scratchpad' }), { key: '5' });
+  fireEvent.keyDown(screen.getByLabelText('Step 1 expression'), { key: '5' });
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await user.click(screen.getByRole('menuitem', { name: /Export for tutor/ }));
   const dialog = await screen.findByRole('dialog', { name: /Final answer missing/ });

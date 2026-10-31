@@ -39,6 +39,7 @@ test('neutral control borders and small practice labels are readable', async ({ 
   expect(contrastRatio(cssRgb(inputContrast.border), cssRgb(inputContrast.background))).toBeGreaterThanOrEqual(3);
   await page.getByRole('button', { name: 'Cancel' }).click();
 
+  await page.getByRole('button', { name: 'Show Keyboard' }).click();
   const stepStateFontSize = await page.locator('.step-state').first().evaluate(element => parseFloat(getComputedStyle(element).fontSize));
   const keyboardLabelFontSize = await page.locator('.keyboard-toolbar button').first().evaluate(element => parseFloat(getComputedStyle(element).fontSize));
   expect(stepStateFontSize).toBeGreaterThanOrEqual(12);

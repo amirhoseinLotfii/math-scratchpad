@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '../support/test';
+import { expect, test, type Page, mathField, mathValue, tapMathKeys } from '../support/test';
 import { actions, initialState, makeStore } from '../../src/store';
 import { serialize } from '../../src/persistence';
 import { parse } from '../../src/parser';
@@ -26,19 +26,20 @@ test('SYNC-01: legacy Redux v2 draft migrates into validated Zustand persistence
  expect(await page.evaluate(key => localStorage.getItem(key), legacyStorageKey)).not.toBeNull();
 });
 test('SYNC-02: reload preserves typed math, question and ordered steps', async ({ page }) => {
- await seedLegacy(page); await page.goto('/'); await page.getByRole('main').focus(); await page.keyboard.type('123');
- await page.getByRole('button', { name: 'Add step', exact: true }).click(); await expect(page.getByRole('button', { name: 'Step 2 number empty' })).toBeFocused(); await page.keyboard.type('456');
- await expect(page.getByLabel('Step 2 expression')).toContainText('456');
+ await seedLegacy(page); await page.goto('/');
+ const first = mathField(page); await tapMathKeys(page, '123');
+ await page.getByRole('button', { name: 'Add step', exact: true }).click(); const second = mathField(page, 2); await expect(second).toBeFocused(); await tapMathKeys(page, '456');
+ await expect.poll(() => mathValue(second)).toContain('456');
  await expect.poll(async () => { const saved = await readSaved(page); const step = saved?.state.session.doc.exercises[0].steps[1]; return step ? stepLatex(step) : null; }).toBe('456');
  const saved = await readSaved(page); expect(saved.state.session.doc.exercises[0].steps).toHaveLength(2); await page.reload();
- await expect(page.getByLabel('Step 1 expression')).toContainText('123'); await expect(page.getByLabel('Step 2 expression')).toContainText('456');
+ await expect.poll(() => mathValue(mathField(page))).toContain('123'); await expect.poll(() => mathValue(mathField(page, 2))).toBe('456');
  expect((await readSaved(page)).state.session.doc.exerciseId).toBe(saved.state.session.doc.exerciseId);
 });
 test('SYNC-03: another clean tab receives a saved draft without reloading', async ({ page, context }) => {
  await seedLegacy(page); await page.goto('/'); await expectSaved(page);
  const other = await context.newPage(); await other.goto('/');
- await page.getByRole('main').focus(); await page.keyboard.type('777');
- await expect(other.getByLabel('Step 1 expression')).toContainText('777');
+ const first = mathField(page); await tapMathKeys(page, '777');
+ await expect.poll(() => mathValue(mathField(other))).toContain('777');
  await expect(other.getByRole('dialog', { name: /draft conflict/i })).toHaveCount(0);
 });
 test('SYNC-04: storage events do not bounce forever between clean tabs', async ({ page, context }) => {
@@ -47,8 +48,8 @@ test('SYNC-04: storage events do not bounce forever between clean tabs', async (
  const other = await context.newPage(); await other.goto('/');
  await expect(other.getByRole('button', { name: 'Resume', exact: true })).toBeVisible(); // pause is shared through the saved session
  await other.clock.install(); await other.clock.runFor(1000);
- await page.getByRole('main').focus(); await page.keyboard.type('222');
- await expect(other.getByLabel('Step 1 expression')).toContainText('222');
+ const first = mathField(page); await tapMathKeys(page, '222');
+ await expect.poll(() => mathValue(mathField(other))).toContain('222');
  const before = await readSaved(other); await other.clock.runFor(2000); const after = await readSaved(other);
  expect(after.state.sync.revision).toBe(before.state.sync.revision);
  expect(after.state.sync.writerId).toBe(before.state.sync.writerId);
@@ -58,7 +59,14 @@ test('SYNC-05: an unsaved local edit is preserved when a conflicting remote revi
  await expectSaved(page); const other = await context.newPage(); await other.goto('/');
  // Freeze this tab before editing so the 180 ms autosave cannot race the remote write.
  await page.clock.pauseAt(new Date(Date.now() + 2000));
- await page.getByRole('main').focus(); await page.keyboard.type('111');
+ const first = mathField(page);
+ // Dispatch one MathLive input synchronously so the test can deliver a remote
+ // storage event before the 180 ms persistence debounce flushes this local edit.
+ await first.evaluate(element => {
+  const field = element as HTMLElement & { value: string };
+  field.focus(); field.value = '111'; field.dispatchEvent(new Event('input', { bubbles: true }));
+ });
+ await expect.poll(() => mathValue(first)).toBe('111');
  const remote = structuredClone(await readSaved(page)), expression = parse('888');
  expect(remote.state.session.doc.exercises[0].steps[0].expression.children[0].value).toBe('');
  remote.state.session.doc.exercises[0].steps[0].expression = expression;
@@ -69,7 +77,7 @@ test('SYNC-05: an unsaved local edit is preserved when a conflicting remote revi
  await other.evaluate(({ key, raw }) => localStorage.setItem(key, raw), { key: storageKey, raw: JSON.stringify(remote) });
  const conflict = page.getByRole('dialog', { name: /draft conflict/i }); await expect(conflict).toBeVisible();
  await conflict.getByRole('button', { name: /Keep this tab/i }).click();
- await expect(page.getByLabel('Step 1 expression')).toContainText('111');
+ await expect.poll(() => mathValue(first)).toContain('111');
 });
 test('SYNC-06: malformed saved data is not silently overwritten on application boot', async ({ page }) => {
  const bad = '{broken-json'; await page.addInitScript(({ key, raw }) => localStorage.setItem(key, raw), { key: storageKey, raw: bad });
@@ -84,9 +92,9 @@ test('SYNC-07: localStorage write failure keeps editing usable and exposes expor
    return original.call(this, key, value);
   };
  });
- await page.goto('/'); await page.getByRole('main').focus(); await page.keyboard.type('987');
+ await page.goto('/'); const first = mathField(page); await tapMathKeys(page, '987');
  await expect(page.getByRole('alert').filter({ hasText: /storage|saved|backup/i })).toBeVisible();
- await expect(page.getByLabel('Step 1 expression')).toContainText('987');
+ await expect.poll(() => mathValue(first)).toContain('987');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
  await expect(page.getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();

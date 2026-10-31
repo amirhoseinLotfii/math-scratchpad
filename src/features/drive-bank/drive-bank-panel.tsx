@@ -104,7 +104,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
     try {
       const doc = bankDocument(available.bank, available.version);
       archiveSession(store.getState());
-      dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(true))); onBankReady?.(available.bank, available.version);
+      dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(false))); onBankReady?.(available.bank, available.version);
       setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous session was saved in this browser.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`); }
   }

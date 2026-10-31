@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
 import { QuestionTimer } from '../src/QuestionTimer';
 import { actions, activeInfo, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
-import { elapsedAt, latex, leaves } from '../src/model';
+import { elapsedAt, latex, leaves, stepLatex } from '../src/model';
 import { serialize, validateSession } from '../src/persistence';
 import { fingerprint } from '../src/review';
 import { parse } from '../src/parser';
@@ -72,21 +73,22 @@ describe('Predictable keyboard editing',()=>{
   fireEvent.keyDown(screen.getByRole('button',{name:'Exercise menu'}),{key:'ArrowRight'});expect(JSON.stringify(s.getState().doc.cursor)).toBe(before);
   const expression=latex(stepOf(s.getState().doc).expression);fireEvent.keyDown(document.querySelector('main')!,{key:'5',isComposing:true});expect(latex(stepOf(s.getState().doc).expression)).toBe(expression);
  });
- it('keeps DOM keyboard focus and the math caret on the same token after Tab',()=>{
-  const s=mount(), tokens=screen.getByLabelText('Step 1 expression').querySelectorAll<HTMLButtonElement>('[data-node-id]');
-  expect(tokens.length).toBe(5);
-  tokens[0].focus();expect(s.getState().doc.cursor.nodeId).toBe(tokens[0].getAttribute('data-node-id'));
-  tokens[2].focus();const id=tokens[2].getAttribute('data-node-id');
-  expect(s.getState().doc.cursor.nodeId).toBe(id);fireEvent.keyDown(tokens[2],{key:'-'});
-  expect(latex(stepOf(s.getState().doc).expression)).toBe('\\frac{2}{3}-\\frac{1}{4}');
+ it('keeps focus in the single MathLive field and inserts a minus at its exact caret position',()=>{
+  const s=mount(), field=screen.getByLabelText('Step 1 expression') as HTMLElement & { value: string; position: number };
+  field.value='12345';fireEvent.input(field);field.position=2;field.focus();fireEvent.keyDown(field,{key:'-'});
+  expect(document.activeElement).toBe(field);
+  expect(stepLatex(stepOf(s.getState().doc))).toBe('12-345');
+  expect(field.position).toBe(3);
  });
- it('focusing an insertion gap with Tab aligns the math cursor before typing',()=>{
-  const s=mount(); const expression=screen.getByLabelText('Step 1 expression');
-  const gap=screen.getByRole('button',{name:'Step 1 Insert after item 1'});
-  gap.focus();
-  expect(s.getState().doc.cursor.sequenceId).toBe(expression.querySelector('[data-sequence]')!.getAttribute('data-sequence'));
-  fireEvent.keyDown(gap,{key:'7'});
-  expect(latex(stepOf(s.getState().doc).expression)).toBe('\\frac{2}{3}7+\\frac{1}{4}');
+ it('Next field moves to the next inserted MathLive placeholder before physical typing',async()=>{
+  const s=mount();const field=screen.getByLabelText('Step 1 expression') as HTMLElement & { value:string };
+  await userEvent.click(screen.getByRole('button',{name:'Show Keyboard'}));
+  await userEvent.click(screen.getByRole('button',{name:/^Fraction$/}));
+  await userEvent.click(screen.getByRole('button',{name:'More tools'}));
+  await userEvent.click(screen.getByRole('button',{name:'Next field'}));
+  fireEvent.keyDown(field,{key:'7'});
+  expect(field.value).toContain('7');
+  expect(stepLatex(stepOf(s.getState().doc))).toBe(field.value);
  });
  it('inserting parentheses after an operator keeps later terms outside the group',()=>{
   const s=create(),step=stepOf(s.getState().doc);step.expression=parse('1+45+6');

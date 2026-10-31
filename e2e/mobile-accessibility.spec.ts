@@ -1,5 +1,17 @@
 import { test, expect } from './support/test';
 import { startBatch } from './support/mobile-journey';
+function mathField(page: import('@playwright/test').Page, step = 'Step 1 expression') {
+ return page.locator(`math-field[aria-label="${step}"]`);
+}
+function readLatex(field: import('@playwright/test').Locator) {
+ return field.evaluate(element => (element as HTMLElement & { value: string }).value);
+}
+async function typeWithAppKeys(page: import('@playwright/test').Page, value: string) {
+ const showKeyboard = page.getByRole('button', { name: 'Show Keyboard' });
+ if (await showKeyboard.count()) await showKeyboard.click();
+ const group = page.getByRole('group', { name: 'Numeric keys' });
+ for (const digit of value) await group.getByRole('button', { name: digit, exact: true }).tap();
+}
 test('confidence dialog traps Tab and Shift+Tab and restores focus', async ({ page }) => {
  await startBatch(page);
  const next = page.getByRole('button', { name: /Next question/i }); await next.click();
@@ -55,36 +67,47 @@ test('200 percent text size preserves controls and avoids page overflow', async 
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 test('long formula uses local scrolling without page overflow', async ({ page }) => {
- await page.goto('/'); await page.locator('main').focus(); await page.keyboard.type('123456789012345678901234567890123456789012345678901234567890');
+ await page.goto('/');
+ const field = mathField(page);
+ await expect(field).toBeVisible();
+ await typeWithAppKeys(page, '123456789012345678901234567890123456789012345678901234567890');
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
- await expect(page.getByLabel('Step 1 expression')).toBeVisible();
+ expect(await readLatex(field)).toContain('12345678901234567890');
+ await expect(field).toBeVisible();
 });
 test('reset and Undo preserve editable expression in a real browser', async ({ page }) => {
- await page.goto('/'); const main = page.locator('main'); await main.focus(); await page.keyboard.type('9');
- const before = await page.getByLabel('Step 1 expression').textContent();
+ await page.goto('/'); const field = mathField(page);
+ const initial = await readLatex(field);
+ await typeWithAppKeys(page, '9');
+ const afterEdit = await readLatex(field);
+ expect(afterEdit).not.toBe(initial);
+ await field.focus(); await page.keyboard.press('Control+z');
+ await expect.poll(() => readLatex(field)).toBe(initial);
+ await page.keyboard.press('Control+Shift+z');
+ await expect.poll(() => readLatex(field)).toBe(afterEdit);
  await page.getByRole('button', { name: 'Reset Step 1' }).click();
- await main.focus(); await page.keyboard.press('Control+z');
- await expect(page.getByLabel('Step 1 expression')).toHaveText(before!);
+ await expect.poll(() => readLatex(field)).not.toBe(afterEdit);
+ await typeWithAppKeys(page, '4');
+ await expect.poll(() => readLatex(field)).toBe('4');
 });
 test('rotation preserves the current answer and keeps next-question control reachable', async ({ page }) => {
- await startBatch(page); await page.locator('main').focus(); await page.keyboard.type('123');
- const before = await page.getByLabel('Step 1 expression').textContent();
+ await startBatch(page); const field = mathField(page); await typeWithAppKeys(page, '123');
+ const before = await readLatex(field);
  await page.setViewportSize({ width: 844, height: 390 });
- await expect(page.getByLabel('Step 1 expression')).toHaveText(before!);
+ await expect.poll(() => readLatex(field)).toBe(before);
  await page.getByRole('button', { name: /Next question/i }).scrollIntoViewIfNeeded();
  await expect(page.getByRole('button', { name: /Next question/i })).toBeInViewport();
 });
 test('tapping a number never moves to a different question', async ({ page }) => {
  await startBatch(page);
  const selector = page.getByRole('combobox', { name: 'Select question' }); const before = await selector.inputValue();
- const keys = page.locator('[aria-label="Numeric keys"]');
- for (const name of ['1','2','3']) await keys.getByRole('button', { name, exact: true }).tap();
- await expect(page.getByLabel('Step 1 expression')).toContainText('123');
+ await typeWithAppKeys(page, '123');
+ await expect.poll(() => readLatex(mathField(page))).toBe('123');
  await expect(selector).toHaveValue(before);
 });
 test('clipboard export contains the whole batch rather than only the visible question', async ({ page, context }) => {
  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
- await startBatch(page); await page.locator('main').focus(); await page.keyboard.type('123');
+ await startBatch(page); await typeWithAppKeys(page, '123');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();

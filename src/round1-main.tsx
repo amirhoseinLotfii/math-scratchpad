@@ -21,7 +21,7 @@ try {
 } catch { state.notice = 'Draft could not be restored. Import Session JSON if available.'; }
 const store = makeStore(state);
 if (!restored) store.dispatch(actions.startFractionRound());
-store.dispatch(actions.keyboard(initialKeyboardOpen(true)));
+store.dispatch(actions.keyboard(initialKeyboardOpen(false)));
 let pending: ReturnType<typeof setTimeout>;
 let warned = false;
 function save() {

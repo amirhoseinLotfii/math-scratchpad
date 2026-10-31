@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Provider } from '../../src/app/store-provider';
@@ -75,13 +75,13 @@ describe('3 confidence dialog focus', () => {
 });
 
 describe('4 Enter creates a step', () => {
- it('Enter in the editor adds and focuses a blank step; Alt+Enter still marks Final', () => {
+ it('Enter in the editor adds and focuses a blank step; Alt+Enter still marks Final', async () => {
   const { store } = mount(); const main = screen.getByRole('main');
   fireEvent.keyDown(main, { key: '5' }); fireEvent.keyDown(main, { key: 'Enter', altKey: true });
   expect(exerciseOf(store.getState().doc).steps[0].final).toBe(true); expect(exerciseOf(store.getState().doc).steps).toHaveLength(1);
   fireEvent.keyDown(main, { key: 'Enter' });
   const ex = exerciseOf(store.getState().doc); expect(ex.steps).toHaveLength(2); expect(store.getState().doc.cursor.stepId).toBe(ex.steps[1].id);
-  expect(latex(ex.steps[1].expression)).toBe('\\square'); expect(main).toHaveFocus();
+  expect(latex(ex.steps[1].expression)).toBe('\\square'); await waitFor(() => expect(screen.getByLabelText('Step 2 expression')).toHaveFocus());
   fireEvent.keyDown(main, { key: 'z', ctrlKey: true }); expect(exerciseOf(store.getState().doc).steps).toHaveLength(1);
  });
  it('Enter on buttons, selects and dialogs is not intercepted', async () => {

@@ -184,6 +184,27 @@ const handlers = {
       state.doc.cursor.stepId = step.id;
       state.notice = '';
     },
+    /** MathLive owns character-level undo and selection; persist its exact LaTeX without copying every key into app history. */
+    mathLiveInput(state: ScratchState, action: PayloadAction<{ stepId: string; value: string }>) {
+      const exercise = exerciseOf(state.doc), index = exercise.steps.findIndex(step => step.id === action.payload.stepId);
+      const step = exercise.steps[index];
+      if (!step || action.payload.value.length > 4000) return;
+      const value = action.payload.value || String.raw`\placeholder{}`;
+      if (step.mathLatex === value) return;
+      step.mathLatex = value;
+      const blankValue = /^\s*(?:\\placeholder(?:\[[^\]]*\])?\{\}\s*)+$/.test(value);
+      if (blankValue) step.expression = blank();
+      else {
+        try { step.expression = parse(value); } catch { /* Keep the last compatible AST; mathLatex is the lossless source. */ }
+      }
+      step.edited = true;
+      if (!exercise.startedAt) exercise.startedAt = isoLocal();
+      invalidate(state.doc, index);
+      state.future = state.future.filter(snapshot => snapshot.exerciseId !== exercise.id);
+      const first = leaves(step.expression)[0]?.node;
+      state.doc.cursor = { stepId: step.id, nodeId: first?.id ?? null, sequenceId: null, index: 0, offset: 0, selected: null };
+      state.notice = '';
+    },
     command(state: ScratchState, action: PayloadAction<Command>) {
       const before = clone(state.doc), exId = state.doc.exerciseId, index = exerciseOf(state.doc).steps.indexOf(stepOf(state.doc));
       try {

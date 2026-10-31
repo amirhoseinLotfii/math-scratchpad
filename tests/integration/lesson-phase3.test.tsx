@@ -83,6 +83,7 @@ describe('Phase 3 Learn integration', () => {
     expect(serialize(store.getState())).not.toContain('Option B');
     await user.click(screen.getByRole('button', { name: 'Next concept →' }));
     const answerEditor = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+    await user.click(within(answerEditor).getByRole('button', { name: 'Show Keyboard' }));
     await user.click(within(answerEditor).getByRole('button', { name: /^8$/ }));
     await user.click(within(answerEditor).getByRole('button', { name: /^Fraction$/ }));
     await user.click(within(answerEditor).getByRole('button', { name: /^3$/ }));

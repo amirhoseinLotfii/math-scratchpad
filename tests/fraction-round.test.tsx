@@ -26,21 +26,24 @@ describe('Minimal original-UI fixes and twenty-question round',()=>{
   expect(JSON.stringify(exerciseOf(store.getState().doc).steps)).toBe(before);
   screen.getByRole('main').focus();await userEvent.keyboard('/[Escape]');expect(screen.queryByRole('dialog')).toBeNull();
  });
- it('removes an empty inserted structure with the keyboard Backspace without leaving visible insertion dots; Undo restores it',()=>{
-  const {store,container}=mount();click('⌨ Show Keyboard');click('Add step');click('Insert fraction');
-  const deleted=stepOf(store.getState().doc).expression.children[0].id;
+ it('inserts a fraction into the MathLive field and Backspace/Undo operate on that field',()=>{
+  const {store}=mount();click('⌨ Show Keyboard');click('Add step');click('Insert fraction');
+  const current=screen.getByLabelText('Step 2 expression') as HTMLElement & { value: string };
+  const inserted = current.value;
+  expect(inserted).toContain('\\frac');
+  expect(current.querySelectorAll('[data-node-id], .fraction, .math-gap')).toHaveLength(0);
   click('Backspace');
-  expect(stepOf(store.getState().doc).expression.children.some(n=>n.id===deleted)).toBe(false);
-  const current=screen.getByLabelText('Step 2 expression');
-  expect(current.querySelector('.fraction')).toBeNull();
-  expect([...current.querySelectorAll('.math-gap')].every(el=>el.textContent==='')).toBe(true);
-  act(()=>store.dispatch(actions.undo()));expect(screen.getByLabelText('Step 2 expression').querySelector('.fraction')).toBeTruthy();
-  expect(container.querySelectorAll('.math-gap').length).toBeGreaterThan(0);
+  expect(current.value).not.toBe(inserted);
+  fireEvent.keyDown(current, { key: 'z', ctrlKey: true });
+  expect(current.value).toBe(inserted);
+  expect(store.getState().doc.cursor.stepId).toBe(stepOf(store.getState().doc).id);
  });
- it('preserves literal decimal points while hiding decorative insertion dots',()=>{
+ it('preserves literal decimal points in the MathLive value without decorative token boxes',()=>{
   const {store}=mount();click('Add step');
   act(()=>{for(const value of ['1','.','5'])store.dispatch(actions.command({type:'digit',value}));});
-  expect(screen.getByLabelText('Step 2 number 1.5')).toBeTruthy();
+  const field = screen.getByLabelText('Step 2 expression') as HTMLElement & { value: string };
+  expect(field.value).toBe('1.5');
+  expect(field.querySelectorAll('[data-node-id], .math-token')).toHaveLength(0);
  });
  it('adds twenty questions in the original notebook and retains answers, confidence and skips through JSON',async()=>{
   const {store}=mount();click('Exercise menu');click('Start Round 1 · 20 fraction questions');click('Start 20 Questions');

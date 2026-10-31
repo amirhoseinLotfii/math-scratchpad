@@ -87,8 +87,12 @@ test('connected Learn flow, reference panel and responsive layouts', async ({ pa
   await learn.getByRole('radio', { name: 'Option A' }).click();
   await learn.getByRole('button', { name: 'Next concept →' }).click();
   const mathEditor = learn.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-  await mathEditor.getByRole('button', { name: '8', exact: true }).click();
-  await expect(mathEditor.locator('.lesson-answer-step.current-step .token-active')).toBeInViewport();
+  const answerField = mathEditor.locator('math-field[aria-label="Step 1 expression"]');
+  await mathEditor.getByRole('button', { name: 'Show Keyboard' }).click();
+  await mathEditor.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '8', exact: true }).click();
+  await expect.poll(() => answerField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
+  await expect(answerField).toBeInViewport();
+  await expect.poll(() => answerField.evaluate(element => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
   const pinnedExpression = learn.getByRole('group', { name: 'Question expression' });
   await expect(pinnedExpression).toHaveCSS('position', 'sticky');

@@ -1,10 +1,18 @@
 import { build } from 'esbuild';
 import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 const result = await build({ entryPoints: [process.argv[2] ?? 'src/main.tsx'], bundle: true, write: false, minify: true, format: 'iife', define: { 'process.env.NODE_ENV': '"production"', 'import.meta.hot': 'undefined', 'import.meta.env.DEV': 'false' }, loader: { '.css': 'empty' } });
-const css = await readFile('src/styles/tokens.css', 'utf8') + '\n' + await readFile('src/fonts.css', 'utf8') + '\n' + await readFile('src/styles.css', 'utf8');
+const appCss = await readFile('src/styles/tokens.css', 'utf8') + '\n' + await readFile('src/fonts.css', 'utf8') + '\n' + await readFile('src/styles.css', 'utf8');
+let mathCss = await readFile('node_modules/mathlive/mathlive-fonts.css', 'utf8') + '\n' + await readFile('node_modules/mathlive/mathlive-static.css', 'utf8');
+for (const match of [...mathCss.matchAll(/url\((fonts\/[^)]+)\)/g)]) {
+  const fontPath = match[1];
+  const font = await readFile(join('node_modules/mathlive', fontPath));
+  mathCss = mathCss.replaceAll(`url(${fontPath})`, `url(data:font/woff2;base64,${font.toString('base64')})`);
+}
+const css = `${appCss}\n${mathCss}`;
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const fragment = `<div id="math-scratchpad-redux"></div>\n<style>\n${css}\n</style>\n<script>\n(()=>{${js}})();\n</script>\n`;
-if (Buffer.byteLength(fragment) >= 1000000) throw Error('Inline bundle is too large.');
+if (Buffer.byteLength(fragment) >= 3000000) throw Error('Inline bundle is too large.');
 await writeFile('dist/inline-fragment.html', fragment);
 await writeFile('dist/standalone.html', `<!doctype html>\n<html lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>Math Scratchpad</title></head><body>${fragment}</body></html>`);
-console.log(`Self-contained bundle: ${Buffer.byteLength(fragment)} bytes`);
+console.log(`Self-contained bundle: ${Buffer.byteLength(fragment)} bytes (MathLive fonts embedded for offline use).`);

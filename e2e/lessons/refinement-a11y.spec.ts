@@ -7,7 +7,10 @@ test('Learn choice, math keyboard, and skip dialog have no automated WCAG A/AA v
   for (const state of ['choice', 'math', 'skip'] as const) {
     await page.goto(`/e2e/fixtures/lesson-preview.html?view=${state === 'skip' ? 'text' : state}`);
     if (state === 'math') {
-      await page.getByRole('group', { name: 'Numeric keys' }).waitFor();
+      const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+      await expect(editor.getByRole('button', { name: 'Show Keyboard' })).toHaveAttribute('aria-expanded', 'false');
+      await editor.getByRole('button', { name: 'Show Keyboard' }).click();
+      await expect(editor.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
     } else if (state === 'skip') {
       await page.getByRole('button', { name: 'Skip check' }).click();
       await page.getByRole('dialog', { name: 'Skip this check?' }).waitFor();

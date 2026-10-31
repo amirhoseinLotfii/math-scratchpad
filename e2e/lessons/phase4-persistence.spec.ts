@@ -16,8 +16,11 @@ test('Learn progress restores in the connected app and its lesson status survive
   await page.getByRole('radio', { name: 'Confidence 4' }).check();
   await page.getByRole('button', { name: 'Next concept →' }).click();
   const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-  await editor.getByRole('button', { name: '8', exact: true }).click();
-  await expect(editor.locator('.lesson-answer-step.current-step .token-active')).toBeInViewport();
+  const answerField = editor.locator('math-field[aria-label="Step 1 expression"]');
+  await editor.getByRole('button', { name: 'Show Keyboard' }).click();
+  await editor.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '8', exact: true }).click();
+  await expect.poll(() => answerField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
+  await expect(answerField).toBeInViewport();
   await expect(page.getByRole('group', { name: 'Question expression' })).toBeInViewport();
   const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, page: document.documentElement.scrollWidth }));
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
@@ -33,8 +36,10 @@ test('Learn progress restores in the connected app and its lesson status survive
   await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Learning/ }).click();
   await expect(page.getByRole('heading', { name: 'Second sample concept' })).toBeVisible();
   const restoredEditor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-  await expect(restoredEditor.locator('.lesson-answer-steps')).toContainText('8');
-  await expect(restoredEditor.getByRole('button', { name: 'Hide Keyboard' })).toBeVisible();
+  const restoredField = restoredEditor.locator('math-field[aria-label="Step 1 expression"]');
+  await expect.poll(() => restoredField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
+  await expect(restoredEditor.getByRole('button', { name: 'Show Keyboard' })).toBeVisible();
+  await expect(restoredEditor.getByRole('group', { name: 'Numeric keys' })).toHaveCount(0);
   await page.getByRole('button', { name: '← Previous concept' }).click();
   await expect(page.getByRole('radio', { name: 'Option B' })).toBeChecked();
   await expect(page.getByRole('radio', { name: 'Confidence 4' })).toBeChecked();

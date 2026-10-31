@@ -1,11 +1,11 @@
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Provider } from '../../src/app/store-provider';
 import { App } from '../../src/App';
 import { actions, exerciseOf, initialState, makeStore } from '../../src/store';
-import { latex } from '../../src/model';
+import { latex, stepLatex } from '../../src/model';
 function viewport(initial: number) {
  let width = initial; const listeners = new Set<() => void>();
  vi.stubGlobal('matchMedia', (query: string) => ({ media: query, get matches() { return width >= Number(query.match(/min-width:\s*(\d+)/)?.[1] ?? Infinity); }, addEventListener: (_: string, fn: () => void) => listeners.add(fn), removeEventListener: (_: string, fn: () => void) => listeners.delete(fn) }));
@@ -82,8 +82,8 @@ describe('wide toolbar and step behavior',()=>{
  });
  it('undo and redo target the current question and return typing to the editor',async()=>{
   const {store,user}=mount();fireEvent.keyDown(screen.getByRole('main'),{key:'5'});
-  await user.click(screen.getByRole('button',{name:'Undo'}));expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('\\square');expect(screen.getByRole('main')).toHaveFocus();
-  await user.click(screen.getByRole('button',{name:'Redo'}));expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('5');
+  await user.click(screen.getByRole('button',{name:'Undo'}));expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('\\square');await waitFor(()=>expect(screen.getByLabelText('Step 1 expression')).toHaveFocus());
+  await user.click(screen.getByRole('button',{name:'Redo'}));expect(stepLatex(exerciseOf(store.getState().doc).steps[0])).toBe('5');
  });
  it('Add step stays blank and first step remains protected',async()=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'Add step'}));
@@ -98,8 +98,8 @@ describe('wide toolbar and step behavior',()=>{
   const {store,user}=mount();await user.click(screen.getByRole('button',{name:'More math tools'}));
   await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name:/Show more/}));
   await user.click(within(screen.getByRole('dialog',{name:'Insert Math Element'})).getByRole('button',{name}));
-  expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toContain(expected);
-  expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();expect(screen.getByRole('main')).toHaveFocus();
+  expect(stepLatex(exerciseOf(store.getState().doc).steps[0])).toContain(expected);
+  expect(screen.queryByRole('group',{name:'Numeric keys'})).toBeNull();await waitFor(()=>expect(screen.getByLabelText('Step 1 expression')).toHaveFocus());
  });
  it('pressing Enter on an unrelated toolbar control does not type into a number',()=>{
   const {store}=mount();const before=structuredClone(store.getState().doc);
