@@ -24,7 +24,7 @@ test('Learn layouts and interactions stay readable across phone, tablet, and des
   const choiceA = page.getByRole('radio', { name: 'Option A' });
   const choiceB = page.getByRole('radio', { name: 'Option B' });
   await expect(choiceA).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Next concept →' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Next section →' })).toBeDisabled();
   const choiceBoxes = await page.locator('.lesson-choice-options label').evaluateAll(labels => labels.map(label => {
     const rect = label.getBoundingClientRect();
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
@@ -35,7 +35,7 @@ test('Learn layouts and interactions stay readable across phone, tablet, and des
   await choiceB.check();
   await page.getByRole('radio', { name: 'Confidence 4' }).check();
   await expect(page.locator('.lesson-choice-selected')).toContainText('Option B');
-  await expect(page.getByRole('button', { name: 'Next concept →' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Next section →' })).toBeEnabled();
   await capture(page, 'choice-selected-mobile-390');
 
   await page.setViewportSize({ width: 320, height: 740 });
@@ -52,7 +52,7 @@ test('Learn layouts and interactions stay readable across phone, tablet, and des
   await expect(page.locator('.math-tools-row')).toHaveCount(0);
   await expect(page.getByText('Write each step')).toHaveCount(0);
   await textAnswer.fill('Temporary preview response');
-  await expect(page.getByRole('button', { name: 'Next concept →' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Next section →' })).toBeEnabled();
   await textAnswer.scrollIntoViewIfNeeded();
   await expect(textAnswer).toBeInViewport();
   await capture(page, 'text-answer-mobile-390x640');

@@ -42,7 +42,7 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     expect(referenceDimensions.document).toBeLessThanOrEqual(referenceDimensions.viewport);
     await page.screenshot({ path: `/tmp/math-scratchpad-bidi-reference-${viewport.width}x${viewport.height}.png`, fullPage: true });
 
-    await reference.getByRole('button', { name: 'Back to question' }).click();
+    await reference.getByRole('button', { name: 'بازگشت به سؤال' }).click();
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();
     await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /توابع و تابع‌نما/ }).click();

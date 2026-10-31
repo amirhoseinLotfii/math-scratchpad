@@ -17,6 +17,7 @@ const bank = validateBank({
     { id: 'TEXT-1', mode: 'text', source: String.raw`\{(1,4),\ (2,4),\ (3,5)\}`, prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
     { id: 'CHOICE-1', mode: 'math', source: 'x+1', prompt: 'Choose one.', answerType: 'choice', choices: ['<', '>'] },
     { id: 'MATH-1', mode: 'math', source: '2+3' },
+    { id: 'MATH-CHOICE-1', mode: 'math', source: 'x+1', prompt: 'یک عبارت هم‌ارز را انتخاب کنید.', answerType: 'choice', choices: [String.raw`x^2`, String.raw`\frac{1}{2}`] },
   ],
 });
 const VERSION = 'answer-types-v1';
@@ -35,7 +36,7 @@ function mount() {
 describe('Practice question answer types', () => {
   it('maps answer types and options into a backward-compatible session document', () => {
     const doc = bankDocument(bank, VERSION);
-    expect(doc.exercises.map(exercise => exercise.answerType)).toEqual(['text', 'choice', 'math']);
+    expect(doc.exercises.map(exercise => exercise.answerType)).toEqual(['text', 'choice', 'math', 'choice']);
     expect(doc.exercises[1].choices).toEqual(['<', '>']);
 
     const legacy = validateBank({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'legacy-text', version: 'v1', questions: [{ id: 'OLD-1', mode: 'math', source: '1+2' }, { id: 'OLD-2', mode: 'text', source: 'Describe the pattern.' }] });
@@ -48,6 +49,18 @@ describe('Practice question answer types', () => {
     expect(within(problem).getByText('آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟')).toBeVisible();
     expect(within(problem).getByRole('math', { name: 'Original question expression' })).toHaveTextContent(String.raw`\{(1,4),\ (2,4),\ (3,5)\}`);
     expect(screen.getByRole('textbox', { name: 'Answer' })).toBeVisible();
+  });
+
+  it('renders mathematical answer choices as readable MathLive expressions', async () => {
+    const user = userEvent.setup();
+    const store = mount();
+    act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.adjacentExercise(1)); });
+    const first = screen.getByRole('math', { name: 'Mathematical answer choice 1' });
+    const second = screen.getByRole('math', { name: 'Mathematical answer choice 2' });
+    expect(first).toHaveTextContent('x^2');
+    expect(second).toHaveTextContent(String.raw`\frac{1}{2}`);
+    await user.click(screen.getByRole('radio', { name: /Mathematical answer choice 1/ }));
+    expect(store.getState().doc.exercises[3]).toMatchObject({ answerType: 'choice', answerText: String.raw`x^2` });
   });
 
   it('renders text and choice controls, keeps answers on question switches, and leaves math steps intact', async () => {
@@ -76,7 +89,7 @@ describe('Practice question answer types', () => {
     expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveValue('A short explanation');
     act(() => store.dispatch(actions.adjacentExercise(1)));
     expect(screen.getByRole('radio', { name: '>' })).toBeChecked();
-    act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.adjacentExercise(1)); });
+    act(() => store.dispatch(actions.adjacentExercise(1)));
     expect(screen.getByRole('button', { name: 'Add step' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Mark Step 1 as final' })).toBeVisible();
   });

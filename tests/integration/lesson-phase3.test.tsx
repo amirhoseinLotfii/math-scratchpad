@@ -52,7 +52,10 @@ describe('Phase 3 Learn integration', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog.getAttribute('aria-labelledby')).toBe(within(dialog).getByRole('heading', { name: 'Sample lesson' }).id);
     expect(within(dialog).getByText('Sample concept heading')).toBeVisible();
+    expect(within(dialog).queryByText('Another sample concept')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Next section →' }));
     expect(within(dialog).getByText('Another sample concept')).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: '← Previous section' }));
     expect(within(dialog).getByText('Sample choice check.')).toBeVisible();
     expect(within(dialog).queryAllByRole('radio')).toHaveLength(0);
     expect(store.getState().doc.exercises[0].timerPaused).toBe(true);
@@ -81,7 +84,7 @@ describe('Phase 3 Learn integration', () => {
     await user.click(screen.getByRole('radio', { name: 'Option B' }));
     expect(store.getState().doc).toEqual(before);
     expect(serialize(store.getState())).not.toContain('Option B');
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
     const answerEditor = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
     await user.click(within(answerEditor).getByRole('button', { name: 'Show Keyboard' }));
     await user.click(within(answerEditor).getByRole('button', { name: /^8$/ }));

@@ -43,7 +43,7 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
 
   await page.setViewportSize({ width: 390, height: 640 });
   await page.getByRole('radio', { name: 'Option A' }).click();
-  await page.getByRole('button', { name: 'Next concept →' }).click();
+  await page.getByRole('button', { name: 'Next section →' }).click();
   const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
   await expect(editor.locator('math-field[aria-label="Step 1 expression"]')).toBeVisible();
   await expect(editor.getByRole('group', { name: 'Numeric keys' })).toHaveCount(0);

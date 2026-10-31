@@ -1,6 +1,7 @@
 import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress, LessonStatus } from './types';
+import { buildLessonSections } from './lesson-sections';
 
 export const LESSON_PROGRESS_PREFIX = 'math-scratchpad-lesson-progress-v1';
 export const LESSON_PROGRESS_SCHEMA = 1;
@@ -22,7 +23,7 @@ export type LessonProgressState = {
   found: boolean;
 };
 export type LessonProgressExport = Pick<LessonProgress,
-  'lessonId' | 'status' | 'completedConceptIds' | 'learnStartedAt' | 'skippedChecks' | 'learnSkipped' | 'learnDoneAt' | 'practiceStartedAt'>;
+  'lessonId' | 'status' | 'currentSectionIndex' | 'completedSectionIds' | 'completedConceptIds' | 'learnStartedAt' | 'skippedChecks' | 'learnSkipped' | 'learnDoneAt' | 'practiceStartedAt'>;
 export type LessonExportData = { lessonProgress: LessonProgressExport[]; lessonPanelEvents: LessonPanelEvent[] };
 
 export function lessonProgressStorageKey(bankId: string, bankVersion: string) {
@@ -38,6 +39,10 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 function timestamp(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 40 && timestampPattern.test(value) && Number.isFinite(Date.parse(value));
+}
+function declaredVersionNumber(value: string): number | undefined {
+  const match = value.match(/(?:^|[-_])v(\d+)(?:[-_]|$)/i) ?? value.match(/^v(\d+)$/i);
+  return match ? Number(match[1]) : undefined;
 }
 function nowTimestamp() { return new Date().toISOString(); }
 function answerType(question: BankQuestion): 'math' | 'text' | 'choice' {
@@ -64,6 +69,21 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
   if (value.summaryOpen !== undefined && typeof value.summaryOpen !== 'boolean') return undefined;
   const index = value.currentConceptIndex;
   if (!Number.isInteger(index) || (lesson.concepts.length === 0 ? index !== 0 : (index as number) < 0 || (index as number) >= lesson.concepts.length)) return undefined;
+  const sections = buildLessonSections(lesson);
+  const currentConceptId = lesson.concepts[index as number]?.id;
+  const derivedSectionIndex = Math.max(0, sections.findIndex(section => section.concepts.some(entry => entry.concept.id === currentConceptId)));
+  const sectionIndex = value.currentSectionIndex === undefined ? derivedSectionIndex : value.currentSectionIndex;
+  if (!Number.isInteger(sectionIndex) || (sections.length === 0 ? sectionIndex !== 0 : (sectionIndex as number) < 0 || (sectionIndex as number) >= sections.length)) return undefined;
+  const sectionIds = new Set(sections.map(section => section.id));
+  if (value.completedSectionIds !== undefined && (!Array.isArray(value.completedSectionIds) || !value.completedSectionIds.every((id): id is string => typeof id === 'string' && sectionIds.has(id)))) return undefined;
+  if (value.activePracticeSectionId !== undefined && (typeof value.activePracticeSectionId !== 'string' || !sectionIds.has(value.activePracticeSectionId))) return undefined;
+  const practiceQuestionIds = new Set([...questionById.values()].filter(question => question.lessonId === lesson.id && question.stage !== 'learn').map(question => question.id));
+  for (const field of ['completedPracticeQuestionIds', 'activePracticeQuestionIds'] as const) {
+    const ids = value[field];
+    const max = field === 'activePracticeQuestionIds' ? 100 : practiceQuestionIds.size;
+    if (ids !== undefined && (!Array.isArray(ids) || ids.length > max || !ids.every((id): id is string => typeof id === 'string' && practiceQuestionIds.has(id)))) return undefined;
+  }
+  if (Array.isArray(value.activePracticeQuestionIds) && value.activePracticeQuestionIds.some(id => (value.completedPracticeQuestionIds as unknown[] | undefined)?.includes(id))) return undefined;
   const conceptIds = new Set(lesson.concepts.map(concept => concept.id));
   const checkIds = new Set(lesson.concepts.flatMap(concept => concept.checkQuestionIds));
   if (!Array.isArray(value.completedConceptIds) || !Array.isArray(value.answeredCheckIds) || !Array.isArray(value.skippedChecks) || !record(value.revealedSteps)) return undefined;
@@ -117,6 +137,11 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
     lessonId: lesson.id,
     status: value.status as LessonStatus,
     currentConceptIndex: index as number,
+    currentSectionIndex: sectionIndex as number,
+    completedSectionIds: [...new Set((value.completedSectionIds ?? []) as string[])],
+    ...(typeof value.activePracticeSectionId === 'string' ? { activePracticeSectionId: value.activePracticeSectionId } : {}),
+    ...(Array.isArray(value.completedPracticeQuestionIds) ? { completedPracticeQuestionIds: [...new Set(value.completedPracticeQuestionIds as string[])] } : {}),
+    ...(Array.isArray(value.activePracticeQuestionIds) ? { activePracticeQuestionIds: [...new Set(value.activePracticeQuestionIds as string[])] } : {}),
     completedConceptIds: [...new Set(completedConceptIds)],
     answeredCheckIds: [...new Set(answeredCheckIds)],
     skippedChecks,
@@ -160,7 +185,7 @@ export function readLessonProgress(bank: DriveBank, bankVersion: string, storage
   let raw: string | null;
   try { raw = target.getItem(lessonProgressStorageKey(bank.bank_id, bankVersion)); }
   catch { return { ...state, persistenceBlocked: true, warning: 'Learn progress could not be read. Existing data was left untouched; new progress will remain in memory.' }; }
-  if (raw === null) return state;
+  if (raw === null) return migratePreviousProgress(bank, bankVersion, target, now) ?? state;
   state.found = true;
   if (raw.length > MAX_RECORD_LENGTH) return { ...state, persistenceBlocked: true, warning: 'Saved Learn progress is too large to validate. It was left untouched; this lesson starts fresh in memory.' };
   let parsed: unknown;
@@ -219,6 +244,7 @@ export function saveLessonProgress(bank: DriveBank, bankVersion: string, state: 
     schemaVersion: LESSON_PROGRESS_SCHEMA,
     bankId: bank.bank_id,
     bankVersion,
+    updatedAt: nowTimestamp(),
     lessons,
     lessonPanelEvents: events,
     ...(state.activePanelEvent ? { activePanel: state.activePanelEvent } : {}),
@@ -235,12 +261,44 @@ export function saveLessonProgress(bank: DriveBank, bankVersion: string, state: 
   }
 }
 
+/** Copy stable progress into a revised bank version while retaining every older record. */
+function migratePreviousProgress(bank: DriveBank, bankVersion: string, storage: Storage, now: string): LessonProgressState | undefined {
+  const prefix = `${LESSON_PROGRESS_PREFIX}:${encodeURIComponent(bank.bank_id)}:`;
+  const currentKey = lessonProgressStorageKey(bank.bank_id, bankVersion);
+  const candidates: Array<{ key: string; version: string; updatedAt: string }> = [];
+  try {
+    for (let index = 0; index < storage.length; index++) {
+      const key = storage.key(index);
+      if (!key?.startsWith(prefix) || key === currentKey) continue;
+      const raw = storage.getItem(key);
+      if (!raw || raw.length > MAX_RECORD_LENGTH) continue;
+      const value: unknown = JSON.parse(raw);
+      if (!record(value) || value.schemaVersion !== LESSON_PROGRESS_SCHEMA || value.bankId !== bank.bank_id || typeof value.bankVersion !== 'string' || value.bankVersion === bankVersion) continue;
+      candidates.push({ key, version: value.bankVersion, updatedAt: timestamp(value.updatedAt) ? value.updatedAt : '' });
+    }
+  } catch { return undefined; }
+  candidates.sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
+  for (const candidate of candidates) {
+    const currentVersionNumber = declaredVersionNumber(bank.version);
+    const previousVersionNumber = declaredVersionNumber(candidate.version);
+    if (currentVersionNumber === undefined || previousVersionNumber === undefined || currentVersionNumber <= previousVersionNumber) continue;
+    const previous = readLessonProgress(bank, candidate.version, storage, now);
+    if (previous.persistenceBlocked || (!Object.keys(previous.progressById).length && !previous.lessonPanelEvents.length)) continue;
+    const migrated: LessonProgressState = { ...previous, bankVersion, found: true };
+    const result = saveLessonProgress(bank, bankVersion, migrated, storage);
+    if (result.saved) return migrated;
+  }
+  return undefined;
+}
+
 function exportableProgress(value: unknown): LessonProgressExport | undefined {
   if (!record(value) || typeof value.lessonId !== 'string' || !safeId.test(value.lessonId) || typeof value.status !== 'string' || !statuses.has(value.status as LessonStatus)) return undefined;
   if (!Array.isArray(value.completedConceptIds) || !Array.isArray(value.skippedChecks)) return undefined;
   const completedConceptIds = value.completedConceptIds.filter((id): id is string => typeof id === 'string' && safeId.test(id));
   const skippedChecks = value.skippedChecks.flatMap(item => record(item) && typeof item.questionId === 'string' && safeId.test(item.questionId) && timestamp(item.at) ? [{ questionId: item.questionId, at: item.at }] : []);
   const result: LessonProgressExport = { lessonId: value.lessonId, status: value.status as LessonStatus, completedConceptIds: [...new Set(completedConceptIds)], skippedChecks };
+  if (Number.isInteger(value.currentSectionIndex) && (value.currentSectionIndex as number) >= 0) result.currentSectionIndex = value.currentSectionIndex as number;
+  if (Array.isArray(value.completedSectionIds)) result.completedSectionIds = [...new Set(value.completedSectionIds.filter((id): id is string => typeof id === 'string' && safeId.test(id)))];
   for (const field of ['learnStartedAt', 'learnDoneAt', 'practiceStartedAt'] as const) if (timestamp(value[field])) result[field] = value[field];
   if (record(value.learnSkipped) && timestamp(value.learnSkipped.at)) result.learnSkipped = { at: value.learnSkipped.at };
   return result;

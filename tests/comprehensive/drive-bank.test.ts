@@ -5,6 +5,7 @@ import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from '../../src/featu
 import { permittedAccount } from '../../src/features/drive-bank/identity';
 import { initialState } from '../../src/store';
 import { serialize, validateSession } from '../../src/persistence';
+import { MAX_SESSION_EXERCISES } from '../../src/model';
 
 const q = (id: string, extra: Record<string, unknown> = {}) => ({ id, mode: 'math', source: '1+2', ...extra });
 const bank = (extra: Record<string, unknown> = {}) => ({ schema_version: BANK_SCHEMA, bank_id: 'B1', version: 'v1', questions: [q('Q01')], ...extra });
@@ -20,8 +21,16 @@ describe('validateBank: top level', () => {
     ['missing version', { version: undefined }], ['numeric version', { version: 3 }], ['version with unicode', { version: 'نسخه' }],
     ['questions not array', { questions: {} }],
   ])('rejects %s', (_, patch) => expect(() => validateBank(bank(patch))).toThrow(INVALID));
-  it('accepts the full 100-question section limit and ids with . - _', () => { expect(validateBank(bank({ bank_id: 'GEN-2026.10_28', questions: Array.from({ length: MAX_QUESTIONS_PER_BANK }, (_, i) => q(`Q-${i}.a_b`)) })).questions).toHaveLength(100); });
-  it('rejects a bank above the explicit question limit', () => { expect(() => validateBank(bank({ questions: Array.from({ length: 101 }, (_, i) => q(`Q${i}`)) }))).toThrow('up to 100 questions'); });
+  it('accepts a complete chapter bank beyond one session and ids with . - _', () => { expect(validateBank(bank({ bank_id: 'GEN-2026.10_28', questions: Array.from({ length: 101 }, (_, i) => q(`Q-${i}.a_b`)) })).questions).toHaveLength(101); });
+  it('rejects a bank above the explicit chapter question limit', () => { expect(() => validateBank(bank({ questions: Array.from({ length: MAX_QUESTIONS_PER_BANK + 1 }, (_, i) => q(`Q${i}`)) }))).toThrow(`up to ${MAX_QUESTIONS_PER_BANK} questions`); });
+  it('preserves chapter metadata only when it names every parsed lesson', () => {
+    const lesson = { id: 'PC-1.1', book: 'OpenStax Precalculus 2e', section: '1.1', title: 'توابع و تابع‌نما', concepts: [] };
+    const chapter = { id: 'PC-1', number: 1, title: 'توابع', source: 'OpenStax Precalculus 2e', pdfPages: '17–168', lessonIds: ['PC-1.1'] };
+    expect(validateBank(bank({ lessons: [lesson], chapter })).chapter).toEqual(chapter);
+    const invalid = validateBank(bank({ lessons: [lesson], chapter: { ...chapter, lessonIds: ['PC-9.9'] } }));
+    expect(invalid.chapter).toBeUndefined();
+    expect(invalid.parseWarnings?.join(' ')).toContain('chapter: invalid chapter metadata');
+  });
   it('loads, archives, serializes, and restores a 73-question lesson section', () => {
     const parsed = validateBank(bank({ questions: Array.from({ length: 73 }, (_, i) => q(`PC-1.1-P${String(i + 1).padStart(2, '0')}`)) }));
     const state = initialState(); state.doc = bankDocument(parsed, 'section-v1');
@@ -99,6 +108,12 @@ describe('snapshotVersion and bankDocument', () => {
     expect(doc.exercises.map(e => [e.bankQuestionId, e.mode, e.steps.length])).toEqual([['A', 'math', 1], ['B', 'text', 1]]);
     expect(doc.exercises[0].prompt).toBe('p'); expect(doc.exerciseId).toBe(doc.exercises[0].id); expect(doc.session).toMatchObject({ bankId: 'B1', bankVersion: 'x' });
     expect(() => bankDocument(validateBank(bank({ questions: [] })), 'x')).toThrow('No practice questions');
+  });
+  it('enforces the per-session cap while permitting a complete chapter bank', () => {
+    const questions = Array.from({ length: MAX_SESSION_EXERCISES + 1 }, (_, index) => q(`Q${String(index).padStart(3, '0')}`));
+    const b = validateBank(bank({ questions }));
+    expect(() => bankDocument(b, 'x')).toThrow(`at most ${MAX_SESSION_EXERCISES} questions`);
+    expect(bankDocument(b, 'x', b.questions.slice(0, MAX_SESSION_EXERCISES)).exercises).toHaveLength(MAX_SESSION_EXERCISES);
   });
   it('keeps Learn-stage checks out of the main Practice session while preserving default-practice banks', () => {
     const b = validateBank({ ...bank(),

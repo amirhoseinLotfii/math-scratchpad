@@ -6,11 +6,16 @@ import { parseDifficulty, parseLessons } from '../lessons/parse';
 import type { Lesson, QuestionLessonFields } from '../lessons/types';
 
 export const BANK_SCHEMA = 'math-scratchpad.bank/1.0';
-/** A single bank may contain an entire lesson section; session storage supports the same bound. */
-export const MAX_QUESTIONS_PER_BANK = MAX_SESSION_EXERCISES;
+/** A chapter bank may span many lessons; each launched practice session stays within MAX_SESSION_EXERCISES. */
+export const MAX_QUESTIONS_PER_BANK = 1000;
 export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
+export const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1';
+const BANK_CACHE_SCHEMA = 1;
+const MAX_BANK_CACHE_LENGTH = 2_000_000;
 export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string; answerType?: 'math' | 'text' | 'choice'; choices?: string[] } & QuestionLessonFields;
-export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[]; lessons?: Lesson[]; parseWarnings?: string[] };
+export type BankChapter = { id: string; number: number; title: string; source: string; pdfPages: string; lessonIds: string[] };
+export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[]; lessons?: Lesson[]; chapter?: BankChapter; parseWarnings?: string[] };
+export type CachedBank = { fileId: string; bank: DriveBank; version: string; fingerprint: string; savedAt: string };
 const safeId = /^[\w.-]{1,80}$/;
 const FORBIDDEN_SEGMENTS = new Set(['answer', 'answers', 'solution', 'solutions', 'correct', 'key', 'keys', 'expected', 'rubric', 'verification']);
 /** Splits a field name into words (answer_key, answerKey, ANSWER-KEY, answer.key -> answer, key), so "keyboard" or "monkey" are not flagged. */
@@ -101,11 +106,35 @@ export function validateBank(input: unknown): DriveBank {
     const difficulty = parseDifficulty(q.difficulty);
     if (difficulty !== undefined) question.difficulty = difficulty;
     else if (q.difficulty !== undefined) warnings.push(`questions[${index}].difficulty: invalid difficulty was ignored`);
+    if (q.origin === 'textbook' || q.origin === 'generated') question.origin = q.origin;
+    else if (q.origin !== undefined) warnings.push(`questions[${index}].origin: invalid question origin was ignored`);
+    if (typeof q.sectionId === 'string' && safeId.test(q.sectionId)) question.sectionId = q.sectionId;
+    else if (q.sectionId !== undefined) warnings.push(`questions[${index}].sectionId: invalid section reference was ignored`);
     questions.push(question);
   }
 
   const parsedLessons = parseLessons(data.lessons, questions.map(question => question.id));
   warnings.push(...parsedLessons.warnings);
+  let chapter: BankChapter | undefined;
+  if (data.chapter !== undefined) {
+    const raw = data.chapter;
+    const valid = !!raw && typeof raw === 'object' && !Array.isArray(raw);
+    const record = valid ? raw as Record<string, unknown> : {};
+    const knownLessonIds = new Set(parsedLessons.lessons.map(lesson => lesson.id));
+    const lessonIds = Array.isArray(record.lessonIds)
+      ? [...new Set(record.lessonIds.filter((id): id is string => typeof id === 'string' && /^[\w.-]{1,80}$/.test(id) && knownLessonIds.has(id)))]
+      : [];
+    if (!valid || typeof record.id !== 'string' || !/^[\w.-]{1,80}$/.test(record.id)
+      || !Number.isInteger(record.number) || (record.number as number) < 1 || (record.number as number) > 99
+      || typeof record.title !== 'string' || !record.title.trim() || record.title.length > 500
+      || typeof record.source !== 'string' || !record.source.trim() || record.source.length > 1000
+      || typeof record.pdfPages !== 'string' || !/^\d{1,5}\s*[–-]\s*\d{1,5}$/.test(record.pdfPages)
+      || !Array.isArray(record.lessonIds) || lessonIds.length !== record.lessonIds.length || lessonIds.length !== parsedLessons.lessons.length) {
+      warnings.push('chapter: invalid chapter metadata was ignored');
+    } else {
+      chapter = { id: record.id, number: record.number as number, title: record.title, source: record.source, pdfPages: record.pdfPages.replace(/\s*[–-]\s*/g, '–'), lessonIds };
+    }
+  }
   const lessonById = new Map(parsedLessons.lessons.map(lesson => [lesson.id, lesson]));
   const conceptToLesson = new Map<string, string>();
   for (const lesson of parsedLessons.lessons) for (const concept of lesson.concepts) conceptToLesson.set(concept.id, lesson.id);
@@ -126,12 +155,47 @@ export function validateBank(input: unknown): DriveBank {
     }
   }
 
+  const questionById = new Map(questions.map(question => [question.id, question]));
+  const assignedSectionByQuestion = new Map<string, { lessonId: string; sectionId: string; stage: 'learn' | 'practice' }>();
+  for (const lesson of parsedLessons.lessons) for (const section of lesson.sections ?? []) {
+    const keepAssigned = (questionIds: string[], stage: 'learn' | 'practice') => questionIds.filter(questionId => {
+      const question = questionById.get(questionId);
+      if (!question || question.lessonId !== lesson.id || (question.stage ?? 'practice') !== stage) {
+        warnings.push(`lessons.${lesson.id}.sections.${section.id}: ${questionId} is not a ${stage} question in this lesson; reference was dropped`);
+        return false;
+      }
+      const previous = assignedSectionByQuestion.get(questionId);
+      if (previous && previous.sectionId !== section.id) {
+        warnings.push(`lessons.${lesson.id}.sections.${section.id}: ${questionId} is already assigned to ${previous.sectionId}; duplicate reference was dropped`);
+        return false;
+      }
+      if (question.sectionId && question.sectionId !== section.id) {
+        warnings.push(`lessons.${lesson.id}.sections.${section.id}: ${questionId} has a different sectionId; reference was dropped`);
+        return false;
+      }
+      question.sectionId = section.id;
+      assignedSectionByQuestion.set(questionId, { lessonId: lesson.id, sectionId: section.id, stage });
+      return true;
+    });
+    section.learnQuestionIds = keepAssigned(section.learnQuestionIds, 'learn');
+    section.practiceQuestionIds = keepAssigned(section.practiceQuestionIds, 'practice');
+  }
+  for (const [index, question] of questions.entries()) {
+    if (!question.sectionId) continue;
+    const assignment = assignedSectionByQuestion.get(question.id);
+    if (!assignment || assignment.lessonId !== question.lessonId || assignment.sectionId !== question.sectionId) {
+      warnings.push(`questions[${index}].sectionId: no matching lesson section reference; section link was ignored`);
+      delete question.sectionId;
+    }
+  }
+
   return {
     schema_version: BANK_SCHEMA,
     bank_id: data.bank_id,
     version: data.version,
     questions,
     ...(data.lessons !== undefined ? { lessons: parsedLessons.lessons } : {}),
+    ...(chapter ? { chapter } : {}),
     ...(warnings.length ? { parseWarnings: warnings } : {}),
   };
 }
@@ -144,8 +208,40 @@ export async function snapshotVersion(bank: DriveBank): Promise<string> {
   const suffix = Array.from(new Uint8Array(hash)).slice(0, 8).map(x => x.toString(16).padStart(2, '0')).join('');
   return `${bank.version.slice(0, 80)}-${suffix}`;
 }
+export function bankCacheStorageKey(fileId: string): string {
+  return `${BANK_CACHE_PREFIX}:${encodeURIComponent(fileId)}`;
+}
+export async function readBankCache(fileId: string, storage?: Storage): Promise<CachedBank | null> {
+  const target = storage ?? globalThis.localStorage;
+  const raw = target.getItem(bankCacheStorageKey(fileId));
+  if (!raw || raw.length > MAX_BANK_CACHE_LENGTH) return null;
+  const value: unknown = JSON.parse(raw);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.schemaVersion !== BANK_CACHE_SCHEMA || record.fileId !== fileId || typeof record.version !== 'string' || typeof record.fingerprint !== 'string' || typeof record.savedAt !== 'string') return null;
+  const bank = validateBank(record.bank);
+  if (await snapshotVersion(bank) !== record.version) return null;
+  return { fileId, bank, version: record.version, fingerprint: record.fingerprint, savedAt: record.savedAt };
+}
+export async function saveBankCache(fileId: string, bank: DriveBank, version: string, fingerprint: string, storage?: Storage): Promise<{ saved: boolean; message: string }> {
+  const target = storage ?? globalThis.localStorage;
+  try {
+    const cleanBank = validateBank(bank);
+    if (await snapshotVersion(cleanBank) !== version) return { saved: false, message: 'The bank cache version did not match the downloaded content.' };
+    const payload = JSON.stringify({ schemaVersion: BANK_CACHE_SCHEMA, fileId, bank: cleanBank, version, fingerprint, savedAt: new Date().toISOString() });
+    if (payload.length > MAX_BANK_CACHE_LENGTH) return { saved: false, message: 'The bank is too large to cache in this browser.' };
+    const key = bankCacheStorageKey(fileId);
+    target.setItem(key, payload);
+    const verified = await readBankCache(fileId, target);
+    if (!verified || verified.version !== version || verified.fingerprint !== fingerprint) throw Error('Local cache read-back did not match.');
+    return { saved: true, message: '' };
+  } catch {
+    return { saved: false, message: 'The bank loaded, but this browser could not save a verified offline copy.' };
+  }
+}
 export function bankDocument(bank: DriveBank, version: string, includedQuestions: BankQuestion[] = bank.questions.filter(question => question.stage !== 'learn')): Document {
   if (!includedQuestions.length) throw Error('No practice questions are available in this bank yet.');
+  if (includedQuestions.length > MAX_SESSION_EXERCISES) throw Error(`A practice session can include at most ${MAX_SESSION_EXERCISES} questions. Continue with the next batch after finishing this one.`);
   const exercises: Exercise[] = includedQuestions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, answerType: q.answerType ?? (q.mode === 'text' ? 'text' : 'math'), ...(q.answerType === 'choice' && q.choices ? { choices: [...q.choices] } : {}), ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), stage: q.stage ?? 'practice', ...(q.conceptId ? { conceptId: q.conceptId } : {}), steps: [blankStep()] }));
   const first = exercises[0], step = first.steps[0];
   return { session: { ...newSessionMeta(), bankId: bank.bank_id, bankVersion: version }, exercises, exerciseId: first.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };

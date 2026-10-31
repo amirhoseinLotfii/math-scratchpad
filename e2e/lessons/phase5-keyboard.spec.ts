@@ -47,7 +47,7 @@ test('keyboard-only route reaches Learn, summary, Practice and its lesson refere
   await tabUntil(page, choice, 12);
   await pressFocused(page, choice, 'Space');
   await expect(choice).toBeChecked();
-  const nextConcept = page.getByRole('button', { name: 'Next concept →' });
+  const nextConcept = page.getByRole('button', { name: 'Next section →' });
   await tabUntil(page, nextConcept, 12);
   await pressFocused(page, nextConcept, 'Enter');
   const secondConcept = page.getByRole('heading', { name: 'Second sample concept' });
