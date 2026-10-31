@@ -5,8 +5,8 @@ import { actions } from '../../store';
 import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
-import { EMPTY_BANK, archiveSession, bankDocument, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBankText, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
-import { getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig, type DriveConfig, type Token } from './google';
+import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
+import { DRIVE_CONFIG_KEY, getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
@@ -19,10 +19,41 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
   const [archives, setArchives] = useState<ArchivedSession[]>([]);
   const [confirmation, setConfirmation] = useState<{ kind: 'batch' } | { kind: 'restore'; saved: ArchivedSession } | null>(null);
   const token = useRef<Token | null>(null), fingerprint = useRef(''), active = useRef(true), syncing = useRef(false);
+  const onBankReadyRef = useRef(onBankReady), onAvailableRef = useRef(onAvailable);
+  onBankReadyRef.current = onBankReady; onAvailableRef.current = onAvailable;
   const panel = useRef<HTMLElement>(null), connectButton = useRef<HTMLButtonElement>(null);
   const confirmationTrigger = useRef<HTMLElement | null>(null), cancelConfirmation = useRef<HTMLButtonElement>(null);
   const cfg = useRef(config); cfg.current = config;
+  async function restoreCachedBank(fileId: string) {
+    if (!fileId) return;
+    try {
+      const cached = await readBankCache(fileId);
+      if (!active.current || cfg.current.fileId !== fileId || !cached) return;
+      fingerprint.current = cached.fingerprint;
+      setAvailable({ bank: cached.bank, version: cached.version });
+      const session = store.getState().doc.session;
+      onAvailableRef.current(cached.bank.questions.length > 0 && !(session?.bankId === cached.bank.bank_id && session.bankVersion === cached.version));
+      onBankReadyRef.current?.(cached.bank, cached.version);
+      setMessage(`Restored the verified local bank ${cached.bank.bank_id} (${cached.bank.version}); it will be checked against Drive after reconnecting.`);
+    } catch {
+      // A corrupt cache is left untouched; a fresh verified Drive download can replace it.
+    }
+  }
   useEffect(() => { active.current = true; try { setArchives(readArchive()); } catch { setMessage('Saved sessions could not be read. No data was changed.'); } return () => { active.current = false; token.current = null; }; }, []);
+  useEffect(() => { void restoreCachedBank(cfg.current.fileId); }, []);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === DRIVE_CONFIG_KEY) {
+        const next = getConfig();
+        cfg.current = next; setConfig(next); fingerprint.current = '';
+        void restoreCachedBank(next.fileId);
+      } else if (event.key === bankCacheStorageKey(cfg.current.fileId)) {
+        void restoreCachedBank(cfg.current.fileId);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => (ready ? connectButton.current : panel.current)?.focus({ preventScroll: true }));
@@ -50,13 +81,14 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
       fingerprint.current = fp;
       if (parsed === EMPTY_BANK) { setAvailable(null); announce(null); onBankReady?.(null, ''); setMessage('Connected. The selected bank file is empty.'); return; }
       const version = await snapshotVersion(parsed);
+      const cache = await saveBankCache(fileId, parsed, version, fp);
       setAvailable({ bank: parsed, version }); announce(parsed, version);
       onBankReady?.(parsed, version);
       const readyMessage = parsed.questions.length ? `Bank ${parsed.bank_id} (version ${parsed.version}) loaded; ${parsed.questions.length} questions ready.` : 'Connected. The bank has no questions yet.';
       const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
       const current = store.getState().doc.session;
       const changed = current?.bankId === parsed.bank_id && !!current.bankVersion && current.bankVersion !== version;
-      setMessage(`${readyMessage}${hasLessonWarnings ? ' Some lesson content could not be read. You can continue with the bank questions.' : ''}${changed ? ' This bank version differs from the current session; the current session was not changed.' : ''}${parsed.lessons?.length ? ' Lesson progress is kept separately for each bank version.' : ''}`);
+      setMessage(`${readyMessage}${cache.saved ? ' A verified local copy is ready for offline use.' : ` ${cache.message}`}${hasLessonWarnings ? ' Some lesson content could not be read. You can continue with the bank questions.' : ''}${changed ? ' This bank version differs from the current session; the current session was not changed.' : ''}${parsed.lessons?.length ? ' Lesson progress is kept separately for each bank version.' : ''}`);
     } catch (e) {
       if (!active.current) return;
       const text = e instanceof Error ? e.message : 'The bank could not be loaded.';

@@ -1,4 +1,4 @@
-import type { Concept, Difficulty, Lesson, LessonBlock, Lang } from './types';
+import type { Concept, Difficulty, Lesson, LessonBlock, LessonSectionDefinition, Lang } from './types';
 
 export type LessonParseResult = { lessons: Lesson[]; warnings: string[] };
 const safeId = /^[\w.-]{1,80}$/;
@@ -18,23 +18,36 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
   if (!isRecord(value)) return unsupported('block must be a JSON object');
   const lang = block.lang === 'fa' || block.lang === 'en' ? block.lang as Lang : undefined;
   if (block.lang !== undefined && lang === undefined) warning(warnings, `${path}.lang`, 'unsupported language was ignored');
-  const withLang = <T extends object>(result: T): T & { lang?: Lang } => lang ? { ...result, lang } : result;
+  const page = typeof block.page === 'number' && Number.isInteger(block.page) && block.page >= 1 && block.page <= 10000 ? block.page : undefined;
+  if (block.page !== undefined && page === undefined) warning(warnings, `${path}.page`, 'invalid source page was ignored');
+  const withMetadata = <T extends object>(result: T): T & { lang?: Lang; page?: number } => ({
+    ...result,
+    ...(lang ? { lang } : {}),
+    ...(page !== undefined ? { page } : {}),
+  });
 
   if (rawType === 'heading' || rawType === 'paragraph' || rawType === 'note') {
     if (!boundedText(block.text)) return unsupported(`${rawType} block requires non-empty text (maximum 20000 characters)`);
-    return withLang({ type: rawType as 'heading' | 'paragraph' | 'note', text: block.text });
+    if (block.latex !== undefined && (typeof block.latex !== 'string' || block.latex.length > 20000)) {
+      warning(warnings, `${path}.latex`, 'invalid text-block formula was ignored');
+    }
+    return withMetadata({
+      type: rawType as 'heading' | 'paragraph' | 'note',
+      text: block.text,
+      ...(typeof block.latex === 'string' && block.latex.trim() ? { latex: block.latex } : {}),
+    });
   }
   if (rawType === 'definition') {
     if (!boundedText(block.text)) return unsupported('definition block requires non-empty text (maximum 20000 characters)');
     if (block.latex !== undefined && (typeof block.latex !== 'string' || block.latex.length > 20000)) return unsupported('definition latex must be text of at most 20000 characters');
-    return withLang({ type: 'definition', text: block.text, ...(typeof block.latex === 'string' ? { latex: block.latex } : {}) });
+    return withMetadata({ type: 'definition', text: block.text, ...(typeof block.latex === 'string' ? { latex: block.latex } : {}) });
   }
   if (rawType === 'example') {
     const optionalTextValid = (key: 'title' | 'text' | 'latex', max: number) => block[key] === undefined || (typeof block[key] === 'string' && block[key].length <= max);
     if ((block.steps !== undefined && (!Array.isArray(block.steps) || block.steps.length > 100 || !block.steps.every(step => typeof step === 'string' && step.length <= 20000)))
       || !optionalTextValid('title', 500) || !optionalTextValid('text', 20000) || !optionalTextValid('latex', 20000)) return unsupported('example fields are invalid; steps must be an array of at most 100 text items and optional title/text/latex fields must fit their limits');
     if (block.steps === undefined && ![block.title, block.text, block.latex].some(item => boundedText(item))) return unsupported('example block requires steps or non-empty title, text, or latex');
-    return withLang({
+    return withMetadata({
       type: 'example',
       ...(typeof block.title === 'string' ? { title: block.title } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : {}),
@@ -45,17 +58,17 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
   if (rawType === 'math') {
     if (!boundedText(block.latex)) return unsupported('math block requires non-empty latex (maximum 20000 characters)');
     if (block.text !== undefined && (typeof block.text !== 'string' || block.text.length > 20000)) warning(warnings, `${path}.text`, 'invalid caption was ignored');
-    return withLang({ type: 'math', latex: block.latex, ...(boundedText(block.text) ? { text: block.text } : {}) });
+    return withMetadata({ type: 'math', latex: block.latex, ...(boundedText(block.text) ? { text: block.text } : {}) });
   }
   if (rawType === 'image') {
     if ((block.src === undefined || block.src === '') && boundedText(block.text)) {
       warning(warnings, path, 'image source is missing; description retained');
-      return withLang({ type: 'image-description', text: block.text });
+      return withMetadata({ type: 'image-description', text: block.text });
     }
     if (!boundedText(block.src, 2000)) return unsupported('image block requires a source URL or a text description');
     if (!boundedText(block.alt, 500)) return unsupported('image block requires non-empty alt text (maximum 500 characters)');
     if (block.caption !== undefined && !boundedText(block.caption, 2000)) return unsupported('image caption must be non-empty text of at most 2000 characters');
-    return withLang({ type: 'image', src: block.src, alt: block.alt, ...(typeof block.caption === 'string' ? { caption: block.caption } : {}) });
+    return withMetadata({ type: 'image', src: block.src, alt: block.alt, ...(typeof block.caption === 'string' ? { caption: block.caption } : {}) });
   }
   return unsupported(`unsupported block type: ${rawType}`);
 }
@@ -116,6 +129,63 @@ function parseConcepts(value: unknown, lessonId: string, knownQuestions: Set<str
   return concepts;
 }
 
+function parseSectionPages(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 40) return false;
+  const parts = value.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).match(/^\s*(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?\s*$/);
+  return !!parts && Number(parts[1]) >= 1 && (!parts[2] || Number(parts[2]) >= Number(parts[1]));
+}
+
+function parseSections(value: unknown, lessonId: string, concepts: Concept[], knownQuestions: Set<string>, warnings: string[]): LessonSectionDefinition[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    warning(warnings, `lessons.${lessonId}.sections`, 'sections must be an array');
+    return [];
+  }
+  const knownConcepts = new Set(concepts.map(concept => concept.id));
+  const usedSectionIds = new Set<string>();
+  const sections: LessonSectionDefinition[] = [];
+  for (const [index, raw] of value.entries()) {
+    const path = `lessons.${lessonId}.sections[${index}]`;
+    if (!isRecord(raw) || typeof raw.id !== 'string' || !safeId.test(raw.id) || !boundedText(raw.title, 500) || !parseSectionPages(raw.pages)) {
+      warning(warnings, path, 'invalid section was ignored');
+      continue;
+    }
+    if (usedSectionIds.has(raw.id)) {
+      warning(warnings, path, `duplicate section id ${raw.id} was ignored`);
+      continue;
+    }
+    usedSectionIds.add(raw.id);
+    const readIds = (field: 'conceptIds' | 'learnQuestionIds' | 'practiceQuestionIds', allowed: Set<string>) => {
+      if (!Array.isArray(raw[field])) {
+        warning(warnings, `${path}.${field}`, `${field} must be an array`);
+        return [];
+      }
+      const seen = new Set<string>();
+      return (raw[field] as unknown[]).flatMap(id => {
+        if (typeof id !== 'string' || !allowed.has(id)) {
+          warning(warnings, `${path}.${field}`, `missing or invalid reference ${String(id)} was dropped`);
+          return [];
+        }
+        if (seen.has(id)) {
+          warning(warnings, `${path}.${field}`, `duplicate reference ${id} was dropped`);
+          return [];
+        }
+        seen.add(id);
+        return [id];
+      });
+    };
+    sections.push({
+      id: raw.id,
+      title: raw.title,
+      pages: raw.pages.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/\s*[–-]\s*/g, '–'),
+      conceptIds: readIds('conceptIds', knownConcepts),
+      learnQuestionIds: readIds('learnQuestionIds', knownQuestions),
+      practiceQuestionIds: readIds('practiceQuestionIds', knownQuestions),
+    });
+  }
+  return sections;
+}
+
 export function parseLessons(value: unknown, questionIds: Iterable<string>): LessonParseResult {
   const warnings: string[] = [];
   if (value === undefined) return { lessons: [], warnings };
@@ -143,6 +213,8 @@ export function parseLessons(value: unknown, questionIds: Iterable<string>): Les
       title: raw.title,
       concepts: parseConcepts(raw.concepts, raw.id, knownQuestions, usedConceptIds, warnings),
     };
+    const sections = parseSections(raw.sections, raw.id, lesson.concepts, knownQuestions, warnings);
+    if (sections) lesson.sections = sections;
     if (typeof raw.pages === 'string' && raw.pages.length <= 100) lesson.pages = raw.pages;
     else if (raw.pages !== undefined) warning(warnings, `${path}.pages`, 'invalid page reference was ignored');
     lessons.push(lesson);

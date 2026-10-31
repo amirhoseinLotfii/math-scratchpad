@@ -30,17 +30,33 @@ test('connected Learn flow, reference panel and responsive layouts', async ({ pa
     await lessonButton.click();
     const reference = page.getByRole('dialog', { name: 'Sample lesson' });
     await expect(reference).toBeVisible();
+    if (viewport.width === 390 && viewport.height === 844) {
+      await expect.poll(() => reference.evaluate(dialog => dialog.contains(document.activeElement))).toBe(true);
+    }
+    await expect(reference).toHaveAttribute('lang', 'en');
+    await expect(reference).toHaveAttribute('dir', 'ltr');
     await expect(reference.locator('.lesson-reference-content .lesson-block-paragraph[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
-    await expect(reference.getByText('Another sample concept')).toBeVisible();
+    await expect(reference.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
+    await expect(reference.getByText('Another sample concept')).toHaveCount(0);
+    await reference.getByRole('button', { name: 'Next section →' }).click();
+    await expect(reference.getByRole('heading', { name: 'Another sample concept' })).toBeVisible();
+    await reference.getByRole('button', { name: '← Previous section' }).click();
     await expect(reference.getByRole('radio')).toHaveCount(0);
     if (viewport.width === 390 && viewport.height === 844) {
-      const referenceA11y = await new AxeBuilder({ page }).include('.lesson-reference-dialog').analyze();
-      expect(referenceA11y.violations.filter(item => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
-      await expect.poll(() => reference.evaluate(dialog => dialog.contains(document.activeElement))).toBe(true);
+      const firstNavigationButton = reference.getByRole('button', { name: 'Next section →' });
+      await firstNavigationButton.focus();
+      await expect(firstNavigationButton).toBeFocused();
       for (let tab = 0; tab < 5; tab++) {
         await page.keyboard.press('Tab');
         await expect.poll(() => reference.evaluate(dialog => dialog.contains(document.activeElement))).toBe(true);
       }
+      const referenceA11y = await new AxeBuilder({ page }).include('.lesson-reference-dialog').analyze();
+      expect(referenceA11y.violations.filter(item => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
+    }
+    if (viewport.width >= 1024) {
+      const panel = await reference.boundingBox();
+      expect(panel?.width).toBeGreaterThan(550);
+      expect(panel?.width).toBeLessThanOrEqual(840);
     }
     await page.screenshot({ path: `/tmp/math-scratchpad-phase3-reference-${viewport.width}x${viewport.height}.png`, fullPage: true });
     await page.keyboard.press('Escape');
@@ -85,7 +101,7 @@ test('connected Learn flow, reference panel and responsive layouts', async ({ pa
   await page.screenshot({ path: '/tmp/math-scratchpad-phase3-learn-mobile-390x640.png', fullPage: true });
 
   await learn.getByRole('radio', { name: 'Option A' }).click();
-  await learn.getByRole('button', { name: 'Next concept →' }).click();
+  await learn.getByRole('button', { name: 'Next section →' }).click();
   await expect(learn.locator('.lesson-concept > h2')).toBeInViewport();
   const mathEditor = learn.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
   const answerField = mathEditor.locator('math-field[aria-label="Step 1 expression"]');

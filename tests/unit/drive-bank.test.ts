@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { archiveSession, bankDocument, metaFingerprint, parseBankText, EMPTY_BANK, readDriveMeta, readArchive, readPrivateBank, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
+import { archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, EMPTY_BANK, readBankCache, readDriveMeta, readArchive, readPrivateBank, saveBankCache, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { initialState } from '../../src/store';
 import { validateSession } from '../../src/persistence';
 import { buildTutorExport } from '../../src/features/session/export/tutor-export';
@@ -16,6 +16,14 @@ describe('Drive question bank', () => {
   });
   it('changes the snapshot version when content changes even with the same declared version', async () => {
     expect(await snapshotVersion(validateBank(sample))).not.toBe(await snapshotVersion(validateBank({ ...sample, questions: [{ ...sample.questions[0], source: '1+3' }] })));
+  });
+  it('caches and verifies the complete selected bank locally for offline lesson access', async () => {
+    const bank = validateBank(sample), version = await snapshotVersion(bank), fingerprint = 'drive-meta-fingerprint';
+    expect(await saveBankCache('privateFileId123', bank, version, fingerprint)).toEqual({ saved: true, message: '' });
+    expect(await readBankCache('privateFileId123')).toMatchObject({ fileId: 'privateFileId123', version, fingerprint, bank });
+    const key = bankCacheStorageKey('privateFileId123');
+    localStorage.setItem(key, JSON.stringify({ schemaVersion: 1, fileId: 'privateFileId123', version: 'wrong', fingerprint, savedAt: new Date().toISOString(), bank }));
+    await expect(readBankCache('privateFileId123')).resolves.toBeNull();
   });
   it('keeps the first duplicate ID and strips answer-like fields with warnings', () => {
     const duplicated = validateBank({ ...sample, questions: [sample.questions[0], sample.questions[0]] });

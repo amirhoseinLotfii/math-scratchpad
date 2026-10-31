@@ -3,8 +3,8 @@ import type { Step } from '../../model';
 export type Lang = 'fa' | 'en';
 export type BlockType = 'heading' | 'paragraph' | 'definition' | 'example' | 'note' | 'math' | 'image' | 'image-description';
 
-interface BlockBase { type: BlockType; lang?: Lang }
-export interface TextBlock extends BlockBase { type: 'heading' | 'paragraph' | 'note'; text: string }
+interface BlockBase { type: BlockType; lang?: Lang; page?: number }
+export interface TextBlock extends BlockBase { type: 'heading' | 'paragraph' | 'note'; text: string; latex?: string }
 export interface DefinitionBlock extends BlockBase { type: 'definition'; text: string; latex?: string }
 export interface ExampleBlock extends BlockBase { type: 'example'; title?: string; text?: string; latex?: string; steps: string[] }
 export interface MathBlock extends BlockBase { type: 'math'; latex: string; text?: string }
@@ -14,7 +14,16 @@ export interface UnsupportedBlock { type: 'unsupported'; originalType: string; s
 export type LessonBlock = TextBlock | DefinitionBlock | ExampleBlock | MathBlock | ImageBlock | ImageDescriptionBlock | UnsupportedBlock;
 
 export interface Concept { id: string; title: string; pages?: string; blocks: LessonBlock[]; checkQuestionIds: string[] }
-export interface Lesson { id: string; book: string; section: string; title: string; pages?: string; concepts: Concept[] }
+/** A short, source-page-sized unit in a complete lesson/chapter bank. */
+export interface LessonSectionDefinition {
+  id: string;
+  title: string;
+  pages: string;
+  conceptIds: string[];
+  learnQuestionIds: string[];
+  practiceQuestionIds: string[];
+}
+export interface Lesson { id: string; book: string; section: string; title: string; pages?: string; concepts: Concept[]; sections?: LessonSectionDefinition[] }
 
 export type Stage = 'learn' | 'practice';
 export type Difficulty = 1 | 2 | 3;
@@ -23,6 +32,8 @@ export interface QuestionLessonFields {
   conceptId?: string;
   stage?: Stage;
   difficulty?: Difficulty;
+  origin?: 'textbook' | 'generated';
+  sectionId?: string;
 }
 
 export type LessonStatus = 'not_started' | 'learning' | 'practising' | 'done';
@@ -33,6 +44,13 @@ export interface LessonProgress {
   lessonId: string;
   status: LessonStatus;
   currentConceptIndex: number;
+  currentSectionIndex?: number;
+  completedSectionIds?: string[];
+  activePracticeSectionId?: string;
+  /** Textbook-first question IDs completed across end-of-lesson practice batches. */
+  completedPracticeQuestionIds?: string[];
+  /** Question IDs in the currently active end-of-lesson batch (at most 100). */
+  activePracticeQuestionIds?: string[];
   completedConceptIds: string[];
   answeredCheckIds: string[];
   /** Learn-only responses; kept in the namespaced Learn store, never in the practice session/export. */

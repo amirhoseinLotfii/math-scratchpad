@@ -9,7 +9,7 @@ import { bankDocument, validateBank, type BankQuestion, type DriveBank } from '.
 import { App } from '../../src/App';
 import { LessonScreen } from '../../src/features/lessons/lesson-screen';
 import { LessonPicker } from '../../src/features/lessons/lesson-picker';
-import { displayEducationalHeading, isMathQuestionSource, LessonBlockView, LessonSourceAttribution, QuestionSource } from '../../src/features/lessons/lesson-content';
+import { displayEducationalHeading, isMathQuestionSource, LessonBlockView, LessonSourceAttribution, QuestionChoice, QuestionSource } from '../../src/features/lessons/lesson-content';
 import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
 import { MathDisplay } from '../../src/MathDisplay';
 import type { LessonProgress } from '../../src/features/lessons/types';
@@ -64,7 +64,7 @@ describe('lesson learning screen', () => {
   it('renders a translated figure caption and links the OpenStax source and license', () => {
     render(<>
       <LessonBlockView block={{ type: 'image', lang: 'fa', src: 'https://openstax.org/figure.webp', alt: 'نمودار تابع', caption: 'شکل ۱: نمودار تابع' }} blockKey="figure" revealed={0} onReveal={() => undefined} />
-      <LessonSourceAttribution book="OpenStax Precalculus 2e" />
+      <LessonSourceAttribution book="OpenStax Precalculus 2e" section="1.1" />
     </>);
     expect(screen.getByRole('img', { name: 'نمودار تابع' })).toHaveAttribute('src', 'https://openstax.org/figure.webp');
     expect(screen.getByText('شکل ۱: نمودار تابع')).toHaveAttribute('dir', 'rtl');
@@ -126,11 +126,27 @@ describe('lesson learning screen', () => {
     rerender(<QuestionSource source={set} mode="text" textClassName="source-text" mathClassName="source-math" />);
     expect(screen.getByRole('math', { name: 'Question expression' })).toHaveTextContent(set);
     expect(isMathQuestionSource(String.raw`f(x) = x^2 - 1 ; f(x) = 3 ; x = ?`, 'text')).toBe(true);
+    expect(isMathQuestionSource('<', 'text')).toBe(false);
+    expect(isMathQuestionSource('x<2', 'text')).toBe(true);
+    expect(isMathQuestionSource(String.raw`x\leq 2`, 'text')).toBe(true);
+    const mixed = 'دامنهٔ \\(f(x)=\\sqrt{x+1}\\) را تعیین کن.';
+    expect(isMathQuestionSource(mixed, 'text')).toBe(false);
+    rerender(<QuestionSource source={mixed} mode="text" textClassName="source-text" mathClassName="source-math" />);
+    expect(screen.getByText(/دامنهٔ/)).toBeVisible();
+    expect(document.querySelector('.source-text .lesson-inline-math')).toBeInTheDocument();
     expect(isMathQuestionSource('S&P index graph (chapter opener, PDF p17)', 'text')).toBe(false);
 
     rerender(<QuestionSource source="S&P index graph (chapter opener, PDF p17)" mode="text" textClassName="source-text" mathClassName="source-math" />);
     expect(screen.getByText('S&P index graph (chapter opener, PDF p17)')).toBeVisible();
     expect(screen.queryByRole('math')).not.toBeInTheDocument();
+  });
+
+  it('renders formula answer choices as math and leaves ordinary symbols readable', () => {
+    const { rerender } = render(<QuestionChoice choice={String.raw`\frac{1}{2}`} index={0} />);
+    expect(screen.getByRole('math', { name: 'Mathematical answer choice 1' })).toBeVisible();
+    rerender(<QuestionChoice choice="<" index={0} />);
+    expect(screen.queryByRole('math')).not.toBeInTheDocument();
+    expect(screen.getByText('<')).toBeVisible();
   });
 
   it('renders escaped sets, indexed roots and equation fragments without changing the editor', () => {
@@ -172,11 +188,51 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
   });
 
+  it('splits end-of-lesson practice into saved textbook-first batches of at most 100 questions', async () => {
+    const base = sampleBank();
+    const lessonId = 'SAMPLE-1.1';
+    const bank = validateBank({
+      ...base,
+      questions: [...base.questions, ...Array.from({ length: 105 }, (_, index) => ({
+        id: `SAMPLE-BATCH-${String(index + 1).padStart(3, '0')}`,
+        mode: 'text', source: `Extra practice ${index + 1}`, answerType: 'text', stage: 'practice', origin: 'generated', lessonId,
+      }))],
+    });
+    const lesson = bank.lessons!.find(item => item.id === lessonId)!;
+    const initialProgress: LessonProgress = {
+      lessonId, status: 'done', currentConceptIndex: 1, currentSectionIndex: 1,
+      completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: true, revealedSteps: {},
+    };
+    const onStartPractice = vi.fn();
+    const props = { bank, lesson, initialProgress, onBack: vi.fn(), onProgress: vi.fn(), onStartPractice };
+    const { unmount } = render(<LessonScreen {...props} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Start practice' }));
+    const firstBatch = onStartPractice.mock.lastCall![2] as BankQuestion[];
+    const firstProgress = onStartPractice.mock.lastCall![1] as LessonProgress;
+    expect(firstBatch).toHaveLength(100);
+    expect(firstProgress.activePracticeQuestionIds).toEqual(firstBatch.map(question => question.id));
+    expect(firstBatch.slice(0, 3).map(question => question.id)).toEqual(['SAMPLE-1.1-P01', 'SAMPLE-1.1-P02', 'SAMPLE-1.1-P03']);
+
+    unmount();
+    const completedProgress: LessonProgress = {
+      ...firstProgress,
+      status: 'learning', summaryOpen: true, activePracticeQuestionIds: undefined,
+      completedPracticeQuestionIds: firstBatch.map(question => question.id),
+    };
+    render(<LessonScreen {...props} initialProgress={completedProgress} />);
+    const continueButton = screen.getByRole('button', { name: /Continue end-of-lesson practice/ });
+    await userEvent.click(continueButton);
+    const nextBatch = onStartPractice.mock.lastCall![2] as BankQuestion[];
+    expect(nextBatch.length).toBeGreaterThan(0);
+    expect(nextBatch.length).toBeLessThanOrEqual(100);
+    expect(nextBatch.every(question => !firstBatch.some(first => first.id === question.id))).toBe(true);
+  });
+
   it('gates concept navigation on an answer, logs a confirmed skip, then summarizes and starts sorted practice', async () => {
     const user = userEvent.setup();
     const { onProgress, onStartPractice } = mount();
     expect(document.activeElement).toHaveAttribute('id', 'lesson-concept-title');
-    const next = screen.getByRole('button', { name: 'Next concept →' });
+    const next = screen.getByRole('button', { name: 'Next section →' });
     expect(next).toBeDisabled();
 
     await user.click(screen.getByRole('radio', { name: 'Option B' }));
@@ -185,18 +241,18 @@ describe('lesson learning screen', () => {
     await user.click(screen.getByRole('radio', { name: 'Confidence 1' }));
     expect(next).toBeEnabled();
     await user.click(next);
-    expect(screen.getByText('Concept 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Section 2 of 2')).toBeInTheDocument();
     expect(document.activeElement).toHaveAttribute('id', 'lesson-concept-title');
 
     await user.click(screen.getByRole('button', { name: 'Skip check' }));
     const dialog = await screen.findByRole('dialog', { name: 'Skip this check?' });
-    expect(within(dialog).getByText('Skip this check? It will be logged.')).toBeInTheDocument();
+    expect(within(dialog).getByText('This check will be logged as skipped.')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Skip check' }));
     expect(onProgress.mock.lastCall?.[0].skippedChecks).toEqual([
       expect.objectContaining({ questionId: 'SAMPLE-1.1-L02', at: expect.any(String) }),
     ]);
 
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
     expect(screen.getByRole('heading', { name: 'Lesson summary' })).toBeInTheDocument();
     expect(document.activeElement).toHaveAttribute('id', 'lesson-summary-title');
     expect(screen.getByRole('region', { name: 'Checks to review' })).toHaveTextContent('SAMPLE-1.1-L01');
@@ -236,8 +292,8 @@ describe('lesson learning screen', () => {
     expect(screen.getByText('All 3 steps shown')).toBeInTheDocument();
     expect(screen.getByText('Third sample teaching step.').closest('.lesson-example-step')).toHaveAttribute('aria-current', 'step');
     await user.click(screen.getByRole('radio', { name: 'Option A' }));
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
-    await user.click(screen.getByRole('button', { name: '← Previous concept' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
+    await user.click(screen.getByRole('button', { name: '← Previous section' }));
     expect(screen.getByText('First sample teaching step.')).toBeInTheDocument();
     expect(screen.getByText('Second sample teaching step.')).toBeInTheDocument();
     expect(screen.getByText('Third sample teaching step.')).toBeInTheDocument();
@@ -254,13 +310,13 @@ describe('lesson learning screen', () => {
     expect(screen.queryByText('Write each step')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Numeric keys')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Answer for check SAMPLE-1.1-L01'), 'A temporary practice response');
-    expect(screen.getByRole('button', { name: 'Next concept →' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next section →' })).toBeEnabled();
   });
 
   it('reuses the per-Step MathLive editor and opens the app keyboard on request for a math check', () => {
     const { onProgress } = mount();
     fireEvent.click(screen.getByRole('radio', { name: 'Option A' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Next concept →' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next section →' }));
     const editor = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
     expect(within(editor).getByLabelText('Step 1 expression')).toBeInTheDocument();
     expect(within(editor).queryByRole('group', { name: 'Numeric keys' })).not.toBeInTheDocument();
@@ -269,8 +325,10 @@ describe('lesson learning screen', () => {
     fireEvent.keyDown(within(editor).getByLabelText('Step 1 expression'), { key: '8' });
     expect(onProgress.mock.lastCall?.[0].answeredCheckIds).toContain('SAMPLE-1.1-L02');
     fireEvent.click(within(editor).getByRole('button', { name: 'Add step' }));
-    fireEvent.click(within(editor).getByRole('button', { name: 'Mark Step 2 as final' }));
-    expect(within(editor).getByRole('button', { name: 'Mark Step 2 as final' })).toHaveAttribute('aria-pressed', 'true');
+    const finalAnswer = within(editor).getByRole('button', { name: 'Final answer, Step 2' });
+    expect(finalAnswer).toHaveTextContent('Final answer');
+    fireEvent.click(finalAnswer);
+    expect(within(editor).getByRole('button', { name: 'Final answer, Step 2' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(editor).getByRole('button', { name: 'Hide Keyboard' })).toHaveAttribute('aria-expanded', 'true');
     fireEvent.keyDown(within(editor).getByLabelText('Step 1 expression'), { key: '9' });
     expect(within(editor).getByText('Needs review')).toBeInTheDocument();
@@ -281,10 +339,10 @@ describe('lesson learning screen', () => {
     mount();
     await user.click(screen.getByRole('radio', { name: 'Option A' }));
     act(() => fireEvent.keyDown(window, { key: 'ArrowRight', ctrlKey: true, altKey: true }));
-    expect(screen.getByText('Concept 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Section 2 of 2')).toBeInTheDocument();
     const editor = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
     act(() => fireEvent.keyDown(editor, { key: 'ArrowLeft', ctrlKey: true, altKey: true }));
-    expect(screen.getByText('Concept 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Section 2 of 2')).toBeInTheDocument();
   });
 
   it('allows a zero-check concept through and marks a lesson with no practice as done', async () => {
@@ -293,9 +351,9 @@ describe('lesson learning screen', () => {
     bank.questions = bank.questions.filter(question => question.id === 'SAMPLE-1.1-L01');
     bank.lessons![0].concepts = [bank.lessons![0].concepts[0]];
     const { onProgress } = mount(bank);
-    expect(screen.getByRole('button', { name: 'Next concept →' })).toBeEnabled();
-    await userEvent.click(screen.getByRole('button', { name: 'Next concept →' }));
-    expect(screen.getByText('No practice questions yet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next section →' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Next section →' }));
+    expect(screen.getByText('No practice questions yet.')).toBeInTheDocument();
     expect(onProgress.mock.lastCall?.[0]).toMatchObject({ status: 'done', completedConceptIds: ['SAMPLE-1.1-C1'] });
   });
 
@@ -348,6 +406,43 @@ describe('lesson learning screen', () => {
     cleanup();
     render(<LessonBlockView block={{ type: 'example', lang: 'fa', title: 'مثال 1', steps: [] }} blockKey="example" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByRole('heading', { name: 'مثال 1' })).toHaveAttribute('dir', 'rtl');
+  });
+
+  it('renders the desktop reference panel in Persian with source pages, equations and figures', async () => {
+    const bank = sampleBank();
+    const lesson = bank.lessons![0];
+    lesson.book = 'OpenStax Precalculus 2e';
+    lesson.title = 'تابع‌ها و نمادگذاری تابع';
+    lesson.pages = '17-42';
+    const concept = lesson.concepts[0];
+    concept.title = 'ورودی تابع';
+    concept.pages = '18-20';
+    concept.blocks = [
+      { type: 'paragraph', lang: 'fa', page: 18, text: 'این تابع f(a+b) را نشان می‌دهد.', latex: 'f(a+b)' },
+      { type: 'image', lang: 'fa', page: 18, src: 'https://openstax.org/figure.webp', alt: 'نمودار تابع', caption: 'شکل ۱: نمودار تابع' },
+      { type: 'paragraph', lang: 'fa', page: 19, text: 'این بخش در صفحهٔ بعد ادامه دارد.' },
+    ];
+    render(<Provider store={makeStore(initialState())}><LessonReferenceDialog lesson={lesson} bank={bank} onOpenChange={() => undefined} /></Provider>);
+    const dialog = screen.getByRole('dialog', { name: lesson.title });
+    expect(dialog).toHaveAttribute('lang', 'fa');
+    expect(dialog).toHaveAttribute('dir', 'rtl');
+    expect(dialog).toHaveTextContent('منبع: OpenStax Precalculus 2e');
+    expect(dialog).toHaveTextContent('صفحه‌ها ۱۷–۴۲');
+    expect(dialog).toHaveTextContent('مفهوم ۱ از ۲');
+    expect(dialog).toHaveTextContent('صفحه‌های ۱۸–۲۰');
+    expect(dialog).toHaveTextContent('صفحهٔ ۱۸');
+    expect(dialog).not.toHaveTextContent('صفحهٔ ۱۹');
+    expect(within(dialog).getByRole('math', { name: 'فرمول درس' })).toBeVisible();
+    expect(within(dialog).getByRole('img', { name: 'نمودار تابع' })).toHaveAttribute('src', 'https://openstax.org/figure.webp');
+    expect(within(dialog).getByText('شکل ۱: نمودار تابع')).toHaveAttribute('dir', 'rtl');
+    expect(within(dialog).getByText('SAMPLE-1.1-L01')).toBeVisible();
+    expect(within(dialog).queryByText('SAMPLE-1.1-L02')).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'بخش بعدی ←' }));
+    expect(dialog).toHaveTextContent('صفحهٔ ۱۹');
+    expect(dialog).toHaveTextContent('این بخش در صفحهٔ بعد ادامه دارد.');
+    expect(within(dialog).queryByRole('img', { name: 'نمودار تابع' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'بازگشت به سؤال' })).toBeVisible();
+    expect(within(dialog).queryAllByRole('radio')).toHaveLength(0);
   });
 
   it('keeps complete Latin phrases together inside Persian lesson prose', () => {

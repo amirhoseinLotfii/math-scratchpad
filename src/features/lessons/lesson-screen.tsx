@@ -4,14 +4,15 @@ import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
-import { getLearnChecks, getPracticeQuestions } from './selectors';
+import { getLearnChecks, getPracticeQuestionOrigin, getPracticeQuestions, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
-import { contentDirection, displayEducationalHeading, languageForText, LessonConceptContent, LessonSourceAttribution, LessonText } from './lesson-content';
+import { contentDirection, displayEducationalHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits } from './lesson-content';
+import { buildLessonSections, type LessonSection } from './lesson-sections';
 import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
-import { stepIsBlank } from '../../model';
+import { MAX_SESSION_EXERCISES, stepIsBlank } from '../../model';
 
 type Props = {
   bank: DriveBank | null;
@@ -20,7 +21,7 @@ type Props = {
   initialProgress?: LessonProgress;
   onBack: () => void;
   onProgress?: (progress: LessonProgress) => void;
-  onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[]) => void;
+  onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], sectionId?: string) => void;
   practiceError?: string;
   progressMessage?: string;
 };
@@ -28,7 +29,27 @@ type Props = {
 type ReadyProps = Props & { bank: DriveBank; lesson: Lesson };
 
 function newProgress(lessonId: string): LessonProgress {
-  return { lessonId, status: 'learning', currentConceptIndex: 0, completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
+  return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
+}
+
+function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSingleConceptHeading = false }: {
+  section: LessonSection; onReveal: (key: string, value: number) => void; revealedSteps: Record<string, number>; uiLang: 'fa' | 'en'; hideSingleConceptHeading?: boolean;
+}) {
+  return <div className="lesson-section-content">
+    {section.concepts.map(({ concept, conceptIndex, blocks }) => {
+      const content = <div className="lesson-concept-blocks">{blocks.map((block, blockIndex) => {
+        const originalIndex = concept.blocks.indexOf(block);
+        const key = `${concept.id}:${originalIndex >= 0 ? originalIndex : blockIndex}`;
+        return <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
+      })}</div>;
+      if (hideSingleConceptHeading && section.concepts.length === 1) return <div className="lesson-section-concept" key={concept.id}>{content}</div>;
+      return <section className="lesson-section-concept" key={concept.id} aria-labelledby={`lesson-section-concept-${concept.id}`}>
+        <p className="lesson-section-concept-label">{uiLang === 'fa' ? 'مفهوم' : 'Concept'} {localizeLessonDigits(conceptIndex + 1, uiLang)}</p>
+        <h3 id={`lesson-section-concept-${concept.id}`} lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></h3>
+        {content}
+      </section>;
+    })}
+  </div>;
 }
 
 function ReviewQuestionContent({ question }: { question: BankQuestion }) {
@@ -39,10 +60,19 @@ function ReviewQuestionContent({ question }: { question: BankQuestion }) {
 
 function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
+  const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
+  const sections = useMemo(() => buildLessonSections(lesson), [lesson]);
   const practiceQuestions = useMemo(() => getPracticeQuestions(bank, lesson.id), [bank, lesson.id]);
+  const initialSectionIndex = useMemo(() => {
+    const saved = initialProgress?.currentSectionIndex;
+    if (Number.isInteger(saved) && saved! >= 0 && saved! < sections.length) return saved!;
+    const conceptId = lesson.concepts[initialProgress?.currentConceptIndex ?? 0]?.id;
+    const found = sections.findIndex(section => section.concepts.some(entry => entry.concept.id === conceptId));
+    return Math.max(0, found);
+  }, [initialProgress, lesson.concepts, sections]);
   const [progress, setProgress] = useState<LessonProgress>(() => initialProgress ?? newProgress(lesson.id));
   const progressRef = useRef(progress);
-  const [conceptIndex, setConceptIndex] = useState(() => Math.min(Math.max(0, initialProgress?.currentConceptIndex ?? 0), Math.max(0, lesson.concepts.length - 1)));
+  const [sectionIndex, setSectionIndex] = useState(initialSectionIndex);
   const [summary, setSummary] = useState(initialProgress?.summaryOpen ?? (lesson.concepts.length === 0 || initialProgress?.status === 'done' || (!!initialProgress?.learnDoneAt && lesson.concepts.length > 0 && lesson.concepts.every(concept => initialProgress.completedConceptIds.includes(concept.id)))));
   const [skipQuestion, setSkipQuestion] = useState<BankQuestion | null>(null);
   const [skipPracticeOpen, setSkipPracticeOpen] = useState(false);
@@ -59,15 +89,16 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     onProgress?.(next);
   }, [onProgress]);
 
-  const currentConcept = lesson.concepts[conceptIndex];
-  const checks = useMemo(() => currentConcept ? getLearnChecks(bank, currentConcept.id) : [], [bank, currentConcept]);
+  const currentSection = sections[sectionIndex];
+  const checks = useMemo(() => currentSection ? getSectionLearnChecks(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
+  const sectionPracticeQuestions = useMemo(() => currentSection ? getSectionPracticeQuestions(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
   const allQuestions = useMemo(() => new Map(bank.questions.map(question => [question.id, question])), [bank.questions]);
 
   useEffect(() => {
     const target = (summary ? summaryHeadingRef : headingRef).current;
     target?.focus({ preventScroll: true });
     target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
-  }, [conceptIndex, summary]);
+  }, [sectionIndex, summary]);
 
   useEffect(() => {
     if (lesson.concepts.length !== 0 || autoStartedLesson.current === lesson.id) return;
@@ -131,52 +162,69 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   }
 
   const goPrevious = useCallback(() => {
-    const nextIndex = summary ? Math.max(0, lesson.concepts.length - 1) : Math.max(0, conceptIndex - 1);
-    if (!summary && conceptIndex === 0) return;
+    const nextIndex = summary ? Math.max(0, sections.length - 1) : Math.max(0, sectionIndex - 1);
+    if (!summary && sectionIndex === 0) return;
     const before = progressRef.current;
-    if (before.currentConceptIndex !== nextIndex || before.summaryOpen !== false) commitProgress({ ...before, currentConceptIndex: nextIndex, summaryOpen: false });
+    const nextSection = sections[nextIndex];
+    const conceptIndex = nextSection?.concepts[0]?.conceptIndex ?? 0;
+    if (before.currentSectionIndex !== nextIndex || before.currentConceptIndex !== conceptIndex || before.summaryOpen !== false) {
+      commitProgress({ ...before, currentSectionIndex: nextIndex, currentConceptIndex: conceptIndex, summaryOpen: false });
+    }
     setSummary(false);
-    setConceptIndex(nextIndex);
-  }, [commitProgress, conceptIndex, lesson.concepts.length, summary]);
+    setSectionIndex(nextIndex);
+  }, [commitProgress, sectionIndex, sections, summary]);
 
   const goNext = useCallback(() => {
-    if (!currentConcept || !conceptComplete) return;
+    if (!currentSection || !conceptComplete) return;
     const before = progressRef.current;
-    const completedConceptIds = [...new Set([...before.completedConceptIds, currentConcept.id])];
-    const nextIndex = conceptIndex + 1;
-    if (nextIndex < lesson.concepts.length) {
-      commitProgress({ ...before, currentConceptIndex: nextIndex, completedConceptIds, summaryOpen: false });
-      setConceptIndex(nextIndex);
+    const completedConceptIds = new Set(before.completedConceptIds);
+    for (const { concept } of currentSection.concepts) {
+      const lastAppearance = sections.map(section => section.concepts.some(entry => entry.concept.id === concept.id)).lastIndexOf(true);
+      if (lastAppearance !== sectionIndex) continue;
+      const allChecksComplete = getLearnChecks(bank, concept.id).every(question => isCheckComplete(question.id));
+      if (allChecksComplete) completedConceptIds.add(concept.id);
+    }
+    const nextIndex = sectionIndex + 1;
+    const nextSection = sections[nextIndex];
+    if (nextSection) {
+      const conceptIndex = nextSection.concepts[0]?.conceptIndex ?? 0;
+      commitProgress({ ...before, currentConceptIndex: conceptIndex, currentSectionIndex: nextIndex, completedConceptIds: [...completedConceptIds], summaryOpen: false });
+      setSectionIndex(nextIndex);
       return;
     }
     const noPractice = practiceQuestions.length === 0;
-    commitProgress({ ...before, currentConceptIndex: conceptIndex, completedConceptIds, status: noPractice ? 'done' : 'learning', summaryOpen: true, learnDoneAt: new Date().toISOString() });
+    commitProgress({ ...before, currentConceptIndex: currentSection.concepts.at(-1)?.conceptIndex ?? before.currentConceptIndex, currentSectionIndex: sectionIndex, completedConceptIds: [...completedConceptIds], status: noPractice ? 'done' : 'learning', summaryOpen: true, learnDoneAt: new Date().toISOString() });
     setSummary(true);
-  }, [commitProgress, conceptComplete, conceptIndex, currentConcept, practiceQuestions.length]);
+  }, [bank, commitProgress, conceptComplete, currentSection, isCheckComplete, practiceQuestions.length, sectionIndex, sections]);
 
-  function startPractice() {
+  function startSectionPractice() {
+    if (!currentSection || !sectionPracticeQuestions.length) return;
     const before = progressRef.current;
     const now = new Date().toISOString();
-    const next: LessonProgress = { ...before, status: 'practising', summaryOpen: true, learnDoneAt: before.learnDoneAt ?? now, practiceStartedAt: now };
+    const next: LessonProgress = {
+      ...before,
+      status: 'practising',
+      currentSectionIndex: sectionIndex,
+      currentConceptIndex: currentSection.concepts[0]?.conceptIndex ?? before.currentConceptIndex,
+      activePracticeSectionId: currentSection.id,
+      activePracticeQuestionIds: undefined,
+      summaryOpen: false,
+      practiceStartedAt: now,
+    };
     commitProgress(next);
-    onStartPractice(lesson, next, practiceQuestions);
+    onStartPractice(lesson, next, sectionPracticeQuestions, currentSection.id);
   }
 
   function confirmSkipToPractice() {
-    if (!skipPracticeOpen || !practiceQuestions.length) return;
-    const before = progressRef.current;
-    const now = new Date().toISOString();
-    const next: LessonProgress = { ...before, status: 'practising', summaryOpen: false, learnSkipped: { at: now }, practiceStartedAt: now };
-    commitProgress(next);
-    setSkipPracticeOpen(false);
-    onStartPractice(lesson, next, practiceQuestions);
+    if (!skipPracticeOpen || !remainingPracticeQuestions.length) return;
+    startWholeLessonPractice(true);
   }
 
   function reviewLesson() {
     const before = progressRef.current;
-    if (before.currentConceptIndex !== 0 || before.summaryOpen !== false) commitProgress({ ...before, currentConceptIndex: 0, summaryOpen: false });
+    if (before.currentConceptIndex !== 0 || before.currentSectionIndex !== 0 || before.summaryOpen !== false) commitProgress({ ...before, currentConceptIndex: 0, currentSectionIndex: 0, summaryOpen: false });
     setSummary(false);
-    setConceptIndex(0);
+    setSectionIndex(0);
   }
 
   useEffect(() => {
@@ -184,78 +232,125 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       if (!(event.altKey && (event.ctrlKey || event.metaKey))) return;
       const target = event.target;
       if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"], .lesson-math-editor')) return;
-      if (event.key === 'ArrowLeft' && (summary || conceptIndex > 0)) {
+      if (event.key === 'ArrowLeft' && (summary || sectionIndex > 0)) {
         event.preventDefault();
         goPrevious();
-      } else if (event.key === 'ArrowRight' && !summary && currentConcept && conceptComplete) {
+      } else if (event.key === 'ArrowRight' && !summary && currentSection && conceptComplete) {
         event.preventDefault();
         goNext();
       }
     }
     window.addEventListener('keydown', handleConceptShortcut);
     return () => window.removeEventListener('keydown', handleConceptShortcut);
-  }, [conceptComplete, conceptIndex, currentConcept, goNext, goPrevious, summary]);
+  }, [conceptComplete, currentSection, goNext, goPrevious, sectionIndex, summary]);
 
-  const pages = lesson.pages ? ` · pp. ${lesson.pages.replace(/(\d)\s*-\s*(\d)/, '$1–$2')}` : '';
-  return <section className="lesson-screen" aria-label="Lesson">
+  const pages = lesson.pages ? lesson.pages.replace(/(\d)\s*-\s*(\d)/, '$1–$2') : '';
+  const currentSectionPages = currentSection?.startPage
+    ? currentSection.startPage === currentSection.endPage
+      ? localizeLessonDigits(currentSection.startPage)
+      : `${localizeLessonDigits(currentSection.startPage)}–${localizeLessonDigits(currentSection.endPage ?? currentSection.startPage + 1)}`
+    : '';
+  const sectionBookQuestions = sectionPracticeQuestions.filter(question => getPracticeQuestionOrigin(question, lesson.id) === 'textbook').length;
+  const sectionGeneratedQuestions = sectionPracticeQuestions.filter(question => getPracticeQuestionOrigin(question, lesson.id) === 'generated').length;
+  const wholeBookQuestions = practiceQuestions.filter(question => getPracticeQuestionOrigin(question, lesson.id) === 'textbook').length;
+  const wholeGeneratedQuestions = practiceQuestions.filter(question => getPracticeQuestionOrigin(question, lesson.id) === 'generated').length;
+  const completedPracticeIds = new Set(progress.completedPracticeQuestionIds ?? []);
+  const remainingPracticeQuestions = practiceQuestions.filter(question => !completedPracticeIds.has(question.id));
+  const practiceBatch = remainingPracticeQuestions.slice(0, MAX_SESSION_EXERCISES);
+  const practiceBatchCount = Math.ceil(practiceQuestions.length / MAX_SESSION_EXERCISES);
+  const sectionQuestionWord = sectionPracticeQuestions.length === 1 ? (fa ? 'سؤال' : 'question') : (fa ? 'سؤال' : 'questions');
+
+  function startWholeLessonPractice(skipLearn = false) {
+    if (!practiceBatch.length) return;
+    const before = progressRef.current;
+    const now = new Date().toISOString();
+    const next: LessonProgress = {
+      ...before,
+      status: 'practising',
+      activePracticeSectionId: undefined,
+      activePracticeQuestionIds: practiceBatch.map(question => question.id),
+      summaryOpen: !skipLearn,
+      learnDoneAt: before.learnDoneAt ?? now,
+      ...(skipLearn ? { learnSkipped: { at: now } } : {}),
+      practiceStartedAt: now,
+    };
+    commitProgress(next);
+    if (skipLearn) setSkipPracticeOpen(false);
+    onStartPractice(lesson, next, practiceBatch);
+  }
+  return <section className="lesson-screen" aria-label={fa ? 'درس‌نامه' : 'Lesson notes'} lang={uiLang} dir={fa ? 'rtl' : 'ltr'}>
     <header className="lesson-header">
-      <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />Back to question</Button>
-      <p className="lesson-book-line" dir="ltr">{lesson.book} · {lesson.section}{pages}</p>
-      <LessonSourceAttribution book={lesson.book} />
+      <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />{fa ? 'بازگشت به تمرین' : 'Back to question'}</Button>
+      <p className="lesson-book-line" dir="ltr"><bdi>{lesson.book}</bdi> · {lesson.section}{pages && <> · <bdi>pp. {pages}</bdi></>}</p>
+      <LessonSourceAttribution book={lesson.book} section={lesson.section} />
       <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></h1>
-      {!summary && currentConcept && <p className="lesson-progress" aria-live="polite">Concept {conceptIndex + 1} of {lesson.concepts.length}</p>}
-      {summary && <p className="lesson-progress" aria-live="polite">Learning summary</p>}
+      {!summary && currentSection && <p className="lesson-progress" aria-live="polite">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}{currentSectionPages && <> · {fa ? 'صفحه‌های' : 'pages'} {currentSectionPages}</>}</p>}
+      {summary && <p className="lesson-progress" aria-live="polite">{fa ? 'جمع‌بندی درس' : 'Lesson summary'}</p>}
       {practiceError && <p className="lesson-practice-error" role="alert">{practiceError}</p>}
       {progressMessage && <p className="lesson-progress-message" role="alert">{progressMessage}</p>}
     </header>
 
     {summary ? <section className="lesson-summary" aria-labelledby="lesson-summary-title">
-      <div className="lesson-summary-heading"><BookOpen aria-hidden="true" /><h2 id="lesson-summary-title" ref={summaryHeadingRef} tabIndex={-1}>Lesson summary</h2></div>
+      <div className="lesson-summary-heading"><BookOpen aria-hidden="true" /><h2 id="lesson-summary-title" ref={summaryHeadingRef} tabIndex={-1}>{fa ? 'جمع‌بندی درس' : 'Lesson summary'}</h2></div>
       <ul className="lesson-summary-concepts">{lesson.concepts.map((concept, index) => <li key={concept.id}>
-        <span><span dir="ltr">{index + 1}. </span><bdi lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></bdi></span>
-        <span className="lesson-summary-count">{getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id)).length}/{getLearnChecks(bank, concept.id).length} checks answered</span>
+        <span><span>{localizeLessonDigits(index + 1, uiLang)}. </span><bdi lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></bdi></span>
+        <span className="lesson-summary-count">{localizeLessonDigits(getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id)).length, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(getLearnChecks(bank, concept.id).length, uiLang)} {fa ? 'تمرین پاسخ داده شد' : 'checks answered'}</span>
       </li>)}</ul>
-      {lesson.concepts.some(concept => getLearnChecks(bank, concept.id).some(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1)) && <section className="lesson-summary-review" aria-label="Checks to review">
-        <h3>Review</h3><ul>{lesson.concepts.flatMap(concept => getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1).map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi> · <ReviewQuestionContent question={question} /></li>))}</ul>
+      {lesson.concepts.some(concept => getLearnChecks(bank, concept.id).some(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1)) && <section className="lesson-summary-review" aria-label={fa ? 'تمرین‌های نیازمند مرور' : 'Checks to review'}>
+        <h3>{fa ? 'مرور دوباره' : 'Review again'}</h3><ul>{lesson.concepts.flatMap(concept => getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1).map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi> · <ReviewQuestionContent question={question} /></li>))}</ul>
       </section>}
-      {progress.skippedChecks.length > 0 && <section className="lesson-summary-skipped" aria-label="Skipped checks">
-        <h3>Skipped checks</h3><ul>{progress.skippedChecks.map(item => <li key={item.questionId}>{item.questionId}</li>)}</ul>
+      {progress.skippedChecks.length > 0 && <section className="lesson-summary-skipped" aria-label={fa ? 'تمرین‌های ردشده' : 'Skipped checks'}>
+        <h3>{fa ? 'تمرین‌های ردشده' : 'Skipped checks'}</h3><ul>{progress.skippedChecks.map(item => <li key={item.questionId}><bdi dir="ltr">{item.questionId}</bdi></li>)}</ul>
       </section>}
-      {practiceQuestions.length === 0 ? <p className="lesson-no-practice">No practice questions yet</p> : <Button className="lesson-primary-action" onClick={startPractice}>Start practice</Button>}
-      <Button className="lesson-review-action" onClick={reviewLesson}>Review lesson</Button>
-    </section> : currentConcept ? <>
+      {practiceQuestions.length === 0 ? <p className="lesson-no-practice">{fa ? 'هنوز تمرینی ثبت نشده است.' : 'No practice questions yet.'}</p> : <section className="lesson-section-practice">
+        <h3>{fa ? 'تمرین پایانی درس' : 'End-of-lesson practice'}</h3>
+        <p>{fa ? <>{localizeLessonDigits(practiceQuestions.length, uiLang)} سؤال در دسترس است؛ ابتدا {localizeLessonDigits(wholeBookQuestions, uiLang)} سؤال کتاب و سپس {localizeLessonDigits(wholeGeneratedQuestions, uiLang)} تمرین تکمیلی نمایش داده می‌شود.{practiceBatchCount > 1 && <> هر جلسه حداکثر {localizeLessonDigits(MAX_SESSION_EXERCISES, uiLang)} سؤال دارد؛ پس از هر جلسه می‌توانی ادامه بدهی.</>}</> : <>{practiceQuestions.length} questions: {wholeBookQuestions} textbook exercises, followed by {wholeGeneratedQuestions} extra practice questions.{practiceBatchCount > 1 && ` Each session holds up to ${MAX_SESSION_EXERCISES} questions; continue after each batch.`}</>}</p>
+        {remainingPracticeQuestions.length > 0 && <Button className="lesson-primary-action" onClick={() => startWholeLessonPractice()}>{fa ? (completedPracticeIds.size ? `ادامهٔ تمرین پایانی · ${localizeLessonDigits(remainingPracticeQuestions.length, uiLang)} سؤال` : 'شروع تمرین پایانی') : (completedPracticeIds.size ? `Continue end-of-lesson practice · ${remainingPracticeQuestions.length} questions` : 'Start practice')}</Button>}
+        {remainingPracticeQuestions.length === 0 && <p className="lesson-section-practice-done" role="status">{fa ? 'همهٔ سؤال‌های تمرین پایانی انجام شده‌اند.' : 'All end-of-lesson practice questions are complete.'}</p>}
+      </section>}
+      <Button className="lesson-review-action" onClick={reviewLesson}>{fa ? 'مرور دوبارهٔ درس' : 'Review lesson'}</Button>
+    </section> : currentSection ? <>
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
-        <div className="lesson-concept-heading"><p className="lesson-section-label">Concept {conceptIndex + 1}</p>{currentConcept.pages && <span className="lesson-pages">pp. {currentConcept.pages.replace(/(\d)\s*-\s*(\d)/, '$1–$2')}</span>}</div>
-        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={languageForText(currentConcept.title)} dir={contentDirection(currentConcept.title)}><LessonText text={displayEducationalHeading(currentConcept.title)} /></h2>
-        <LessonConceptContent concept={currentConcept} revealedSteps={progress.revealedSteps} onReveal={revealStep} />
+        <div className="lesson-concept-heading"><p className="lesson-section-label">{fa ? 'گام کوتاه' : 'Short section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
+        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
+        <LessonSectionContent section={currentSection} revealedSteps={progress.revealedSteps} onReveal={revealStep} uiLang={uiLang} hideSingleConceptHeading={!currentSection.title && currentSection.concepts.length === 1} />
       </section>
-      {checks.length > 0 && <section className="lesson-checks" aria-label="Mini checks">
-        <h2>Check your understanding</h2>
+      <section className="lesson-section-practice" aria-label={fa ? 'تمرین‌های همین بخش' : 'Practice for this section'}>
+        <h2>{fa ? 'تمرین‌های همین بخش' : 'Practice for this section'}</h2>
+        {sectionPracticeQuestions.length > 0 ? <>
+          <p>{fa ? <>{localizeLessonDigits(sectionPracticeQuestions.length, uiLang)} سؤال: {localizeLessonDigits(sectionBookQuestions, uiLang)} تمرین کتاب و {localizeLessonDigits(sectionGeneratedQuestions, uiLang)} تمرین تکمیلی. ابتدا تمرین‌های کتاب آمده‌اند.</> : <>{sectionPracticeQuestions.length} questions: {sectionBookQuestions} textbook and {sectionGeneratedQuestions} extra. Textbook questions come first.</>}</p>
+          {progress.completedSectionIds?.includes(currentSection.id) && <p className="lesson-section-practice-done" role="status">{fa ? 'تمرین‌های این بخش انجام شده‌اند.' : 'This section’s practice is complete.'}</p>}
+          <Button className="lesson-section-practice-button" onClick={startSectionPractice}>{fa ? 'شروع تمرین این بخش' : 'Practice this section'} · {localizeLessonDigits(sectionPracticeQuestions.length, uiLang)} {sectionQuestionWord}</Button>
+        </> : <p>{fa ? 'برای این بخش تمرین جداگانه‌ای ثبت نشده است.' : 'No practice questions are assigned to this section.'}</p>}
+      </section>
+      {checks.length > 0 && <section className="lesson-checks" aria-label={fa ? 'تمرین کوتاه همین بخش' : 'Quick checks for this section'}>
+        <h2>{fa ? 'تمرین کوتاه همین بخش' : 'Quick checks for this section'}</h2>
         {checks.map(question => <LessonCheck key={question.id} question={question}
+          uiLang={uiLang}
           mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
           answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
           skipped={progress.skippedChecks.some(item => item.questionId === question.id)}
           onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => { skipCheckInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setSkipQuestion(allQuestions.get(questionId) ?? null); }} />)}
       </section>}
-      <nav className="lesson-concept-navigation" aria-label="Concept navigation">
-        <Button onClick={goPrevious} disabled={conceptIndex === 0}>← Previous concept</Button>
-        <Button className="lesson-primary-action" onClick={goNext} disabled={!conceptComplete}>Next concept →</Button>
+      <nav className="lesson-concept-navigation" aria-label={fa ? 'پیمایش بخش‌های درس' : 'Lesson section navigation'}>
+        <Button onClick={goPrevious} disabled={sectionIndex === 0}>{fa ? '→ بخش قبلی' : '← Previous section'}</Button>
+        <Button className="lesson-primary-action" onClick={goNext} disabled={!conceptComplete}>{fa ? 'بخش بعدی ←' : 'Next section →'}</Button>
       </nav>
-      {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>Skip to practice</Button>}
+      {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>{fa ? 'رفتن به تمرین پایانی کل درس' : 'Skip to practice'}</Button>}
     </> : null}
 
     <Dialog open={!!skipQuestion} onOpenChange={open => { if (!open) setSkipQuestion(null); }}>
       <DialogContent aria-describedby="lesson-skip-description" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { const target = skipCheckInvoker.current; if (target?.isConnected) target.focus({ preventScroll: true }); else headingRef.current?.focus({ preventScroll: true }); }); }}>
-        <DialogTitle>Skip this check?</DialogTitle>
-        <DialogDescription id="lesson-skip-description">Skip this check? It will be logged.</DialogDescription>
-        <div className="dialog-actions"><Button onClick={() => setSkipQuestion(null)}>Cancel</Button><Button variant="default" className="lesson-primary-action" onClick={confirmSkip}>Skip check</Button></div>
+        <DialogTitle>{fa ? 'از این تمرین بگذرم؟' : 'Skip this check?'}</DialogTitle>
+        <DialogDescription id="lesson-skip-description">{fa ? 'این تمرین به‌عنوان ردشده ثبت می‌شود.' : 'This check will be logged as skipped.'}</DialogDescription>
+        <div className="dialog-actions"><Button onClick={() => setSkipQuestion(null)}>{fa ? 'انصراف' : 'Cancel'}</Button><Button variant="default" className="lesson-primary-action" onClick={confirmSkip}>{fa ? 'رد کردن تمرین' : 'Skip check'}</Button></div>
       </DialogContent>
     </Dialog>
     <Dialog open={skipPracticeOpen} onOpenChange={setSkipPracticeOpen}>
       <DialogContent aria-describedby="lesson-skip-practice-description" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { const target = skipPracticeInvoker.current; if (target?.isConnected) target.focus({ preventScroll: true }); else headingRef.current?.focus({ preventScroll: true }); }); }}>
-        <DialogTitle>Skip to practice?</DialogTitle>
-        <DialogDescription id="lesson-skip-practice-description">This choice will be recorded for this lesson.</DialogDescription>
-        <div className="dialog-actions"><Button onClick={() => setSkipPracticeOpen(false)}>Cancel</Button><Button variant="default" className="lesson-primary-action" onClick={confirmSkipToPractice}>Skip to practice</Button></div>
+        <DialogTitle>{fa ? 'از درس‌نامه به تمرین پایانی بروم؟' : 'Skip to practice?'}</DialogTitle>
+        <DialogDescription id="lesson-skip-practice-description">{fa ? 'این انتخاب برای این درس ثبت می‌شود.' : 'This choice will be recorded for this lesson.'}</DialogDescription>
+        <div className="dialog-actions"><Button onClick={() => setSkipPracticeOpen(false)}>{fa ? 'ادامهٔ درس‌نامه' : 'Cancel'}</Button><Button variant="default" className="lesson-primary-action" onClick={confirmSkipToPractice}>{fa ? 'رفتن به تمرین پایانی' : 'Skip to practice'}</Button></div>
       </DialogContent>
     </Dialog>
   </section>;

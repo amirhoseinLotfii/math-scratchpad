@@ -36,6 +36,32 @@ function openLessonPicker(user: ReturnType<typeof userEvent.setup>) {
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 describe('Phase 4 Learn progress restoration', () => {
+  it('routes a section practice set into the regular work area and resumes that section when it is finished', async () => {
+    const user = userEvent.setup();
+    const bank = fixture();
+    bank.questions.find(question => question.id === 'SAMPLE-1.1-P01')!.conceptId = 'SAMPLE-1.1-C1';
+    bank.questions.find(question => question.id === 'SAMPLE-1.1-P02')!.conceptId = 'SAMPLE-1.1-C2';
+    const store = practiceStore(bank);
+    render(<Provider store={store}><App initialBank={{ bank, version: VERSION }} /></Provider>);
+
+    await openLessonPicker(user);
+    await user.click(within(screen.getByRole('dialog', { name: 'Lessons' })).getByRole('button', { name: /Sample lesson.*Not started/ }));
+    await user.click(screen.getByRole('button', { name: 'Practice this section · 1 question' }));
+    await waitFor(() => expect(screen.getByText('Sample practice 1.')).toBeVisible());
+    expect(screen.queryByText('Sample practice 2.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sample practice 3.')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Finish session' }));
+    const confidence = await screen.findByRole('dialog', { name: /confidence/i });
+    await user.click(within(confidence).getByRole('radio', { name: 'Medium' }));
+    await user.click(within(confidence).getByRole('button', { name: /continue/i }));
+    expect(await screen.findByRole('heading', { name: 'First sample concept' })).toBeVisible();
+    expect(screen.getByText('This section’s practice is complete.')).toBeVisible();
+    const resumed = readLessonProgress(bank, VERSION).progressById['SAMPLE-1.1'];
+    expect(resumed).toMatchObject({ status: 'learning', currentSectionIndex: 0, completedSectionIds: ['SAMPLE-1.1-SAMPLE-1.1-C1'] });
+    expect(resumed.activePracticeSectionId).toBeUndefined();
+  });
+
   it('resumes a lesson in place, keeps check answers separate, and completes the same practice session after reload', async () => {
     const user = userEvent.setup();
     vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined);
@@ -49,7 +75,7 @@ describe('Phase 4 Learn progress restoration', () => {
     expect(screen.getByText('Temporary test step 1')).toBeVisible();
     await user.click(screen.getByRole('radio', { name: 'Option B' }));
     await user.click(screen.getByRole('radio', { name: 'Confidence 4' }));
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
     const mathAnswer = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
     await user.click(within(mathAnswer).getByRole('button', { name: 'Show Keyboard' }));
     await user.click(within(mathAnswer).getByRole('button', { name: /^8$/ }));
@@ -78,12 +104,12 @@ describe('Phase 4 Learn progress restoration', () => {
     expect((restoredEditor.querySelector('math-field[aria-label="Step 1 expression"]') as HTMLElement & { value: string }).value).toBe('8');
     expect(within(restoredEditor).getByRole('button', { name: 'Show Keyboard' })).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: '← Previous concept' }));
+    await user.click(screen.getByRole('button', { name: '← Previous section' }));
     expect(screen.getByText('Temporary test step 1')).toBeVisible();
     expect(screen.getByRole('radio', { name: 'Option B' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Confidence 4' })).toBeChecked();
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
     expect(await screen.findByRole('heading', { name: 'Lesson summary' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Review lesson' }));
     expect(screen.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
@@ -95,8 +121,8 @@ describe('Phase 4 Learn progress restoration', () => {
     await openLessonPicker(user);
     await user.click(within(screen.getByRole('dialog', { name: 'Lessons' })).getByRole('button', { name: /Sample lesson.*Learning/ }));
     expect(await screen.findByRole('heading', { name: 'First sample concept' })).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
-    await user.click(screen.getByRole('button', { name: 'Next concept →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
+    await user.click(screen.getByRole('button', { name: 'Next section →' }));
     expect(await screen.findByRole('heading', { name: 'Lesson summary' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Start practice' }));
     await waitFor(() => expect(screen.getByText('Sample practice 1.')).toBeVisible());

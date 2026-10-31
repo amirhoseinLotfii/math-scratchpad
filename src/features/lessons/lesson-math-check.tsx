@@ -11,6 +11,7 @@ import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from '../math-editor/mathlive-adapter';
 import { MathLiveStepInput } from '../math-editor/components/mathlive-step-input';
+import { localizeLessonDigits } from './lesson-content';
 
 export function createLessonMathStore(question: BankQuestion, phone: boolean, savedSteps?: Step[]): ScratchStore {
   const state = initialState(), previous = state.doc.exercises[0], step = blankStep();
@@ -33,8 +34,9 @@ function dispatchInsert(store: ScratchStore, kind: string) {
   else store.dispatch(actions.command({ type: 'insert', value: kind }));
 }
 
-function Editor({ question, store, onAnswered }: { question: BankQuestion; store: ScratchStore; onAnswered: (id: string, answer: { type: 'math'; steps: Step[] }) => void }) {
+function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestion; store: ScratchStore; onAnswered: (id: string, answer: { type: 'math'; steps: Step[] }) => void; uiLang: 'fa' | 'en' }) {
   const layout = useWorkspaceLayout(), wide = layout !== 'phone';
+  const fa = uiLang === 'fa';
   const root = useRef<HTMLElement>(null);
   const state = useAppSelector(s => s);
   const dispatch = useAppDispatch();
@@ -114,24 +116,24 @@ function Editor({ question, store, onAnswered }: { question: BankQuestion; store
       } else dispatch(actions.symbols());
     }} />;
 
-  return <section ref={root} className="lesson-math-editor" tabIndex={0} aria-label={`Math answer for ${question.id}`} onKeyDownCapture={handleKey}>
-      <div className="lesson-answer-heading"><h4>Write each step</h4><Button className="lesson-keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; dispatch(actions.keyboard(open)); if (open) focusEditor(); }}>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</Button></div>
+  return <section ref={root} className="lesson-math-editor" tabIndex={0} aria-label={`${fa ? 'پاسخ ریاضی برای' : 'Math answer for'} ${question.id}`} onKeyDownCapture={handleKey}>
+      <div className="lesson-answer-heading"><h4>{fa ? 'راه‌حل را گام‌به‌گام بنویسید' : 'Write each step'}</h4><Button className="lesson-keyboard-toggle" aria-label={state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; dispatch(actions.keyboard(open)); if (open) focusEditor(); }}>{state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')}</Button></div>
       {wide && tools}
-      <section className="lesson-answer-steps" aria-label={`Answer steps for ${question.id}`}>
+      <section className="lesson-answer-steps" aria-label={`${fa ? 'گام‌های پاسخ تمرین' : 'Steps for check'} ${question.id}`}>
         {exercise.steps.map((step, index) => <article className={`lesson-answer-step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id}>
-          <header><Button variant="ghost" className="lesson-step-title" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>Step {index + 1}</Button>
-            <span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
-            <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${index + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusEditor(); }}>Final{step.final ? ' ✓' : ''}</Button>
+          <header><Button variant="ghost" className="lesson-step-title" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>{fa ? 'گام' : 'Step'} {localizeLessonDigits(index + 1, uiLang)}</Button>
+            <span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? (fa ? 'نیازمند بازبینی' : 'Needs review') : step.edited ? (fa ? 'ویرایش‌شده' : 'Edited') : ''}</span>
+            <Button className="final-marker" aria-pressed={step.final} aria-label={fa ? `پاسخ نهایی، گام ${localizeLessonDigits(index + 1, uiLang)}` : `Final answer, Step ${index + 1}`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusEditor(); }}>{fa ? 'پاسخ نهایی' : 'Final answer'}{step.final ? ' ✓' : ''}</Button>
           </header>
-          <div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={`Step ${index + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
+          <div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={fa ? `عبارت گام ${localizeLessonDigits(index + 1, uiLang)}` : `Step ${index + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
         </article>)}
       </section>
-      <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep' })); focusEditor(); }}>Add step</Button>
+      <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep' })); focusEditor(); }}>{fa ? 'افزودن گام' : 'Add step'}</Button>
       {!wide && tools}
       {state.keyboardOpen && <Keyboard onFocusEditor={focusEditor} />}
     </section>;
 }
 
-export function LessonMathCheck({ question, store, onAnswered }: { question: BankQuestion; store: ScratchStore; onAnswered: (id: string, answer: { type: 'math'; steps: Step[] }) => void }) {
-  return <Provider store={store}><Editor question={question} store={store} onAnswered={onAnswered} /></Provider>;
+export function LessonMathCheck({ question, store, onAnswered, uiLang = 'en' }: { question: BankQuestion; store: ScratchStore; onAnswered: (id: string, answer: { type: 'math'; steps: Step[] }) => void; uiLang?: 'fa' | 'en' }) {
+  return <Provider store={store}><Editor question={question} store={store} onAnswered={onAnswered} uiLang={uiLang} /></Provider>;
 }

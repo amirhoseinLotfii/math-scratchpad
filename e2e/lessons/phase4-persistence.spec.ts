@@ -14,7 +14,7 @@ test('Learn progress restores in the connected app and its lesson status survive
   await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Not started/ }).click();
   await page.getByRole('radio', { name: 'Option B' }).check();
   await page.getByRole('radio', { name: 'Confidence 4' }).check();
-  await page.getByRole('button', { name: 'Next concept →' }).click();
+  await page.getByRole('button', { name: 'Next section →' }).click();
   const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
   const answerField = editor.locator('math-field[aria-label="Step 1 expression"]');
   await editor.getByRole('button', { name: 'Show Keyboard' }).click();
@@ -40,11 +40,11 @@ test('Learn progress restores in the connected app and its lesson status survive
   await expect.poll(() => restoredField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
   await expect(restoredEditor.getByRole('button', { name: 'Show Keyboard' })).toBeVisible();
   await expect(restoredEditor.getByRole('group', { name: 'Numeric keys' })).toHaveCount(0);
-  await page.getByRole('button', { name: '← Previous concept' }).click();
+  await page.getByRole('button', { name: '← Previous section' }).click();
   await expect(page.getByRole('radio', { name: 'Option B' })).toBeChecked();
   await expect(page.getByRole('radio', { name: 'Confidence 4' })).toBeChecked();
-  await page.getByRole('button', { name: 'Next concept →' }).click();
-  await page.getByRole('button', { name: 'Next concept →' }).click();
+  await page.getByRole('button', { name: 'Next section →' }).click();
+  await page.getByRole('button', { name: 'Next section →' }).click();
   await page.getByRole('button', { name: 'Start practice' }).click();
   await expect(page.getByText('Sample practice 1.')).toBeVisible();
   const archive = await page.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-drive-session-archive-v1') ?? '[]'));

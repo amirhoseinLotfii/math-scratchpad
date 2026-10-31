@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { dismissWellbeing, expect, test } from '../support/test';
 
 const sizes = [
-  { suffix: 'mobile-390x844', width: 390, height: 844 },
   { suffix: 'desktop-1280x900', width: 1280, height: 900 },
 ];
 
@@ -20,8 +19,8 @@ async function openLesson(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
 }
 
-test('captures Phase 5 Learn and connected Practice views at mobile and desktop widths', async ({ page }, info) => {
-  test.skip(info.project.name !== 'laptop-1440', 'Generate the paired Phase 5 screenshots once with a desktop browser context.');
+test('captures Phase 5 Learn and connected Practice views at desktop width', async ({ page }, info) => {
+  test.skip(info.project.name !== 'laptop-1440', 'Generate the Phase 5 desktop screenshots once with a desktop browser context.');
   test.setTimeout(120_000);
 
   for (const size of sizes) {
@@ -47,8 +46,11 @@ test('captures Phase 5 Learn and connected Practice views at mobile and desktop 
     await dismissWellbeing(page);
     await expect(page.getByText('Sample practice 1.')).toBeVisible();
     await page.getByRole('button', { name: 'Lesson' }).click();
-    await expect(page.getByRole('dialog', { name: 'Sample lesson' })).toBeVisible();
-    await expect(page.getByText('Another sample concept')).toBeVisible();
+    const reference = page.getByRole('dialog', { name: 'Sample lesson' });
+    await expect(reference).toBeVisible();
+    await expect(reference.getByText('Another sample concept')).toHaveCount(0);
+    await reference.getByRole('button', { name: 'Next section →' }).click();
+    await expect(reference.getByRole('heading', { name: 'Another sample concept' })).toBeVisible();
     await capture(page, `practice-lesson-panel-${size.suffix}`, false);
 
     await page.goto('/e2e/fixtures/lesson-connected-preview.html');

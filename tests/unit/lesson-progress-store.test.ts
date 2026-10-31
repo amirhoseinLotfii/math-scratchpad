@@ -33,6 +33,8 @@ function progress(lessonId = 'SAMPLE-1.1'): LessonProgress {
     lessonId,
     status: 'learning',
     currentConceptIndex: 1,
+    currentSectionIndex: 1,
+    completedSectionIds: [],
     completedConceptIds: ['SAMPLE-1.1-C1'],
     answeredCheckIds: ['SAMPLE-1.1-L01', 'SAMPLE-1.1-L02'],
     summaryOpen: false,
@@ -54,13 +56,14 @@ afterEach(() => vi.restoreAllMocks());
 describe('namespaced Learn progress storage', () => {
   it('round-trips progress, choice and math responses, confidence, current concept, and revealed steps', () => {
     const source = bank(), initial = emptyLessonProgressState(source.bank_id, VERSION);
-    initial.progressById['SAMPLE-1.1'] = progress();
+    initial.progressById['SAMPLE-1.1'] = { ...progress(), completedPracticeQuestionIds: ['SAMPLE-1.1-P02'], activePracticeQuestionIds: ['SAMPLE-1.1-P01'] };
     expect(saveLessonProgress(source, VERSION, initial)).toEqual({ saved: true, message: '' });
     const restored = readLessonProgress(source, VERSION, localStorage, NOW);
     expect(restored.warning).toBe('');
     expect(restored.progressById['SAMPLE-1.1']).toEqual(initial.progressById['SAMPLE-1.1']);
     expect(restored.progressById['SAMPLE-1.1'].checkAnswers?.['SAMPLE-1.1-L01']).toEqual({ type: 'choice', value: 'Option B' });
     expect(restored.progressById['SAMPLE-1.1'].checkAnswers?.['SAMPLE-1.1-L02']?.type).toBe('math');
+    expect(restored.progressById['SAMPLE-1.1']).toMatchObject({ completedPracticeQuestionIds: ['SAMPLE-1.1-P02'], activePracticeQuestionIds: ['SAMPLE-1.1-P01'] });
   });
 
   it('keeps lesson records separated by lesson ID and bank version', () => {
@@ -75,7 +78,7 @@ describe('namespaced Learn progress storage', () => {
     expect(lessonProgressStorageKey(source.bank_id, VERSION)).not.toBe(lessonProgressStorageKey(source.bank_id, 'sample-v1-other'));
   });
 
-  it('retains the previous progress record when normalized lesson content changes', async () => {
+  it('migrates stable progress to a revised bank version and retains the previous record', async () => {
     const source = bank();
     const oldVersion = await snapshotVersion(source);
     const saved = emptyLessonProgressState(source.bank_id, oldVersion);
@@ -84,12 +87,13 @@ describe('namespaced Learn progress storage', () => {
     const oldKey = lessonProgressStorageKey(source.bank_id, oldVersion);
     const before = localStorage.getItem(oldKey);
     const revised = structuredClone(source);
+    revised.version = 'sample-v2';
     revised.lessons![0].concepts[0].blocks.push({ type: 'image-description', lang: 'fa', text: 'توضیح آزمایشی' });
     const newVersion = await snapshotVersion(revised);
     expect(newVersion).not.toBe(oldVersion);
-    const fresh = readLessonProgress(revised, newVersion, localStorage, NOW);
-    expect(fresh.progressById).toEqual({});
-    expect(saveLessonProgress(revised, newVersion, fresh).saved).toBe(true);
+    const migrated = readLessonProgress(revised, newVersion, localStorage, NOW);
+    expect(migrated.progressById['SAMPLE-1.1']).toMatchObject({ currentConceptIndex: 1, answeredCheckIds: ['SAMPLE-1.1-L01', 'SAMPLE-1.1-L02'] });
+    expect(localStorage.getItem(lessonProgressStorageKey(source.bank_id, newVersion))).not.toBeNull();
     expect(localStorage.getItem(oldKey)).toBe(before);
     expect(readLessonProgress(source, oldVersion, localStorage, NOW).progressById['SAMPLE-1.1']).toEqual(saved.progressById['SAMPLE-1.1']);
   });

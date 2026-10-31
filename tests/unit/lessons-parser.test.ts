@@ -87,6 +87,20 @@ describe('lesson-aware bank parser', () => {
     expect(parsed.parseWarnings).toBeUndefined();
   });
 
+  it('preserves source page numbers and attached LaTeX in Persian text blocks', () => {
+    const parsed = validateBank(rawBank([question('Q1')], [lesson('L1', [concept('C1', { blocks: [
+      { type: 'paragraph', lang: 'fa', page: 18, text: 'این تابع f(a+b) را نشان می‌دهد.', latex: 'f(a+b)' },
+      { type: 'note', lang: 'fa', page: 19, text: 'یک نکتهٔ ریاضی', latex: 'x=y+2^y' },
+      { type: 'image', lang: 'fa', page: 19, src: 'https://openstax.org/figure.webp', alt: 'نمودار تابع' },
+    ] })]) ]));
+    expect(parsed.lessons?.[0].concepts[0].blocks).toEqual([
+      { type: 'paragraph', lang: 'fa', page: 18, text: 'این تابع f(a+b) را نشان می‌دهد.', latex: 'f(a+b)' },
+      { type: 'note', lang: 'fa', page: 19, text: 'یک نکتهٔ ریاضی', latex: 'x=y+2^y' },
+      { type: 'image', lang: 'fa', page: 19, src: 'https://openstax.org/figure.webp', alt: 'نمودار تابع' },
+    ]);
+    expect(parsed.parseWarnings).toBeUndefined();
+  });
+
   it('drops missing check references and exposes valid learn checks only', () => {
     const parsed = validateBank(rawBank([
       question('CHECK', { lessonId: 'L1', conceptId: 'C1', stage: 'learn' }),
