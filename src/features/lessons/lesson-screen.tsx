@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
 import { getLearnChecks, getPracticeQuestionOrigin, getPracticeQuestions, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
-import { contentDirection, displayEducationalHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits } from './lesson-content';
+import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits } from './lesson-content';
 import { buildLessonSections, type LessonSection } from './lesson-sections';
 import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
@@ -39,6 +39,7 @@ function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSi
     {section.concepts.map(({ concept, conceptIndex, blocks }) => {
       const content = <div className="lesson-concept-blocks">{blocks.map((block, blockIndex) => {
         const originalIndex = concept.blocks.indexOf(block);
+        if (isRedundantOpeningHeading(concept, block, originalIndex)) return null;
         const key = `${concept.id}:${originalIndex >= 0 ? originalIndex : blockIndex}`;
         return <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
       })}</div>;
@@ -62,6 +63,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
   const sections = useMemo(() => buildLessonSections(lesson), [lesson]);
+  const [lessonInfoOpen, setLessonInfoOpen] = useState(false);
   const practiceQuestions = useMemo(() => getPracticeQuestions(bank, lesson.id), [bank, lesson.id]);
   const initialSectionIndex = useMemo(() => {
     const saved = initialProgress?.currentSectionIndex;
@@ -281,10 +283,15 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   return <section className="lesson-screen" aria-label={fa ? 'درس‌نامه' : 'Lesson notes'} lang={uiLang} dir={fa ? 'rtl' : 'ltr'}>
     <header className="lesson-header">
       <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />{fa ? 'بازگشت به تمرین' : 'Back to question'}</Button>
-      <p className="lesson-book-line" dir="ltr"><bdi>{lesson.book}</bdi> · {lesson.section}{pages && <> · <bdi>pp. {pages}</bdi></>}</p>
-      <LessonSourceAttribution book={lesson.book} section={lesson.section} />
+      <Button variant="ghost" className="lesson-info-toggle" aria-expanded={lessonInfoOpen} aria-controls="lesson-info-panel" onClick={() => setLessonInfoOpen(open => !open)}>
+        <span>{fa ? (lessonInfoOpen ? 'بستن اطلاعات درس' : 'اطلاعات درس') : (lessonInfoOpen ? 'Hide lesson information' : 'Lesson information')}</span>
+        <ChevronDown aria-hidden="true" className={lessonInfoOpen ? 'lesson-info-chevron lesson-info-chevron-open' : 'lesson-info-chevron'} />
+      </Button>
+      <div id="lesson-info-panel" className={`lesson-info-panel${lessonInfoOpen ? '' : ' lesson-info-panel-collapsed'}`}>
+        <p className="lesson-book-line" dir="ltr"><bdi>{lesson.book}</bdi> · {lesson.section}{pages && <> · <bdi>pp. {pages}</bdi></>}</p>
+        <LessonSourceAttribution book={lesson.book} section={lesson.section} />
+      </div>
       <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></h1>
-      {!summary && currentSection && <p className="lesson-progress" aria-live="polite">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}{currentSectionPages && <> · {fa ? 'صفحه‌های' : 'pages'} {currentSectionPages}</>}</p>}
       {summary && <p className="lesson-progress" aria-live="polite">{fa ? 'جمع‌بندی درس' : 'Lesson summary'}</p>}
       {practiceError && <p className="lesson-practice-error" role="alert">{practiceError}</p>}
       {progressMessage && <p className="lesson-progress-message" role="alert">{progressMessage}</p>}
@@ -311,7 +318,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       <Button className="lesson-review-action" onClick={reviewLesson}>{fa ? 'مرور دوبارهٔ درس' : 'Review lesson'}</Button>
     </section> : currentSection ? <>
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
-        <div className="lesson-concept-heading"><p className="lesson-section-label">{fa ? 'گام کوتاه' : 'Short section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
+        <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
         <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
         <LessonSectionContent section={currentSection} revealedSteps={progress.revealedSteps} onReveal={revealStep} uiLang={uiLang} hideSingleConceptHeading={!currentSection.title && currentSection.concepts.length === 1} />
       </section>

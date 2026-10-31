@@ -40,6 +40,7 @@ import type { Lesson, LessonProgress } from './features/lessons/types';
 import { LessonScreen } from './features/lessons/lesson-screen';
 import { LessonPicker } from './features/lessons/lesson-picker';
 import { LessonReferenceDialog } from './features/lessons/lesson-reference-dialog';
+import { buildLessonSections } from './features/lessons/lesson-sections';
 import { contentDirection, languageForText, LessonSourceAttribution, LessonText, QuestionChoice, QuestionSource } from './features/lessons/lesson-content';
 import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
 import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
@@ -51,6 +52,9 @@ const INSERT_OPTIONS = [
  { name: '−', kind: '−' }, { name: '×', kind: '×' }, { name: '÷', kind: '÷' }, { name: '=', kind: '=' },
 ];
 type Decision = 'next' | 'complete' | 'copy';
+function freshLessonProgress(lessonId: string): LessonProgress {
+ return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
+}
 /** Number of insert tools shown before “Show more”. */
 export const INSERT_VISIBLE = 8;
 /** `initialBank` is used by isolated browser previews/tests; normal app startup loads through DriveBankPanel. */
@@ -190,6 +194,62 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   }
   setReferenceWasRunning(false);
   if (targetExerciseId) switchQuestion(targetExerciseId);
+ }
+ function openInteractiveLessonFromReference(sectionId: string) {
+  const lesson = referenceLesson;
+  if (!lesson) return;
+  closeReference();
+  const sections = buildLessonSections(lesson);
+  const currentSectionIndex = Math.max(0, sections.findIndex(section => section.id === sectionId));
+  const progress = lessonProgressRef.current.progressById[lesson.id] ?? freshLessonProgress(lesson.id);
+  const section = sections[currentSectionIndex];
+  rememberLessonProgress({
+   ...progress,
+   currentSectionIndex,
+   currentConceptIndex: section?.concepts[0]?.conceptIndex ?? progress.currentConceptIndex,
+   summaryOpen: false,
+  });
+  setLessonScreen(lesson);
+  setShowResults(false);
+ }
+ function startReferencePracticeQuestion(questionId: string) {
+  const targetBank = loadedBank;
+  const question = targetBank?.bank.questions.find(item => item.id === questionId);
+  const lesson = question?.lessonId ? targetBank?.bank.lessons?.find(item => item.id === question.lessonId) : undefined;
+  if (!targetBank || !question || !lesson) return;
+  const existing = store.getState().doc.exercises.find(item => item.bankQuestionId === questionId);
+  if (existing) { closeReference(existing.id); return; }
+  try {
+   const doc = bankDocument(targetBank.bank, targetBank.version, [question]);
+   const before = store.getState();
+   closeReference();
+   archiveSession(before);
+   dispatch(actions.load({ doc }));
+   dispatch(actions.keyboard(initialKeyboardOpen(false)));
+   dispatch(actions.notice('Lesson practice started.'));
+   const progress = lessonProgressRef.current.progressById[lesson.id] ?? freshLessonProgress(lesson.id);
+   rememberLessonProgress({
+    ...progress,
+    status: 'practising',
+    activePracticeSectionId: undefined,
+    activePracticeQuestionIds: [question.id],
+    summaryOpen: true,
+    practiceStartedAt: new Date().toISOString(),
+   });
+   setPracticeLessonId(lesson.id);
+   setPracticeStartError('');
+   setLessonScreen(null);
+   setShowResults(false);
+   setManual('');
+   setComplete(false);
+  } catch (error) {
+   setPracticeStartError(error instanceof Error ? error.message : 'Could not open this practice question. The current session was kept.');
+  }
+ }
+ function openQuestionFromReference(questionId: string) {
+  const existing = store.getState().doc.exercises.find(item => item.bankQuestionId === questionId);
+  if (existing) closeReference(existing.id);
+  else startReferencePracticeQuestion(questionId);
  }
  function openDriveBank() { setDriveBankInitialized(true); setDriveBankOpen(true); }
  function loadBankFromLessons() { setLessonPickerOpen(false); openDriveBank(); }
@@ -525,7 +585,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   </div>
   {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} /></div>}
   <LessonPicker open={lessonPickerOpen} lessons={lessons} progressByLesson={lessonProgressById} hasBank={!!matchingBank} onLoadBank={loadBankFromLessons} onOpenChange={setLessonPickerOpen} onChoose={openLesson} onCloseAutoFocus={event => { event.preventDefault(); if (!lessonScreen) menuInvoker.current?.focus({ preventScroll: true }); }} />
-  {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} question={currentBankQuestion} availableQuestionIds={state.doc.exercises.flatMap(item => item.bankQuestionId ? [item.bankQuestionId] : [])} onSelectPracticeQuestion={questionId => { const target = store.getState().doc.exercises.find(item => item.bankQuestionId === questionId); if (target) closeReference(target.id); }} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
+  {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} question={currentBankQuestion} onSelectPracticeQuestion={openQuestionFromReference} onOpenInteractiveLesson={openInteractiveLessonFromReference} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
   <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>

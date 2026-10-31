@@ -171,7 +171,7 @@ export function LessonSourceAttribution({ book, section }: { book: Lesson['book'
   const sourceSlug = openStaxSectionSlugs[section] ?? '1-key-concepts';
   const sourceLabel = section === 'Review' ? 'مرور فصل ۱' : 'بخش ' + section;
   return <p className="lesson-source-attribution">
-    متن، تعریف‌ها، تمرین‌ها و شکل‌های این درس از <a href={'https://openstax.org/books/precalculus-2e/pages/' + sourceSlug} target="_blank" rel="noreferrer">OpenStax، کتاب Precalculus 2e، {sourceLabel}</a> گرفته و به فارسی ترجمه یا بازآرایی شده‌اند. © Rice University. مجوز: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a>.
+    متن، تعریف‌ها، تمرین‌ها و شکل‌های این درس از <a href={'https://openstax.org/books/precalculus-2e/pages/' + sourceSlug} target="_blank" rel="noreferrer">OpenStax، کتاب Precalculus 2e، {sourceLabel}</a> گرفته و به فارسی ترجمه یا بازآرایی شده‌اند. مثال‌های «آموزشی تکمیلی» برای روشن‌کردن گام‌های کوتاه طراحی شده‌اند. © Rice University. مجوز: <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a>.
   </p>;
 }
 

@@ -69,6 +69,7 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('img', { name: 'نمودار تابع' })).toHaveAttribute('src', 'https://openstax.org/figure.webp');
     expect(screen.getByText('شکل ۱: نمودار تابع')).toHaveAttribute('dir', 'rtl');
     expect(screen.getByRole('link', { name: /OpenStax/ })).toHaveAttribute('href', 'https://openstax.org/books/precalculus-2e/pages/1-1-functions-and-function-notation');
+    expect(screen.getByText(/مثال‌های «آموزشی تکمیلی» برای روشن‌کردن گام‌های کوتاه طراحی شده‌اند/)).toBeVisible();
     expect(screen.getByRole('link', { name: 'CC BY-NC-SA 4.0' })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by-nc-sa/4.0/');
   });
 
