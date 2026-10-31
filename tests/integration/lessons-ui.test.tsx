@@ -302,4 +302,14 @@ describe('lesson learning screen', () => {
     render(<LessonBlockView block={{ type: 'example', lang: 'fa', title: 'مثال 1', steps: [] }} blockKey="example" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByRole('heading', { name: 'مثال 1' })).toHaveAttribute('dir', 'rtl');
   });
+
+  it('keeps complete Latin phrases together inside Persian lesson prose', () => {
+    const text = 'در این بخش، (Functions and Function Notation) و (domain and range) آمده است.';
+    const { container } = render(<LessonBlockView block={{ type: 'paragraph', lang: 'fa', text }} blockKey="bidi" revealed={0} onReveal={() => undefined} />);
+    const paragraph = container.querySelector('p')!;
+    expect(paragraph).toHaveAttribute('dir', 'rtl');
+    const englishRuns = [...paragraph.querySelectorAll('bdi[lang="en"][dir="ltr"]')];
+    expect(englishRuns.map(run => run.textContent)).toEqual(['(Functions and Function Notation)', '(domain and range)']);
+    expect(paragraph.textContent).toBe(text);
+  });
 });
