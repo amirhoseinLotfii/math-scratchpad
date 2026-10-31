@@ -60,7 +60,7 @@ test('WIDE-10: toolbar undo/redo restore math and focus without opening the keyp
  await expect(page.getByRole('main')).toBeFocused();await expect(page.getByLabel('Step 1 expression')).toContainText('7');await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
 test('WIDE-11: deleting a named middle step preserves neighboring work and first-step protection',async({page})=>{
- await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('11');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('22');await page.getByRole('button',{name:'Add step',exact:true}).click();await page.keyboard.type('33');
+ await startBatch(page);await page.getByRole('main').focus();await page.keyboard.type('11');await page.getByRole('button',{name:'Add step',exact:true}).click();await expect(page.getByRole('button',{name:'Step 2 number empty'})).toBeFocused();await page.keyboard.type('22');await page.getByRole('button',{name:'Add step',exact:true}).click();await expect(page.getByRole('button',{name:'Step 3 number empty'})).toBeFocused();await page.keyboard.type('33');
  await page.getByRole('button',{name:'Delete Step 2'}).click();await expect(page.getByLabel('Step 1 expression')).toContainText('11');await expect(page.getByLabel('Step 2 expression')).toContainText('33');await expect(page.getByRole('button',{name:'Delete Step 1'})).toBeDisabled();
 });
 test('WIDE-12: resetting a different step targets that step and Undo restores it',async({page})=>{
