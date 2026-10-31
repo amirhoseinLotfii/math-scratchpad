@@ -6,7 +6,7 @@ import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
 import { getLearnChecks, getPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
-import { contentDirection, displayEducationalHeading, languageForText, LessonConceptContent, LessonText } from './lesson-content';
+import { contentDirection, displayEducationalHeading, languageForText, LessonConceptContent, LessonSourceAttribution, LessonText } from './lesson-content';
 import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
@@ -199,6 +199,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     <header className="lesson-header">
       <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />Back to question</Button>
       <p className="lesson-book-line" dir="ltr">{lesson.book} · {lesson.section}{pages}</p>
+      <LessonSourceAttribution book={lesson.book} />
       <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></h1>
       {!summary && currentConcept && <p className="lesson-progress" aria-live="polite">Concept {conceptIndex + 1} of {lesson.concepts.length}</p>}
       {summary && <p className="lesson-progress" aria-live="polite">Learning summary</p>}

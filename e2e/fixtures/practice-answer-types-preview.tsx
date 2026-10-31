@@ -13,7 +13,7 @@ import '../../src/styles.css';
 const bank = validateBank({
   schema_version: 'math-scratchpad.bank/1.0', bank_id: 'qa-answer-types', version: 'v1',
   questions: [
-    { id: 'TEXT-1', mode: 'text', source: '{(1,4), (2,4), (3,5)}', prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
+    { id: 'TEXT-1', mode: 'text', source: String.raw`\{(1,4),\ (2,4),\ (3,5)\}`, prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
     { id: 'CHOICE-1', mode: 'math', source: '3+4', prompt: 'Choose a comparison symbol.', answerType: 'choice', choices: ['<', '>'] },
     { id: 'MATH-1', mode: 'math', source: '2+3' },
   ],

@@ -5,10 +5,11 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../src/app/store-provider';
 import { initialState, makeStore } from '../../src/store';
-import { validateBank, type BankQuestion, type DriveBank } from '../../src/features/drive-bank/drive-bank';
+import { bankDocument, validateBank, type BankQuestion, type DriveBank } from '../../src/features/drive-bank/drive-bank';
+import { App } from '../../src/App';
 import { LessonScreen } from '../../src/features/lessons/lesson-screen';
 import { LessonPicker } from '../../src/features/lessons/lesson-picker';
-import { displayEducationalHeading, LessonBlockView } from '../../src/features/lessons/lesson-content';
+import { displayEducationalHeading, isMathQuestionSource, LessonBlockView, LessonSourceAttribution, QuestionSource } from '../../src/features/lessons/lesson-content';
 import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
 import { MathDisplay } from '../../src/MathDisplay';
 import type { LessonProgress } from '../../src/features/lessons/types';
@@ -60,9 +61,34 @@ describe('lesson learning screen', () => {
     expect(screen.getByText('Diagram showing a triangle')).toBeVisible();
   });
 
+  it('renders a translated figure caption and links the OpenStax source and license', () => {
+    render(<>
+      <LessonBlockView block={{ type: 'image', lang: 'fa', src: 'https://openstax.org/figure.webp', alt: 'نمودار تابع', caption: 'شکل ۱: نمودار تابع' }} blockKey="figure" revealed={0} onReveal={() => undefined} />
+      <LessonSourceAttribution book="OpenStax Precalculus 2e" />
+    </>);
+    expect(screen.getByRole('img', { name: 'نمودار تابع' })).toHaveAttribute('src', 'https://openstax.org/figure.webp');
+    expect(screen.getByText('شکل ۱: نمودار تابع')).toHaveAttribute('dir', 'rtl');
+    expect(screen.getByRole('link', { name: /OpenStax/ })).toHaveAttribute('href', 'https://openstax.org/books/precalculus-2e/pages/1-1-functions-and-function-notation');
+    expect(screen.getByRole('link', { name: 'CC BY-NC-SA 4.0' })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by-nc-sa/4.0/');
+  });
+
+  it('shows the OpenStax attribution on a linked practice question', () => {
+    const raw = JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as { lessons: Array<{ book: string }>; questions: BankQuestion[] };
+    raw.lessons[0].book = 'OpenStax Precalculus 2e';
+    const bank = validateBank(raw), question = bank.questions.find(item => item.stage === 'practice')!;
+    const version = 'openstax-practice-v1', state = initialState();
+    state.doc = bankDocument(bank, version, [question]);
+    render(<Provider store={makeStore(state)}><App initialBank={{ bank, version }} /></Provider>);
+    expect(screen.getByRole('link', { name: /OpenStax/ })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'CC BY-NC-SA 4.0' })).toBeVisible();
+  });
+
   it('shows an unavailable-image description and a math caption without inventing a picture', () => {
     const { rerender } = render(<LessonBlockView block={{ type: 'image-description', lang: 'fa', text: 'توضیح شکل' }} blockKey="description" revealed={0} onReveal={() => undefined} />);
-    expect(screen.getByText('Image description')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Image unavailable.');
+    expect(screen.getByText('Show image description')).toBeVisible();
+    expect(screen.getByText('توضیح شکل')).not.toBeVisible();
+    fireEvent.click(screen.getByText('Show image description'));
     expect(screen.getByText('توضیح شکل')).toHaveAttribute('dir', 'rtl');
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     rerender(<Provider store={makeStore(initialState())}><LessonBlockView block={{ type: 'math', lang: 'fa', latex: 'x+1', text: 'جدول نمونه' }} blockKey="caption" revealed={0} onReveal={() => undefined} /></Provider>);
@@ -87,6 +113,24 @@ describe('lesson learning screen', () => {
     expect(screen.getByText(unsupported)).toBeVisible();
     expect(screen.getByRole('math', { name: 'Lesson formula' })).toHaveAttribute('format', 'latex');
     expect(screen.queryByText(/Formula preview unavailable|Unsupported block/)).not.toBeInTheDocument();
+  });
+
+  it('renders math embedded in text-mode sources while leaving ordinary source prose as text', () => {
+    const table = String.raw`\begin{array}{c|ccc}\text{Input}&1&2&2\\\hline \text{Output}&3&5&7\end{array}`;
+    const { rerender } = render(<QuestionSource source={table} mode="text" textClassName="source-text" mathClassName="source-math" />);
+    expect(screen.getByRole('region', { name: 'Lesson table' })).toBeVisible();
+    expect(screen.getByRole('columnheader', { name: 'Input' })).toBeVisible();
+    expect(screen.getByRole('cell', { name: '7' })).toBeVisible();
+
+    const set = String.raw`\{(-2,3),\ (0,1),\ (1,3),\ (4,-1)\}`;
+    rerender(<QuestionSource source={set} mode="text" textClassName="source-text" mathClassName="source-math" />);
+    expect(screen.getByRole('math', { name: 'Question expression' })).toHaveTextContent(set);
+    expect(isMathQuestionSource(String.raw`f(x) = x^2 - 1 ; f(x) = 3 ; x = ?`, 'text')).toBe(true);
+    expect(isMathQuestionSource('S&P index graph (chapter opener, PDF p17)', 'text')).toBe(false);
+
+    rerender(<QuestionSource source="S&P index graph (chapter opener, PDF p17)" mode="text" textClassName="source-text" mathClassName="source-math" />);
+    expect(screen.getByText('S&P index graph (chapter opener, PDF p17)')).toBeVisible();
+    expect(screen.queryByRole('math')).not.toBeInTheDocument();
   });
 
   it('renders escaped sets, indexed roots and equation fragments without changing the editor', () => {

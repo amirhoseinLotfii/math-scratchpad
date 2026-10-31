@@ -712,6 +712,10 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-reveal-button, #math-scratchpad-redux .lesson-reveal-all { min-height: 44px; margin: 8px 8px 0 0; }
 #math-scratchpad-redux .lesson-reveal-all { color: var(--muted-foreground); }
 #math-scratchpad-redux .lesson-image { display: block; max-width: 100%; height: auto; border-radius: 6px; }
+#math-scratchpad-redux .lesson-image-figure, .lesson-reference-dialog .lesson-image-figure { margin: 12px 0 18px; }
+#math-scratchpad-redux .lesson-image-caption, .lesson-reference-dialog .lesson-image-caption { margin-top: 6px; color: var(--muted-foreground); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+#math-scratchpad-redux .lesson-source-attribution, .lesson-reference-dialog .lesson-source-attribution { margin: 4px 0 10px; color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
+#math-scratchpad-redux .lesson-source-attribution a, .lesson-reference-dialog .lesson-source-attribution a { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
 #math-scratchpad-redux .lesson-image-fallback, #math-scratchpad-redux .lesson-unsupported { padding: 8px 10px; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted-foreground); font-size: 13px; }
 #math-scratchpad-redux .lesson-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 #math-scratchpad-redux .lesson-checks { display: grid; gap: 10px; margin-top: 14px; }
@@ -940,6 +944,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-image-fallback { display: grid; gap: 8px; }
 #math-scratchpad-redux .lesson-image-fallback-label { color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
 #math-scratchpad-redux .lesson-image-fallback figcaption { line-height: 1.7; overflow-wrap: anywhere; }
+#math-scratchpad-redux .lesson-image-fallback details > summary { width: fit-content; color: var(--foreground); cursor: pointer; }
+#math-scratchpad-redux .lesson-question-math { min-width: 0; max-width: 100%; }
 #math-scratchpad-redux .question-source-text {
   max-width: 100%;
   margin: 12px 0 0;

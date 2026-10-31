@@ -14,7 +14,7 @@ afterEach(() => { cleanup(); localStorage.clear(); });
 const bank = validateBank({
   schema_version: 'math-scratchpad.bank/1.0', bank_id: 'answer-types', version: 'v1',
   questions: [
-    { id: 'TEXT-1', mode: 'text', source: '{(1,4), (2,4), (3,5)}', prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
+    { id: 'TEXT-1', mode: 'text', source: String.raw`\{(1,4),\ (2,4),\ (3,5)\}`, prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
     { id: 'CHOICE-1', mode: 'math', source: 'x+1', prompt: 'Choose one.', answerType: 'choice', choices: ['<', '>'] },
     { id: 'MATH-1', mode: 'math', source: '2+3' },
   ],
@@ -46,7 +46,8 @@ describe('Practice question answer types', () => {
     mount();
     const problem = screen.getByRole('region', { name: 'Current problem' });
     expect(within(problem).getByText('آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟')).toBeVisible();
-    expect(within(problem).getByText('{(1,4), (2,4), (3,5)}')).toBeVisible();
+    expect(within(problem).getByRole('math', { name: 'Original question expression' })).toHaveTextContent(String.raw`\{(1,4),\ (2,4),\ (3,5)\}`);
+    expect(screen.getByRole('textbox', { name: 'Answer' })).toBeVisible();
   });
 
   it('renders text and choice controls, keeps answers on question switches, and leaves math steps intact', async () => {
