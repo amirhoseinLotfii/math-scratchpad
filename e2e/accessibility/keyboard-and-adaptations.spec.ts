@@ -29,7 +29,8 @@ test('A11Y-KEY-04: Enter on a focused symbol inserts exactly once', async ({ pag
  await startBatch(page);
  const button = page.getByRole('group', { name: 'Quick math tools' }).getByRole('button', { name: 'Insert fraction' });
  await button.focus(); await page.keyboard.press('Enter');
- expect(await page.getByLabel('Step 1 expression').locator('.fraction').count()).toBe(1);
+ const field = page.locator('math-field[aria-label="Step 1 expression"]');
+ await expect.poll(() => field.evaluate(element => ((element as HTMLElement & { value: string }).value.match(/\\frac/g) ?? []).length)).toBe(1);
 });
 test('A11Y-KEY-05: disabled first-step delete is excluded from keyboard tab sequence', async ({ page }) => {
  await page.goto('/'); const deletion = page.getByRole('button', { name: 'Delete Step 1' });
@@ -82,12 +83,17 @@ test('A11Y-ERR-01: confidence has no default; continuing empty shows an error, c
  await expect(dialog).toBeHidden(); await expect(page.getByRole('alert')).toHaveCount(0);
 });
 test('A11Y-POINTER-01: cancelling a press does not reset the answer', async ({ page }) => {
- await startBatch(page); await page.getByRole('main').focus(); await page.keyboard.type('123');
- const expression = page.getByLabel('Step 1 expression'), before = await expression.textContent();
+ await startBatch(page);
+ const expression = page.locator('math-field[aria-label="Step 1 expression"]');
+ const keys = page.getByRole('group', { name: 'Numeric keys' });
+ for (const digit of ['1', '2', '3']) await keys.getByRole('button', { name: digit, exact: true }).click();
+ const readValue = () => expression.evaluate(element => (element as HTMLElement & { value: string }).value);
+ await expect.poll(readValue).toBe('123');
+ const before = await readValue();
  const reset = await page.getByRole('button', { name: 'Reset Step 1' }).boundingBox();
  await page.mouse.move(reset!.x + reset!.width / 2, reset!.y + reset!.height / 2); await page.mouse.down();
  await page.mouse.move(1, 1); await page.mouse.up();
- await expect(expression).toHaveText(before!);
+ await expect.poll(readValue).toBe(before);
 });
 test('A11Y-FOCUS-CHANGE-01: focusing navigation does not advance or open a dialog', async ({ page }) => {
  await startBatch(page); const selector = page.getByRole('combobox', { name: 'Select question' }); const before = await selector.inputValue();

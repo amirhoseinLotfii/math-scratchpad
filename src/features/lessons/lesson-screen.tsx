@@ -6,7 +6,7 @@ import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
 import { getLearnChecks, getPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
-import { contentDirection, languageForText, LessonConceptContent, LessonText } from './lesson-content';
+import { contentDirection, displayEducationalHeading, languageForText, LessonConceptContent, LessonText } from './lesson-content';
 import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
@@ -199,7 +199,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     <header className="lesson-header">
       <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />Back to question</Button>
       <p className="lesson-book-line" dir="ltr">{lesson.book} · {lesson.section}{pages}</p>
-      <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={lesson.title} /></h1>
+      <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></h1>
       {!summary && currentConcept && <p className="lesson-progress" aria-live="polite">Concept {conceptIndex + 1} of {lesson.concepts.length}</p>}
       {summary && <p className="lesson-progress" aria-live="polite">Learning summary</p>}
       {practiceError && <p className="lesson-practice-error" role="alert">{practiceError}</p>}
@@ -209,7 +209,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     {summary ? <section className="lesson-summary" aria-labelledby="lesson-summary-title">
       <div className="lesson-summary-heading"><BookOpen aria-hidden="true" /><h2 id="lesson-summary-title" ref={summaryHeadingRef} tabIndex={-1}>Lesson summary</h2></div>
       <ul className="lesson-summary-concepts">{lesson.concepts.map((concept, index) => <li key={concept.id}>
-        <span><span dir="ltr">{index + 1}. </span><bdi lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={concept.title} /></bdi></span>
+        <span><span dir="ltr">{index + 1}. </span><bdi lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></bdi></span>
         <span className="lesson-summary-count">{getLearnChecks(bank, concept.id).filter(question => progress.answeredCheckIds.includes(question.id)).length}/{getLearnChecks(bank, concept.id).length} checks answered</span>
       </li>)}</ul>
       {lesson.concepts.some(concept => getLearnChecks(bank, concept.id).some(question => progress.answeredCheckIds.includes(question.id) && progress.confidenceByCheckId?.[question.id] === 1)) && <section className="lesson-summary-review" aria-label="Checks to review">
@@ -223,7 +223,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     </section> : currentConcept ? <>
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
         <div className="lesson-concept-heading"><p className="lesson-section-label">Concept {conceptIndex + 1}</p>{currentConcept.pages && <span className="lesson-pages">pp. {currentConcept.pages.replace(/(\d)\s*-\s*(\d)/, '$1–$2')}</span>}</div>
-        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={languageForText(currentConcept.title)} dir={contentDirection(currentConcept.title)}><LessonText text={currentConcept.title} /></h2>
+        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={languageForText(currentConcept.title)} dir={contentDirection(currentConcept.title)}><LessonText text={displayEducationalHeading(currentConcept.title)} /></h2>
         <LessonConceptContent concept={currentConcept} revealedSteps={progress.revealedSteps} onReveal={revealStep} />
       </section>
       {checks.length > 0 && <section className="lesson-checks" aria-label="Mini checks">

@@ -51,6 +51,7 @@ describe('Phase 4 Learn progress restoration', () => {
     await user.click(screen.getByRole('radio', { name: 'Confidence 4' }));
     await user.click(screen.getByRole('button', { name: 'Next concept →' }));
     const mathAnswer = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+    await user.click(within(mathAnswer).getByRole('button', { name: 'Show Keyboard' }));
     await user.click(within(mathAnswer).getByRole('button', { name: /^8$/ }));
 
     const progressKey = lessonProgressStorageKey(bank.bank_id, VERSION);
@@ -74,8 +75,8 @@ describe('Phase 4 Learn progress restoration', () => {
     await user.click(within(screen.getByRole('dialog', { name: 'Lessons' })).getByRole('button', { name: /Sample lesson.*Learning/ }));
     expect(await screen.findByRole('heading', { name: 'Second sample concept' })).toBeVisible();
     const restoredEditor = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-    expect(restoredEditor.querySelector('.lesson-answer-steps')?.textContent).toContain('8');
-    expect(within(restoredEditor).getByRole('button', { name: 'Hide Keyboard' })).toBeVisible();
+    expect((restoredEditor.querySelector('math-field[aria-label="Step 1 expression"]') as HTMLElement & { value: string }).value).toBe('8');
+    expect(within(restoredEditor).getByRole('button', { name: 'Show Keyboard' })).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: '← Previous concept' }));
     expect(screen.getByText('Temporary test step 1')).toBeVisible();

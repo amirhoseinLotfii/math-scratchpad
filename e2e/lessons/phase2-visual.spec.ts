@@ -27,6 +27,7 @@ test('renders the lesson concept and inline checks at mobile and tablet sizes', 
 
   await page.goto('/e2e/fixtures/lesson-preview.html?view=math');
   await expect(page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' })).toBeVisible();
+  await page.locator('.lesson-math-editor').getByRole('button', { name: 'Show Keyboard' }).click();
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Edit history' })).not.toBeVisible();
   await screenshot(page, 'artifacts/lessons/phase2-math-check-mobile-390.png');
@@ -39,11 +40,13 @@ test('renders the lesson concept and inline checks at mobile and tablet sizes', 
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
   await expect(page.locator('.lesson-check-source')).toHaveCSS('position', 'sticky');
   await screenshot(page, 'artifacts/lessons/phase2-math-keyboard-short-mobile-390.png', false);
-  await page.getByRole('button', { name: '8', exact: true }).click();
   await page.getByRole('button', { name: 'Fraction', exact: true }).click();
+  await page.getByRole('button', { name: '8', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Next field' }).click();
   await page.getByRole('button', { name: '3', exact: true }).click();
-  await expect(page.locator('.lesson-math-editor .fraction .numerator')).toContainText('8');
-  await expect(page.locator('.lesson-math-editor .fraction > span:nth-child(2)')).toContainText('3');
+  const lessonField = page.locator('.lesson-math-editor math-field[aria-label="Step 1 expression"]');
+  await expect.poll(() => lessonField.evaluate(element => (element as HTMLElement & { value: string }).value)).toMatch(/\\frac\{?8\}?\{?3\}?/);
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
 
   await page.setViewportSize({ width: 1024, height: 768 });

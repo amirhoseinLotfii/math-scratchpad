@@ -28,7 +28,7 @@ test('keyboard-only route reaches Learn, summary, Practice and its lesson refere
   }
 
   const menuButton = page.getByRole('button', { name: 'Exercise menu' });
-  await tabUntil(page, menuButton, 12);
+  await tabUntil(page, menuButton, 40);
   await pressFocused(page, menuButton, 'Enter');
   await page.keyboard.press('Home');
   const lessonsItem = page.getByRole('menuitem', { name: 'Lessons' });
@@ -54,9 +54,10 @@ test('keyboard-only route reaches Learn, summary, Practice and its lesson refere
   await expect(secondConcept).toBeFocused();
 
   const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-  await tabUntil(page, editor, 12);
+  const mathField = editor.locator('math-field[aria-label="Step 1 expression"]');
+  await tabUntil(page, mathField, 60);
   await page.keyboard.press('8');
-  await expect(editor.locator('.lesson-answer-step.current-step .expression')).toContainText('8');
+  await expect.poll(() => mathField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
   await tabUntil(page, nextConcept, 60);
   await pressFocused(page, nextConcept, 'Enter');
   await expect(page.getByRole('heading', { name: 'Lesson summary' })).toBeFocused();

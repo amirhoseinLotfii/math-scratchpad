@@ -7,7 +7,7 @@ const viewports = [
   { width: 390, height: 844 },
   { width: 430, height: 844 },
 ];
-const title = 'توابع و تابع‌نما (Functions and Function Notation)';
+const persianTitle = 'توابع و تابع‌نما';
 const mixedText = 'در این توضیح، عبارت انگلیسی (Functions and Function Notation) و (domain and range) با ترتیب درست نمایش داده می‌شوند.';
 
 test('Persian lesson content stays RTL and long titles wrap in Learn and the read-only reference', async ({ page }, info) => {
@@ -19,18 +19,16 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1&bidi=1');
 
     await page.getByRole('button', { name: 'Lesson' }).click();
-    const reference = page.getByRole('dialog', { name: title });
+    const reference = page.getByRole('dialog', { name: persianTitle });
     await expect(reference).toBeVisible();
     const referenceTitle = reference.locator('> h2');
     await expect(referenceTitle).toHaveAttribute('dir', 'rtl');
     await expect(referenceTitle).toHaveCSS('text-align', 'start');
-    const referenceTitleRun = referenceTitle.locator('bdi[lang="en"][dir="ltr"]');
-    await expect(referenceTitleRun).toHaveText('(Functions and Function Notation)');
-    await expect(referenceTitleRun).toHaveCSS('display', 'block');
+    await expect(referenceTitle).toHaveText(persianTitle);
+    await expect(referenceTitle.locator('bdi[lang="en"]')).toHaveCount(0);
     const referenceConceptTitle = reference.locator('h2[id^="reference-concept-"]').first();
-    const referenceConceptRun = referenceConceptTitle.locator('bdi[lang="en"][dir="ltr"]');
-    await expect(referenceConceptRun).toHaveText('(Function Definition and Notation)');
-    await expect(referenceConceptRun).toHaveCSS('display', 'block');
+    await expect(referenceConceptTitle).toHaveText('تعریف تابع');
+    await expect(referenceConceptTitle.locator('bdi[lang="en"]')).toHaveCount(0);
     const referenceSize = await referenceTitle.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     expect(referenceSize.scroll).toBeLessThanOrEqual(referenceSize.client + 1);
     const referenceParagraph = reference.locator('.lesson-block-paragraph[lang="fa"]').filter({ hasText: mixedText });
@@ -47,19 +45,16 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     await reference.getByRole('button', { name: 'Back to question' }).click();
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();
-    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Functions and Function Notation/ }).click();
+    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /توابع و تابع‌نما/ }).click();
 
     const lessonTitle = page.locator('.lesson-header h1');
-    await expect(lessonTitle).toHaveText(title);
+    await expect(lessonTitle).toHaveText(persianTitle);
     await expect(lessonTitle).toHaveAttribute('dir', 'rtl');
     await expect(lessonTitle).toHaveCSS('text-align', 'start');
-    const lessonTitleRun = lessonTitle.locator('bdi[lang="en"][dir="ltr"]');
-    await expect(lessonTitleRun).toHaveText('(Functions and Function Notation)');
-    await expect(lessonTitleRun).toHaveCSS('display', 'block');
+    await expect(lessonTitle.locator('bdi[lang="en"]')).toHaveCount(0);
     const lessonConceptTitle = page.locator('#lesson-concept-title');
-    const lessonConceptRun = lessonConceptTitle.locator('bdi[lang="en"][dir="ltr"]');
-    await expect(lessonConceptRun).toHaveText('(Function Definition and Notation)');
-    await expect(lessonConceptRun).toHaveCSS('display', 'block');
+    await expect(lessonConceptTitle).toHaveText('تعریف تابع');
+    await expect(lessonConceptTitle.locator('bdi[lang="en"]')).toHaveCount(0);
     const lessonSize = await lessonTitle.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     expect(lessonSize.scroll).toBeLessThanOrEqual(lessonSize.client + 1);
     const lessonParagraph = page.locator('.lesson-screen .lesson-block-paragraph[lang="fa"]').filter({ hasText: mixedText });

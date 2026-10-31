@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
-import { leaves, latex } from '../src/model';
+import { leaves, latex, stepLatex } from '../src/model';
 import { writeClipboard } from '../src/review';
 import { menuAction } from './support/menu-actions';
 
@@ -19,12 +19,15 @@ function mount() {
 }
 const click = (name: string) => name === '⊕ Insert…' ? fireEvent.keyDown(screen.getByRole('main'), {key:'/'}) : fireEvent.click(screen.queryByRole('button', { name: name.startsWith('⌨ Show') ? 'Show Keyboard' : name.startsWith('⌨ Hide') ? 'Hide Keyboard' : name }) ?? menuAction(name));
 function showKeys() { click('⌨ Show Keyboard'); }
+function field(step = 1) { return screen.getByLabelText(`Step ${step} expression`) as HTMLElement & { value: string; position: number; selection: [number, number] }; }
 
 describe('Responsive Math Scratchpad', () => {
   it('renders a single LTR direct-editing notebook, with the optional keyboard closed', () => {
     const { container } = mount();
     const expression = screen.getByLabelText('Step 1 expression');
-    expect([...expression.querySelectorAll('[data-node-id]')].map(x => x.textContent)).toEqual(['2', '3', '+', '1', '4']);
+    expect(expression.tagName.toLowerCase()).toBe('math-field');
+    expect(field().value.replace(/\s+/g, '')).toContain('\\frac{2}{3}+\\frac{1}{4}');
+    expect(expression.querySelector('[data-node-id]')).toBeNull();
     expect(container.querySelector('.scratchpad')?.getAttribute('dir')).toBe('ltr');
     expect(screen.queryByLabelText('Math keyboard')).toBeNull();
     expect(screen.getByLabelText('Original problem').querySelector('button')).toBeNull();
@@ -35,28 +38,25 @@ describe('Responsive Math Scratchpad', () => {
     click('⌨ Hide Keyboard');
     expect(container.querySelector('.editor-layout')?.classList.contains('keyboard-hidden')).toBe(true);
   });
-  it('edits a specific digit by clicked position and retains caret editing', () => {
-    const { container, store } = mount();
-    act(() => {
-      store.dispatch(actions.command({ type: 'clear' }));
-      store.dispatch(actions.command({ type: 'digit', value: '1' }));
-      store.dispatch(actions.command({ type: 'digit', value: '2' }));
-      store.dispatch(actions.command({ type: 'digit', value: '3' }));
-    });
-    const token = screen.getByRole('button', { name: 'Step 1 number 123' });
-    token.querySelectorAll<HTMLElement>('[data-digit]').forEach((span,i) => {
-      span.getBoundingClientRect = () => ({ left: 100+i*20,width:20 } as DOMRect);
-    });
-    fireEvent.click(token, { clientX: 122, detail: 1 });
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, { key:'9' });
-    expect(latex(stepOf(store.getState().doc).expression)).toBe('1923');
+  it('persists MathLive LaTeX and retains an edit inserted at the requested caret position', () => {
+    const { store } = mount();
+    const input = field();
+    const source = exerciseOf(store.getState().doc).source;
+    act(() => { input.value = '1234'; fireEvent.input(input); });
+    input.position = 1;
+    input.focus();
+    fireEvent.keyDown(input, { key: '9' });
+    expect(stepLatex(stepOf(store.getState().doc))).toBe('19234');
+    expect(exerciseOf(store.getState().doc).source).toBe(source);
   });
   it('changes the selected operator without modifying neighboring fractions', () => {
-    const { store } = mount(); click('Step 1 operator +');
-    fireEvent.keyDown(screen.getByRole('button',{name:'Step 1 operator +'}),{key:'*'});
-    expect(latex(stepOf(store.getState().doc).expression)).toContain('\\times ');
-    expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{2}{3}');
-    expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{1}{4}');
+    const { store } = mount();
+    const input = field(), value = input.value, operator = value.indexOf('+');
+    input.selection = [operator, operator + 1]; input.position = operator + 1; input.focus();
+    fireEvent.keyDown(input, { key: '×' });
+    // The physical-key adapter stores MathLive's canonical LaTeX for a
+    // multiplication sign, while preserving the surrounding formula.
+    expect(stepLatex(stepOf(store.getState().doc))).toBe(value.replace('+', String.raw`\times `));
   });
   it('keeps one shared keyboard below the phone editing tools, never nested in a step', () => {
     const {container} = mount(); showKeys();
@@ -68,37 +68,34 @@ describe('Responsive Math Scratchpad', () => {
     expect(screen.getAllByLabelText(/Step \d expression/)).toHaveLength(2);
   });
   it('supports horizontal numerator-to-next-top-level movement and vertical fraction levels', () => {
-    const {container,store} = mount();
+    const {store} = mount();
     const first = leaves(stepOf(store.getState().doc).expression)[0].node;
-    fireEvent.click(container.querySelector('[data-node-id="'+first.id+'"]')!);
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, {key:'ArrowRight'});
+    act(() => store.dispatch(actions.select({ stepId: stepOf(store.getState().doc).id, nodeId: first.id, offset: 1 })));
+    act(() => store.dispatch(actions.horizontal(1)));
     expect((store.getState().doc.cursor.nodeId)).toBe(leaves(stepOf(store.getState().doc).expression)[2].node.id);
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, {key:'ArrowRight'});
+    act(() => store.dispatch(actions.horizontal(1)));
     expect((store.getState().doc.cursor.nodeId)).toBe(leaves(stepOf(store.getState().doc).expression)[3].node.id);
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, {key:'ArrowDown'});
+    act(() => store.dispatch(actions.vertical(1)));
     expect((store.getState().doc.cursor.nodeId)).toBe(leaves(stepOf(store.getState().doc).expression)[4].node.id);
   });
   it('removes selected fractions structurally by Delete and reverses with Ctrl+Z', () => {
-    const {container,store} = mount(); const first=leaves(stepOf(store.getState().doc).expression)[0].node;
-    fireEvent.click(container.querySelector('[data-node-id="'+first.id+'"]')!);
-    act(() => store.dispatch(actions.selectParent()));
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, { key:'Delete' });
+    const {store} = mount(); const first=leaves(stepOf(store.getState().doc).expression)[0].node;
+    act(() => { store.dispatch(actions.select({ stepId: stepOf(store.getState().doc).id, nodeId: first.id })); store.dispatch(actions.selectParent()); });
+    act(() => store.dispatch(actions.command({ type: 'deleteStructure' })));
     expect(latex(stepOf(store.getState().doc).expression)).not.toContain('\\frac{2}{3}');
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, { key:'z', ctrlKey:true });
+    act(() => store.dispatch(actions.undo()));
     expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{2}{3}');
-    fireEvent.keyDown(container.querySelector('.scratchpad')!, { key:'Z', ctrlKey:true, shiftKey:true });
+    act(() => store.dispatch(actions.redo()));
     expect(latex(stepOf(store.getState().doc).expression)).not.toContain('\\frac{2}{3}');
   });
   it('opens keyboard-operated insertion chooser, arrows move focus and Enter inserts a fraction', () => {
-    const {container,store}=mount(); click('Step 1 Insert after item 1'); click('⊕ Insert…');
+    mount(); const input = field(); input.focus(); fireEvent.keyDown(input, { key: '/' });
     const dialog=screen.getByRole('dialog');
     expect(dialog).toBeTruthy();
-    fireEvent.keyDown(dialog,{key:'ArrowRight'});
-    fireEvent.keyDown(dialog,{key:'ArrowLeft'});
-    fireEvent.keyDown(document.activeElement!,{key:'Enter'});
+    const option = screen.getByRole('button', { name: /^Fraction$/ }); option.focus(); fireEvent.keyDown(option,{key:'Enter'});
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(latex(stepOf(store.getState().doc).expression)).toContain('\\frac{\\square}{\\square}');
-    fireEvent.keyDown(screen.getByRole('main'),{key:'/'});
+    expect(field().value).toContain('\\frac{\\placeholder{}}{\\placeholder{}}');
+    input.focus(); fireEvent.keyDown(input,{key:'/'});
     fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'});
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -150,13 +147,13 @@ describe('Responsive Math Scratchpad', () => {
     expect(latex(stepOf(store.getState().doc).expression)).toBe(first);
   });
   it('marks changed prior steps for review without mutating later expressions',()=>{
-    const {container,store}=mount();click('Add step');
-    fireEvent.keyDown(container.querySelector('.scratchpad')!,{key:'5'});
-    const ex=exerciseOf(store.getState().doc), later=latex(ex.steps[1].expression);
-    fireEvent.click(container.querySelector('[data-node-id="'+leaves(ex.steps[0].expression)[0].node.id+'"]')!);
-    fireEvent.keyDown(container.querySelector('.scratchpad')!,{key:'9'});
-    expect(container.querySelector('[data-step-id="'+ex.steps[0].id+'"] .step-state')?.textContent).toBe('Edited');
-    expect(container.querySelector('[data-step-id="'+ex.steps[1].id+'"] .step-state')?.textContent).toBe('Needs review');
-    expect(latex(exerciseOf(store.getState().doc).steps[1].expression)).toBe(later);
+    const {store}=mount(); act(() => store.dispatch(actions.command({ type: 'newStep' })));
+    const ex=exerciseOf(store.getState().doc);
+    act(() => store.dispatch(actions.mathLiveInput({ stepId: ex.steps[1].id, value: '5' })));
+    const later=stepLatex(exerciseOf(store.getState().doc).steps[1]);
+    act(() => store.dispatch(actions.mathLiveInput({ stepId: ex.steps[0].id, value: '9' })));
+    expect(exerciseOf(store.getState().doc).steps[0].status).toBe('unchecked');
+    expect(exerciseOf(store.getState().doc).steps[1].status).toBe('needs-review');
+    expect(stepLatex(exerciseOf(store.getState().doc).steps[1])).toBe(later);
   });
 });

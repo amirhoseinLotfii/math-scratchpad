@@ -49,14 +49,15 @@ describe('A11Y-SEM: document, controls and language', () => {
   renderMobileApp(); const main = screen.getByRole('main'); expect(main).toHaveAttribute('lang', 'en');
   const prompt = main.querySelector('.question-statement'); expect(prompt).toHaveAttribute('lang', 'fa'); expect(prompt).toHaveAttribute('dir', 'rtl');
   const formula = within(main).getByLabelText('Step 1 expression');
-  expect(formula.querySelector('[dir="ltr"]')).not.toBeNull();
+  expect(formula).toHaveAttribute('dir', 'ltr'); expect(formula).toHaveAttribute('lang', 'en');
   expect([...main.querySelectorAll('button, label, legend, [role="status"]')].filter(x => /[\u0600-\u06ff]/.test(x.textContent ?? ''))).toEqual([]);
  });
- it('math token labels provide step and field context rather than only a digit', () => {
+ it('MathLive exposes one labeled LTR editing control rather than boxing each formula token', () => {
   renderMobileApp({ batch: false }); const expression = screen.getByLabelText('Step 1 expression');
-  const buttons = [...expression.querySelectorAll<HTMLButtonElement>('[data-node-id]')];
-  expect(buttons.length).toBeGreaterThan(0);
-  for (const button of buttons) expect(button.getAttribute('aria-label')).toMatch(/Step 1/);
+  expect(expression.tagName.toLowerCase()).toBe('math-field');
+  expect(expression).toHaveAttribute('aria-label', 'Step 1 expression');
+  expect(expression).toHaveAttribute('dir', 'ltr');
+  expect(expression.querySelectorAll('button, [data-node-id]')).toHaveLength(0);
  });
  it('does not make the once-per-second timer an assertive live announcement', () => {
   renderMobileApp(); const time = screen.getByLabelText('Question elapsed time');

@@ -38,11 +38,11 @@ export function createPersistentStore() {
   else {
    const hasLegacy = !!(localStorage.getItem('math-scratchpad-redux-v2') ?? localStorage.getItem('math-scratchpad-flow-v1'));
    initial = restoreState();
-   if (!hasLegacy) initial.keyboardOpen = matchMedia('(max-width: 899px), (pointer: coarse)').matches;
+   if (!hasLegacy) initial.keyboardOpen = false;
    if (initial.notice) { protectedDraft = true; bootError = initial.notice; }
   }
  } catch {
-  protectedDraft = true; bootError = 'Saved draft could not be restored. Import a backup or copy your current work before recovery.'; initial = initialState(); initial.keyboardOpen = true;
+  protectedDraft = true; bootError = 'Saved draft could not be restored. Import a backup or copy your current work before recovery.'; initial = initialState(); initial.keyboardOpen = false;
  }
  if (!protectedDraft || bootError !== 'Saved draft could not be restored. Import a backup or copy your current work before recovery.') initial.keyboardOpen = initialKeyboardOpen(initial.keyboardOpen);
  if (bootError) initial.storageState = { kind: 'error', message: bootError };

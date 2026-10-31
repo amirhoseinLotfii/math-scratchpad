@@ -2,7 +2,7 @@ import { BookOpen } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { Lesson, LessonProgress, LessonStatus } from './types';
-import { contentDirection, languageForText, LessonText } from './lesson-content';
+import { contentDirection, displayEducationalHeading, languageForText, LessonText } from './lesson-content';
 
 const statusLabel: Record<LessonStatus | 'not_started', string> = {
   not_started: 'Not started',
@@ -44,7 +44,7 @@ export function LessonPicker({ open, lessons, progressByLesson, hasBank = true, 
               return <li key={lesson.id}>
                 <Button className="lesson-picker-item" onClick={() => onChoose(lesson)}>
                   <BookOpen aria-hidden="true" />
-                  <span className="lesson-picker-title" lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={lesson.title} /></span>
+                  <span className="lesson-picker-title" lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></span>
                   <span className={`lesson-status lesson-status-${status}`} aria-label={`Status: ${statusLabel[status]}`}>{statusLabel[status]}</span>
                 </Button>
               </li>;

@@ -64,7 +64,9 @@ describe('Quick tools and numeric keypad', () => {
   expect(exerciseOf(store.getState().doc).source).toBe(source);
  });
  it('Backspace removes one digit from the active input', () => {
-  const store = mount(); act(() => { for (const value of '123') store.dispatch(actions.command({ type: 'digit', value })); });
+  const store = mount();
+  const keypad = within(screen.getByLabelText('Numeric keys'));
+  for (const name of ['1','2','3']) fireEvent.click(keypad.getByRole('button', { name }));
   fireEvent.click(screen.getByRole('button', { name: 'Backspace' }));
   expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toBe('12');
  });

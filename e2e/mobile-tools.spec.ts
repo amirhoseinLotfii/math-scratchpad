@@ -17,23 +17,27 @@ test('mobile math tools keep comfortable spacing and the plus stays close to the
     expect(boxes[index]!.x - (boxes[index - 1]!.x + boxes[index - 1]!.width)).toBeGreaterThanOrEqual(5);
   }
 
-  const plus = page.locator('.expression .math-token.operator').filter({ hasText: '+' }).first();
-  const plusMetrics = await plus.evaluate(element => {
-    const glyph = document.createRange();
-    glyph.selectNodeContents(element);
-    const glyphBox = glyph.getBoundingClientRect();
-    const buttonBox = element.getBoundingClientRect();
-    const nextTermBox = element.nextElementSibling?.getBoundingClientRect();
+  const field = page.locator('math-field[aria-label="Step 1 expression"]');
+  const plusMetrics = await field.evaluate(element => {
+    const root = element.shadowRoot!;
+    const plus = [...root.querySelectorAll('*')].find(node => node.children.length === 0 && node.textContent?.trim() === '+');
+    if (!plus?.parentElement) return null;
+    const siblings = [...plus.parentElement.children];
+    const plusIndex = siblings.indexOf(plus);
+    const nextTerm = siblings.slice(plusIndex + 1).find(node => (node as HTMLElement).classList.contains('ML__mfrac'));
+    if (!nextTerm) return null;
+    const plusBox = plus.getBoundingClientRect();
+    const nextTermBox = nextTerm.getBoundingClientRect();
     return {
-      buttonWidth: buttonBox.width,
-      buttonHeight: buttonBox.height,
-      gapAfterGlyph: nextTermBox ? nextTermBox.left - glyphBox.right : Number.POSITIVE_INFINITY,
+      operatorWidth: plusBox.width,
+      gapAfterGlyph: nextTermBox.left - plusBox.right,
+      nextTermClass: (nextTerm as HTMLElement).className,
     };
   });
-  expect(plusMetrics.buttonWidth).toBe(32);
-  expect(plusMetrics.buttonHeight).toBeGreaterThanOrEqual(44);
-  expect(plusMetrics.gapAfterGlyph).toBeLessThanOrEqual(8);
-
-  // Insertion gaps remain available for touch editing and precise cursor placement.
-  expect((await page.locator('.expression .math-gap').first().boundingBox())?.width).toBeGreaterThanOrEqual(44);
+  expect(plusMetrics).not.toBeNull();
+  expect(plusMetrics!.operatorWidth).toBeGreaterThan(0);
+  expect(plusMetrics!.operatorWidth).toBeLessThanOrEqual(24);
+  expect(plusMetrics!.gapAfterGlyph).toBeGreaterThanOrEqual(0);
+  expect(plusMetrics!.gapAfterGlyph).toBeLessThanOrEqual(8);
+  expect(plusMetrics!.nextTermClass).toContain('ML__mfrac');
 });

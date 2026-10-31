@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
 import { App } from '../../src/App';
@@ -14,7 +14,7 @@ afterEach(() => { cleanup(); localStorage.clear(); });
 const bank = validateBank({
   schema_version: 'math-scratchpad.bank/1.0', bank_id: 'answer-types', version: 'v1',
   questions: [
-    { id: 'TEXT-1', mode: 'text', source: 'Explain why this is true.', answerType: 'text' },
+    { id: 'TEXT-1', mode: 'text', source: '{(1,4), (2,4), (3,5)}', prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
     { id: 'CHOICE-1', mode: 'math', source: 'x+1', prompt: 'Choose one.', answerType: 'choice', choices: ['<', '>'] },
     { id: 'MATH-1', mode: 'math', source: '2+3' },
   ],
@@ -40,6 +40,13 @@ describe('Practice question answer types', () => {
 
     const legacy = validateBank({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'legacy-text', version: 'v1', questions: [{ id: 'OLD-1', mode: 'math', source: '1+2' }, { id: 'OLD-2', mode: 'text', source: 'Describe the pattern.' }] });
     expect(bankDocument(legacy, 'legacy-v1').exercises.map(exercise => exercise.answerType)).toEqual(['math', 'text']);
+  });
+
+  it('shows both the prompt and the given relation for a text-answer question', () => {
+    mount();
+    const problem = screen.getByRole('region', { name: 'Current problem' });
+    expect(within(problem).getByText('آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟')).toBeVisible();
+    expect(within(problem).getByText('{(1,4), (2,4), (3,5)}')).toBeVisible();
   });
 
   it('renders text and choice controls, keeps answers on question switches, and leaves math steps intact', async () => {

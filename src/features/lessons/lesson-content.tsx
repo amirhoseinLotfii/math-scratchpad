@@ -16,6 +16,13 @@ export function contentDirection(text: string, lang?: Lang): 'rtl' | 'ltr' | 'au
   return value === 'fa' ? 'rtl' : value === 'en' ? 'ltr' : 'auto';
 }
 
+/** Keep a Persian educational heading concise when bank data repeats its English title in parentheses. */
+export function displayEducationalHeading(text: string, lang?: Lang): string {
+  if (languageForText(text, lang) !== 'fa') return text;
+  const match = text.match(/^(.*[\u0600-\u06ff].*?)\s+\(([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*)+)\)\s*$/u);
+  return match?.[1]?.trim() || text;
+}
+
 export function LessonText({ text, lang }: { text: string; lang?: Lang }) {
   const textLang = languageForText(text, lang);
   return <>{splitLessonText(text).map((part, partIndex) => {
@@ -66,7 +73,7 @@ function LessonExample({ block, blockKey, revealed, onReveal }: {
   const id = useId();
   const count = Math.min(block.steps.length, Math.max(0, revealed));
   return <section className="lesson-block lesson-example" aria-label={block.title || 'Worked example'}>
-    {block.title && <h4 lang={languageForText(block.title, block.lang)} dir={contentDirection(block.title, block.lang)}><LessonText text={block.title} lang={block.lang} /></h4>}
+    {block.title && <h4 lang={languageForText(block.title, block.lang)} dir={contentDirection(block.title, block.lang)}><LessonText text={displayEducationalHeading(block.title, block.lang)} lang={block.lang} /></h4>}
     {block.text && <p lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></p>}
     {block.latex && <LessonMath latex={block.latex} label={block.title || 'Worked example'} />}
     {block.steps.length > 0 && <p className="lesson-example-progress" aria-live="polite">
@@ -86,7 +93,7 @@ function LessonExample({ block, blockKey, revealed, onReveal }: {
 function LessonImage({ src, alt, lang }: { src: string; alt: string; lang?: Lang }) {
   const [failed, setFailed] = useState(false);
   return failed
-    ? <figure className="lesson-image-fallback" role="status"><span className="lesson-image-fallback-label">Image unavailable · Description</span><figcaption lang={languageForText(alt, lang)} dir={contentDirection(alt, lang)}><LessonText text={alt} lang={lang} /></figcaption></figure>
+    ? <figure className="lesson-image-fallback"><span className="lesson-image-fallback-label" role="status">Image unavailable.</span><figcaption><details><summary>Show image description</summary><p lang={languageForText(alt, lang)} dir={contentDirection(alt, lang)}><LessonText text={alt} lang={lang} /></p></details></figcaption></figure>
     : <img className="lesson-image" src={src} alt={alt} lang={languageForText(alt, lang)} onError={() => setFailed(true)} />;
 }
 

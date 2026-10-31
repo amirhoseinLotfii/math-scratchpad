@@ -8,7 +8,7 @@ import { initialState, makeStore } from '../../src/store';
 import { validateBank, type BankQuestion, type DriveBank } from '../../src/features/drive-bank/drive-bank';
 import { LessonScreen } from '../../src/features/lessons/lesson-screen';
 import { LessonPicker } from '../../src/features/lessons/lesson-picker';
-import { LessonBlockView } from '../../src/features/lessons/lesson-content';
+import { displayEducationalHeading, LessonBlockView } from '../../src/features/lessons/lesson-content';
 import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
 import { MathDisplay } from '../../src/MathDisplay';
 import type { LessonProgress } from '../../src/features/lessons/types';
@@ -52,10 +52,12 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeVisible();
   });
 
-  it('shows image alternative text when a lesson image fails', () => {
+  it('offers the image description when a lesson image fails', async () => {
     render(<LessonBlockView block={{ type: 'image', src: '/missing-lesson-image.png', alt: 'Diagram showing a triangle' }} blockKey="broken-image" revealed={0} onReveal={() => undefined} />);
     fireEvent.error(screen.getByRole('img', { name: 'Diagram showing a triangle' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Diagram showing a triangle');
+    expect(screen.getByRole('status')).toHaveTextContent('Image unavailable.');
+    await userEvent.click(screen.getByText('Show image description'));
+    expect(screen.getByText('Diagram showing a triangle')).toBeVisible();
   });
 
   it('shows an unavailable-image description and a math caption without inventing a picture', () => {
@@ -71,7 +73,7 @@ describe('lesson learning screen', () => {
     expect(screen.queryByText('Try it yourself first')).not.toBeInTheDocument();
   });
 
-  it('renders supported lesson arrays as an accessible table and keeps unsupported syntax visible', () => {
+  it('renders lesson arrays as accessible tables and preserves other LaTeX for MathLive', () => {
     const { rerender } = render(<LessonBlockView block={{ type: 'math', latex: String.raw`\begin{array}{|c|c|} \hline Input & Output \\ \hline 1 & 2 \\ \hline \end{array}` }} blockKey="table" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByRole('region', { name: 'Lesson table' })).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('columnheader', { name: 'Input' })).toHaveAttribute('scope', 'col');
@@ -83,7 +85,8 @@ describe('lesson learning screen', () => {
     const unsupported = String.raw`\begin{matrix}x & y\end{matrix}`;
     rerender(<LessonBlockView block={{ type: 'math', latex: unsupported }} blockKey="unsupported" revealed={0} onReveal={() => undefined} />);
     expect(screen.getByText(unsupported)).toBeVisible();
-    expect(screen.getByText('Formula preview unavailable. Original notation:')).toBeVisible();
+    expect(screen.getByRole('math', { name: 'Lesson formula' })).toHaveAttribute('format', 'latex');
+    expect(screen.queryByText(/Formula preview unavailable|Unsupported block/)).not.toBeInTheDocument();
   });
 
   it('renders escaped sets, indexed roots and equation fragments without changing the editor', () => {
@@ -92,25 +95,23 @@ describe('lesson learning screen', () => {
     const before = structuredClone(store.getState().doc);
     const { rerender } = render(<Provider store={store}><LessonBlockView block={{ type: 'math', latex: input }} blockKey="notation" revealed={0} onReveal={() => undefined} /></Provider>);
     expect(document.querySelector('[role="math"]')).toHaveAttribute('aria-label', 'Lesson formula');
-    expect(screen.getByText('(a)')).toBeVisible();
-    expect(document.querySelector('.math-display-root')).toHaveAttribute('aria-label', '3 root of x');
+    expect(document.querySelector('math-div')).toHaveTextContent(input);
+    expect(document.querySelector('math-div')).toHaveAttribute('dir', 'ltr');
     expect(store.getState().doc).toEqual(before);
     const set = String.raw`\{(\text{odd},1),\ (\text{even},2)\}`;
     rerender(<Provider store={store}><LessonBlockView block={{ type: 'math', latex: set }} blockKey="set" revealed={0} onReveal={() => undefined} /></Provider>);
-    expect(screen.getByText('{(odd,1), (even,2)}')).toBeVisible();
+    expect(document.querySelector('math-div')).toHaveTextContent(set);
     expect(store.getState().doc).toEqual(before);
   });
 
-  it('uses the existing read-only formula renderer for powers, products, fractions, roots, and visible fallback', () => {
+  it('passes read-only formulas losslessly to the MathLive static renderer', () => {
     const { rerender, container } = render(<Provider store={makeStore(initialState())}><MathDisplay latex={String.raw`7^2\cdot\frac{1}{2}+\sqrt{9}`} label="Formula sample" /></Provider>);
     const math = screen.getByRole('math', { name: 'Formula sample' });
-    expect(math.querySelector('.power')).toBeVisible();
-    expect(math.querySelector('.fraction')).toBeVisible();
-    expect(math.querySelector('.radical')).toBeVisible();
-    expect(math.textContent).toContain('·');
+    expect(math.tagName.toLowerCase()).toBe('math-div');
+    expect(math).toHaveAttribute('format', 'latex');
+    expect(math.textContent).toBe(String.raw`7^2\cdot\frac{1}{2}+\sqrt{9}`);
     expect(container.querySelector('math-field')).toBeNull();
     rerender(<Provider store={makeStore(initialState())}><MathDisplay latex={String.raw`\begin{matrix}x&y\end{matrix}`} /></Provider>);
-    expect(screen.getByRole('note')).toHaveTextContent('Formula preview unavailable. Original notation:');
     expect(screen.getByText(String.raw`\begin{matrix}x&y\end{matrix}`)).toBeVisible();
   });
 
@@ -212,20 +213,22 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('button', { name: 'Next concept →' })).toBeEnabled();
   });
 
-  it('reuses the math formula editor and virtual keyboard for a math check', () => {
+  it('reuses the per-Step MathLive editor and opens the app keyboard on request for a math check', () => {
     const { onProgress } = mount();
     fireEvent.click(screen.getByRole('radio', { name: 'Option A' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next concept →' }));
     const editor = screen.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+    expect(within(editor).getByLabelText('Step 1 expression')).toBeInTheDocument();
+    expect(within(editor).queryByRole('group', { name: 'Numeric keys' })).not.toBeInTheDocument();
+    fireEvent.click(within(editor).getByRole('button', { name: 'Show Keyboard' }));
     expect(within(editor).getByRole('group', { name: 'Numeric keys' })).toBeInTheDocument();
-    fireEvent.keyDown(editor, { key: '8' });
+    fireEvent.keyDown(within(editor).getByLabelText('Step 1 expression'), { key: '8' });
     expect(onProgress.mock.lastCall?.[0].answeredCheckIds).toContain('SAMPLE-1.1-L02');
     fireEvent.click(within(editor).getByRole('button', { name: 'Add step' }));
     fireEvent.click(within(editor).getByRole('button', { name: 'Mark Step 2 as final' }));
     expect(within(editor).getByRole('button', { name: 'Mark Step 2 as final' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(editor).getByRole('button', { name: 'Hide Keyboard' })).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.click(within(editor).getByRole('button', { name: 'Step 1 number 8' }));
-    fireEvent.keyDown(editor, { key: '9' });
+    fireEvent.keyDown(within(editor).getByLabelText('Step 1 expression'), { key: '9' });
     expect(within(editor).getByText('Needs review')).toBeInTheDocument();
   });
 
@@ -311,5 +314,11 @@ describe('lesson learning screen', () => {
     const englishRuns = [...paragraph.querySelectorAll('bdi[lang="en"][dir="ltr"]')];
     expect(englishRuns.map(run => run.textContent)).toEqual(['(Functions and Function Notation)', '(domain and range)']);
     expect(paragraph.textContent).toBe(text);
+  });
+
+  it('shows Persian educational headings without redundant English translations but keeps mixed formula text intact', () => {
+    expect(displayEducationalHeading('توابع و تابع‌نما (Functions and Function Notation)', 'fa')).toBe('توابع و تابع‌نما');
+    expect(displayEducationalHeading('رابطهٔ زوج مرتب (x, y)', 'fa')).toBe('رابطهٔ زوج مرتب (x, y)');
+    expect(displayEducationalHeading('Functions and Function Notation', 'en')).toBe('Functions and Function Notation');
   });
 });

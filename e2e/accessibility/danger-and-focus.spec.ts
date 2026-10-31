@@ -1,4 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, mathField } from '../support/test';
+
+// This file includes a test of the batch wellbeing dialog itself; keep it visible.
+test.use({ autoDismissWellbeing: false });
 
 test('reset confirmation is visibly destructive, focuses Cancel first, and restores the menu trigger', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile-390', 'Run once in the narrow mobile Chromium project.');
@@ -63,7 +66,7 @@ test('batch wellbeing Skip for now returns focus to the practice editor', async 
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Skip for now' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('main')).toBeFocused();
+  await expect(mathField(page)).toBeFocused();
 });
 
 test('Skip to practice cancellation restores its trigger', async ({ page }, info) => {
@@ -84,24 +87,23 @@ test('Skip to practice cancellation restores its trigger', async ({ page }, info
 test('Add and Reset Step focus the math caret; Ctrl+Shift+Z returns focus to the editor', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile-390', 'Run once with Chromium keyboard-event emulation.');
   await page.goto('/');
-  const main = page.getByRole('main');
-  await main.focus();
+  const first = mathField(page);
+  await first.click();
   await page.keyboard.type('123');
 
   await page.getByRole('button', { name: 'Add step', exact: true }).click();
-  const newStep = page.getByRole('button', { name: 'Step 2 number empty' });
+  const newStep = mathField(page, 2);
   await expect(newStep).toBeFocused();
   await page.keyboard.type('42');
-  await expect(page.getByLabel('Step 2 expression')).toContainText('42');
+  await expect.poll(() => newStep.evaluate(element => (element as HTMLElement & { value: string }).value)).toContain('42');
 
   await page.getByRole('button', { name: 'Reset Step 2' }).click();
   await expect(newStep).toBeFocused();
   await page.keyboard.type('9');
-  await expect(page.getByLabel('Step 2 expression')).toContainText('9');
+  await expect.poll(() => newStep.evaluate(element => (element as HTMLElement & { value: string }).value)).toContain('9');
 
-  await main.focus();
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+Shift+z');
-  await expect(main).toBeFocused();
-  await expect(page.getByLabel('Step 2 expression')).toContainText('9');
+  await expect(newStep).toBeFocused();
+  await expect.poll(() => newStep.evaluate(element => (element as HTMLElement & { value: string }).value)).toContain('9');
 });

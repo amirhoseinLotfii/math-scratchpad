@@ -3,8 +3,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
-import { actions, activeInfo, exerciseOf } from './store';
-import { ascii, example, leaves, latex, symbolList } from './model';
+import { actions, exerciseOf } from './store';
+import { ascii, example, leaves, symbolList, stepLatex } from './model';
 import { parse } from './parser';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
@@ -12,7 +12,6 @@ import { diagnosticQuestions } from './diagnostic';
 import { fractionRoundOne } from './fractionRoundOne';
 import { gradeDiagnostic } from './assessment';
 import { migrateChatDiagnosticSession } from './legacyDiagnostic';
-import { Formula } from './Formula';
 import { MathDisplay } from './MathDisplay';
 import { Keyboard } from './Keyboard';
 import { QuestionTimer } from './QuestionTimer';
@@ -26,6 +25,8 @@ import { problemSchema, jsonInputSchema } from './features/session/schemas/sessi
 import { useWorkspaceLayout } from './shared/hooks/use-workspace-layout';
 import { QuestionNavigator } from './features/workspace/components/question-navigator';
 import { MathTools } from './features/workspace/components/math-tools';
+import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from './features/math-editor/mathlive-adapter';
+import { MathLiveStepInput } from './features/math-editor/components/mathlive-step-input';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { ShortcutHelp } from './features/workspace/components/shortcut-help';
 import { SessionScales } from './features/session/components/session-panel';
@@ -99,8 +100,6 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const needWellbeing = batch && !!sessionId && state.doc.session?.anxiety === undefined && state.doc.session?.energy === undefined && wellbeingDismissed !== sessionId && !wellbeingAsked(sessionId) && state.storageState?.kind !== 'conflict';
  const [askingFor, setAskingFor] = useState<string | null>(null), [editingScales, setEditingScales] = useState(false), askWellbeing = !!askingFor && askingFor === sessionId && wellbeingDismissed !== sessionId;
  useEffect(() => { if (needWellbeing) { setEditingScales(false); setAskingFor(sessionId); } }, [needWellbeing, sessionId]);
- const currentIndex = ex.steps.findIndex(x => x.id === state.doc.cursor.stepId), selected = activeInfo(state.doc);
- const selectionLabel = state.doc.cursor.sequenceId ? `Step ${currentIndex + 1} · Main-line insertion` : selected ? `Step ${currentIndex + 1}${selected.path}${state.doc.cursor.selected ? ' · Whole structure' : ' · Caret ' + state.doc.cursor.offset}` : '';
  const copied = !state.copies[ex.id] ? '' : state.copies[ex.id] === fingerprint(state.doc) ? 'Copied' : 'Changed since copy';
  const matchingBank = loadedBank && state.doc.session?.bankId === loadedBank.bank.bank_id && state.doc.session?.bankVersion === loadedBank.version ? loadedBank : null;
  const currentBankQuestion = matchingBank && ex.bankQuestionId ? matchingBank.bank.questions.find(question => question.id === ex.bankQuestionId) : undefined;
@@ -182,7 +181,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    const doc = bankDocument(targetBank.bank, targetBank.version, questions);
    archiveSession(store.getState());
    dispatch(actions.load({ doc }));
-   dispatch(actions.keyboard(initialKeyboardOpen(true)));
+   dispatch(actions.keyboard(initialKeyboardOpen(false)));
    dispatch(actions.notice('Lesson practice started.'));
    rememberLessonProgress(progress);
    setPracticeLessonId(lesson.id);
@@ -199,10 +198,16 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (progress) rememberLessonProgress({ ...progress, status: 'done', summaryOpen: true });
   setPracticeLessonId(null);
  }
- function focusEditor() { editorRoot.current?.focus({ preventScroll: true }); }
+ function focusEditor() {
+  const field = mathfieldForStep(store.getState().doc.cursor.stepId);
+  if (field) { field.focus(); return; }
+  editorRoot.current?.focus({ preventScroll: true });
+ }
  function focusCurrentMathControl() {
   requestAnimationFrame(() => {
    const cursor = store.getState().doc.cursor;
+   const mathfield = mathfieldForStep(cursor.stepId);
+   if (mathfield) { mathfield.focus(); mathfield.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); return; }
    const step = Array.from(document.querySelectorAll<HTMLElement>('[data-step-id]')).find(element => element.dataset.stepId === cursor.stepId);
    if (!step) { focusEditor(); return; }
    let target: HTMLButtonElement | undefined;
@@ -219,11 +224,15 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function insert(kind: string) {
-  if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
-  else if (kind === 'number') dispatch(actions.command({ type: 'insertBlankNumber' }));
-  else if (['+','−','×','÷','=','≤','≥','≠','<','>'].includes(kind)) dispatch(actions.command({ type: 'operator', value: kind }));
-  else dispatch(actions.command({ type: 'insert', value: kind }));
-  restoreInsert.current = false; setInsertOpen(false); focusEditor();
+  const stepId = store.getState().doc.cursor.stepId;
+  if (!insertMathSymbol(stepId, kind)) {
+   if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
+   else if (kind === 'number') dispatch(actions.command({ type: 'insertBlankNumber' }));
+   else if (['+','−','×','÷','=','≤','≥','≠','<','>'].includes(kind)) dispatch(actions.command({ type: 'operator', value: kind }));
+   else dispatch(actions.command({ type: 'insert', value: kind }));
+  }
+  dispatch(actions.recentSymbol(kind)); dispatch(actions.closeSymbols());
+  restoreInsert.current = false; setInsertOpen(false);
  }
  async function copyReview() {
   if (copyBusy.current) return; copyBusy.current = true; setBusy(true);
@@ -302,24 +311,50 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function keyboard(event: KeyboardEvent<HTMLElement>) {
   const key = event.key, target = event.target as HTMLElement;
   if (event.defaultPrevented || event.nativeEvent.isComposing || modalOpen || setup || backup || confirmExam || confirmFractions) return;
-  if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable) return;
-  const inMath = target === editorRoot.current || !!target.closest('.expression'); if (!inMath) return;
-  if (event.ctrlKey || event.metaKey) {
-   if (key.toLowerCase() === 'z') { event.preventDefault(); dispatch(event.shiftKey ? actions.redo() : actions.undo()); focusEditor(); }
-   else if (key.toLowerCase() === 'y') { event.preventDefault(); dispatch(actions.redo()); } return;
+  const mathfieldTarget = target.closest('math-field');
+  if (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || (target.isContentEditable && !mathfieldTarget)) return;
+  if (mathfieldTarget) {
+   // Learn math checks own a separate editor store and their own shortcuts.
+   if (mathfieldTarget.closest('.lesson-math-editor')) return;
+   const stepId = mathfieldTarget.getAttribute('data-step-id');
+   const step = stepId && store.getState().doc.exercises.flatMap(exercise => exercise.steps).find(item => item.id === stepId);
+   const firstCharacter = /^[0-9.]$/.test(key) || /^[a-zA-Z]$/.test(key) || ['+','-','−','*','×','÷','='].includes(key);
+   // Route printable math tokens through MathLive's insertion API. Its native
+   // first-key placeholder replacement can defer `input` while a React-controlled
+   // Step is still blank, causing later keydowns to be split between native and
+   // adapter insertion during rapid physical typing.
+   if (step && firstCharacter && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    const normalized = ({ '-':'−', '*':'×' } as Record<string,string>)[key] ?? key;
+    if (insertMathSymbol(step.id, normalized)) { event.preventDefault(); return; }
+   }
+   if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); }
+   else if (event.altKey && ['f','r'].includes(key.toLowerCase())) { event.preventDefault(); insert(key.toLowerCase() === 'f' ? 'fraction' : 'root'); }
+   else if (key === '/') { event.preventDefault(); openInsert(); }
+   else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); addStep(); }
+   return;
   }
-  if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); return; }
-  if (event.altKey) { if (key.toLowerCase() === 'f' || key.toLowerCase() === 'r') { event.preventDefault(); insert(key.toLowerCase() === 'f' ? 'fraction' : 'root'); } return; }
-  if (/^[0-9.]$/.test(key)) { event.preventDefault(); dispatch(actions.command({ type: 'digit', value: key })); }
-  else if (/^[a-zA-Z]$/.test(key)) { event.preventDefault(); dispatch(actions.command({ type: 'identifier', value: key })); }
-  else if (key === '/') { event.preventDefault(); openInsert(); }
-  else if (['+','-','−','*','×','÷','='].includes(key)) { event.preventDefault(); dispatch(actions.command({ type: 'operator', value: ({ '-':'−','*':'×' } as Record<string,string>)[key] ?? key })); }
-  else if (key === '(') { event.preventDefault(); insert('group'); }
-  else if (key === 'ArrowLeft' || key === 'ArrowRight') { event.preventDefault(); dispatch(actions.horizontal(key === 'ArrowLeft' ? -1 : 1)); }
-  else if (key === 'ArrowUp' || key === 'ArrowDown') { event.preventDefault(); dispatch(actions.vertical(key === 'ArrowUp' ? -1 : 1)); }
-  else if (key === 'Backspace' || key === 'Delete') { event.preventDefault(); dispatch(actions.command({ type: key === 'Delete' ? 'deleteForward' : 'backspace' })); }
-  else if (key === 'Home' || key === 'End') { event.preventDefault(); const item = activeInfo(store.getState().doc); if (item?.node.type === 'number') dispatch(actions.select({ stepId: state.doc.cursor.stepId, nodeId: item.node.id, offset: key === 'Home' ? 0 : item.node.value.length })); }
-  else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); addStep(); }
+  const inMath = target === editorRoot.current || !!target.closest('.expression'); if (!inMath) return;
+  const stepId = store.getState().doc.cursor.stepId;
+  if (event.ctrlKey || event.metaKey) {
+   if (key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey ? !redoMathfield(stepId) : !undoMathfield(stepId)) dispatch(event.shiftKey ? actions.redo() : actions.undo()); focusEditor(); }
+   else if (key.toLowerCase() === 'y') { event.preventDefault(); if (!redoMathfield(stepId)) dispatch(actions.redo()); focusEditor(); }
+   else if (key.toLowerCase() === 'a') { event.preventDefault(); executeMathfield(stepId, 'selectAll'); focusEditor(); }
+   else if (key.toLowerCase() === 'c') { event.preventDefault(); executeMathfield(stepId, 'copyToClipboard'); focusEditor(); }
+   else if (key.toLowerCase() === 'x') { event.preventDefault(); executeMathfield(stepId, 'cutToClipboard'); focusEditor(); }
+   else if (key.toLowerCase() === 'v') { event.preventDefault(); executeMathfield(stepId, 'pasteFromClipboard'); focusEditor(); }
+   return;
+  }
+  if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); focusCurrentMathControl(); return; }
+  if (event.altKey && ['f','r'].includes(key.toLowerCase())) { event.preventDefault(); insert(key.toLowerCase() === 'f' ? 'fraction' : 'root'); return; }
+  if (key === '/') { event.preventDefault(); openInsert(); return; }
+  if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); addStep(); return; }
+  if (['ArrowLeft','ArrowRight'].includes(key)) { event.preventDefault(); if (!moveMathfield(stepId, key === 'ArrowLeft' ? -1 : 1)) dispatch(actions.horizontal(key === 'ArrowLeft' ? -1 : 1)); focusEditor(); return; }
+  if (key === 'Backspace' || key === 'Delete') { event.preventDefault(); if (!executeMathfield(stepId, key === 'Delete' ? 'deleteForward' : 'deleteBackward')) dispatch(actions.command({ type: key === 'Delete' ? 'deleteForward' : 'backspace' })); focusEditor(); return; }
+  if (/^[0-9.]$/.test(key) || /^[a-zA-Z]$/.test(key) || ['+','-','−','*','×','÷','='].includes(key)) {
+   event.preventDefault(); const normalized = ({ '-':'−', '*':'×' } as Record<string,string>)[key] ?? key;
+   if (!insertMathSymbol(stepId, normalized)) dispatch(actions.command({ type: /^[0-9.]$/.test(key) ? 'digit' : /^[a-zA-Z]$/.test(key) ? 'identifier' : 'operator', value: normalized }));
+   focusEditor();
+  }
  }
  function dialogKeys(event: KeyboardEvent<HTMLDivElement>) {
   event.stopPropagation(); const size = visibleInsert.length;
@@ -335,12 +370,15 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const entry = state.doc.exercises.find(x => x.diagnosticId === question.id); return { question, result: !entry || entry.skipped ? null : gradeDiagnostic(entry, question) };
  }), [showResults, exam, questionBank, state.doc]);
  async function copyReport() { const text = examGrades.map(({question,result}) => `Q${question.id} | ${question.stem}\nExpected: ${question.expected}\n${result?.numeric ?? 'skipped'}`).join('\n\n'); if (await writeClipboard(text)) dispatch(actions.notice('Diagnostic report copied.')); else setManual(text); }
- const mathTools = <MathTools wide={wide} canUndo={state.past.some(d => d.exerciseId === ex.id)} canRedo={state.future.some(d => d.exerciseId === ex.id)} onUndo={() => { dispatch(actions.undo()); focusEditor(); }} onRedo={() => { dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
- return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDown={keyboard}>
+ const activeMathfield = mathfieldForStep(state.doc.cursor.stepId);
+ const canUndo = !!activeMathfield?.canUndo() || state.past.some(d => d.exerciseId === ex.id);
+ const canRedo = !!activeMathfield?.canRedo() || state.future.some(d => d.exerciseId === ex.id);
+ const mathTools = <MathTools wide={wide} canUndo={canUndo} canRedo={canRedo} onUndo={() => { if (!undoMathfield(state.doc.cursor.stepId)) dispatch(actions.undo()); focusEditor(); }} onRedo={() => { if (!redoMathfield(state.doc.cursor.stepId)) dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
+ return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
     {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>
-     {isMathAnswer && <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { writeKeyboardChoice(!state.keyboardOpen); dispatch(actions.keyboard(!state.keyboardOpen)); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>}
+     {isMathAnswer && <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; writeKeyboardChoice(open); dispatch(actions.keyboard(open)); if (open) requestAnimationFrame(focusEditor); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>}
      <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onClick={() => setMenu(value => !value)}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu">
       <DropdownMenuItem className="menu-primary-action" onSelect={() => request('copy')}><ClipboardCheck aria-hidden="true" />Check · Copy for Review</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => { void exportTutor(); }}><FileJson2 aria-hidden="true" />Export for tutor (JSON)</DropdownMenuItem>
@@ -395,7 +433,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <div className="workspace">{layout !== 'phone' && batch && <QuestionNavigator doc={state.doc} onSelect={switchQuestion} />}
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
    {batch && <section className="exercise-bar" hidden={layout !== 'phone'} aria-label="Question navigation"><label>Current question<select aria-label="Select question" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} · {questionStatus(entry)}</option>)}</select></label></section>}
-    <section className="problem" aria-label="Current problem">{(wide || linkedLesson || fractions) && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}{linkedLesson && <Button ref={lessonButton} className="lesson-reference-trigger" onClick={() => openReference(linkedLesson)}><BookOpen aria-hidden="true" />Lesson</Button>}</div>}{ex.prompt && <p className="question-statement" lang={languageForText(ex.prompt)} dir={contentDirection(ex.prompt)}><LessonText text={ex.prompt} /></p>}{ex.mode === 'math' ? <div className="problem-formula" aria-label="Original problem" dir="ltr"><MathDisplay latex={ex.source} label="Original question expression" /></div> : !ex.prompt && <p className="question-statement" lang={languageForText(ex.source)} dir={contentDirection(ex.source)}><LessonText text={ex.source} /></p>}{ex.guidance && <details className="question-guidance" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>Question guidance{ex.guidanceOpenedAt ? <span className="small guidance-used"> · Used</span> : null}</summary><p lang={languageForText(ex.guidance)} dir={contentDirection(ex.guidance)}><LessonText text={ex.guidance} /></p></details>}</section>
+    <section className="problem" aria-label="Current problem">{(wide || linkedLesson || fractions) && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}{linkedLesson && <Button ref={lessonButton} className="lesson-reference-trigger" onClick={() => openReference(linkedLesson)}><BookOpen aria-hidden="true" />Lesson</Button>}</div>}{ex.prompt && <p className="question-statement" lang={languageForText(ex.prompt)} dir={contentDirection(ex.prompt)}><LessonText text={ex.prompt} /></p>}{ex.mode === 'math' ? <div className="problem-formula" aria-label="Original problem" dir="ltr"><MathDisplay latex={ex.source} label="Original question expression" /></div> : ex.source.trim() && ex.source.trim() !== ex.prompt?.trim() && <p className="question-source-text" aria-label="Question details" lang={languageForText(ex.source)} dir={contentDirection(ex.source)}><LessonText text={ex.source} /></p>}{ex.guidance && <details className="question-guidance" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>Question guidance{ex.guidanceOpenedAt ? <span className="small guidance-used"> · Used</span> : null}</summary><p lang={languageForText(ex.guidance)} dir={contentDirection(ex.guidance)}><LessonText text={ex.guidance} /></p></details>}</section>
     <QuestionTimer key={ex.id} exerciseId={ex.id} />
     </div>
     <div className={`editor-layout work-pane ${isMathAnswer && state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? (isMathAnswer ? 'Your work' : 'Your response') : undefined}><div className="notebook-main">
@@ -403,11 +441,10 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     {wide && <div className="work-heading"><h2>{isMathAnswer ? 'Your work' : 'Your response'}</h2>{isMathAnswer && <p className="small">Write each step. Review when you're ready.</p>}</div>}
 
     {isMathAnswer ? <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => <article className={`step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id} data-step-id={step.id}>
-     <header className="step-header"><Button className="step-title" variant="ghost" onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); focusEditor(); }}>Step {i + 1}</Button><span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
-      <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id, nodeId: leaves(step.expression)[0].node.id })); dispatch(actions.command({ type: 'final' })); }}>Final{step.final ? ' ✓' : ''}</Button>
+     <header className="step-header"><Button className="step-title" variant="ghost" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>Step {i + 1}</Button><span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
+      <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusCurrentMathControl(); }}>Final{step.final ? ' ✓' : ''}</Button>
       <Button size="icon" variant="ghost" aria-label={`Reset Step ${i + 1}`} title={`Reset Step ${i + 1}`} onClick={() => resetStep(step.id)}><RotateCcw aria-hidden="true" /></Button><Button size="icon" variant="ghost" disabled={i === 0} aria-label={`Delete Step ${i + 1}`} title={i === 0 ? 'The first step cannot be deleted' : `Delete Step ${i + 1}`} onClick={() => deleteStep(step.id)}><Trash2 aria-hidden="true" /></Button>
-     </header><div className="expression" aria-label={`Step ${i + 1} expression`}><Formula sequence={step.expression} stepId={step.id} path={`Step ${i + 1}`} top /></div>
-     {step.id === state.doc.cursor.stepId && <p className="selection small"><span className="selection-dot" aria-hidden="true" />{selectionLabel}</p>}
+     </header><div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={`Step ${i + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
     </article>)}</section> : answerType === 'text' ? <div className="lesson-check-text-answer practice-response">
      <label htmlFor={`practice-answer-${ex.id}`}>Answer</label>
      <textarea id={`practice-answer-${ex.id}`} aria-label="Answer" dir="auto" maxLength={4000} value={ex.answerText ?? ''} onChange={event => dispatch(actions.setAnswerText({ value: event.target.value, answerType: 'text' }))} />
@@ -449,7 +486,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
-  <Dialog open={insertOpen} onOpenChange={value => { if (!value) closeInsert(); }}><DialogContent className="insert-dialog" onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (restoreInsert.current && insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); else focusEditor(); }}>
+  <Dialog open={insertOpen} onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } }}><DialogContent className="insert-dialog" onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { if (restoreInsert.current && insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); else focusCurrentMathControl(); }); }}>
    <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'Show fewer' : `Show more (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>

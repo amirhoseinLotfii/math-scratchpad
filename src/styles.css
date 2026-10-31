@@ -61,6 +61,12 @@
 #math-scratchpad-redux .step-menu summary { min-width: 44px; list-style: none; text-align: center; border-radius: var(--ms-radius); }
 #math-scratchpad-redux .step-menu-items { position: absolute; right: 0; top: 100%; z-index: 4; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--ms-border); border-radius: var(--ms-radius); width: 154px; background: var(--ms-surface); box-shadow: 0 8px 24px #0005; }
 #math-scratchpad-redux .expression { padding: 12px 0 18px; min-width: 0; direction: ltr; unicode-bidi: isolate; }
+#math-scratchpad-redux math-field.mathlive-step-input { display: block; width: fit-content; max-width: 100%; min-height: 48px; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--foreground); font-size: clamp(25px, 6vw, 34px); direction: ltr; --caret-color: var(--primary); --selection-background-color: #52745f66; --selection-color: var(--foreground); }
+#math-scratchpad-redux math-field.mathlive-step-input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+#math-scratchpad-redux math-field.mathlive-step-input::part(container) { min-width: 44px; min-height: 44px; }
+#math-scratchpad-redux math-field.mathlive-step-input::part(content) { padding: 2px 0; }
+#math-scratchpad-redux math-field.mathlive-step-input::part(virtual-keyboard-toggle),
+#math-scratchpad-redux math-field.mathlive-step-input::part(menu-toggle) { display: none; }
 #math-scratchpad-redux .math-sequence { display: inline-flex; align-items: center; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
 #math-scratchpad-redux .top-sequence { display: flex; flex-wrap: wrap; row-gap: 12px; max-width: 100%; }
 #math-scratchpad-redux .math-chunk, #math-scratchpad-redux .group, #math-scratchpad-redux .radical { display: inline-flex; align-items: center; direction: ltr; unicode-bidi: isolate; }
@@ -245,7 +251,6 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux h1 { font-size: clamp(20px, 5cqi, 28px); letter-spacing: -.6px; }
 #math-scratchpad-redux .header-actions { justify-content: flex-end; flex-wrap: nowrap; }
 #math-scratchpad-redux .eyebrow, #math-scratchpad-redux .subtitle, #math-scratchpad-redux .desktop-action { display: none; }
-#math-scratchpad-redux .keyboard-toggle[aria-expanded='true'] { display: none; }
 #math-scratchpad-redux .exercise-bar { display: grid; grid-template-columns: minmax(135px, 1fr) minmax(64px, 1fr); align-items: center; padding-bottom: 12px; }
 #math-scratchpad-redux .exercise-bar label { font-size: 0; order: initial; }
 #math-scratchpad-redux .exercise-bar select { margin: 0; width: 100%; font-size: 13px; padding: 10px 8px; min-height: 44px; }
@@ -549,7 +554,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .wellbeing-dialog .dialog-actions { justify-content: flex-end; }
 
 @container (min-width: 900px) {
-  #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: minmax(176px, 208px) minmax(220px, 290px) minmax(0, 1fr); gap: 16px; }
+  #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: minmax(176px, 208px) minmax(320px, 380px) minmax(0, 1fr); gap: 16px; }
   #math-scratchpad-redux .question-navigator { top: 16px; max-height: calc(100dvh - 108px); }
   #math-scratchpad-redux .question-context { top: 16px; max-height: calc(100dvh - 108px); }
   #math-scratchpad-redux .notebook-main { padding: 16px; }
@@ -557,7 +562,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   #math-scratchpad-redux .header-progress { flex-basis: 180px; }
 }
 @container (min-width: 900px) and (max-width: 1100px) {
-  #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: minmax(160px, 176px) minmax(220px, 240px) minmax(0, 1fr); }
+  #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: 176px minmax(260px, 280px) minmax(0, 1fr); }
   #math-scratchpad-redux .math-tools-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; }
   #math-scratchpad-redux .wide-history-tools { grid-column: 1; grid-row: 1; min-width: 0; }
   #math-scratchpad-redux .wide-history-tools button { width: 44px; min-width: 44px; padding: 8px; font-size: 0; }
@@ -749,6 +754,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-answer-step .step-state.edited { color: var(--success); }
 #math-scratchpad-redux .lesson-answer-step .final-marker { min-height: 40px; padding: 5px 8px; font-size: 12px; }
 #math-scratchpad-redux .lesson-answer-step .expression { min-height: 56px; padding-block: 3px; overflow-x: auto; }
+#math-scratchpad-redux .lesson-answer-step math-field.mathlive-step-input { min-height: 48px; font-size: clamp(24px, 6vw, 30px); }
 #math-scratchpad-redux .lesson-answer-step .selection { color: var(--muted-foreground); }
 #math-scratchpad-redux .lesson-answer-step .math-token { min-width: 0; min-height: 44px; padding: 2px 2px; border-color: transparent !important; border-radius: 3px; background: transparent !important; box-shadow: none !important; }
 #math-scratchpad-redux .lesson-answer-step .math-token:hover:not(:disabled) { border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
@@ -841,6 +847,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .lesson-reference-dialog .lesson-example-step-label { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
 .lesson-reference-dialog .lesson-example-step p { margin: 0; }
 .lesson-reference-dialog .lesson-formula, .lesson-reference-dialog .lesson-check-source { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding-block: 4px; direction: ltr; unicode-bidi: isolate; }
+.lesson-reference-dialog math-div.math-display { display: block; max-width: 100%; overflow-x: auto; direction: ltr; unicode-bidi: isolate; }
+.lesson-reference-dialog math-span.math-display { direction: ltr; unicode-bidi: isolate; }
 .lesson-reference-dialog .math-sequence { display: inline-flex; align-items: center; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
 .lesson-reference-dialog .top-sequence { display: flex; flex-wrap: wrap; row-gap: 8px; max-width: 100%; }
 .lesson-reference-dialog .math-chunk, .lesson-reference-dialog .group, .lesson-reference-dialog .radical { display: inline-flex; align-items: center; direction: ltr; unicode-bidi: isolate; }
@@ -932,3 +940,19 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-image-fallback { display: grid; gap: 8px; }
 #math-scratchpad-redux .lesson-image-fallback-label { color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
 #math-scratchpad-redux .lesson-image-fallback figcaption { line-height: 1.7; overflow-wrap: anywhere; }
+#math-scratchpad-redux .question-source-text {
+  max-width: 100%;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: clamp(17px, 1.15vw, 20px);
+  line-height: 1.75;
+  text-align: start;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+#math-scratchpad-redux .question-statement {
+  font-size: clamp(17px, 1.1vw, 20px);
+  line-height: 1.8;
+}
+#math-scratchpad-redux .question-statement[dir="rtl"] { text-align: right; }

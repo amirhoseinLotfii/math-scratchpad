@@ -39,11 +39,15 @@ test('read-only lesson notation displays sets, unruled arrays and indexed roots'
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
   await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
   const lesson = page.locator('.lesson-screen');
-  await expect(lesson.getByText('{(odd,1), (even,2)}')).toBeVisible();
+  const setFormula = lesson.locator('math-div').filter({ hasText: 'odd' });
+  await expect(setFormula).toHaveCount(1);
+  await expect(setFormula).toBeVisible();
   const table = lesson.getByRole('region', { name: 'Lesson table' });
   await expect(table.getByRole('cell', { name: 'ورودی' })).toBeVisible();
   await expect(table.getByRole('columnheader')).toHaveCount(0);
-  await expect(lesson.locator('.math-display-root[aria-label="3 root of x"]')).toHaveCount(1);
-  await expect(lesson.locator('.math-display-fallback')).toHaveCount(0);
+  const rootFormula = lesson.locator('math-div[aria-label="Lesson formula"]').filter({ hasText: 'sqrt' });
+  await expect(rootFormula).toHaveCount(1);
+  await expect(rootFormula).toBeVisible();
+  await expect.poll(() => rootFormula.evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

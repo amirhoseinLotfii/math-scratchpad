@@ -5,7 +5,7 @@ import type { BankQuestion } from '../drive-bank/drive-bank';
 import { getLearnChecks } from './selectors';
 import type { DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson } from './types';
-import { contentDirection, isRedundantOpeningHeading, languageForText, LessonBlockView, LessonText } from './lesson-content';
+import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, LessonBlockView, LessonText } from './lesson-content';
 
 function ReadOnlyQuestion({ question }: { question: BankQuestion }) {
   return <article className="lesson-reference-check">
@@ -26,13 +26,13 @@ export function LessonReferenceDialog({ lesson, bank, onOpenChange, onCloseAutoF
   return <Dialog open={!!lesson} onOpenChange={onOpenChange}>
     <DialogContent className="lesson-reference-dialog" aria-describedby="lesson-reference-description" onCloseAutoFocus={onCloseAutoFocus}>
       {lesson && <>
-        <DialogTitle lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={lesson.title} /></DialogTitle>
+        <DialogTitle lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></DialogTitle>
         <p className="lesson-reference-metadata" dir="ltr">{lesson.book} · {lesson.section}{lesson.pages ? ` · pp. ${lesson.pages}` : ''}</p>
         <DialogDescription id="lesson-reference-description">Read-only lesson reference. Checks cannot be answered here.</DialogDescription>
         <div className="lesson-reference-content" role="region" aria-label="Lesson content" tabIndex={0}>
           {lesson.concepts.map((concept, conceptIndex) => <section className="lesson-reference-concept" key={concept.id} aria-labelledby={`reference-concept-${concept.id}`}>
             <p className="lesson-section-label">Concept {conceptIndex + 1}</p>
-            <h2 id={`reference-concept-${concept.id}`} lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={concept.title} /></h2>
+            <h2 id={`reference-concept-${concept.id}`} lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></h2>
             <div className="lesson-concept-blocks">
               {concept.blocks.map((block, index) => isRedundantOpeningHeading(concept, block, index) ? null : <LessonBlockView
                 key={`${concept.id}:${index}`}
