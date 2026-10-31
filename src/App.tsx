@@ -424,7 +424,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
      {!wide && mathTools}
      {state.keyboardOpen && <Keyboard />}
     </>}
-    <footer className="review-controls">{wide && <p className="wide-keyboard-hint"><kbd>/</kbd> Insert symbols · <kbd>Ctrl / Cmd + Z</kbd> Undo · <kbd>Tab</kbd> Move focus</p>}{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
+    <footer className="review-controls">{wide && <p className="wide-keyboard-hint"><kbd>/</kbd> Open math tools · <kbd>Ctrl / Cmd + Z</kbd> Undo · <kbd>Tab</kbd> Move focus</p>}{!batch && <Button variant="default" className="review-button" disabled={busy} onClick={() => request('copy')}>{busy ? 'Copying…' : 'Check · Copy for Review'}</Button>}
+
      <p className={`copy-state ${copied === 'Changed since copy' ? 'changed' : ''}`}>{copied}</p><p className="small" role="status" aria-live="polite">{state.notice}</p>
      {batch && <nav className="question-navigation" aria-label="Question navigation"><Button disabled={exerciseIndex === 0} onClick={() => { dispatch(actions.adjacentExercise(-1)); setManual(''); }}>← Previous</Button><Button onClick={() => request(last ? 'complete' : 'next')}>{last ? 'Finish session' : 'Next question →'}</Button></nav>}
      {wide && batch && !ex.skipped && <p className="confidence-hint">Confidence required before continuing.</p>}

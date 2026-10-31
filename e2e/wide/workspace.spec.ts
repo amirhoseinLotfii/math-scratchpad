@@ -47,8 +47,15 @@ test('WIDE-07: navigator switches questions without deleting drafts or fabricati
  await expect(page.getByLabel('Step 1 expression')).toContainText('456');await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 test('WIDE-08: slash chooser accepts keyboard selection and returns to work',async({page})=>{
- await startBatch(page);await page.getByRole('main').focus();await page.keyboard.press('/');const d=page.getByRole('dialog',{name:'Insert Math Element'});
- await expect(d).toBeVisible();await page.keyboard.press('Enter');await expect(d).toBeHidden();await page.keyboard.type('42');await expect(page.getByLabel('Step 1 expression')).toContainText('42');
+ await startBatch(page);await expect(page.locator('.wide-keyboard-hint')).toContainText('Open math tools');await page.getByRole('main').focus();await page.keyboard.press('/');const d=page.getByRole('dialog',{name:'Insert Math Element'});
+ await expect(d).toBeVisible();await page.keyboard.press('Enter');await expect(d).toBeHidden();await expect(page.getByRole('main')).toBeFocused();await page.keyboard.type('42');await expect(page.getByLabel('Step 1 expression')).toContainText('42');
+});
+test('QA-F10: inserting a parenthesis group at a minus keeps the following fraction outside it',async({page})=>{
+ await page.goto('/');const expression=page.getByLabel('Step 1 expression');
+ await expression.getByRole('button',{name:'Step 1 operator +'}).focus();
+ await page.keyboard.press('-');await page.keyboard.press('(');await page.keyboard.press('3');
+ const terms=expression.locator('.top-sequence > .math-chunk').nth(1).locator(':scope > .math-structure');
+ await expect(terms).toHaveCount(2);await expect(terms.nth(0).locator('.group')).toContainText('3');await expect(terms.nth(1).locator('.fraction')).toBeVisible();
 });
 test('WIDE-09: focused numbers respect digit boundaries before moving fields',async({page})=>{
  await page.goto('/');const numerator=page.getByRole('button',{name:/Step 1.*Numerator number 2/}).first();await numerator.click();await page.keyboard.type('34');
@@ -69,6 +76,7 @@ test('WIDE-12: resetting a different step targets that step and Undo restores it
 });
 test('WIDE-13: shortcut dialog traps focus, Escape restores the trigger, and work stays unchanged',async({page})=>{
  await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();const trigger=page.getByRole('menuitem',{name:'Keyboard shortcuts',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'Keyboard shortcuts'});await expect(dialog).toBeVisible();
+ await expect(dialog.getByText('Open Insert Math Element; choose Fraction to insert a fraction')).toBeVisible();
  for(let i=0;i<5;i++)await page.keyboard.press('Tab');expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Exercise menu'})).toBeFocused();await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
 });
