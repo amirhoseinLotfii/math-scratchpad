@@ -64,7 +64,9 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const allQuestions = useMemo(() => new Map(bank.questions.map(question => [question.id, question])), [bank.questions]);
 
   useEffect(() => {
-    (summary ? summaryHeadingRef : headingRef).current?.focus({ preventScroll: true });
+    const target = (summary ? summaryHeadingRef : headingRef).current;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
   }, [conceptIndex, summary]);
 
   useEffect(() => {

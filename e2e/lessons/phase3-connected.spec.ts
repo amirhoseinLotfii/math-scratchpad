@@ -86,6 +86,7 @@ test('connected Learn flow, reference panel and responsive layouts', async ({ pa
 
   await learn.getByRole('radio', { name: 'Option A' }).click();
   await learn.getByRole('button', { name: 'Next concept →' }).click();
+  await expect(learn.locator('.lesson-concept > h2')).toBeInViewport();
   const mathEditor = learn.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
   const answerField = mathEditor.locator('math-field[aria-label="Step 1 expression"]');
   await mathEditor.getByRole('button', { name: 'Show Keyboard' }).click();
