@@ -57,6 +57,11 @@ export function insertMathSymbol(stepId: string, key: string) {
   const field = fields.get(stepId), latex = mathLatexForSymbol(key);
   if (!field || latex === undefined) return false;
   const hasPlaceholder = latex.includes('\\placeholder');
+  const isEmptyField = /^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(field.value);
+  // The input adapter routes the first key from an empty Step through this path.
+  // Explicitly select the empty placeholder so both literal keys and structures
+  // replace it consistently across browsers and MathLive builds.
+  if (isEmptyField) field.executeCommand('selectAll');
   field.insert(latex, {
     mode: 'math',
     format: 'latex',

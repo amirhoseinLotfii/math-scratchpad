@@ -3,6 +3,8 @@ import { buildTutorExport } from '../../src/features/session/export/tutor-export
 import { serialize, validateSession } from '../../src/persistence';
 import { actions, exerciseOf, initialState, makeStore } from '../../src/store';
 import { stepLatex } from '../../src/model';
+import type { MathfieldElement } from 'mathlive';
+import { insertMathSymbol, registerMathfield } from '../../src/features/math-editor/mathlive-adapter';
 
 describe('MathLive answer compatibility', () => {
   it('keeps exact LaTeX, Step identity, Final state, backups, and tutor export', () => {
@@ -31,5 +33,19 @@ describe('MathLive answer compatibility', () => {
     expect(exerciseOf(store.getState().doc).steps[0].mathLatex).toBe(String.raw`\placeholder{}`);
     expect(stepLatex(exerciseOf(store.getState().doc).steps[0])).toBe(String.raw`\square`);
     expect(store.getState().past).toHaveLength(0);
+  });
+
+  it('replaces an empty field placeholder when the first physical key is routed through the adapter', () => {
+    const store = makeStore(initialState()), stepId = exerciseOf(store.getState().doc).steps[0].id;
+    const field = document.createElement('math-field') as unknown as MathfieldElement;
+    field.value = String.raw`\placeholder{}`;
+    registerMathfield(stepId, field);
+
+    try {
+      expect(insertMathSymbol(stepId, '8')).toBe(true);
+      expect(field.value).toBe('8');
+    } finally {
+      registerMathfield(stepId, null);
+    }
   });
 });
