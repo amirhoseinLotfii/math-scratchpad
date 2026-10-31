@@ -47,7 +47,7 @@ describe('Minimal original-UI fixes and twenty-question round',()=>{
   expect(store.getState().doc.exercises).toHaveLength(20);
   expect((screen.getByLabelText('Select question') as HTMLSelectElement).selectedOptions[0]?.textContent).toBe('Question 1 · Not started');
   expect(document.querySelectorAll('.header-progress-track')).toHaveLength(1);
-  expect(document.querySelector('.header-progress-copy')?.textContent).toBe('0 of 20 answered');
+  expect(document.querySelector('.header-progress-copy')?.textContent).toBe('0 of 20 practice questions answered');
   expect(screen.queryByText('Question 1 of 20')).toBeNull();
   expect(document.querySelector('.question-navigator .header-progress')).toBeNull();
   expect(screen.getByLabelText('Current problem').textContent).toContain(fractionRoundOne[0].stem);
@@ -58,7 +58,7 @@ describe('Minimal original-UI fixes and twenty-question round',()=>{
   expect(exerciseOf(store.getState().doc).confidence).toBe('high');
   const exported=serialize(store.getState()),restored=validateSession(JSON.parse(exported));
   expect(exported).not.toContain('expected');expect(restored.doc.exercises[0].assessment).toBe('fractions-round-1');expect(restored.doc.exercises[1].skipped).toBe(true);
-  expect(document.querySelector('.header-progress-copy')?.textContent).toBe('1 of 20 answered · 1 skipped');
+  expect(document.querySelector('.header-progress-copy')?.textContent).toBe('1 of 20 practice questions answered · 1 skipped');
  });
  it('uses the correct answer bank for the new round while retaining the original thirty-question mode',()=>{
   const {store}=mount(true);const ex=exerciseOf(store.getState().doc);
