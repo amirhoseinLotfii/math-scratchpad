@@ -667,6 +667,12 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-concept-blocks { display: grid; gap: 10px; min-width: 0; }
 #math-scratchpad-redux .lesson-block-heading { margin: 3px 0; font-size: 17px; }
 #math-scratchpad-redux .lesson-block-paragraph, #math-scratchpad-redux .lesson-check-prompt { margin: 4px 0 8px; line-height: 1.8; }
+#math-scratchpad-redux .lesson-screen :is(p, figcaption) > bdi[lang="en"][dir="ltr"],
+.lesson-reference-dialog :is(p, figcaption) > bdi[lang="en"][dir="ltr"] { display: inline-block; max-width: 100%; direction: ltr; unicode-bidi: isolate; }
+@media (max-width: 480px) {
+  #math-scratchpad-redux .lesson-screen :is(h1, h2, h3, h4) > bdi[lang="en"][dir="ltr"],
+  .lesson-reference-dialog :is(h2, h3, h4) > bdi[lang="en"][dir="ltr"] { display: block; max-width: 100%; direction: ltr; text-align: left; unicode-bidi: isolate; }
+}
 #math-scratchpad-redux .lesson-block { min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 #math-scratchpad-redux .lesson-block h4 { margin: 0 0 6px; font-size: 14px; color: var(--muted-foreground); }
 #math-scratchpad-redux .lesson-block p { margin: 4px 0; line-height: 1.8; }

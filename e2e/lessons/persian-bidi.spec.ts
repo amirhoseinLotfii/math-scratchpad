@@ -24,6 +24,13 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     const referenceTitle = reference.locator('> h2');
     await expect(referenceTitle).toHaveAttribute('dir', 'rtl');
     await expect(referenceTitle).toHaveCSS('text-align', 'start');
+    const referenceTitleRun = referenceTitle.locator('bdi[lang="en"][dir="ltr"]');
+    await expect(referenceTitleRun).toHaveText('(Functions and Function Notation)');
+    await expect(referenceTitleRun).toHaveCSS('display', 'block');
+    const referenceConceptTitle = reference.locator('h2[id^="reference-concept-"]').first();
+    const referenceConceptRun = referenceConceptTitle.locator('bdi[lang="en"][dir="ltr"]');
+    await expect(referenceConceptRun).toHaveText('(Function Definition and Notation)');
+    await expect(referenceConceptRun).toHaveCSS('display', 'block');
     const referenceSize = await referenceTitle.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     expect(referenceSize.scroll).toBeLessThanOrEqual(referenceSize.client + 1);
     const referenceParagraph = reference.locator('.lesson-block-paragraph[lang="fa"]').filter({ hasText: mixedText });
@@ -32,6 +39,7 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     const proseRuns = referenceParagraph.locator('bdi:not(.lesson-inline-math)');
     await expect(proseRuns).toHaveCount(2);
     expect(await proseRuns.allTextContents()).toEqual(['(Functions and Function Notation)', '(domain and range)']);
+    for (const run of await proseRuns.all()) await expect(run).toHaveCSS('display', 'inline-block');
     const referenceDimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
     expect(referenceDimensions.document).toBeLessThanOrEqual(referenceDimensions.viewport);
     await page.screenshot({ path: `/tmp/math-scratchpad-bidi-reference-${viewport.width}x${viewport.height}.png`, fullPage: true });
@@ -45,6 +53,13 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     await expect(lessonTitle).toHaveText(title);
     await expect(lessonTitle).toHaveAttribute('dir', 'rtl');
     await expect(lessonTitle).toHaveCSS('text-align', 'start');
+    const lessonTitleRun = lessonTitle.locator('bdi[lang="en"][dir="ltr"]');
+    await expect(lessonTitleRun).toHaveText('(Functions and Function Notation)');
+    await expect(lessonTitleRun).toHaveCSS('display', 'block');
+    const lessonConceptTitle = page.locator('#lesson-concept-title');
+    const lessonConceptRun = lessonConceptTitle.locator('bdi[lang="en"][dir="ltr"]');
+    await expect(lessonConceptRun).toHaveText('(Function Definition and Notation)');
+    await expect(lessonConceptRun).toHaveCSS('display', 'block');
     const lessonSize = await lessonTitle.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }));
     expect(lessonSize.scroll).toBeLessThanOrEqual(lessonSize.client + 1);
     const lessonParagraph = page.locator('.lesson-screen .lesson-block-paragraph[lang="fa"]').filter({ hasText: mixedText });
@@ -52,6 +67,7 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     const lessonRuns = lessonParagraph.locator('bdi:not(.lesson-inline-math)');
     await expect(lessonRuns).toHaveCount(2);
     expect(await lessonRuns.allTextContents()).toEqual(['(Functions and Function Notation)', '(domain and range)']);
+    for (const run of await lessonRuns.all()) await expect(run).toHaveCSS('display', 'inline-block');
     const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
     expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
     await page.screenshot({ path: `/tmp/math-scratchpad-bidi-learn-${viewport.width}x${viewport.height}.png`, fullPage: true });
