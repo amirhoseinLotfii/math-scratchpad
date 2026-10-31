@@ -15,6 +15,15 @@ test('Practice text and choice answers remain usable across narrow, tablet and d
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await page.goto('/e2e/fixtures/practice-answer-types-preview.html');
+    const prompt = page.getByText('آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟');
+    await expect(prompt).toBeVisible();
+    await expect(prompt).toHaveAttribute('dir', 'rtl');
+    await expect(prompt).toHaveCSS('text-align', 'right');
+    await expect(page.getByText('{(1,4), (2,4), (3,5)}')).toBeVisible();
+    const header = page.locator('.app-header');
+    const titleBox = await header.locator('h1').boundingBox();
+    const progressBox = await header.locator('.header-progress-copy').boundingBox();
+    expect(titleBox && progressBox && (titleBox.y + titleBox.height <= progressBox.y || progressBox.x >= titleBox.x + titleBox.width)).toBeTruthy();
     const answer = page.getByRole('textbox', { name: 'Answer' });
     await expect(answer).toBeVisible();
     await answer.fill('A typed practice response');

@@ -606,7 +606,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   #math-scratchpad-redux .key-grid button { min-height: 48px; }
   #math-scratchpad-redux .review-controls { margin-top: 8px; }
 }
-@container (max-width: 359px) {
+@container (max-width: 479px) {
   #math-scratchpad-redux .app-header:has(.header-progress) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -939,3 +939,4 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   font-size: clamp(17px, 1.1vw, 20px);
   line-height: 1.8;
 }
+#math-scratchpad-redux .question-statement[dir="rtl"] { text-align: right; }
