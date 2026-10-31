@@ -12,7 +12,7 @@ export function mathfieldForStep(stepId: string) {
 }
 
 const operators: Record<string, string> = {
-  '+': '+', '=': '=', '×': '\\times ', '÷': '\\div ', '−': '-', '≤': '\\le ', '≥': '\\ge ', '≠': '\\ne ',
+  '+': '+', '=': '=', '-': '-', '×': '\\times ', '÷': '\\div ', '−': '-', '≤': '\\le ', '≥': '\\ge ', '≠': '\\ne ',
 };
 
 const structures: Record<string, string> = {

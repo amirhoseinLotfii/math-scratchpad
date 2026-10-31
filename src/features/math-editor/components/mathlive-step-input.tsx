@@ -1,6 +1,6 @@
 import { createElement, useLayoutEffect, useRef } from 'react';
 import { MathfieldElement } from 'mathlive';
-import { mathfieldForStep, registerMathfield } from '../mathlive-adapter';
+import { insertMathSymbol, mathfieldForStep, mathLatexForSymbol, registerMathfield } from '../mathlive-adapter';
 
 // The Node test resolver selects MathLive's SSR entry, which intentionally does
 // not export the browser custom-element class. The browser build does.
@@ -41,6 +41,16 @@ export function MathLiveStepInput({
     let attached = false;
     const input = () => onInputRef.current(field.value);
     const focus = () => onFocusRef.current();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!/^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(field.value)) return;
+      // MathLive's native first-key insertion can leave the blank placeholder
+      // unchanged on some mobile Chromium builds. Route only this initial key
+      // through the shared adapter; subsequent typing stays native to MathLive.
+      if (mathLatexForSymbol(event.key) === undefined) return;
+      event.preventDefault();
+      insertMathSymbol(stepId, event.key);
+    };
     const attach = () => {
       if (disposed || typeof field.executeCommand !== 'function') return;
       attached = true;
@@ -54,6 +64,7 @@ export function MathLiveStepInput({
       if (field.value.includes('\\placeholder')) field.executeCommand('moveToNextPlaceholder');
       field.addEventListener('input', input);
       field.addEventListener('focus', focus);
+      field.addEventListener('keydown', keydown);
     };
 
     // A React layout effect can run before a lazily registered custom element is
@@ -67,6 +78,7 @@ export function MathLiveStepInput({
       if (attached) {
         field.removeEventListener('input', input);
         field.removeEventListener('focus', focus);
+        field.removeEventListener('keydown', keydown);
         if (mathfieldForStep(stepId) === field) registerMathfield(stepId, null);
       }
     };
