@@ -32,7 +32,8 @@ export function itemStatus(ex: Exercise): ItemStatus {
 /** Help = tutor help checkbox OR in-app guidance opened (opening is permanent). */
 export const helped = (ex: Exercise) => ex.hintUsed === true || !!ex.guidanceOpenedAt;
 export function exportItem(ex: Exercise, index: number): TutorItem {
-  const steps = ex.steps.map((s, i) => ({ step_id: s.id, number: i + 1, latex: stepLatex(s), is_final: s.final }));
+  const isTextResponse = ex.answerType === 'text' || ex.answerType === 'choice';
+  const steps = isTextResponse ? [] : ex.steps.map((s, i) => ({ step_id: s.id, number: i + 1, latex: stepLatex(s), is_final: s.final }));
   const final = steps.find(s => s.is_final) ?? null;
   const confidence = ex.confidence ?? 'high';
   const status = itemStatus(ex);
@@ -40,9 +41,9 @@ export function exportItem(ex: Exercise, index: number): TutorItem {
     item_id: ex.id, index: index + 1, question_id: ex.bankQuestionId ?? ex.diagnosticId ?? null, assessment: ex.assessment ?? null,
     prompt: ex.prompt ?? null, problem: ex.mode === 'math' ? ascii(ex.source) : ex.source, problem_format: ex.mode === 'text' ? 'persian-text' : 'math-or-latex',
     status,
-    student_answer: final && !blankStep(final.latex) ? final.latex : null,
-    final_answer: final && !blankStep(final.latex) ? final.latex : null,
-    final_step_id: final?.step_id ?? null, final_step_number: final?.number ?? null,
+    student_answer: isTextResponse ? ex.answerText?.trim() ? ex.answerText : null : final && !blankStep(final.latex) ? final.latex : null,
+    final_answer: isTextResponse ? ex.answerText?.trim() ? ex.answerText : null : final && !blankStep(final.latex) ? final.latex : null,
+    final_step_id: isTextResponse ? null : final?.step_id ?? null, final_step_number: isTextResponse ? null : final?.number ?? null,
     steps: status === 'unanswered' ? [] : steps.filter(s => !blankStep(s.latex) || s.is_final),
     started_at: ex.startedAt ?? null, submitted_at: ex.submittedAt ?? null,
     solve_time_sec: Number.isFinite(ex.elapsedMs) || Number.isFinite(ex.timerRunningSince) ? Math.round(elapsedAt(ex) / 1000) : null,

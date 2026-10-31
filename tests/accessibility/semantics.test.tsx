@@ -63,7 +63,10 @@ describe('A11Y-SEM: document, controls and language', () => {
   expect(time.closest('[aria-live="assertive"], [role="alert"]')).toBeNull();
  });
  it('exposes progress value and question count to assistive technologies', () => {
-  renderMobileApp(); const progress = screen.getByRole('progressbar', { name: 'Answered questions' });
+  renderMobileApp();
+  const aggregate = screen.getByRole('status', { name: '0 of 20 practice questions answered' });
+  expect(aggregate).toHaveTextContent('0 of 20 practice questions answered');
+  const progress = screen.getByRole('progressbar', { name: 'Practice questions answered' });
   expect(Number(progress.getAttribute('aria-valuemin'))).toBe(0);
   expect(Number(progress.getAttribute('aria-valuemax'))).toBeGreaterThan(0);
   expect(progress).toHaveAttribute('aria-valuenow');

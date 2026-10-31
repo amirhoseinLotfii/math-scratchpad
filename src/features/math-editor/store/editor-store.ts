@@ -283,6 +283,14 @@ const handlers = {
     setConfidence(state: ScratchState, action: PayloadAction<'high' | 'medium' | 'low'>) {
       const ex = exerciseOf(state.doc); ex.confidence = action.payload; ex.submittedAt = isoLocal();
     },
+    setAnswerText(state: ScratchState, action: PayloadAction<{ value: string; answerType?: 'text' | 'choice'; choices?: string[] }>) {
+      const ex = exerciseOf(state.doc);
+      if (action.payload.answerType === 'text' || action.payload.answerType === 'choice') ex.answerType = action.payload.answerType;
+      if (ex.answerType === 'choice' && action.payload.choices && action.payload.choices.length >= 2 && action.payload.choices.length <= 12 && action.payload.choices.every(choice => typeof choice === 'string' && choice.trim() && choice.length <= 500)) ex.choices = [...action.payload.choices];
+      const answer = action.payload.value.slice(0, 4000);
+      if (answer) { ex.answerText = answer; if (!ex.startedAt) ex.startedAt = isoLocal(); }
+      else delete ex.answerText;
+    },
     setHint(state: ScratchState, action: PayloadAction<{ used: boolean; note?: string }>) {
       const ex = exerciseOf(state.doc); ex.hintUsed = action.payload.used;
       const note = action.payload.note?.slice(0, 500); if (note) ex.hintNote = note; else delete ex.hintNote;

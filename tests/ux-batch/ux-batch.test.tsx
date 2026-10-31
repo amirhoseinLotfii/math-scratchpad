@@ -114,10 +114,10 @@ describe('5 insert dialog “Show more”', () => {
 describe('6 header progress', () => {
  it('separates answered from skipped and updates immediately', () => {
   const { store } = mount(); const header = () => document.querySelector('.header-progress-copy')!.textContent;
-  expect(header()).toBe('0 of 20 answered');
-  act(() => { store.dispatch(actions.command({ type: 'digit', value: '4' })); }); expect(header()).toBe('0 of 20 answered'); // draft is not answered
-  act(() => { store.dispatch(actions.setConfidence('low')); }); expect(header()).toBe('1 of 20 answered');
-  act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.setSkipped(true)); }); expect(header()).toBe('1 of 20 answered · 1 skipped');
+  expect(header()).toBe('0 of 20 practice questions answered');
+  act(() => { store.dispatch(actions.command({ type: 'digit', value: '4' })); }); expect(header()).toBe('0 of 20 practice questions answered'); // draft is not answered
+  act(() => { store.dispatch(actions.setConfidence('low')); }); expect(header()).toBe('1 of 20 practice questions answered');
+  act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.setSkipped(true)); }); expect(header()).toBe('1 of 20 practice questions answered · 1 skipped');
  });
 });
 
