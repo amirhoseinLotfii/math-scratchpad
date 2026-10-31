@@ -557,7 +557,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   #math-scratchpad-redux .header-progress { flex-basis: 180px; }
 }
 @container (min-width: 900px) and (max-width: 1100px) {
-  #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: minmax(160px, 176px) minmax(260px, 320px) minmax(0, 1fr); }
+  #math-scratchpad-redux .workspace:has(.question-navigator) { grid-template-columns: 176px minmax(260px, 280px) minmax(0, 1fr); }
   #math-scratchpad-redux .math-tools-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; }
   #math-scratchpad-redux .wide-history-tools { grid-column: 1; grid-row: 1; min-width: 0; }
   #math-scratchpad-redux .wide-history-tools button { width: 44px; min-width: 44px; padding: 8px; font-size: 0; }
