@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import { Provider } from '../../src/app/store-provider';
 import { QuestionNavigator } from '../../src/features/workspace/components/question-navigator';
 import { QuestionTimer } from '../../src/QuestionTimer';
@@ -117,14 +118,27 @@ describe('Drive bank panel', () => {
     expect(await screen.findByText(/authorization expired/)).toBeTruthy(); expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
   });
   it('opening the bank archives the old session and the same version cannot be reopened', async () => {
-    mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(true); mockDrive({ content: BANK(), rev: 1 }); const { user, store, onAvailable } = panel(); await connect(user);
+    mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store, onAvailable } = panel(); const originalSessionId = store.getState().doc.session?.id; await connect(user);
     const open = await screen.findByRole('button', { name: 'Open received batch' }); await user.click(open);
+    const batchDialog = await screen.findByRole('dialog', { name: 'Open a new question batch?' }); expect(within(batchDialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.click(within(batchDialog).getByRole('button', { name: 'Open batch' }));
     expect(store.getState().doc.exercises.map(e => e.bankQuestionId)).toEqual(['A', 'B']); expect(onAvailable).toHaveBeenLastCalledWith(false);
     expect(await screen.findByText(/Saved sessions \(1\)/)).toBeTruthy();
+    await user.click(screen.getByText(/Saved sessions \(1\)/));
+    const resume = screen.getByRole('button', { name: 'Resume' }); await user.click(resume);
+    const restoreDialog = await screen.findByRole('dialog', { name: 'Restore this saved session?' });
+    await user.click(within(restoreDialog).getByRole('button', { name: 'Cancel' }));
+    expect(resume).toHaveFocus(); expect(store.getState().doc.session?.bankId).toBe('GEN');
+    await user.click(resume); await user.click(await screen.findByRole('button', { name: 'Restore session' }));
+    expect(store.getState().doc.session?.id).toBe(originalSessionId);
   });
   it('cancelling the confirm leaves the session untouched', async () => {
-    mockGoogle(); vi.spyOn(window, 'confirm').mockReturnValue(false); mockDrive({ content: BANK(), rev: 1 }); const { user, store } = panel(); await connect(user);
-    const before = JSON.stringify(store.getState().doc); await user.click(await screen.findByRole('button', { name: 'Open received batch' })); expect(JSON.stringify(store.getState().doc)).toBe(before);
+    mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store } = panel(); await connect(user);
+    const before = JSON.stringify(store.getState().doc); const open = await screen.findByRole('button', { name: 'Open received batch' }); await user.click(open);
+    const dialog = await screen.findByRole('dialog', { name: 'Open a new question batch?' });
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(open).toHaveFocus(); expect(JSON.stringify(store.getState().doc)).toBe(before);
   });
   it('remembers the picked file id only', async () => {
     mockGoogle(); mockDrive({ content: '', rev: 1 }); const { user } = panel(); await connect(user); await screen.findByText(/selected bank file is empty/);
