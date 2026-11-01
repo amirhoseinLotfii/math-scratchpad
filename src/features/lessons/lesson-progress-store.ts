@@ -1,12 +1,13 @@
 import { allowedWorkKeys, normalizeWorkAnswers } from './lesson-work-items';
 import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
-import type { Lesson, LessonCheckAnswer, LessonChunkAnswer, LessonExampleAttempt, LessonPracticeResult, LessonProgress, LessonStatus } from './types';
+import type { Lesson, LessonCheckAnswer, LessonChunkAnswer, LessonExampleAttempt, LessonPracticeResult, LessonProgress, LessonStatus, MixedReviewRun } from './types';
 import { buildLessonSections } from './lesson-sections';
 
 export const LESSON_PROGRESS_PREFIX = 'math-scratchpad-lesson-progress-v1';
 export const LESSON_PROGRESS_SCHEMA = 1;
 const MAX_RECORD_LENGTH = 4_000_000;
+const MAX_MIXED_REVIEW_RUNS = 1000;
 const safeId = /^[\w.-]{1,80}$/;
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/;
 const statuses = new Set<LessonStatus>(['learning', 'practising', 'done']);
@@ -65,6 +66,27 @@ function validMathSteps(question: BankQuestion, value: unknown) {
   } catch { return undefined; }
 }
 
+function normalizePracticeResult(rawResult: unknown): LessonPracticeResult | undefined {
+  if (!record(rawResult)
+    || !['not_started', 'draft', 'answered', 'skipped'].includes(String(rawResult.status))
+    || !Array.isArray(rawResult.steps) || rawResult.steps.length > 40
+    || !rawResult.steps.every(step => record(step) && typeof step.latex === 'string' && step.latex.length <= 20000 && typeof step.final === 'boolean')
+    || !timestamp(rawResult.updatedAt)
+    || (rawResult.answer !== undefined && (typeof rawResult.answer !== 'string' || rawResult.answer.length > 4000))
+    || (rawResult.startedAt !== undefined && !timestamp(rawResult.startedAt))
+    || (rawResult.submittedAt !== undefined && !timestamp(rawResult.submittedAt))
+    || (rawResult.correctness !== undefined && !['correct', 'incorrect', 'unknown'].includes(String(rawResult.correctness)))) return undefined;
+  return {
+    status: rawResult.status as LessonPracticeResult['status'],
+    ...(typeof rawResult.correctness === 'string' ? { correctness: rawResult.correctness as NonNullable<LessonPracticeResult['correctness']> } : {}),
+    ...(typeof rawResult.answer === 'string' ? { answer: rawResult.answer } : {}),
+    steps: rawResult.steps.map(step => ({ latex: (step as { latex: string }).latex, final: (step as { final: boolean }).final })),
+    ...(timestamp(rawResult.startedAt) ? { startedAt: rawResult.startedAt } : {}),
+    updatedAt: rawResult.updatedAt,
+    ...(timestamp(rawResult.submittedAt) ? { submittedAt: rawResult.submittedAt } : {}),
+  };
+}
+
 function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<string, BankQuestion>): LessonProgress | undefined {
   if (!record(value) || value.lessonId !== lesson.id || typeof value.status !== 'string' || !statuses.has(value.status as LessonStatus)) return undefined;
   if (value.summaryOpen !== undefined && typeof value.summaryOpen !== 'boolean') return undefined;
@@ -87,6 +109,7 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
   if (Array.isArray(value.activePracticeQuestionIds) && value.activePracticeQuestionIds.some(id => (value.completedPracticeQuestionIds as unknown[] | undefined)?.includes(id))) return undefined;
   const conceptIds = new Set(lesson.concepts.map(concept => concept.id));
   if (value.activePracticeConceptId !== undefined && (typeof value.activePracticeConceptId !== 'string' || !conceptIds.has(value.activePracticeConceptId))) return undefined;
+  if (value.activeMixedReviewRunId !== undefined && (typeof value.activeMixedReviewRunId !== 'string' || !safeId.test(value.activeMixedReviewRunId))) return undefined;
   const checkIds = new Set(lesson.concepts.flatMap(concept => concept.checkQuestionIds));
   const learningChunks = lesson.concepts.flatMap(concept => concept.learningChunks ?? []);
   const chunkIds = new Set(learningChunks.map(chunk => chunk.id));
@@ -118,8 +141,9 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
         checkAnswers[questionId] = { type: 'math', steps };
       } else if (expected === 'text' && response.type === 'text' && typeof response.value === 'string' && response.value.length <= 4000) {
         checkAnswers[questionId] = { type: 'text', value: response.value };
-      } else if (expected === 'choice' && response.type === 'choice' && typeof response.value === 'string' && question.choices?.includes(response.value)) {
-        checkAnswers[questionId] = { type: 'choice', value: response.value };
+      } else if (expected === 'choice' && response.type === 'choice' && typeof response.value === 'string' && question.choices?.includes(response.value)
+        && (response.explanation === undefined || typeof response.explanation === 'string' && response.explanation.length <= 4000)) {
+        checkAnswers[questionId] = { type: 'choice', value: response.value, ...(typeof response.explanation === 'string' ? { explanation: response.explanation } : {}) };
       } else return undefined;
     }
   }
@@ -139,9 +163,13 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
     if (!record(value.chunkAnswers)) return undefined;
     const allowedChunkQuestions = new Set(learningChunks.flatMap(chunk => chunk.questionIds));
     for (const [questionId, rawAnswer] of Object.entries(value.chunkAnswers)) {
-      if (!allowedChunkQuestions.has(questionId) || !record(rawAnswer) || typeof rawAnswer.value !== 'string' || rawAnswer.value.length > 4000 || !timestamp(rawAnswer.updatedAt)
-        || (rawAnswer.submittedAt !== undefined && !timestamp(rawAnswer.submittedAt))) return undefined;
-      chunkAnswers[questionId] = { value: rawAnswer.value, updatedAt: rawAnswer.updatedAt, ...(timestamp(rawAnswer.submittedAt) ? { submittedAt: rawAnswer.submittedAt } : {}) };
+      const question = questionById.get(questionId);
+      if (!allowedChunkQuestions.has(questionId) || !question || !record(rawAnswer) || typeof rawAnswer.value !== 'string' || rawAnswer.value.length > 4000 || !timestamp(rawAnswer.updatedAt)
+        || (rawAnswer.explanation !== undefined && (typeof rawAnswer.explanation !== 'string' || rawAnswer.explanation.length > 4000))
+        || (question.answerType === 'choice' && !question.choices?.includes(rawAnswer.value))
+        || (rawAnswer.submittedAt !== undefined && !timestamp(rawAnswer.submittedAt))
+        || (rawAnswer.submittedAt !== undefined && question.requiresExplanation && !(typeof rawAnswer.explanation === 'string' && rawAnswer.explanation.trim()))) return undefined;
+      chunkAnswers[questionId] = { value: rawAnswer.value, ...(typeof rawAnswer.explanation === 'string' ? { explanation: rawAnswer.explanation } : {}), updatedAt: rawAnswer.updatedAt, ...(timestamp(rawAnswer.submittedAt) ? { submittedAt: rawAnswer.submittedAt } : {}) };
     }
   }
 
@@ -158,24 +186,46 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
   if (value.practiceResults !== undefined) {
     if (!record(value.practiceResults)) return undefined;
     for (const [questionId, rawResult] of Object.entries(value.practiceResults)) {
-      if (!practiceResultsAllowed.has(questionId) || !record(rawResult)
-        || !['not_started', 'draft', 'answered', 'skipped'].includes(String(rawResult.status))
-        || !Array.isArray(rawResult.steps) || rawResult.steps.length > 40
-        || !rawResult.steps.every(step => record(step) && typeof step.latex === 'string' && step.latex.length <= 20000 && typeof step.final === 'boolean')
-        || !timestamp(rawResult.updatedAt)
-        || (rawResult.answer !== undefined && (typeof rawResult.answer !== 'string' || rawResult.answer.length > 4000))
-        || (rawResult.startedAt !== undefined && !timestamp(rawResult.startedAt))
-        || (rawResult.submittedAt !== undefined && !timestamp(rawResult.submittedAt))) return undefined;
-      practiceResults[questionId] = {
-        status: rawResult.status as LessonPracticeResult['status'],
-        ...(typeof rawResult.answer === 'string' ? { answer: rawResult.answer } : {}),
-        steps: rawResult.steps.map(step => ({ latex: (step as { latex: string }).latex, final: (step as { final: boolean }).final })),
-        ...(timestamp(rawResult.startedAt) ? { startedAt: rawResult.startedAt } : {}),
-        updatedAt: rawResult.updatedAt,
-        ...(timestamp(rawResult.submittedAt) ? { submittedAt: rawResult.submittedAt } : {}),
-      };
+      const normalized = normalizePracticeResult(rawResult);
+      if (!practiceResultsAllowed.has(questionId) || !normalized) return undefined;
+      practiceResults[questionId] = normalized;
     }
   }
+
+  const mixedReviewRuns: MixedReviewRun[] = [];
+  if (value.mixedReviewRuns !== undefined) {
+    if (!Array.isArray(value.mixedReviewRuns) || value.mixedReviewRuns.length > MAX_MIXED_REVIEW_RUNS) return undefined;
+    const runIds = new Set<string>();
+    for (const rawRun of value.mixedReviewRuns) {
+      if (!record(rawRun) || typeof rawRun.id !== 'string' || !safeId.test(rawRun.id) || runIds.has(rawRun.id)
+        || (rawRun.mode !== 'lesson' && rawRun.mode !== 'chapter')
+        || !Array.isArray(rawRun.questionIds) || rawRun.questionIds.length < 1 || rawRun.questionIds.length > 100
+        || !rawRun.questionIds.every((id): id is string => typeof id === 'string' && questionById.has(id))
+        || new Set(rawRun.questionIds).size !== rawRun.questionIds.length
+        || !timestamp(rawRun.startedAt) || !timestamp(rawRun.updatedAt)
+        || (rawRun.finishedAt !== undefined && !timestamp(rawRun.finishedAt))
+        || !record(rawRun.results)) return undefined;
+      const runQuestionIds = new Set(rawRun.questionIds as string[]);
+      if ((rawRun.questionIds as string[]).some(id => {
+        const question = questionById.get(id);
+        return !question || question.stage === 'learn' || !question.tags?.chapter || !question.tags.lesson || !question.tags.concept || !question.tags.skill;
+      })) return undefined;
+      const results: Record<string, LessonPracticeResult> = {};
+      for (const [questionId, rawResult] of Object.entries(rawRun.results)) {
+        const normalized = normalizePracticeResult(rawResult);
+        if (!runQuestionIds.has(questionId) || !normalized) return undefined;
+        results[questionId] = normalized;
+      }
+      if (rawRun.finishedAt && rawRun.id === value.activeMixedReviewRunId) return undefined;
+      runIds.add(rawRun.id);
+      mixedReviewRuns.push({
+        id: rawRun.id, mode: rawRun.mode, questionIds: [...rawRun.questionIds] as string[],
+        startedAt: rawRun.startedAt, updatedAt: rawRun.updatedAt,
+        ...(timestamp(rawRun.finishedAt) ? { finishedAt: rawRun.finishedAt } : {}), results,
+      });
+    }
+  }
+  if (value.activeMixedReviewRunId !== undefined && !mixedReviewRuns.some(run => run.id === value.activeMixedReviewRunId && !run.finishedAt)) return undefined;
   const confidenceByCheckId: Record<string, 1 | 2 | 3 | 4 | 5> = {};
   if (value.confidenceByCheckId !== undefined) {
     if (!record(value.confidenceByCheckId)) return undefined;
@@ -214,6 +264,8 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
     ...(Object.keys(chunkAnswers).length ? { chunkAnswers } : {}),
     ...(Object.keys(exampleAttempts).length ? { exampleAttempts } : {}),
     ...(Object.keys(practiceResults).length ? { practiceResults } : {}),
+    ...(mixedReviewRuns.length ? { mixedReviewRuns } : {}),
+    ...(typeof value.activeMixedReviewRunId === 'string' ? { activeMixedReviewRunId: value.activeMixedReviewRunId } : {}),
     ...(typeof value.summaryOpen === 'boolean' ? { summaryOpen: value.summaryOpen } : {}),
     ...(Object.keys(checkAnswers).length ? { checkAnswers } : {}),
     ...(Object.keys(confidenceByCheckId).length ? { confidenceByCheckId } : {}),

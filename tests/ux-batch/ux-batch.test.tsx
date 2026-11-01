@@ -99,7 +99,7 @@ describe('5 insert dialog “Show more”', () => {
   const { user } = mount(); await user.click(screen.getByRole('button', { name: 'More math tools' }));
   const d = screen.getByRole('dialog', { name: 'Insert Math Element' }), tools = () => d.querySelectorAll('[data-insert-kind]');
   expect(tools()).toHaveLength(INSERT_VISIBLE); expect(INSERT_VISIBLE).toBeGreaterThanOrEqual(6); expect(INSERT_VISIBLE).toBeLessThanOrEqual(8);
-  expect(tools()[0]).toHaveFocus(); fireEvent.keyDown(tools()[0], { key: 'ArrowLeft' }); expect(tools()[INSERT_VISIBLE - 1]).toHaveFocus();
+  await waitFor(() => expect(tools()[0]).toHaveFocus()); fireEvent.keyDown(tools()[0], { key: 'ArrowLeft' }); expect(tools()[INSERT_VISIBLE - 1]).toHaveFocus();
   const more = within(d).getByRole('button', { name: /Show more/ }); expect(more).toHaveAttribute('aria-expanded', 'false');
   await user.click(more); expect(tools().length).toBeGreaterThan(INSERT_VISIBLE); expect(within(d).getByRole('button', { name: 'Integral' })).toBeInTheDocument();
   await user.click(within(d).getByRole('button', { name: 'Show fewer' })); expect(tools()).toHaveLength(INSERT_VISIBLE);

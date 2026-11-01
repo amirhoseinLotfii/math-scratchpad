@@ -6,7 +6,7 @@ export type BlockType = 'heading' | 'paragraph' | 'definition' | 'example' | 'no
 interface BlockBase { type: BlockType; lang?: Lang; page?: number }
 export interface TextBlock extends BlockBase { type: 'heading' | 'paragraph' | 'note'; text: string; latex?: string }
 export interface DefinitionBlock extends BlockBase { type: 'definition'; text: string; latex?: string }
-export interface ExampleBlock extends BlockBase { type: 'example'; title?: string; text?: string; latex?: string; steps: string[] }
+export interface ExampleBlock extends BlockBase { type: 'example'; title?: string; text?: string; latex?: string; steps: string[]; source?: 'book' | 'extra'; modeledOn?: string }
 export interface MathBlock extends BlockBase { type: 'math'; latex: string; text?: string }
 export interface ImageBlock extends BlockBase { type: 'image'; src: string; alt: string; caption?: string }
 export interface ImageDescriptionBlock extends BlockBase { type: 'image-description'; text: string }
@@ -43,21 +43,35 @@ export interface QuestionLessonFields {
   difficulty?: Difficulty;
   origin?: 'textbook' | 'generated';
   sectionId?: string;
+  tags?: { chapter?: string; lesson?: string; section?: string; concept?: string; skill?: string; source?: 'book' | 'extra'; modeledOn?: string };
+  interactionType?: 'typed' | 'multiple-choice' | 'true-false-why' | 'find-mistake' | 'step-by-step' | 'explain';
+  requiresExplanation?: boolean;
 }
 
 export type LessonStatus = 'not_started' | 'learning' | 'practising' | 'done';
 export type LessonCheckAnswer =
-  | { type: 'text' | 'choice'; value: string }
+  | { type: 'text'; value: string }
+  | { type: 'choice'; value: string; explanation?: string }
   | { type: 'math'; steps: Step[] };
-export type LessonChunkAnswer = { value: string; updatedAt: string; submittedAt?: string };
+export type LessonChunkAnswer = { value: string; explanation?: string; updatedAt: string; submittedAt?: string };
 export type LessonExampleAttempt = { attemptedAt: string; comparedAt?: string };
 export type LessonPracticeResult = {
   status: 'not_started' | 'draft' | 'answered' | 'skipped';
+  correctness?: 'correct' | 'incorrect' | 'unknown';
   answer?: string;
   steps: { latex: string; final: boolean }[];
   startedAt?: string;
   updatedAt: string;
   submittedAt?: string;
+};
+export type MixedReviewRun = {
+  id: string;
+  mode: 'lesson' | 'chapter';
+  questionIds: string[];
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+  results: Record<string, LessonPracticeResult>;
 };
 export interface LessonProgress {
   lessonId: string;
@@ -92,6 +106,9 @@ export interface LessonProgress {
   exampleAttempts?: Record<string, LessonExampleAttempt>;
   /** Per-question snapshots from the existing practice editor, keyed by bank question ID. */
   practiceResults?: Record<string, LessonPracticeResult>;
+  /** Mixed reviews are saved in the lesson that launched them, even when their questions come from earlier lessons. */
+  mixedReviewRuns?: MixedReviewRun[];
+  activeMixedReviewRunId?: string;
   revealedSteps: Record<string, number>;
   /** Learn-only scratch work from the lesson work pane, keyed `ex:<concept>:<block>` or `q:<questionId>`. */
   workAnswers?: Record<string, { type: 'math'; steps: Step[] }>;

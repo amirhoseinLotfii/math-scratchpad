@@ -3,11 +3,11 @@ import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
-import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
+import type { Lesson, LessonCheckAnswer, LessonPracticeResult, LessonProgress, MixedReviewRun } from './types';
 import { getLearnChecks, getPracticeQuestionConceptId, getPracticeQuestionOrigin, getPracticeQuestions, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
 import { LessonChunkChecks } from './lesson-chunk-checks';
-import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
+import { contentDirection, displayEducationalHeading, ExtraSourceBadge, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
 import { buildActiveLessonChunks, buildLessonSections, type ActiveLessonChunk, type LessonSection } from './lesson-sections';
 import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
@@ -18,6 +18,7 @@ import { buildConceptWorkItems, buildSectionWorkItems, clampSplitRatio, lessonPa
 import { LessonWorkPane } from './lesson-work-pane';
 import type { LessonExampleAttempt } from './types';
 import { nextTextbookPracticeBatch } from './lesson-practice-batches';
+import { buildMixedReviewSet, createMixedReviewRun, mixedReviewHistory, type MixedReviewMode } from './mixed-review';
 
 function subscribeSplit(change: () => void) {
   if (typeof window.matchMedia !== 'function') return () => {};
@@ -34,9 +35,11 @@ type Props = {
   lesson: Lesson | null;
   loading?: boolean;
   initialProgress?: LessonProgress;
+  progressByLesson?: Record<string, LessonProgress>;
   onBack: () => void;
   onProgress?: (progress: LessonProgress) => void;
   onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], sectionId?: string, conceptId?: string) => void;
+  onStartMixedReview?: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], run: MixedReviewRun) => void;
   onDownloadLesson?: (format: 'md' | 'json') => void;
   onDownloadChapter?: (format: 'md' | 'json') => void;
   practiceError?: string;
@@ -415,7 +418,7 @@ function ReadyLegacyLessonScreen({ bank, lesson, initialProgress, onBack, onProg
         {split
           ? <ul className="lesson-check-links">{checks.map(question => <li key={question.id}>
               <Button variant="ghost" className="lesson-check-link" aria-current={selectedWorkItem?.key === `q:${question.id}` ? 'true' : undefined} onClick={() => setSelectedWorkKey(`q:${question.id}`)}>
-                <bdi dir="ltr">{question.id}</bdi> · <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span>
+                <bdi dir="ltr">{question.id}</bdi> · <ExtraSourceBadge visible={question.tags?.source === 'extra'} /> <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span>
                 <span className="lesson-check-link-status">{progress.answeredCheckIds.includes(question.id) ? (fa ? 'پاسخ داده شد' : 'Answered') : progress.skippedChecks.some(item => item.questionId === question.id) ? (fa ? 'ردشده' : 'Skipped') : (fa ? 'حل در «کار من»' : 'Solve in Your work')}</span>
               </Button>
             </li>)}</ul>
@@ -468,7 +471,7 @@ function LessonDownloadControls({ uiLang, onDownloadLesson, onDownloadChapter }:
   </div>;
 }
 
-function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage, onDownloadLesson, onDownloadChapter }: ReadyProps) {
+function ReadyActiveLessonFlow({ bank, lesson, initialProgress, progressByLesson, onBack, onProgress, onStartPractice, onStartMixedReview, practiceError, progressMessage, onDownloadLesson, onDownloadChapter }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
   const chunks = useMemo(() => buildActiveLessonChunks(lesson), [lesson]);
@@ -502,7 +505,17 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
   const chunkQuestions = currentChunk?.questionIds.flatMap(id => questionById.get(id) ?? []) ?? [];
   const conceptPracticeQuestions = useMemo(() => concept ? allPracticeQuestions.filter(question =>
     getPracticeQuestionOrigin(question, lesson.id) === 'textbook' && getPracticeQuestionConceptId(question, lesson.id) === concept.id) : [], [allPracticeQuestions, concept, lesson.id]);
+  const conceptMorePracticeQuestions = useMemo(() => concept ? allPracticeQuestions.filter(question =>
+    question.origin === 'generated' && question.id.includes('-MORE-') && question.tags?.concept === concept.id) : [], [allPracticeQuestions, concept]);
   const conceptPracticeBatch = useMemo(() => nextTextbookPracticeBatch(conceptPracticeQuestions, progress.completedPracticeQuestionIds), [conceptPracticeQuestions, progress.completedPracticeQuestionIds]);
+  const conceptMorePracticeBatch = useMemo(() => conceptMorePracticeQuestions.filter(question => !(progress.completedPracticeQuestionIds ?? []).includes(question.id)), [conceptMorePracticeQuestions, progress.completedPracticeQuestionIds]);
+  const conceptMorePracticeAttempted = conceptMorePracticeQuestions.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result && (result.status === 'draft' || result.status === 'answered')) || (progress.completedPracticeQuestionIds ?? []).includes(question.id);
+  }).length;
+  const reviewHistory = useMemo(() => mixedReviewHistory({ ...(progressByLesson ?? {}), [lesson.id]: progress }), [lesson.id, progress, progressByLesson]);
+  const lessonMixedReviewCount = useMemo(() => buildMixedReviewSet(bank, { lessonId: lesson.id, mode: 'lesson', history: reviewHistory }).length, [bank, lesson.id, reviewHistory]);
+  const chapterMixedReviewCount = useMemo(() => buildMixedReviewSet(bank, { lessonId: lesson.id, mode: 'chapter', history: reviewHistory }).length, [bank, lesson.id, reviewHistory]);
   const conceptWorkItems = useMemo(() => concept ? buildConceptWorkItems(concept, currentChunk?.conceptIndex ?? 0) : [], [concept, currentChunk?.conceptIndex]);
   const selectedWorkItem = resolveSelectedWorkItem(conceptWorkItems, selectedWorkKey);
   const requiredExamples = conceptWorkItems.filter(item => item.kind === 'example');
@@ -517,7 +530,8 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
   };
   const chunkIsComplete = (chunk: ActiveLessonChunk | undefined) => !!chunk && chunk.questionIds.every(questionId => {
     const response = savedChunkAnswer(questionId);
-    return !!response?.value.trim() && !!response.submittedAt;
+    const question = questionById.get(questionId);
+    return !!response?.value.trim() && (!question?.requiresExplanation || !!response.explanation?.trim()) && !!response.submittedAt;
   });
   const activeConceptChunks = currentChunk ? chunks.filter(chunk => chunk.concept.id === currentChunk.concept.id) : [];
   const activeConceptChunkIndex = activeConceptChunks.findIndex(chunk => chunk.id === currentChunk?.id);
@@ -577,15 +591,16 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
     commitProgress({ ...before, exampleAttempts: { ...before.exampleAttempts, [key]: { ...attempt, comparedAt: new Date().toISOString() } } });
   }
 
-  function changeChunkAnswer(questionId: string, value: string) {
+  function changeChunkAnswer(questionId: string, value: string, explanation?: string) {
     const before = progressRef.current;
-    const chunkAnswers = { ...before.chunkAnswers, [questionId]: { value, updatedAt: new Date().toISOString() } };
+    const chunkAnswers = { ...before.chunkAnswers, [questionId]: { value, ...(explanation !== undefined ? { explanation } : {}), updatedAt: new Date().toISOString() } };
     commitProgress({ ...before, chunkAnswers });
   }
 
   function submitChunkAnswer(questionId: string) {
     const before = progressRef.current, response = before.chunkAnswers?.[questionId];
-    if (!response?.value.trim()) return;
+    const question = questionById.get(questionId);
+    if (!response?.value.trim() || (question?.requiresExplanation && !response.explanation?.trim())) return;
     const now = new Date().toISOString();
     commitProgress({ ...before, chunkAnswers: { ...before.chunkAnswers, [questionId]: { ...response, updatedAt: now, submittedAt: now } } });
   }
@@ -658,6 +673,48 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
     onStartPractice(lesson, next, nextBatch, undefined, concept.id);
   }
 
+  function startMorePractice() {
+    if (!concept || !examplesAttempted || !conceptMorePracticeBatch.length) return;
+    const now = new Date().toISOString();
+    const next: LessonProgress = {
+      ...progressRef.current,
+      status: 'practising',
+      currentChunkId: currentChunk?.id,
+      currentConceptIndex: currentChunk?.conceptIndex ?? progressRef.current.currentConceptIndex,
+      activeConceptPhase: 'summary',
+      conceptSummaryId: undefined,
+      activePracticeConceptId: concept.id,
+      activePracticeSectionId: undefined,
+      activePracticeQuestionIds: conceptMorePracticeBatch.map(question => question.id),
+      summaryOpen: false,
+      practiceStartedAt: now,
+    };
+    commitProgress(next);
+    onStartPractice(lesson, next, conceptMorePracticeBatch, undefined, concept.id);
+  }
+
+  function startMixedReview(mode: MixedReviewMode) {
+    if (!onStartMixedReview) return;
+    const questions = buildMixedReviewSet(bank, { lessonId: lesson.id, mode, history: reviewHistory });
+    if (!questions.length) return;
+    const now = new Date().toISOString();
+    const run = createMixedReviewRun(questions.map(question => question.id), mode, now);
+    const before = progressRef.current;
+    const next: LessonProgress = {
+      ...before,
+      status: 'practising',
+      activePracticeConceptId: undefined,
+      activePracticeSectionId: undefined,
+      activePracticeQuestionIds: undefined,
+      activeMixedReviewRunId: run.id,
+      mixedReviewRuns: [...(before.mixedReviewRuns ?? []), run],
+      summaryOpen: true,
+      practiceStartedAt: now,
+    };
+    commitProgress(next);
+    onStartMixedReview(lesson, next, questions, run);
+  }
+
   function finishWithoutBookQuestions() {
     if (!concept || !examplesAttempted || conceptPracticeQuestions.length) return;
     const before = progressRef.current;
@@ -725,6 +782,34 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
     concepts: [{ concept, conceptIndex: currentChunk.conceptIndex, blocks: phase === 'solving' ? concept.blocks : currentChunk.blocks }],
   };
   const currentConceptChunksDone = activeConceptChunks.filter(chunk => completedChunks.has(chunk.id) || chunkIsComplete(chunk)).length;
+  const conceptLearnQuestions = concept?.checkQuestionIds.flatMap(id => questionById.get(id) ? [questionById.get(id)!] : []) ?? [];
+  const conceptPracticeItems = concept ? allPracticeQuestions.filter(question => question.tags?.concept === concept.id || getPracticeQuestionConceptId(question, lesson.id) === concept.id) : [];
+  const conceptLearnAttempted = conceptLearnQuestions.filter(question => {
+    if (progress.skippedChecks.some(item => item.questionId === question.id)) return false;
+    const answer = savedChunkAnswer(question.id);
+    const legacyAnswer = progress.checkAnswers?.[question.id];
+    return !!answer?.value.trim() || !!answer?.explanation?.trim() || progress.answeredCheckIds.includes(question.id) || !!legacyAnswer;
+  }).length;
+  const conceptLearnSkipped = conceptLearnQuestions.filter(question => progress.skippedChecks.some(item => item.questionId === question.id)).length;
+  const conceptExampleAttempted = requiredExamples.filter(item => !!exampleAttempts[item.key]?.attemptedAt).length;
+  const conceptPracticeAttempted = conceptPracticeItems.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result && (result.status === 'draft' || result.status === 'answered')) || (progress.completedPracticeQuestionIds ?? []).includes(question.id);
+  }).length;
+  const conceptPracticeSkipped = conceptPracticeItems.filter(question => progress.practiceResults?.[question.id]?.status === 'skipped').length;
+  const conceptActivityTotal = conceptLearnQuestions.length + requiredExamples.length + conceptPracticeItems.length;
+  const conceptItemsAttempted = conceptLearnAttempted + conceptExampleAttempted + conceptPracticeAttempted;
+  const conceptItemsSkipped = conceptLearnSkipped + conceptPracticeSkipped;
+  const conceptCorrectKnown = conceptPracticeItems.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result?.status === 'draft' || result?.status === 'answered') && result.correctness === 'correct';
+  }).length;
+  const conceptIncorrectKnown = conceptPracticeItems.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result?.status === 'draft' || result?.status === 'answered') && result.correctness === 'incorrect';
+  }).length;
+  const conceptCorrectnessUnknown = Math.max(0, conceptItemsAttempted - conceptCorrectKnown - conceptIncorrectKnown);
+  const conceptItemsOpen = Math.max(0, conceptActivityTotal - conceptItemsAttempted - conceptItemsSkipped);
 
   return <section className="lesson-screen lesson-active-flow" aria-label={fa ? 'درس‌نامهٔ تعاملی' : 'Interactive lesson'} lang={uiLang} dir={fa ? 'rtl' : 'ltr'}>
     <header className="lesson-header">
@@ -759,16 +844,25 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
         <p>{fa ? `${localizeLessonDigits(uncompletedPractice.length, uiLang)} سؤال باقی مانده است. تمرین‌های کتاب پیش از تمرین‌های تکمیلی می‌آیند.` : `${uncompletedPractice.length} questions remain. Textbook exercises come before extra practice.`}</p>
         <Button className="lesson-primary-action" onClick={startRemainingPractice}>{fa ? 'ادامهٔ تمرین فصل' : 'Continue chapter practice'}</Button>
       </section> : <p className="lesson-section-practice-done" role="status">{fa ? 'همهٔ تمرین‌های فصل انجام شده‌اند.' : 'All chapter practice is complete.'}</p>}
+      {(lessonMixedReviewCount > 0 || chapterMixedReviewCount > 0) && <section className="lesson-section-practice lesson-mixed-review" aria-label={fa ? 'مرور ترکیبی' : 'Mixed review'}>
+        <h3>{fa ? 'مرور ترکیبیِ سؤال‌های دیده‌شده تا اینجا' : 'Mixed review of everything so far'}</h3>
+        <p>{fa ? 'سؤال‌ها از برچسب‌های درس، مفهوم و مهارت انتخاب و به‌هم‌ریخته می‌شوند. موضوع هر سؤال تا وقتی پاسخی وارد نکنی پنهان می‌ماند.' : 'Questions are selected from bank tags and shuffled. Lesson and concept labels stay hidden until you enter a response.'}</p>
+        {lessonMixedReviewCount > 0 && <Button className="lesson-primary-action" onClick={() => startMixedReview('lesson')}>{fa ? `شروع مرور ترکیبی · ${localizeLessonDigits(lessonMixedReviewCount, uiLang)} سؤال` : `Start mixed review · ${lessonMixedReviewCount} questions`}</Button>}
+        {chapterMixedReviewCount > 0 && <Button onClick={() => startMixedReview('chapter')}>{fa ? `آزمون ترکیبی فصل · ${localizeLessonDigits(chapterMixedReviewCount, uiLang)} سؤال` : `Chapter mixed test · ${chapterMixedReviewCount} questions`}</Button>}
+      </section>}
       <Button className="lesson-review-action" onClick={reviewActiveLesson}>{fa ? 'مرور دوبارهٔ درس' : 'Review lesson'}</Button>
     </section> : conceptSummary ? <section className="lesson-concept-summary" aria-labelledby="concept-summary-title">
       <h2 id="concept-summary-title" ref={summaryHeadingRef} tabIndex={-1}>{fa ? 'جمع‌بندی این مفهوم' : 'Concept summary'}</h2>
       <p className="lesson-concept-summary-title" lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></p>
       <p>{fa ? `پرسش‌های نوشتاری: ${localizeLessonDigits(currentConceptChunksDone, uiLang)} از ${localizeLessonDigits(activeConceptChunks.length, uiLang)} گام ثبت شد؛ مثال‌ها: ${localizeLessonDigits(requiredExamples.filter(item => !!exampleAttempts[item.key]?.attemptedAt).length, uiLang)} از ${localizeLessonDigits(requiredExamples.length, uiLang)} تلاش شد؛ تمرین‌های کتاب: ${localizeLessonDigits(conceptPracticeQuestions.length, uiLang)} از ${localizeLessonDigits(conceptPracticeQuestions.filter(question => (progress.completedPracticeQuestionIds ?? []).includes(question.id)).length, uiLang)} انجام شد.` : `${currentConceptChunksDone} of ${activeConceptChunks.length} reading chunks answered; ${requiredExamples.filter(item => !!exampleAttempts[item.key]?.attemptedAt).length} of ${requiredExamples.length} examples attempted; ${conceptPracticeQuestions.filter(question => (progress.completedPracticeQuestionIds ?? []).includes(question.id)).length} of ${conceptPracticeQuestions.length} book exercises completed.`}</p>
+      <p className="lesson-concept-activity-count" role="status">{fa
+        ? `کل موارد: ${localizeLessonDigits(conceptActivityTotal, uiLang)} · تلاش‌شده: ${localizeLessonDigits(conceptItemsAttempted, uiLang)} · ردشده: ${localizeLessonDigits(conceptItemsSkipped, uiLang)} · درستِ تأییدشده: ${localizeLessonDigits(conceptCorrectKnown, uiLang)} · نادرستِ تأییدشده: ${localizeLessonDigits(conceptIncorrectKnown, uiLang)} · باز: ${localizeLessonDigits(conceptItemsOpen, uiLang)} · بی‌کلید/نامشخص: ${localizeLessonDigits(conceptCorrectnessUnknown, uiLang)}`
+        : `Total items: ${conceptActivityTotal} · Attempted: ${conceptItemsAttempted} · Skipped: ${conceptItemsSkipped} · Confirmed correct: ${conceptCorrectKnown} · Confirmed incorrect: ${conceptIncorrectKnown} · Open: ${conceptItemsOpen} · Unkeyed/unknown: ${conceptCorrectnessUnknown}`}</p>
       <section className="lesson-active-summary-group"><h3>{fa ? 'پرسش‌هایی که جواب دادی' : 'Your chunk responses'}</h3>
         {activeConceptChunks.map((chunk, index) => <details key={chunk.id} className="lesson-summary-answer-group"><summary>{fa ? `گام ${localizeLessonDigits(index + 1, uiLang)} · ${chunk.title}` : `Chunk ${index + 1} · ${chunk.title}`}</summary>
           {chunk.questionIds.map(questionId => {
             const question = questionById.get(questionId); const answer = savedChunkAnswer(questionId);
-            return <article key={questionId} className="lesson-summary-answer"><p>{question?.prompt || question?.source}</p><p className="lesson-summary-student-answer">{answer?.value || (fa ? 'پاسخی ثبت نشده' : 'No response saved')}</p><p className="lesson-no-key">{fa ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : 'No answer key; send your export for review.'}</p></article>;
+            return <article key={questionId} className="lesson-summary-answer"><p><ExtraSourceBadge visible={question?.tags?.source === 'extra'} /> {question?.prompt || question?.source}</p><p className="lesson-summary-student-answer">{answer?.value || (fa ? 'پاسخی ثبت نشده' : 'No response saved')}</p>{answer?.explanation && <p className="lesson-summary-student-answer">{fa ? 'دلیل تو: ' : 'Your reason: '}{answer.explanation}</p>}<p className="lesson-no-key">{fa ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : 'No answer key; send your export for review.'}</p></article>;
           })}
         </details>)}
       </section>
@@ -779,7 +873,7 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
         {conceptPracticeQuestions.length ? <div className="lesson-summary-exercises">{conceptPracticeQuestions.map(question => {
           const result = progress.practiceResults?.[question.id];
           return <details key={question.id} className="lesson-summary-answer-group"><summary><bdi dir="ltr">{question.id}</bdi> · {result?.status === 'answered' ? (fa ? 'پاسخ ثبت شد' : 'Answered') : result?.status === 'draft' ? (fa ? 'پیش‌نویس' : 'Draft') : result?.status === 'skipped' ? (fa ? 'ردشده' : 'Skipped') : (fa ? 'انجام نشده' : 'Not started')}</summary>
-            <p lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></p>
+            <p><ExtraSourceBadge visible={question.tags?.source === 'extra'} /></p><p lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></p>
             {question.mode === 'math' && <QuestionSource source={question.source} mode={question.mode} label={fa ? 'صورت تمرین' : 'Exercise prompt'} mathLabel={fa ? 'صورت ریاضی تمرین' : 'Exercise expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />}
             {result?.answer && <p className="lesson-summary-student-answer">{result.answer}</p>}
             {!!result?.steps.length && <ol>{result.steps.map((step, stepIndex) => <li key={stepIndex}><bdi dir="ltr"><MathDisplay latex={step.latex} label={fa ? `گام ${localizeLessonDigits(stepIndex + 1, uiLang)}` : `Step ${stepIndex + 1}`} display={false} /></bdi>{step.final ? ` · ${fa ? 'پاسخ نهایی' : 'Final answer'}` : ''}</li>)}</ol>}
@@ -787,6 +881,14 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
             <p className="lesson-no-key">{fa ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : 'No answer key; send your export for review.'}</p>
           </details>;
         })}</div> : <p>{fa ? 'برای این مفهوم تمرین کتابی ثبت نشده است.' : 'No book exercises are assigned to this concept.'}</p>}
+      </section>
+      <section className="lesson-active-summary-group lesson-more-practice"><h3>{fa ? 'تمرین اضافه (هم‌سطح کتاب)' : 'More practice (same level as the book)'}</h3>
+        {conceptMorePracticeQuestions.length ? <>
+          <p>{fa ? `${localizeLessonDigits(conceptMorePracticeAttempted, uiLang)} از ${localizeLessonDigits(conceptMorePracticeQuestions.length, uiLang)} تمرین اضافه تلاش شده است. پاسخ‌ها خودکار نمره‌گذاری نمی‌شوند.` : `${conceptMorePracticeAttempted} of ${conceptMorePracticeQuestions.length} extra items attempted. These responses are not automatically graded.`}</p>
+          <ol>{conceptMorePracticeQuestions.map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi> · <ExtraSourceBadge visible={question.tags?.source === 'extra'} /> <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span></li>)}</ol>
+          {conceptMorePracticeBatch.length > 0 && <Button onClick={startMorePractice}>{fa ? `تمرین بیشتر · ${localizeLessonDigits(conceptMorePracticeBatch.length, uiLang)} مورد ←` : `More practice · ${conceptMorePracticeBatch.length} items →`}</Button>}
+          {!conceptMorePracticeBatch.length && <p role="status">{fa ? 'همهٔ تمرین‌های اضافه تلاش شده‌اند.' : 'All extra practice items have been attempted.'}</p>}
+        </> : <p>{fa ? 'تمرین اضافه‌ای در این بانک نیست.' : 'No extra practice items are available in this bank.'}</p>}
       </section>
       <p className="lesson-section-practice-done" role="status">{fa ? 'مراحل لازم این مفهوم کامل است. پاسخ‌ها نمره‌گذاری نشده‌اند؛ تنها مثال‌های حل‌شده امکان مقایسه دارند.' : 'This concept is complete. Responses are not automatically graded; worked examples can be compared with their lesson solutions.'}</p>
       <div className="lesson-concept-navigation"><Button onClick={previousUnit}>{fa ? 'مرور مثال‌ها' : 'Review examples'}</Button><Button className="lesson-primary-action" onClick={nextConceptFromSummary}>{chunkIndex === chunks.length - 1 ? (fa ? 'پایان و جمع‌بندی فصل ←' : 'Finish chapter summary →') : (fa ? 'مفهوم بعدی ←' : 'Next concept →')}</Button></div>
@@ -816,7 +918,7 @@ function ReadyActiveLessonFlow({ bank, lesson, initialProgress, onBack, onProgre
             <h2>{fa ? 'تمرین‌های کتاب برای همین مفهوم' : 'Book exercises for this concept'}</h2>
             {conceptPracticeQuestions.length ? <>
               <p>{fa ? `${localizeLessonDigits(conceptPracticeQuestions.length, uiLang)} سؤال کتاب، به ترتیب بانک. هر بسته حداکثر ${localizeLessonDigits(MAX_SESSION_EXERCISES, uiLang)} سؤال دارد. ابتدا تلاش برای همهٔ مثال‌های بالا را ثبت کن؛ بعد حل بستهٔ بعدی در ویرایشگر اصلی باز می‌شود.` : `${conceptPracticeQuestions.length} textbook questions in bank order, in batches of at most ${MAX_SESSION_EXERCISES}. Record an attempt for every example above first; then solve the next batch in the main editor.`}</p>
-              <ol>{conceptPracticeQuestions.map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi>{question.prompt && <> · <span lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></span></>}</li>)}</ol>
+              <ol>{conceptPracticeQuestions.map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi>{question.tags?.source === 'extra' && <> · <ExtraSourceBadge /></>}{question.prompt && <> · <span lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></span></>}</li>)}</ol>
               <p>{fa ? 'برای ادامه باید همهٔ سؤال‌های کتاب را در ویرایشگر اصلی پاسخ‌گذاری کنی. پاسخ درست/نادرست اعلام نمی‌شود؛ کلید پاسخ در بانک عمومی وجود ندارد.' : 'Continue only after attempting every book question in the main editor. No correctness will be claimed; the public bank has no answer keys.'}</p>
             </> : <p>{fa ? 'تمرین کتابی برای این مفهوم ثبت نشده است.' : 'No textbook exercises are assigned to this concept.'}</p>}
             {!examplesAttempted && <p className="lesson-practice-locked" role="status">{fa ? `برای بازشدن تمرین‌ها، ${localizeLessonDigits(requiredExamples.filter(item => !exampleAttempts[item.key]?.attemptedAt).length, uiLang)} مثال باقی‌مانده را در «کار من» تلاش کن.` : `${requiredExamples.filter(item => !exampleAttempts[item.key]?.attemptedAt).length} example attempts remain in Your work before these exercises unlock.`}</p>}

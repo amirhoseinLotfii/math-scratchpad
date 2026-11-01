@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BANK_SCHEMA, EMPTY_BANK, ARCHIVE_KEY, archiveSession, bankDocument, driveError, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBank, readPrivateBankText, snapshotVersion, validateBank, MAX_QUESTIONS_PER_BANK } from '../../src/features/drive-bank/drive-bank';
+import { BANK_SCHEMA, EMPTY_BANK, ARCHIVE_KEY, archiveSession, bankDocument, driveError, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBank, readPrivateBankText, snapshotVersion, validateBank, MAX_QUESTIONS_PER_BANK, MAX_BANK_TEXT_LENGTH } from '../../src/features/drive-bank/drive-bank';
 import { getConfig, saveConfig, requestToken, pickFile, DRIVE_SCOPE } from '../../src/features/drive-bank/google';
 import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from '../../src/features/drive-bank/drive-config';
 import { permittedAccount } from '../../src/features/drive-bank/identity';
@@ -10,6 +11,7 @@ import { MAX_SESSION_EXERCISES } from '../../src/model';
 const q = (id: string, extra: Record<string, unknown> = {}) => ({ id, mode: 'math', source: '1+2', ...extra });
 const bank = (extra: Record<string, unknown> = {}) => ({ schema_version: BANK_SCHEMA, bank_id: 'B1', version: 'v1', questions: [q('Q01')], ...extra });
 const INVALID = 'Invalid bank', KEY = 'answer-like content was removed';
+const v23Text = readFileSync('data/MATH_QUESTION_BANK_v23.json', 'utf8');
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); delete window.google; });
 
 describe('validateBank: top level', () => {
@@ -84,7 +86,11 @@ describe('parseBankText', () => {
   it('empty, whitespace and BOM-only files are EMPTY_BANK', () => { for (const t of ['', '  \n', '\uFEFF', '\uFEFF  ']) expect(parseBankText(t)).toBe(EMPTY_BANK); });
   it('accepts a BOM-prefixed JSON bank', () => expect(parseBankText('\uFEFF' + JSON.stringify(bank()))).not.toBe(EMPTY_BANK));
   it.each(['{', 'not json', '{"a":1,}', "{'a':1}"])('invalid JSON %j gives an English error', t => expect(() => parseBankText(t)).toThrow('not valid JSON'));
-  it('rejects files over 1,000,000 characters before parsing', () => expect(() => parseBankText(' '.repeat(1000001))).toThrow('too large'));
+  it('accepts the bounded expanded lesson bank while rejecting files over the new limit', () => {
+    expect(parseBankText(v23Text)).not.toBe(EMPTY_BANK);
+    expect(v23Text.length).toBeLessThanOrEqual(MAX_BANK_TEXT_LENGTH);
+    expect(() => parseBankText(' '.repeat(MAX_BANK_TEXT_LENGTH + 1))).toThrow('too large');
+  });
   it('reproduces the missing schema_version incident', () => { const b: Record<string, unknown> = bank(); delete b.schema_version; expect(() => parseBankText(JSON.stringify(b))).toThrow(INVALID); });
   it('the bracket incident file (N2c-PL02 with [ ]) is now accepted, while a truly bad question still rejects the whole file', () => {
     expect(parseBankText(JSON.stringify(bank({ questions: [q('A'), q('N2c-PL02', { source: '20-[3\\times(5-2)]' })] })))).not.toBe(EMPTY_BANK);

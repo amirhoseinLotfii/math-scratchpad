@@ -25,6 +25,10 @@ export function localizeLessonDigits(value: number | string, lang: Lang = 'fa'):
   return lang === 'fa' ? text.replace(/\d/g, digit => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]) : text;
 }
 
+export function ExtraSourceBadge({ visible = true }: { visible?: boolean }) {
+  return visible ? <span className="lesson-source-badge lesson-extra-source-badge" lang="fa" dir="rtl">⭐ غیرکتابی (هم‌سطح کتاب)</span> : null;
+}
+
 /** Keep a Persian educational heading concise when bank data repeats its English title in parentheses. */
 export function displayEducationalHeading(text: string, lang?: Lang): string {
   if (languageForText(text, lang) !== 'fa') return text;
@@ -128,7 +132,7 @@ function LessonExample({ block, blockKey, revealed, onReveal, uiLang, solutionLo
     ? { workedExample: 'مثال حل‌شده', tryFirst: 'ابتدا خودتان حل کنید', allShown: (n: number) => `هر ${localizeLessonDigits(n, uiLang)} گام نمایش داده شد`, someShown: (n: number, total: number) => `${localizeLessonDigits(n, uiLang)} از ${localizeLessonDigits(total, uiLang)} گام نمایش داده شد`, step: 'گام', next: 'نمایش گام بعدی', all: 'نمایش همهٔ گام‌ها' }
     : { workedExample: 'Worked example', tryFirst: 'Try it yourself first', allShown: (n: number) => `All ${n} steps shown`, someShown: (n: number, total: number) => `${n} of ${total} steps shown`, step: 'Step', next: 'Show next step', all: 'Show all steps' };
   return <section className="lesson-block lesson-example" aria-label={block.title || labels.workedExample}>
-    {block.title && <h4 lang={languageForText(block.title, block.lang)} dir={contentDirection(block.title, block.lang)}><LessonText text={displayEducationalHeading(block.title, block.lang)} lang={block.lang} /></h4>}
+    {block.title && <h4 lang={languageForText(block.title, block.lang)} dir={contentDirection(block.title, block.lang)}><LessonText text={displayEducationalHeading(block.title, block.lang)} lang={block.lang} />{(block.source === 'extra' || block.title.includes('مثال آموزشی تکمیلی')) && <> <ExtraSourceBadge /></>}</h4>}
     {block.text && <p lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></p>}
     {block.latex && <LessonMath latex={block.latex} label={block.title || labels.workedExample} uiLang={uiLang} />}
     {block.steps.length > 0 && solutionLocked

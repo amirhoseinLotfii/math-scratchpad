@@ -1,7 +1,7 @@
 import { stepLatex } from '../../model';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import { getLearnChecks, getPracticeQuestionConceptId, getPracticeQuestionOrigin, getPracticeQuestions } from './selectors';
-import type { Concept, Lesson, LessonBlock, LessonProgress } from './types';
+import type { Concept, Lesson, LessonBlock, LessonPracticeResult, LessonProgress } from './types';
 
 export type LessonExportFormat = 'md' | 'json';
 type ExportQuestion = {
@@ -10,15 +10,19 @@ type ExportQuestion = {
   source: string;
   mode: BankQuestion['mode'];
   origin?: BankQuestion['origin'];
+  tags?: BankQuestion['tags'];
+  interactionType?: BankQuestion['interactionType'];
   stage: 'learn' | 'practice';
   status: string;
   studentAnswer?: string;
+  studentExplanation?: string;
   workSteps: { latex: string; final: boolean }[];
   attemptedAt?: string;
   updatedAt?: string;
   submittedAt?: string;
-  correctness: 'unknown';
+  correctness: 'correct' | 'incorrect' | 'unknown';
 };
+type ConceptActivitySummary = { total: number; attempted: number; correct: number; incorrect: number; correctnessUnknown: number; skipped: number; open: number };
 export type LessonExportBundle = {
   schemaVersion: 'math-scratchpad.lesson-export/1.0' | 'math-scratchpad.chapter-export/1.0';
   exportedAt: string;
@@ -33,9 +37,18 @@ export type LessonExportBundle = {
       unassignedChecks: ExportQuestion[];
       examples: Array<{ blockIndex: number; prompt: { title?: string; text?: string; latex?: string }; studentWork: { latex: string; final: boolean }[]; attemptedAt?: string; comparedAt?: string; status: 'attempted' | 'not_attempted'; correctness: 'unknown' }>;
       exercises: ExportQuestion[];
+      activitySummary: ConceptActivitySummary;
     }>;
+    mixedReviews: Array<{ id: string; mode: 'lesson' | 'chapter'; startedAt: string; updatedAt: string; finishedAt?: string; attempted: number; skipped: number; open: number; items: ExportQuestion[] }>;
   }>;
 };
+
+function chapterForLesson(bank: DriveBank, lessonId: string | undefined) {
+  if (!lessonId) return bank.chapter ?? bank.chapters?.[0];
+  return bank.chapters?.find(chapter => chapter.lessonIds.includes(lessonId))
+    ?? (bank.chapter?.lessonIds.includes(lessonId) ? bank.chapter : undefined)
+    ?? bank.chapter;
+}
 
 function safeBlock(block: LessonBlock): LessonBlock {
   if (block.type === 'example') {
@@ -53,30 +66,62 @@ function questionPrompt(question: BankQuestion) {
   return question.prompt || question.source;
 }
 
-function questionExport(question: BankQuestion, progress: LessonProgress | null | undefined): ExportQuestion {
+function questionExport(question: BankQuestion, progress: LessonProgress | null | undefined, resultOverride?: LessonPracticeResult): ExportQuestion {
   if (question.stage === 'learn') {
     const chunk = progress?.chunkAnswers?.[question.id];
     const previous = progress?.checkAnswers?.[question.id];
+    const skippedAt = progress?.skippedChecks.find(item => item.questionId === question.id)?.at;
     const studentAnswer = chunk?.value ?? (previous?.type === 'text' || previous?.type === 'choice' ? previous.value : undefined);
     return {
       id: question.id, prompt: questionPrompt(question), source: question.source, mode: question.mode,
-      ...(question.origin ? { origin: question.origin } : {}), stage: 'learn',
-      status: chunk?.submittedAt || progress?.answeredCheckIds.includes(question.id) ? 'submitted' : studentAnswer?.trim() ? 'draft' : 'not_started',
+      ...(question.origin ? { origin: question.origin } : {}), ...(question.tags ? { tags: question.tags } : {}), ...(question.interactionType ? { interactionType: question.interactionType } : {}), stage: 'learn',
+      status: skippedAt ? 'skipped' : chunk?.submittedAt || progress?.answeredCheckIds.includes(question.id) ? 'submitted' : studentAnswer?.trim() ? 'draft' : 'not_started',
       ...(studentAnswer !== undefined ? { studentAnswer } : {}), workSteps: [],
-      ...(chunk?.updatedAt ? { updatedAt: chunk.updatedAt } : {}), ...(chunk?.submittedAt ? { submittedAt: chunk.submittedAt } : {}),
+      ...(chunk?.explanation ? { studentExplanation: chunk.explanation } : previous?.type === 'choice' && previous.explanation ? { studentExplanation: previous.explanation } : {}),
+      ...(skippedAt ? { updatedAt: skippedAt } : chunk?.updatedAt ? { updatedAt: chunk.updatedAt } : {}), ...(chunk?.submittedAt ? { submittedAt: chunk.submittedAt } : {}),
       correctness: 'unknown',
     };
   }
-  const result = progress?.practiceResults?.[question.id];
+  const result = resultOverride ?? progress?.practiceResults?.[question.id];
   return {
     id: question.id, prompt: questionPrompt(question), source: question.source, mode: question.mode,
-    ...(question.origin ? { origin: question.origin } : {}), stage: 'practice',
+    ...(question.origin ? { origin: question.origin } : {}), ...(question.tags ? { tags: question.tags } : {}), ...(question.interactionType ? { interactionType: question.interactionType } : {}), stage: 'practice',
     status: result?.status ?? (progress?.completedPracticeQuestionIds?.includes(question.id) ? 'completed_without_snapshot' : 'not_started'),
     ...(result?.answer !== undefined ? { studentAnswer: result.answer } : {}),
     workSteps: result?.steps ?? [], ...(result?.startedAt ? { attemptedAt: result.startedAt } : {}),
     ...(result?.updatedAt ? { updatedAt: result.updatedAt } : {}), ...(result?.submittedAt ? { submittedAt: result.submittedAt } : {}),
-    correctness: 'unknown',
+    correctness: result?.correctness ?? 'unknown',
   };
+}
+
+function conceptActivitySummary(bank: DriveBank, lesson: Lesson, concept: Concept, progress: LessonProgress | null | undefined): ConceptActivitySummary {
+  const checkIds = [...new Set(concept.checkQuestionIds)];
+  const checkSkipped = checkIds.filter(id => progress?.skippedChecks.some(item => item.questionId === id)).length;
+  const checks = checkIds.filter(id => {
+    if (progress?.skippedChecks.some(item => item.questionId === id)) return false;
+    const answer = progress?.chunkAnswers?.[id];
+    const legacy = progress?.checkAnswers?.[id];
+    return !!answer?.value.trim() || !!answer?.explanation?.trim() || !!legacy;
+  }).length;
+  const exampleCount = concept.blocks.reduce((count, block, index) => count + (block.type === 'example' && !!progress?.exampleAttempts?.[`ex:${concept.id}:${index}`]?.attemptedAt ? 1 : 0), 0);
+  const exerciseQuestions = getPracticeQuestions(bank, lesson.id).filter(question => question.tags?.concept === concept.id || getPracticeQuestionConceptId(question, lesson.id) === concept.id);
+  const attemptedExercises = exerciseQuestions.filter(question => {
+    const result = progress?.practiceResults?.[question.id];
+    return (!!result && (result.status === 'draft' || result.status === 'answered')) || !!progress?.completedPracticeQuestionIds?.includes(question.id);
+  });
+  const skippedExercises = exerciseQuestions.filter(question => progress?.practiceResults?.[question.id]?.status === 'skipped').length;
+  const attempted = checks + exampleCount + attemptedExercises.length;
+  const correct = attemptedExercises.filter(question => {
+    const result = progress?.practiceResults?.[question.id];
+    return (result?.status === 'draft' || result?.status === 'answered') && result.correctness === 'correct';
+  }).length;
+  const incorrect = attemptedExercises.filter(question => {
+    const result = progress?.practiceResults?.[question.id];
+    return (result?.status === 'draft' || result?.status === 'answered') && result.correctness === 'incorrect';
+  }).length;
+  const total = checkIds.length + concept.blocks.filter(block => block.type === 'example').length + exerciseQuestions.length;
+  const skipped = checkSkipped + skippedExercises;
+  return { total, attempted, correct, incorrect, correctnessUnknown: Math.max(0, attempted - correct - incorrect), skipped, open: Math.max(0, total - attempted - skipped) };
 }
 
 function exportConcept(bank: DriveBank, lesson: Lesson, concept: Concept, progress: LessonProgress | null | undefined) {
@@ -109,15 +154,26 @@ function exportConcept(bank: DriveBank, lesson: Lesson, concept: Concept, progre
     unassignedChecks: learnChecks.filter(question => !chunkQuestionIds.has(question.id)).map(question => questionExport(question, progress)),
     examples,
     exercises: practiceQuestions.map(question => questionExport(question, progress)),
+    activitySummary: conceptActivitySummary(bank, lesson, concept, progress),
   };
 }
 
 function exportLesson(bank: DriveBank, lesson: Lesson, progress: LessonProgress | null | undefined) {
+  const questionById = new Map(bank.questions.map(question => [question.id, question]));
   return {
     id: lesson.id, title: lesson.title, book: lesson.book, section: lesson.section,
     ...(lesson.pages ? { pages: lesson.pages } : {}), ...(progress?.status ? { status: progress.status } : {}),
     progress: progress ?? null,
     concepts: lesson.concepts.map(concept => exportConcept(bank, lesson, concept, progress)),
+    mixedReviews: (progress?.mixedReviewRuns ?? []).map(run => {
+      const items = run.questionIds.flatMap(id => {
+        const question = questionById.get(id);
+        return question ? [questionExport(question, null, run.results[id])] : [];
+      });
+      const attempted = items.filter(item => item.status === 'answered' || (item.status === 'draft' && (!!item.studentAnswer?.trim() || item.workSteps.some(step => step.latex.trim())))).length;
+      const skipped = items.filter(item => item.status === 'skipped').length;
+      return { id: run.id, mode: run.mode, startedAt: run.startedAt, updatedAt: run.updatedAt, ...(run.finishedAt ? { finishedAt: run.finishedAt } : {}), attempted, skipped, open: Math.max(0, items.length - attempted - skipped), items };
+    }),
   };
 }
 
@@ -125,14 +181,15 @@ export function buildLessonExportBundle(bank: DriveBank, lesson: Lesson, progres
   const item = exportLesson(bank, lesson, progress);
   return {
     schemaVersion: 'math-scratchpad.lesson-export/1.0', exportedAt,
-    bank: { id: bank.bank_id, version: bank.version, ...(bank.chapter ? { chapter: bank.chapter } : {}) },
+    bank: { id: bank.bank_id, version: bank.version, ...(chapterForLesson(bank, lesson.id) ? { chapter: chapterForLesson(bank, lesson.id) } : {}) },
     lesson: { id: lesson.id, title: lesson.title, book: lesson.book, section: lesson.section, ...(lesson.pages ? { pages: lesson.pages } : {}), ...(progress?.status ? { status: progress.status } : {}), progress: progress ?? null },
     lessons: [item],
   };
 }
 
-export function buildChapterExportBundle(bank: DriveBank, progressByLesson: Record<string, LessonProgress>, exportedAt = new Date().toISOString()): LessonExportBundle {
-  const lessonIds = bank.chapter?.lessonIds ?? bank.lessons?.map(lesson => lesson.id) ?? [];
+export function buildChapterExportBundle(bank: DriveBank, progressByLesson: Record<string, LessonProgress>, exportedAt = new Date().toISOString(), lessonId?: string): LessonExportBundle {
+  const chapter = chapterForLesson(bank, lessonId);
+  const lessonIds = chapter?.lessonIds ?? bank.lessons?.map(lesson => lesson.id) ?? [];
   const lessonById = new Map((bank.lessons ?? []).map(lesson => [lesson.id, lesson]));
   const lessons = lessonIds.flatMap(id => {
     const lesson = lessonById.get(id);
@@ -140,7 +197,7 @@ export function buildChapterExportBundle(bank: DriveBank, progressByLesson: Reco
   });
   return {
     schemaVersion: 'math-scratchpad.chapter-export/1.0', exportedAt,
-    bank: { id: bank.bank_id, version: bank.version, ...(bank.chapter ? { chapter: bank.chapter } : {}) },
+    bank: { id: bank.bank_id, version: bank.version, ...(chapter ? { chapter } : {}) },
     lessons,
   };
 }
@@ -153,25 +210,31 @@ function markdownBlock(block: LessonBlock): string {
   if (block.type === 'math') return `${block.text ? `${block.text}\n\n` : ''}\\(${block.latex}\\)`;
   if (block.type === 'image') return `![${block.alt}](${block.src})${block.caption ? `\n\n_${block.caption}_` : ''}`;
   if (block.type === 'image-description') return `> ${block.text}`;
-  if (block.type === 'example') return `**${block.title || 'مثال'}**${block.text ? `\n\n${block.text}` : ''}${block.latex ? `\n\n\\(${block.latex}\\)` : ''}\n\n_حل کامل در خروجی قرار نگرفته است._`;
+  if (block.type === 'example') return `${block.source === 'extra' || block.title?.includes('مثال آموزشی تکمیلی') ? '⭐ غیرکتابی (هم‌سطح کتاب) · ' : ''}**${block.title || 'مثال'}**${block.text ? `\n\n${block.text}` : ''}${block.latex ? `\n\n\\(${block.latex}\\)` : ''}${block.modeledOn ? `\n\nمدل‌شده از مورد کتاب: \`${block.modeledOn}\`` : ''}\n\n_حل کامل در خروجی قرار نگرفته است._`;
   if (block.type === 'unsupported') return block.source ? `> محتوای پشتیبانی‌نشدهٔ منبع: ${block.source}` : '';
   return '';
 }
 
 function markdownQuestion(question: ExportQuestion): string {
-  const lines = [`### ${question.id} · ${question.stage === 'learn' ? 'پرسش نوشتاری' : 'تمرین کتاب/درس'}`, question.prompt];
+  const extraBadge = question.tags?.source === 'extra' ? ' · ⭐ غیرکتابی (هم‌سطح کتاب)' : '';
+  const lines = [`### \`${question.id}\` · ${question.stage === 'learn' ? 'پرسش نوشتاری' : 'تمرین کتاب/درس'}${extraBadge}`, question.prompt];
   if (question.source && question.source !== question.prompt) lines.push(`صورت/عبارت: ${question.mode === 'math' ? `\\(${question.source}\\)` : question.source}`);
+  if (question.interactionType) lines.push(`نوع پاسخ: ${question.interactionType}`);
+  if (question.tags) lines.push(`برچسب‌ها: ${Object.entries(question.tags).map(([key, value]) => `\`${key}=${value}\``).join(' · ')}`);
   lines.push(`وضعیت: ${question.status}`);
   if (question.studentAnswer) lines.push(`پاسخ دانش‌آموز:\n\n> ${question.studentAnswer.replace(/\n/g, '\n> ')}`);
+  if (question.studentExplanation) lines.push(`دلیل/توضیح دانش‌آموز:\n\n> ${question.studentExplanation.replace(/\n/g, '\n> ')}`);
   if (question.workSteps.length) lines.push(`مراحل کار:\n\n${question.workSteps.map((step, index) => `${index + 1}. ${step.final ? '**پاسخ نهایی:** ' : ''}\\(${step.latex}\\)`).join('\n')}`);
-  lines.push(`زمان تلاش/ذخیره: ${question.attemptedAt ?? question.updatedAt ?? 'ثبت نشده'}`, `درستی پاسخ: ${question.correctness === 'unknown' ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : question.correctness}`);
+  lines.push(`زمان تلاش/ذخیره: ${question.attemptedAt ?? question.updatedAt ?? 'ثبت نشده'}`);
+  if (question.status !== 'not_started') lines.push(`درستی پاسخ: ${question.correctness === 'unknown' ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : question.correctness}`);
   return lines.join('\n\n');
 }
 
 function markdownLesson(lesson: LessonExportBundle['lessons'][number]): string {
-  const lines = [`# ${lesson.title}`, `منبع: ${lesson.book} · بخش ${lesson.section}${lesson.pages ? ` · صفحه‌های ${lesson.pages}` : ''}`, `شناسه: ${lesson.id} · وضعیت: ${lesson.status ?? 'شروع نشده'}`];
+  const lines = [`# ${lesson.title}`, `منبع: ${lesson.book} · بخش ${lesson.section}${lesson.pages ? ` · صفحه‌های ${lesson.pages}` : ''}`, `شناسه: \`${lesson.id}\` · وضعیت: ${lesson.status ?? 'شروع نشده'}`];
   for (const concept of lesson.concepts) {
-    lines.push(`\n## ${concept.title}`, `شناسه: ${concept.id}${concept.pages ? ` · صفحه‌های ${concept.pages}` : ''}`);
+    lines.push(`\n## ${concept.title}`, `شناسه: \`${concept.id}\`${concept.pages ? ` · صفحه‌های ${concept.pages}` : ''}`);
+    lines.push(`موارد: ${concept.activitySummary.total} · تلاش‌شده: ${concept.activitySummary.attempted} · ردشده: ${concept.activitySummary.skipped} · درستِ تأییدشده: ${concept.activitySummary.correct} · نادرستِ تأییدشده: ${concept.activitySummary.incorrect} · باز: ${concept.activitySummary.open} · بی‌کلید/نامشخص: ${concept.activitySummary.correctnessUnknown}`);
     for (const chunk of concept.chunks) {
       lines.push(`\n### ${chunk.title}`, `شناسهٔ گام: ${chunk.id}${chunk.pages ? ` · صفحه‌های ${chunk.pages}` : ''}`, ...chunk.content.map(markdownBlock).filter(Boolean));
       lines.push(...chunk.questions.map(markdownQuestion));
@@ -186,6 +249,10 @@ function markdownLesson(lesson: LessonExportBundle['lessons'][number]): string {
     }
     if (concept.unassignedChecks.length) lines.push('\n### پرسش‌های باقی‌ماندهٔ درس‌نامه', ...concept.unassignedChecks.map(markdownQuestion));
     lines.push('\n### تمرین‌های کتاب و تمرین‌های بخش', ...concept.exercises.map(markdownQuestion));
+  }
+  for (const run of lesson.mixedReviews) {
+    lines.push(`\n## ${run.mode === 'chapter' ? 'آزمون ترکیبی فصل' : 'مرور ترکیبی'}`, `شناسهٔ اجرا: ${run.id} · شروع: ${run.startedAt} · پایان: ${run.finishedAt ?? 'در حال اجرا'}`, `تلاش‌شده: ${run.attempted} · ردشده: ${run.skipped} · باز: ${run.open}`);
+    lines.push(...run.items.map(markdownQuestion));
   }
   return lines.join('\n\n');
 }

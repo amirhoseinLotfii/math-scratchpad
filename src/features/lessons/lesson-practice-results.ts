@@ -36,3 +36,15 @@ export function snapshotLessonPracticeResults(
   }
   return next;
 }
+
+/** Mixed runs only retain items the learner has touched; missing entries remain explicitly open. */
+export function snapshotAttemptedPracticeResults(
+  exercises: Exercise[],
+  questionIds: string[],
+  previous: Record<string, LessonPracticeResult> = {},
+  now = new Date().toISOString(),
+): Record<string, LessonPracticeResult> {
+  const next = snapshotLessonPracticeResults(exercises, questionIds, previous, now);
+  for (const questionId of questionIds) if (next[questionId]?.status === 'not_started') delete next[questionId];
+  return next;
+}

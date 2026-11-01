@@ -3,7 +3,7 @@ import { Button } from '../../shared/ui/button';
 import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
 import { LessonMathCheck } from './lesson-math-check';
-import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';
+import { contentDirection, ExtraSourceBadge, languageForText, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';
 import type { LessonCheckAnswer } from './types';
 
 export function LessonCheck({ question, mathStore, answer, answered, confidence, skipped, onAnswer, onConfidence, onSkip, uiLang = 'en' }: {
@@ -25,7 +25,7 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
   const fa = uiLang === 'fa';
 
   return <article className="lesson-check" aria-labelledby={`${id}-title`}>
-    <header className="lesson-check-header"><h3 id={`${id}-title`}>{fa ? 'تمرین بررسی' : 'Check'} · <bdi dir="ltr">{question.id}</bdi></h3>{skipped && <span className="lesson-check-skipped">{fa ? 'رد شد' : 'Skipped'}</span>}{!skipped && completed && <span className="lesson-check-answered">{fa ? 'پاسخ داده شد' : 'Answered'}</span>}</header>
+    <header className="lesson-check-header"><h3 id={`${id}-title`}>{fa ? 'تمرین بررسی' : 'Check'} · <bdi dir="ltr">{question.id}</bdi></h3><ExtraSourceBadge visible={question.tags?.source === 'extra'} />{skipped && <span className="lesson-check-skipped">{fa ? 'رد شد' : 'Skipped'}</span>}{!skipped && completed && <span className="lesson-check-answered">{fa ? 'پاسخ داده شد' : 'Answered'}</span>}</header>
     {question.prompt && <p className="lesson-check-prompt" lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
     <QuestionSource source={question.source} mode={question.mode} label={fa ? 'عبارت سؤال' : 'Question expression'} mathLabel={fa ? 'عبارت ریاضی سؤال' : 'Question math expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />
 

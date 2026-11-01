@@ -355,6 +355,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
  #math-scratchpad-redux .question-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px; }
  #math-scratchpad-redux .question-heading h2 { margin: 0; font-size: 21px; }
  #math-scratchpad-redux .topic-badge { border: 1px solid var(--border); border-radius: 20px; color: var(--muted-foreground); padding: 4px 8px; font-size: 12px; }
+#math-scratchpad-redux .lesson-source-badge { display: inline-flex; align-items: center; max-width: 100%; width: fit-content; margin: 3px 0; padding: 3px 8px; border: 1px solid #c89a48; border-radius: 999px; background: color-mix(in srgb, #c89a48 12%, var(--card)); color: var(--foreground); font-size: 12px; font-weight: 650; line-height: 1.5; white-space: normal; }
+#math-scratchpad-redux .lesson-extra-source-badge { unicode-bidi: isolate; }
  #math-scratchpad-redux .question-statement { font-size: 16px; line-height: 1.9; }
  #math-scratchpad-redux .problem-formula { padding: 24px 0 12px; overflow-x: auto; }
  #math-scratchpad-redux .question-timer { padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin: 0; font-size: 13px; }
@@ -804,6 +806,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .learn-workspace .lesson-screen { width: 100%; max-width: 980px; }
 #math-scratchpad-redux .problem .question-heading { display: flex; align-items: center; gap: 8px; min-width: 0; padding-block: 10px 4px; }
 #math-scratchpad-redux .problem .question-heading h2 { min-width: 0; margin: 0; }
+#math-scratchpad-redux .problem > .lesson-source-badge { margin-block: 4px 8px; }
 #math-scratchpad-redux .lesson-reference-trigger { display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 42px; margin-inline-start: auto; padding: 6px 10px; }
 #math-scratchpad-redux .lesson-reference-trigger svg { width: 17px; height: 17px; }
 .lesson-picker-dialog { width: min(720px, calc(100vw - 32px)); }
@@ -1037,6 +1040,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-chunk-question { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); }
 #math-scratchpad-redux .lesson-chunk-question h3 { margin: 0; font-size: 15px; }
 #math-scratchpad-redux .lesson-chunk-question > p { margin: 0; line-height: 1.75; }
+#math-scratchpad-redux .lesson-chunk-question > .lesson-interaction-type { width: fit-content; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
 #math-scratchpad-redux .lesson-chunk-question > label { color: var(--muted-foreground); font-size: 13px; font-weight: 600; }
 #math-scratchpad-redux .lesson-chunk-question > textarea { width: 100%; min-width: 0; min-height: 108px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font: inherit; line-height: 1.7; resize: vertical; }
 #math-scratchpad-redux .lesson-chunk-question > textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -1046,6 +1050,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-concept-practice-list ol { max-height: 300px; overflow: auto; padding-inline-start: 24px; line-height: 1.8; }
 #math-scratchpad-redux .lesson-concept-practice-list li { margin-block: 4px; }
 #math-scratchpad-redux .lesson-practice-locked, #math-scratchpad-redux .lesson-no-key { color: var(--muted-foreground); font-size: 13px; line-height: 1.6; }
+#math-scratchpad-redux .mixed-review-reveal { margin-block: 8px; padding: 9px 12px; border-inline-start: 3px solid var(--primary); border-radius: 6px; background: var(--raised); color: var(--muted-foreground); font-size: 13px; line-height: 1.65; }
 #math-scratchpad-redux .lesson-concept-summary { display: grid; gap: 12px; max-width: 980px; margin-inline: auto; }
 #math-scratchpad-redux .lesson-concept-summary > h2 { margin: 0; font-size: clamp(22px, 3vw, 28px); }
 #math-scratchpad-redux .lesson-concept-summary-title { margin: 0; color: var(--muted-foreground); font-size: 18px; }

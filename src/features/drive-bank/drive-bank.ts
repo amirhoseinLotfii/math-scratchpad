@@ -7,14 +7,15 @@ import type { Lesson, QuestionLessonFields } from '../lessons/types';
 
 export const BANK_SCHEMA = 'math-scratchpad.bank/1.0';
 /** A chapter bank may span many lessons; each launched practice session stays within MAX_SESSION_EXERCISES. */
-export const MAX_QUESTIONS_PER_BANK = 1000;
+export const MAX_QUESTIONS_PER_BANK = 1500;
+export const MAX_BANK_TEXT_LENGTH = 2_000_000;
 export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
 export const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1';
 const BANK_CACHE_SCHEMA = 1;
-const MAX_BANK_CACHE_LENGTH = 2_000_000;
+const MAX_BANK_CACHE_LENGTH = 3_000_000;
 export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string; answerType?: 'math' | 'text' | 'choice'; choices?: string[] } & QuestionLessonFields;
 export type BankChapter = { id: string; number: number; title: string; source: string; pdfPages: string; lessonIds: string[] };
-export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[]; lessons?: Lesson[]; chapter?: BankChapter; parseWarnings?: string[] };
+export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[]; lessons?: Lesson[]; chapter?: BankChapter; /** Optional multi-chapter envelope for cumulative course banks. */ chapters?: BankChapter[]; parseWarnings?: string[] };
 export type CachedBank = { fileId: string; bank: DriveBank; version: string; fingerprint: string; savedAt: string };
 const safeId = /^[\w.-]{1,80}$/;
 const FORBIDDEN_SEGMENTS = new Set(['answer', 'answers', 'solution', 'solutions', 'correct', 'key', 'keys', 'expected', 'rubric', 'verification']);
@@ -110,13 +111,71 @@ export function validateBank(input: unknown): DriveBank {
     else if (q.origin !== undefined) warnings.push(`questions[${index}].origin: invalid question origin was ignored`);
     if (typeof q.sectionId === 'string' && safeId.test(q.sectionId)) question.sectionId = q.sectionId;
     else if (q.sectionId !== undefined) warnings.push(`questions[${index}].sectionId: invalid section reference was ignored`);
+    if (q.interactionType === 'typed' || q.interactionType === 'multiple-choice' || q.interactionType === 'true-false-why' || q.interactionType === 'find-mistake' || q.interactionType === 'step-by-step' || q.interactionType === 'explain') question.interactionType = q.interactionType;
+    else if (q.interactionType !== undefined) warnings.push(`questions[${index}].interactionType: invalid interaction type was ignored`);
+    if (typeof q.requiresExplanation === 'boolean') question.requiresExplanation = q.requiresExplanation;
+    else if (q.requiresExplanation !== undefined) warnings.push(`questions[${index}].requiresExplanation: invalid flag was ignored`);
+    if (q.tags !== undefined) {
+      if (q.tags && typeof q.tags === 'object' && !Array.isArray(q.tags)) {
+        const rawTags = q.tags as Record<string, unknown>;
+        const tags: NonNullable<BankQuestion['tags']> = {};
+        for (const key of ['chapter', 'lesson', 'section', 'concept', 'skill'] as const) {
+          const value = rawTags[key];
+          if (typeof value === 'string' && safeId.test(value)) tags[key] = value;
+          else if (value !== undefined) warnings.push(`questions[${index}].tags.${key}: invalid tag was ignored`);
+        }
+        if (rawTags.source === 'book' || rawTags.source === 'extra') tags.source = rawTags.source;
+        else if (rawTags.source !== undefined) warnings.push(`questions[${index}].tags.source: invalid source tag was ignored`);
+        if (typeof rawTags.modeledOn === 'string' && safeId.test(rawTags.modeledOn)) tags.modeledOn = rawTags.modeledOn;
+        else if (rawTags.modeledOn !== undefined) warnings.push(`questions[${index}].tags.modeledOn: invalid modeledOn reference was ignored`);
+        if (Object.keys(tags).length) question.tags = tags;
+      } else warnings.push(`questions[${index}].tags: invalid tags were ignored`);
+    }
     questions.push(question);
   }
 
   const parsedLessons = parseLessons(data.lessons, questions.map(question => question.id));
   warnings.push(...parsedLessons.warnings);
   let chapter: BankChapter | undefined;
-  if (data.chapter !== undefined) {
+  let chapters: BankChapter[] | undefined;
+  const knownLessonIds = new Set(parsedLessons.lessons.map(lesson => lesson.id));
+  if (data.chapters !== undefined) {
+    const rawChapters = data.chapters;
+    const parsed: BankChapter[] = [];
+    const chapterIds = new Set<string>();
+    const assignedLessons = new Set<string>();
+    let valid = Array.isArray(rawChapters) && rawChapters.length > 0 && rawChapters.length <= 100;
+    if (Array.isArray(rawChapters)) for (const [index, raw] of rawChapters.entries()) {
+      const record = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+      const lessonIds = Array.isArray(record.lessonIds)
+        ? record.lessonIds.filter((id): id is string => typeof id === 'string' && /^[\w.-]{1,80}$/.test(id) && knownLessonIds.has(id))
+        : [];
+      const idValid = typeof record.id === 'string' && /^[\w.-]{1,80}$/.test(record.id);
+      const lessonIdsValid = Array.isArray(record.lessonIds) && lessonIds.length > 0 && lessonIds.length === record.lessonIds.length
+        && new Set(lessonIds).size === lessonIds.length && lessonIds.every(id => !assignedLessons.has(id));
+      if (!idValid || chapterIds.has(record.id as string) || !Number.isInteger(record.number) || (record.number as number) < 1 || (record.number as number) > 99
+        || typeof record.title !== 'string' || !record.title.trim() || record.title.length > 500
+        || typeof record.source !== 'string' || !record.source.trim() || record.source.length > 1000
+        || typeof record.pdfPages !== 'string' || !/^\d{1,5}\s*[–-]\s*\d{1,5}$/.test(record.pdfPages)
+        || !lessonIdsValid) {
+        warnings.push(`chapters[${index}]: invalid chapter metadata`);
+        valid = false;
+        continue;
+      }
+      const chapterRecord: BankChapter = { id: record.id as string, number: record.number as number, title: record.title, source: record.source, pdfPages: record.pdfPages.replace(/\s*[–-]\s*/g, '–'), lessonIds };
+      parsed.push(chapterRecord);
+      chapterIds.add(chapterRecord.id);
+      lessonIds.forEach(id => assignedLessons.add(id));
+    }
+    if (assignedLessons.size !== parsedLessons.lessons.length || parsedLessons.lessons.some(lesson => !assignedLessons.has(lesson.id))) {
+      warnings.push('chapters: chapters must assign every parsed lesson exactly once');
+      valid = false;
+    }
+    if (valid) {
+      chapters = parsed;
+      if (parsed.length === 1) chapter = parsed[0];
+    }
+  } else if (data.chapter !== undefined) {
     const raw = data.chapter;
     const valid = !!raw && typeof raw === 'object' && !Array.isArray(raw);
     const record = valid ? raw as Record<string, unknown> : {};
@@ -136,9 +195,35 @@ export function validateBank(input: unknown): DriveBank {
     }
   }
   const lessonById = new Map(parsedLessons.lessons.map(lesson => [lesson.id, lesson]));
+  const chapterByLesson = new Map<string, string>();
+  for (const metadata of chapters ?? (chapter ? [chapter] : [])) for (const lessonId of metadata.lessonIds) chapterByLesson.set(lessonId, metadata.id);
   const conceptToLesson = new Map<string, string>();
   for (const lesson of parsedLessons.lessons) for (const concept of lesson.concepts) conceptToLesson.set(concept.id, lesson.id);
   for (const [index, question] of questions.entries()) {
+    if (question.tags?.lesson && !lessonById.has(question.tags.lesson)) {
+      warnings.push(`questions[${index}].tags.lesson: missing lesson ${question.tags.lesson}; tag was ignored`);
+      delete question.tags.lesson;
+      delete question.tags.concept;
+    } else if (question.tags?.lesson && question.lessonId && question.tags.lesson !== question.lessonId) {
+      warnings.push(`questions[${index}].tags.lesson: conflicting lesson tag was ignored`);
+      delete question.tags.lesson;
+      delete question.tags.concept;
+    }
+    const taggedLessonId = question.tags?.lesson ?? question.lessonId;
+    const expectedChapterId = taggedLessonId ? chapterByLesson.get(taggedLessonId) : undefined;
+    const knownChapterIds = new Set((chapters ?? (chapter ? [chapter] : [])).map(item => item.id));
+    if (question.tags?.chapter && ((expectedChapterId && question.tags.chapter !== expectedChapterId) || (knownChapterIds.size > 0 && !knownChapterIds.has(question.tags.chapter)))) {
+      warnings.push(`questions[${index}].tags.chapter: tag does not match the lesson or bank chapter metadata and was ignored`);
+      delete question.tags.chapter;
+    }
+    if (question.tags?.concept) {
+      const taggedLesson = question.tags.lesson ?? question.lessonId;
+      if (!taggedLesson || conceptToLesson.get(question.tags.concept) !== taggedLesson) {
+        warnings.push(`questions[${index}].tags.concept: concept is not in the tagged lesson; tag was ignored`);
+        delete question.tags.concept;
+      }
+    }
+    if (question.tags && !Object.keys(question.tags).length) delete question.tags;
     if (question.lessonId && !lessonById.has(question.lessonId)) {
       warnings.push(`questions[${index}].lessonId: missing lesson ${question.lessonId}; lesson link was ignored`);
       delete question.lessonId;
@@ -189,6 +274,92 @@ export function validateBank(input: unknown): DriveBank {
     }
   }
 
+  const versionMajor = /^v(\d+)/i.exec(data.version as string)?.[1];
+  const enforceTaggedContent = Number(versionMajor) >= 23;
+  if (enforceTaggedContent) {
+    const sectionByLessonAndId = new Map<string, { lesson: Lesson; section: NonNullable<Lesson['sections']>[number]; index: number }>();
+    const sectionKey = (lessonId: string, sectionId: string) => `${lessonId}:${sectionId}`;
+    for (const lesson of parsedLessons.lessons) for (const [sectionIndex, section] of (lesson.sections ?? []).entries()) {
+      sectionByLessonAndId.set(sectionKey(lesson.id, section.id), { lesson, section, index: sectionIndex });
+    }
+    const questionIndex = new Map(questions.map(question => [question.id, question]));
+    const lessonIndex = new Map(parsedLessons.lessons.map((lesson, index) => [lesson.id, index]));
+    const itemRank = (question: BankQuestion): number | undefined => {
+      const lessonId = question.tags?.lesson ?? question.lessonId;
+      const sectionId = question.tags?.section ?? question.sectionId;
+      const lessonOrder = lessonId ? lessonIndex.get(lessonId) : undefined;
+      const sectionRecord = lessonId && sectionId ? sectionByLessonAndId.get(sectionKey(lessonId, sectionId)) : undefined;
+      if (lessonOrder === undefined || !sectionRecord || sectionRecord.lesson.id !== lessonId) return undefined;
+      return lessonOrder * 10_000 + sectionRecord.index;
+    };
+    for (const question of questions) {
+      if (!question.lessonId || !lessonById.has(question.lessonId)) continue;
+      const tags = question.tags;
+      const isV23ChapterOneLesson = Number(versionMajor) >= 23 && /^PC-1\.[1-7]$/.test(question.lessonId);
+      if (!isV23ChapterOneLesson && !tags?.source) continue;
+      const ref = `questions (${question.id})`;
+      if (!tags?.chapter || !tags.lesson || !tags.section || !tags.concept || !tags.skill || !tags.source) {
+        throw Error(`${ref}: v23+ lesson questions require chapter, lesson, section, concept, skill, and source tags.`);
+      }
+      const lesson = lessonById.get(question.lessonId)!;
+      const sectionRecord = sectionByLessonAndId.get(sectionKey(lesson.id, tags.section));
+      if (tags.lesson !== question.lessonId || tags.concept !== question.conceptId || tags.section !== question.sectionId
+        || !sectionRecord || sectionRecord.lesson.id !== lesson.id || !sectionRecord.section.conceptIds.includes(question.conceptId ?? '')) {
+        throw Error(`${ref}: lesson, section, and concept tags must match the question's section flow.`);
+      }
+      if (tags.chapter !== chapterByLesson.get(lesson.id)) throw Error(`${ref}: chapter tag does not match the lesson's chapter.`);
+      const assignment = assignedSectionByQuestion.get(question.id);
+      if (tags.source === 'book') {
+        if (question.origin === 'generated') throw Error(`${ref}: generated questions cannot be tagged as book items.`);
+        const inFlow = question.stage === 'learn'
+          ? assignment?.stage === 'learn' && lesson.concepts.find(concept => concept.id === question.conceptId)?.checkQuestionIds.includes(question.id)
+          : assignment?.stage === 'practice';
+        if (!inFlow) throw Error(`${ref}: a book item is missing from its section's lesson flow.`);
+        if (tags.modeledOn !== undefined) throw Error(`${ref}: book items cannot reference modeledOn.`);
+      } else {
+        if (!tags.modeledOn) throw Error(`${ref}: extra items must reference modeledOn.`);
+        if (question.origin === 'textbook') throw Error(`${ref}: textbook items cannot be tagged as extra.`);
+        const model = questionIndex.get(tags.modeledOn);
+        if (!model || model.tags?.source !== 'book') throw Error(`${ref}: modeledOn must reference a book item.`);
+        const targetRank = itemRank(question);
+        const modelRank = itemRank(model);
+        if (targetRank === undefined || modelRank === undefined || modelRank > targetRank) {
+          throw Error(`${ref}: extra items cannot model on a later lesson or section.`);
+        }
+      }
+    }
+    for (const lesson of parsedLessons.lessons) {
+      const strictChapterOneLesson = Number(versionMajor) >= 23 && /^PC-1\.[1-7]$/.test(lesson.id);
+      for (const concept of lesson.concepts) {
+        const section = lesson.sections?.find(item => item.conceptIds.includes(concept.id));
+        if (!section) continue;
+        const targetRank = (lessonIndex.get(lesson.id) ?? Number.MAX_SAFE_INTEGER) * 10_000
+          + (sectionByLessonAndId.get(sectionKey(lesson.id, section.id))?.index ?? Number.MAX_SAFE_INTEGER);
+        for (const [blockIndex, block] of concept.blocks.entries()) {
+          if (block.type !== 'example') continue;
+          const isMarkedSupplement = block.title?.includes('مثال آموزشی تکمیلی') ?? false;
+          if (strictChapterOneLesson && isMarkedSupplement && (block.source !== 'extra' || !block.modeledOn)) {
+            throw Error(`lessons.${lesson.id}.concepts.${concept.id}.blocks[${blockIndex}]: supplemental examples require extra provenance and modeledOn.`);
+          }
+          if (block.source === 'book' && block.modeledOn !== undefined) {
+            throw Error(`lessons.${lesson.id}.concepts.${concept.id}.blocks[${blockIndex}]: book examples cannot reference modeledOn.`);
+          }
+          if (block.source === 'extra') {
+            if (!block.modeledOn) throw Error(`lessons.${lesson.id}.concepts.${concept.id}.blocks[${blockIndex}]: extra examples require modeledOn.`);
+            const model = questionIndex.get(block.modeledOn);
+            const modelRank = model ? itemRank(model) : undefined;
+            if (!model || model.tags?.source !== 'book') {
+              throw Error(`lessons.${lesson.id}.concepts.${concept.id}.blocks[${blockIndex}]: modeledOn must reference a book item.`);
+            }
+            if (modelRank === undefined || modelRank > targetRank) {
+              throw Error(`lessons.${lesson.id}.concepts.${concept.id}.blocks[${blockIndex}]: supplemental examples cannot model on a later lesson or section.`);
+            }
+          }
+        }
+      }
+    }
+  }
+
   const chunkQuestionOwner = new Map<string, string>();
   for (const lesson of parsedLessons.lessons) for (const concept of lesson.concepts) {
     if (!concept.learningChunks) continue;
@@ -221,6 +392,7 @@ export function validateBank(input: unknown): DriveBank {
     questions,
     ...(data.lessons !== undefined ? { lessons: parsedLessons.lessons } : {}),
     ...(chapter ? { chapter } : {}),
+    ...(chapters && chapters.length > 1 ? { chapters } : {}),
     ...(warnings.length ? { parseWarnings: warnings } : {}),
   };
 }
@@ -301,7 +473,7 @@ export function driveError(status: number, action: string): Error {
 export const EMPTY_BANK = 'EMPTY_BANK';
 /** Parse bank text; an empty file is a valid "no questions yet" state, not a crash. */
 export function parseBankText(body: string): DriveBank | typeof EMPTY_BANK {
-  if (body.length > 1000000) throw Error('The bank file is too large.');
+  if (body.length > MAX_BANK_TEXT_LENGTH) throw Error('The bank file is too large.');
   if (!body.replace(/^\uFEFF/, '').trim()) return EMPTY_BANK;
   let json: unknown;
   try { json = JSON.parse(body.replace(/^\uFEFF/, '')); } catch { throw Error('The bank file is not valid JSON. The current session was not changed.'); }

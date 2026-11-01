@@ -47,11 +47,17 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
     if ((block.steps !== undefined && (!Array.isArray(block.steps) || block.steps.length > 100 || !block.steps.every(step => typeof step === 'string' && step.length <= 20000)))
       || !optionalTextValid('title', 500) || !optionalTextValid('text', 20000) || !optionalTextValid('latex', 20000)) return unsupported('example fields are invalid; steps must be an array of at most 100 text items and optional title/text/latex fields must fit their limits');
     if (block.steps === undefined && ![block.title, block.text, block.latex].some(item => boundedText(item))) return unsupported('example block requires steps or non-empty title, text, or latex');
+    const source = block.source === 'book' || block.source === 'extra' ? block.source : undefined;
+    if (block.source !== undefined && source === undefined) warning(warnings, `${path}.source`, 'example source must be book or extra');
+    const modeledOn = typeof block.modeledOn === 'string' && safeId.test(block.modeledOn) ? block.modeledOn : undefined;
+    if (block.modeledOn !== undefined && modeledOn === undefined) warning(warnings, `${path}.modeledOn`, 'invalid modeledOn reference was ignored');
     return withMetadata({
       type: 'example',
       ...(typeof block.title === 'string' ? { title: block.title } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : {}),
       ...(typeof block.latex === 'string' ? { latex: block.latex } : {}),
+      ...(source ? { source } : {}),
+      ...(modeledOn ? { modeledOn } : {}),
       steps: (block.steps ?? []) as string[],
     });
   }
