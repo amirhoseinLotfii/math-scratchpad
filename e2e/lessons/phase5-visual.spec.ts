@@ -32,7 +32,15 @@ test('captures Phase 5 Learn and connected Practice views at desktop width', asy
     await capture(page, `concept-example-${size.suffix}`, true);
 
     await page.goto('/e2e/fixtures/lesson-preview.html?view=checks');
-    await expect(page.getByRole('radio', { name: 'Option A' })).toBeVisible();
+    // Split view (>=1100px): checks are listed as links and solved one at a time in the work pane.
+    const checkLinks = page.locator('.lesson-check-link');
+    if (await checkLinks.count()) {
+      await checkLinks.filter({ hasText: 'SAMPLE-1.1-L01' }).click();
+      await expect(page.getByRole('radio', { name: 'Option A' })).toBeVisible();
+      await checkLinks.filter({ hasText: 'SAMPLE-1.1-L02' }).click();
+    } else {
+      await expect(page.getByRole('radio', { name: 'Option A' })).toBeVisible();
+    }
     await expect(page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' })).toBeVisible();
     await capture(page, `inline-checks-${size.suffix}`, true);
 

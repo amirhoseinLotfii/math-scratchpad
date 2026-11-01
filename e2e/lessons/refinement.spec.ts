@@ -147,9 +147,13 @@ test('Learn layouts and interactions stay readable across phone, tablet, and des
   await page.goto('/e2e/fixtures/lesson-preview.html?view=choice');
   const cardWidths = await page.locator('.lesson-checks').evaluate(section => ({
     section: section.getBoundingClientRect().width,
-    card: section.querySelector('.lesson-check')!.getBoundingClientRect().width,
+    link: Boolean(section.querySelector('.lesson-check-link')),
+    // At split-view widths (>=1100px) checks render as compact links; the full card lives in the work pane.
+    card: section.querySelector('.lesson-check-link, .lesson-check')!.getBoundingClientRect().width,
   }));
-  expect(cardWidths.card).toBeGreaterThan(cardWidths.section - 32);
+  // Split view lists compact check links that must fit the section; stacked layout keeps full-width cards.
+  if (cardWidths.link) expect(cardWidths.card).toBeLessThanOrEqual(cardWidths.section);
+  else expect(cardWidths.card).toBeGreaterThan(cardWidths.section - 32);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280);
   await capture(page, 'choice-desktop-1280x900');
 
