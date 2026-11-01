@@ -64,4 +64,6 @@ export interface LessonProgress {
   /** Whether the saved in-Learn view is the lesson summary rather than a concept. */
   summaryOpen?: boolean;
   revealedSteps: Record<string, number>;
+  /** Learn-only scratch work from the lesson work pane, keyed `ex:<concept>:<block>` or `q:<questionId>`; never exported or graded. */
+  workAnswers?: Record<string, { type: 'math'; steps: Step[] }>;
 }

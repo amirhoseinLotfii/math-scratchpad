@@ -73,7 +73,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       const stepId = mathfield?.getAttribute('data-step-id');
       const step = exercise.steps.find(item => item.id === stepId);
       const firstCharacter = /^[0-9.]$/.test(key) || /^[a-zA-Z]$/.test(key) || ['+','-','−','*','×','÷','='].includes(key);
-      if (step && stepLatex(step) === '\\square' && firstCharacter && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (step && firstCharacter && !event.ctrlKey && !event.metaKey && !event.altKey) {
         const normalized = ({ '-':'−', '*':'×' } as Record<string, string>)[key] ?? key;
         if (insertMathSymbol(step.id, normalized)) { event.preventDefault(); return; }
       }

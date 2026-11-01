@@ -1,3 +1,4 @@
+import { allowedWorkKeys, normalizeWorkAnswers } from './lesson-work-items';
 import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress, LessonStatus } from './types';
@@ -150,6 +151,8 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
     ...(Object.keys(confidenceByCheckId).length ? { confidenceByCheckId } : {}),
     revealedSteps,
   };
+  const workAnswers = normalizeWorkAnswers(value.workAnswers, allowedWorkKeys(lesson, [...questionById.values()]), (key, response) => validMathSteps({ id: key.replace(/[^\w.-]/g, '_').slice(0, 80), mode: 'math', source: '' }, response));
+  if (workAnswers) progress.workAnswers = workAnswers;
   for (const field of ['learnStartedAt', 'learnDoneAt', 'practiceStartedAt'] as const) {
     if (value[field] !== undefined) {
       if (!timestamp(value[field])) return undefined;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
@@ -12,7 +12,19 @@ import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
-import { MAX_SESSION_EXERCISES, stepIsBlank } from '../../model';
+import { MAX_SESSION_EXERCISES, stepIsBlank, type Step } from '../../model';
+import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
+import { LessonWorkPane } from './lesson-work-pane';
+
+function subscribeSplit(change: () => void) {
+  if (typeof window.matchMedia !== 'function') return () => {};
+  const list = window.matchMedia(SPLIT_MEDIA_QUERY);
+  list.addEventListener?.('change', change);
+  return () => list.removeEventListener?.('change', change);
+}
+function splitSnapshot() { return typeof window.matchMedia === 'function' && window.matchMedia(SPLIT_MEDIA_QUERY).matches; }
+function readSplitRatio() { try { return clampSplitRatio(window.localStorage.getItem(SPLIT_RATIO_STORAGE_KEY) ?? undefined); } catch { return clampSplitRatio(undefined); } }
+function writeSplitRatio(value: number) { try { window.localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(value)); } catch { /* preference only */ } }
 
 type Props = {
   bank: DriveBank | null;
@@ -84,6 +96,12 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const summaryHeadingRef = useRef<HTMLHeadingElement>(null);
   const autoStartedLesson = useRef<string | null>(null);
+  const paneMode = lessonPaneMode(useSyncExternalStore(subscribeSplit, splitSnapshot, () => false)), split = paneMode === 'split';
+  const [splitRatio, setSplitRatio] = useState(readSplitRatio);
+  const [paneTab, setPaneTab] = useState<'lesson' | 'work'>('lesson');
+  const [selectedWorkKey, setSelectedWorkKey] = useState<string | undefined>();
+  const workStores = useRef(new Map<string, ScratchStore>());
+  const splitRef = useRef<HTMLDivElement>(null);
 
   const commitProgress = useCallback((next: LessonProgress) => {
     progressRef.current = next;
@@ -94,6 +112,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const currentSection = sections[sectionIndex];
   const checks = useMemo(() => currentSection ? getSectionLearnChecks(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
   const sectionPracticeQuestions = useMemo(() => currentSection ? getSectionPracticeQuestions(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
+  const workItems = useMemo(() => buildSectionWorkItems(currentSection, checks, sectionPracticeQuestions), [currentSection, checks, sectionPracticeQuestions]);
+  const selectedWorkItem = resolveSelectedWorkItem(workItems, selectedWorkKey);
   const allQuestions = useMemo(() => new Map(bank.questions.map(question => [question.id, question])), [bank.questions]);
 
   useEffect(() => {
@@ -124,6 +144,47 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     }
     return store;
   }, [phone]);
+
+  const getWorkStore = useCallback((item: LessonWorkItem) => {
+    let store = workStores.current.get(item.key);
+    if (!store) {
+      store = createLessonMathStore(item.workQuestion, phone, progressRef.current.workAnswers?.[item.key]?.steps);
+      workStores.current.set(item.key, store);
+    }
+    return store;
+  }, [phone]);
+
+  const setWork = useCallback((key: string, { steps }: { type: 'math'; steps: Step[] }) => {
+    const before = progressRef.current;
+    const workAnswers = { ...before.workAnswers };
+    const previous = workAnswers[key];
+    const blank = steps.every(step => stepIsBlank(step));
+    if (blank && !previous) return;
+    if (previous && previous.steps === steps) return;
+    if (blank) delete workAnswers[key];
+    else workAnswers[key] = { type: 'math', steps };
+    commitProgress({ ...before, workAnswers: Object.keys(workAnswers).length ? workAnswers : undefined });
+  }, [commitProgress]);
+
+  const updateSplitRatio = useCallback((value: number) => { const next = clampSplitRatio(value); setSplitRatio(next); writeSplitRatio(next); }, []);
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const container = splitRef.current;
+    if (!container) return;
+    event.preventDefault();
+    const rtl = getComputedStyle(container).direction === 'rtl';
+    const move = (e: PointerEvent) => updateSplitRatio(ratioFromPointer(e.clientX, container.getBoundingClientRect(), rtl));
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+  function resizeByKey(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const rtl = splitRef.current ? getComputedStyle(splitRef.current).direction === 'rtl' : fa;
+    const grow = rtl ? 'ArrowLeft' : 'ArrowRight', shrink = rtl ? 'ArrowRight' : 'ArrowLeft';
+    if (event.key === grow) { event.preventDefault(); updateSplitRatio(splitRatio + 5); }
+    else if (event.key === shrink) { event.preventDefault(); updateSplitRatio(splitRatio - 5); }
+    else if (event.key === 'Home') { event.preventDefault(); updateSplitRatio(30); }
+    else if (event.key === 'End') { event.preventDefault(); updateSplitRatio(70); }
+  }
 
   const isCheckComplete = useCallback((questionId: string) => progress.answeredCheckIds.includes(questionId) || progress.skippedChecks.some(item => item.questionId === questionId), [progress.answeredCheckIds, progress.skippedChecks]);
   const conceptComplete = checks.every(question => isCheckComplete(question.id));
@@ -262,6 +323,13 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const practiceBatchCount = Math.ceil(practiceQuestions.length / MAX_SESSION_EXERCISES);
   const sectionQuestionWord = sectionPracticeQuestions.length === 1 ? (fa ? 'سؤال' : 'question') : (fa ? 'سؤال' : 'questions');
 
+  const renderCheck = (question: BankQuestion) => <LessonCheck key={question.id} question={question}
+          uiLang={uiLang}
+          mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
+          answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
+          skipped={progress.skippedChecks.some(item => item.questionId === question.id)}
+          onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => { skipCheckInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setSkipQuestion(allQuestions.get(questionId) ?? null); }} />;
+
   function startWholeLessonPractice(skipLearn = false) {
     if (!practiceBatch.length) return;
     const before = progressRef.current;
@@ -317,6 +385,12 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       </section>}
       <Button className="lesson-review-action" onClick={reviewLesson}>{fa ? 'مرور دوبارهٔ درس' : 'Review lesson'}</Button>
     </section> : currentSection ? <>
+      {!split && <div className="lesson-pane-tabs" role="tablist" aria-label={fa ? 'درس‌نامه یا کار من' : 'Lesson or your work'}>
+        <button type="button" role="tab" id="lesson-tab-lesson" aria-controls="lesson-panel-lesson" aria-selected={paneTab === 'lesson'} className="lesson-pane-tab" onClick={() => setPaneTab('lesson')}>{fa ? 'درس‌نامه' : 'Lesson'}</button>
+        <button type="button" role="tab" id="lesson-tab-work" aria-controls="lesson-panel-work" aria-selected={paneTab === 'work'} className="lesson-pane-tab" onClick={() => setPaneTab('work')}>{fa ? 'کار من' : 'Your work'}{workItems.length ? ` · ${localizeLessonDigits(workItems.length, uiLang)}` : ''}</button>
+      </div>}
+      <div ref={splitRef} className={`lesson-split ${split ? 'lesson-split-wide' : 'lesson-split-tabs'}`} data-pane-mode={paneMode} style={split ? { ['--lesson-split' as string]: `${splitRatio}%` } : undefined}>
+      {(split || paneTab === 'lesson') && <div className="lesson-split-lesson" id="lesson-panel-lesson" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-lesson' })}>
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
         <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
         <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
@@ -332,18 +406,26 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       </section>
       {checks.length > 0 && <section className="lesson-checks" aria-label={fa ? 'تمرین کوتاه همین بخش' : 'Quick checks for this section'}>
         <h2>{fa ? 'تمرین کوتاه همین بخش' : 'Quick checks for this section'}</h2>
-        {checks.map(question => <LessonCheck key={question.id} question={question}
-          uiLang={uiLang}
-          mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
-          answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
-          skipped={progress.skippedChecks.some(item => item.questionId === question.id)}
-          onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => { skipCheckInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setSkipQuestion(allQuestions.get(questionId) ?? null); }} />)}
+        {split
+          ? <ul className="lesson-check-links">{checks.map(question => <li key={question.id}>
+              <Button variant="ghost" className="lesson-check-link" aria-current={selectedWorkItem?.key === `q:${question.id}` ? 'true' : undefined} onClick={() => setSelectedWorkKey(`q:${question.id}`)}>
+                <bdi dir="ltr">{question.id}</bdi> · <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span>
+                <span className="lesson-check-link-status">{progress.answeredCheckIds.includes(question.id) ? (fa ? 'پاسخ داده شد' : 'Answered') : progress.skippedChecks.some(item => item.questionId === question.id) ? (fa ? 'ردشده' : 'Skipped') : (fa ? 'حل در «کار من»' : 'Solve in Your work')}</span>
+              </Button>
+            </li>)}</ul>
+          : checks.map(renderCheck)}
       </section>}
       <nav className="lesson-concept-navigation" aria-label={fa ? 'پیمایش بخش‌های درس' : 'Lesson section navigation'}>
         <Button onClick={goPrevious} disabled={sectionIndex === 0}>{fa ? '→ بخش قبلی' : '← Previous section'}</Button>
         <Button className="lesson-primary-action" onClick={goNext} disabled={!conceptComplete}>{fa ? 'بخش بعدی ←' : 'Next section →'}</Button>
       </nav>
       {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>{fa ? 'رفتن به تمرین پایانی کل درس' : 'Skip to practice'}</Button>}
+      </div>}
+      {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
+      {(split || paneTab === 'work') && <div className="lesson-split-work" id="lesson-panel-work" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-work' })}>
+        <LessonWorkPane items={workItems} selected={selectedWorkItem} onSelect={setSelectedWorkKey} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={renderCheck} savedSteps={key => progress.workAnswers?.[key]?.steps} />
+      </div>}
+      </div>
     </> : null}
 
     <Dialog open={!!skipQuestion} onOpenChange={open => { if (!open) setSkipQuestion(null); }}>
