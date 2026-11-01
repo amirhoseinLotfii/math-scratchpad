@@ -1,4 +1,4 @@
-import type { Concept, Lesson, LessonBlock, LessonSectionDefinition } from './types';
+import type { Concept, Lesson, LessonBlock, LessonSectionDefinition, LearningChunk } from './types';
 
 export type LessonSectionConcept = {
   concept: Concept;
@@ -14,6 +14,21 @@ export type LessonSection = {
   concepts: LessonSectionConcept[];
 };
 
+export type ActiveLessonChunk = {
+  id: string;
+  title: string;
+  pages?: string;
+  startPage?: number;
+  endPage?: number;
+  chunkIndex: number;
+  chunkCount: number;
+  concept: Concept;
+  conceptIndex: number;
+  blocks: LessonBlock[];
+  blockIndexes: number[];
+  questionIds: string[];
+};
+
 function latinDigits(value: string): string {
   return value.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
 }
@@ -23,6 +38,34 @@ export function pageRange(value?: string): [number, number] | undefined {
   const numbers = latinDigits(value).match(/\d+/g)?.map(Number).filter(Number.isFinite);
   if (!numbers?.length) return undefined;
   return [numbers[0], numbers.length > 1 ? numbers[1] : numbers[0]];
+}
+
+/** v22's short read/write units, kept separate so v21 section indexes remain stable. */
+export function buildActiveLessonChunks(lesson: Lesson): ActiveLessonChunk[] {
+  const result: ActiveLessonChunk[] = [];
+  lesson.concepts.forEach((concept, conceptIndex) => {
+    const chunks = concept.learningChunks;
+    if (!chunks?.length) return;
+    chunks.forEach((chunk: LearningChunk, chunkIndex) => {
+      const blocks = chunk.blockIndexes.map(index => concept.blocks[index]).filter((block): block is LessonBlock => !!block);
+      const pages = chunk.pages ?? concept.pages;
+      const [startPage, endPage] = pageRange(pages) ?? [];
+      result.push({
+        id: chunk.id,
+        title: chunk.title || concept.title,
+        ...(pages ? { pages } : {}),
+        ...(startPage ? { startPage, endPage } : {}),
+        chunkIndex,
+        chunkCount: chunks.length,
+        concept,
+        conceptIndex,
+        blocks,
+        blockIndexes: [...chunk.blockIndexes],
+        questionIds: [...chunk.questionIds],
+      });
+    });
+  });
+  return result;
 }
 
 function blockPage(block: LessonBlock): number | undefined {

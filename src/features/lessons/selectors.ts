@@ -54,9 +54,19 @@ function textbookQuestionNumber(question: BankQuestion, lessonId: string): numbe
   return match ? Number(match[1]) : undefined;
 }
 
+function textbookTryItNumber(question: BankQuestion, lessonId: string): number | undefined {
+  if (getPracticeQuestionOrigin(question, lessonId) !== 'textbook') return undefined;
+  const match = question.id.match(/-TI(\d+)$/);
+  return match ? Number(match[1]) : undefined;
+}
+
 function comparePracticeOrder(a: BankQuestion, b: BankQuestion, lessonId: string): number {
   const rankDifference = originRank(a, lessonId) - originRank(b, lessonId);
   if (rankDifference) return rankDifference;
+  const aTryIt = textbookTryItNumber(a, lessonId), bTryIt = textbookTryItNumber(b, lessonId);
+  if (aTryIt !== undefined && bTryIt !== undefined) return aTryIt - bTryIt;
+  if (aTryIt !== undefined && textbookQuestionNumber(b, lessonId) !== undefined) return -1;
+  if (bTryIt !== undefined && textbookQuestionNumber(a, lessonId) !== undefined) return 1;
   const aNumber = textbookQuestionNumber(a, lessonId), bNumber = textbookQuestionNumber(b, lessonId);
   if (aNumber !== undefined && bNumber !== undefined && aNumber !== bNumber) return aNumber - bNumber;
   return (a.difficulty ?? Number.POSITIVE_INFINITY) - (b.difficulty ?? Number.POSITIVE_INFINITY);

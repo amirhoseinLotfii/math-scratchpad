@@ -35,11 +35,14 @@ import { isoLocal } from './model';
 import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
 import { archiveSession, bankDocument, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
-import { getLesson, getPracticeQuestions } from './features/lessons/selectors';
+import { getLesson, getPracticeQuestionConceptId, getPracticeQuestionOrigin, getPracticeQuestions } from './features/lessons/selectors';
 import type { Lesson, LessonProgress } from './features/lessons/types';
+import { snapshotLessonPracticeResults } from './features/lessons/lesson-practice-results';
+import { nextTextbookPracticeBatch } from './features/lessons/lesson-practice-batches';
 import { LessonScreen } from './features/lessons/lesson-screen';
 import { LessonPicker } from './features/lessons/lesson-picker';
 import { LessonReferenceDialog } from './features/lessons/lesson-reference-dialog';
+import { buildChapterExportBundle, buildLessonExportBundle, downloadLessonFile, lessonExportMarkdown } from './features/lessons/lesson-export';
 import { buildLessonSections } from './features/lessons/lesson-sections';
 import { contentDirection, languageForText, LessonSourceAttribution, LessonText, QuestionChoice, QuestionSource } from './features/lessons/lesson-content';
 import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
@@ -172,6 +175,15 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const current = lessonProgressRef.current;
   updateLessonProgressState({ ...current, progressById: { ...current.progressById, [progress.lessonId]: progress } });
  }, [updateLessonProgressState]);
+ useEffect(() => {
+  if (!activePracticeLessonId) return;
+  const progress = lessonProgressRef.current.progressById[activePracticeLessonId];
+  const questionIds = progress?.activePracticeQuestionIds;
+  if (!progress || !questionIds?.length) return;
+  const previous = progress.practiceResults ?? {};
+  const practiceResults = snapshotLessonPracticeResults(state.doc.exercises, questionIds, previous);
+  if (questionIds.some(id => practiceResults[id] !== previous[id])) rememberLessonProgress({ ...progress, practiceResults });
+ }, [activePracticeLessonId, rememberLessonProgress, state.doc.exercises]);
  function openLesson(lesson: Lesson) {
   const before = lessonProgressById[lesson.id];
   if (!before) rememberLessonProgress({ lessonId: lesson.id, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedSectionIds: [], completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() });
@@ -265,7 +277,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  }
  function openDriveBank() { setDriveBankInitialized(true); setDriveBankOpen(true); }
  function loadBankFromLessons() { setLessonPickerOpen(false); openDriveBank(); }
- function startLessonPractice(lesson: Lesson, progress: LessonProgress, selectedQuestions: BankQuestion[], sectionId?: string) {
+ function startLessonPractice(lesson: Lesson, progress: LessonProgress, selectedQuestions: BankQuestion[], sectionId?: string, conceptId?: string) {
   const targetBank = loadedBank;
   if (!targetBank) { setPracticeStartError('The lesson bank is not available for this session. Reconnect to the same bank version and try again.'); return; }
   const questions = selectedQuestions.length ? selectedQuestions : sectionId ? [] : getPracticeQuestions(targetBank.bank, lesson.id);
@@ -276,7 +288,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    dispatch(actions.load({ doc }));
    dispatch(actions.keyboard(initialKeyboardOpen(false)));
    dispatch(actions.notice('Lesson practice started.'));
-   rememberLessonProgress(progress);
+   rememberLessonProgress({ ...progress, ...(conceptId ? { activePracticeConceptId: conceptId } : {}) });
    setPracticeLessonId(lesson.id);
    setPracticeStartError('');
    setLessonScreen(null);
@@ -288,9 +300,63 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function markLessonPracticeDone(): boolean {
   if (!activePracticeLessonId) return false;
   const progress = lessonProgressRef.current.progressById[activePracticeLessonId];
+  if (progress?.activePracticeConceptId && loadedBank) {
+   const questionIds = progress.activePracticeQuestionIds ?? [];
+   const currentDoc = store.getState().doc;
+   const missing = questionIds.filter(questionId => {
+    const exercise = currentDoc.exercises.find(item => item.bankQuestionId === questionId);
+    return !exercise || questionStatus(exercise) !== 'Answered';
+   });
+   if (missing.length) {
+    const activeLesson = loadedBank.bank.lessons?.find(item => item.id === activePracticeLessonId);
+    const fa = activeLesson && languageForText(activeLesson.title) === 'fa';
+    setPracticeStartError(fa
+     ? `برای رفتن به مفهوم بعدی، همهٔ ${questionIds.length} تمرین کتاب را پاسخ‌گذاری کن. ${missing.length} سؤال هنوز پاسخ نهایی ندارد یا رد شده است.`
+     : `Before moving on, answer all ${questionIds.length} textbook exercises for this concept. ${missing.length} remain unanswered or skipped.`);
+    return true;
+   }
+   const conceptId = progress.activePracticeConceptId;
+   const practiceResults = snapshotLessonPracticeResults(currentDoc.exercises, questionIds, progress.practiceResults ?? {});
+   const completedPracticeQuestionIds = [...new Set([...(progress.completedPracticeQuestionIds ?? []), ...questionIds])];
+   const lesson = loadedBank.bank.lessons?.find(item => item.id === activePracticeLessonId);
+   const conceptQuestions = lesson ? getPracticeQuestions(loadedBank.bank, lesson.id).filter(question =>
+    getPracticeQuestionOrigin(question, lesson.id) === 'textbook' && getPracticeQuestionConceptId(question, lesson.id) === conceptId) : [];
+   const nextBatch = nextTextbookPracticeBatch(conceptQuestions, completedPracticeQuestionIds);
+   if (lesson && nextBatch.length) {
+    const nextBatchProgress: LessonProgress = {
+     ...progress,
+     status: 'practising',
+     completedPracticeQuestionIds,
+     practiceResults,
+     activePracticeQuestionIds: nextBatch.map(question => question.id),
+     practiceStartedAt: new Date().toISOString(),
+    };
+    startLessonPractice(lesson, nextBatchProgress, nextBatch, undefined, conceptId);
+    return true;
+   }
+   const next: LessonProgress = {
+    ...progress,
+    status: 'learning',
+    completedPracticeQuestionIds,
+    completedConceptIds: [...new Set([...progress.completedConceptIds, conceptId])],
+    practiceResults,
+    activePracticeConceptId: undefined,
+    activePracticeSectionId: undefined,
+    activePracticeQuestionIds: undefined,
+    activeConceptPhase: 'summary',
+    conceptSummaryId: conceptId,
+    summaryOpen: false,
+   };
+   rememberLessonProgress(next);
+   if (lesson) setLessonScreen(lesson);
+   setPracticeLessonId(null);
+   setPracticeStartError('');
+   return !!lesson;
+  }
   if (progress?.activePracticeSectionId) {
    const sectionId = progress.activePracticeSectionId;
-   rememberLessonProgress({ ...progress, status: 'learning', activePracticeSectionId: undefined, activePracticeQuestionIds: undefined, completedSectionIds: [...new Set([...(progress.completedSectionIds ?? []), sectionId])], summaryOpen: false });
+   const practiceResults = snapshotLessonPracticeResults(store.getState().doc.exercises, progress.activePracticeQuestionIds ?? [], progress.practiceResults ?? {});
+   rememberLessonProgress({ ...progress, practiceResults, status: 'learning', activePracticeSectionId: undefined, activePracticeQuestionIds: undefined, completedSectionIds: [...new Set([...(progress.completedSectionIds ?? []), sectionId])], summaryOpen: false });
    const lesson = loadedBank?.bank.lessons?.find(item => item.id === activePracticeLessonId);
    if (lesson) setLessonScreen(lesson);
    setPracticeLessonId(null);
@@ -298,6 +364,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   }
   if (progress?.activePracticeQuestionIds?.length && loadedBank) {
    const completedPracticeQuestionIds = [...new Set([...(progress.completedPracticeQuestionIds ?? []), ...progress.activePracticeQuestionIds])];
+   const practiceResults = snapshotLessonPracticeResults(store.getState().doc.exercises, progress.activePracticeQuestionIds, progress.practiceResults ?? {});
    const lesson = loadedBank.bank.lessons?.find(item => item.id === activePracticeLessonId);
    const allPracticeQuestions = getPracticeQuestions(loadedBank.bank, activePracticeLessonId);
    const hasRemainingPractice = allPracticeQuestions.some(question => !completedPracticeQuestionIds.includes(question.id));
@@ -305,6 +372,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     ...progress,
     status: hasRemainingPractice ? 'learning' : 'done',
     completedPracticeQuestionIds,
+    practiceResults,
     activePracticeQuestionIds: undefined,
     activePracticeSectionId: undefined,
     summaryOpen: true,
@@ -387,6 +455,23 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const copiedOk = await writeClipboard(text), saved = downloadText(`math-session-${data.session_id}.json`, text);
   if (!copiedOk) { jsonForm.reset({ json: text }); setBackup(true); }
   dispatch(actions.notice(`Tutor export ready${copiedOk ? ' · copied' : ''}${saved ? ' · downloaded' : ''}.`));
+ }
+ function downloadLessonExport(format: 'md' | 'json') {
+  const bank = loadedBank?.bank, lesson = lessonScreen;
+  if (!bank || !lesson) { dispatch(actions.notice('Lesson export is unavailable until the bank is loaded.')); return; }
+  const bundle = buildLessonExportBundle(bank, lesson, lessonProgressRef.current.progressById[lesson.id] ?? null);
+  const content = format === 'json' ? JSON.stringify(bundle, null, 2) : lessonExportMarkdown(bundle);
+  const filename = `${lesson.id.toLowerCase()}-lesson-export.${format}`;
+  dispatch(actions.notice(downloadLessonFile(filename, content, format) ? `Downloaded ${filename}.` : 'The lesson export could not be downloaded.'));
+ }
+ function downloadChapterExport(format: 'md' | 'json') {
+  const bank = loadedBank?.bank;
+  if (!bank) { dispatch(actions.notice('Chapter export is unavailable until the bank is loaded.')); return; }
+  const bundle = buildChapterExportBundle(bank, lessonProgressRef.current.progressById);
+  const number = bank.chapter?.number ?? 1;
+  const filename = `chapter-${number}-lesson-export.${format}`;
+  const content = format === 'json' ? JSON.stringify(bundle, null, 2) : lessonExportMarkdown(bundle);
+  dispatch(actions.notice(downloadLessonFile(filename, content, format) ? `Downloaded ${filename}.` : 'The chapter export could not be downloaded.'));
  }
  function downloadBackup() { dispatch(actions.notice(downloadText(`math-scratchpad-backup-${stamp()}.json`, serialize(store.getState())) ? 'Backup file downloaded.' : 'Download blocked. Use Session JSON to copy the backup.')); }
  async function importFile(file: File | undefined) {
@@ -595,7 +680,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    </div></div>
    </div>
   </div>
-  {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} /></div>}
+  {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId, conceptId) => startLessonPractice(lesson, progress, questions, sectionId, conceptId)} onDownloadLesson={downloadLessonExport} onDownloadChapter={downloadChapterExport} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} /></div>}
   <LessonPicker open={lessonPickerOpen} lessons={lessons} progressByLesson={lessonProgressById} hasBank={!!matchingBank} onLoadBank={loadBankFromLessons} onOpenChange={setLessonPickerOpen} onChoose={openLesson} onCloseAutoFocus={event => { event.preventDefault(); if (!lessonScreen) menuInvoker.current?.focus({ preventScroll: true }); }} />
   {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} question={currentBankQuestion} onSelectPracticeQuestion={openQuestionFromReference} onOpenInteractiveLesson={openInteractiveLessonFromReference} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>

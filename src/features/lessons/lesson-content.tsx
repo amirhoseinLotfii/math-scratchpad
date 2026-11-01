@@ -119,8 +119,8 @@ export function QuestionSource({ source, mode, label = 'Question expression', ma
   return <p className={textClassName} lang={languageForText(source)} dir={contentDirection(source)}><LessonText text={source} /></p>;
 }
 
-function LessonExample({ block, blockKey, revealed, onReveal, uiLang }: {
-  block: ExampleBlock; blockKey: string; revealed: number; onReveal: (value: number) => void; uiLang: Lang;
+function LessonExample({ block, blockKey, revealed, onReveal, uiLang, solutionLocked = false }: {
+  block: ExampleBlock; blockKey: string; revealed: number; onReveal: (value: number) => void; uiLang: Lang; solutionLocked?: boolean;
 }) {
   const id = useId();
   const count = Math.min(block.steps.length, Math.max(0, revealed));
@@ -131,17 +131,21 @@ function LessonExample({ block, blockKey, revealed, onReveal, uiLang }: {
     {block.title && <h4 lang={languageForText(block.title, block.lang)} dir={contentDirection(block.title, block.lang)}><LessonText text={displayEducationalHeading(block.title, block.lang)} lang={block.lang} /></h4>}
     {block.text && <p lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></p>}
     {block.latex && <LessonMath latex={block.latex} label={block.title || labels.workedExample} uiLang={uiLang} />}
-    {block.steps.length > 0 && <p className="lesson-example-progress" aria-live="polite">
-      {count === 0 ? labels.tryFirst : count === block.steps.length ? labels.allShown(count) : labels.someShown(count, block.steps.length)}
-    </p>}
-    <div className="lesson-example-steps" id={`${id}-steps`}>
-      {block.steps.slice(0, count).map((step, index) => <div className={`lesson-example-step ${index === count - 1 ? 'is-latest' : ''}`} key={`${blockKey}-${index}`} aria-current={index === count - 1 ? 'step' : undefined}>
-        <span className="lesson-example-step-label">{labels.step} {localizeLessonDigits(index + 1, uiLang)}</span>
-        <p lang={languageForText(step, block.lang)} dir={contentDirection(step, block.lang)}><LessonText text={step} lang={block.lang} /></p>
-      </div>)}
-    </div>
-    {count < block.steps.length && <Button className="lesson-reveal-button" aria-expanded={count > 0} aria-controls={`${id}-steps`} onClick={() => onReveal(count + 1)}>{labels.next}</Button>}
-    {block.steps.length > 1 && count < block.steps.length && <Button className="lesson-reveal-all" aria-expanded={count === block.steps.length} aria-controls={`${id}-steps`} onClick={() => onReveal(block.steps.length)}>{labels.all}</Button>}
+    {block.steps.length > 0 && solutionLocked
+      ? <p className="lesson-example-progress">{uiLang === 'fa' ? 'ابتدا تلاش خودت را در «کار من» بنویس؛ راه‌حل بعد از تلاش در دسترس است.' : 'Write your attempt in Your work first; the solution unlocks after an attempt.'}</p>
+      : <>
+        {block.steps.length > 0 && <p className="lesson-example-progress" aria-live="polite">
+          {count === 0 ? labels.tryFirst : count === block.steps.length ? labels.allShown(count) : labels.someShown(count, block.steps.length)}
+        </p>}
+        <div className="lesson-example-steps" id={`${id}-steps`}>
+          {block.steps.slice(0, count).map((step, index) => <div className={`lesson-example-step ${index === count - 1 ? 'is-latest' : ''}`} key={`${blockKey}-${index}`} aria-current={index === count - 1 ? 'step' : undefined}>
+            <span className="lesson-example-step-label">{labels.step} {localizeLessonDigits(index + 1, uiLang)}</span>
+            <p lang={languageForText(step, block.lang)} dir={contentDirection(step, block.lang)}><LessonText text={step} lang={block.lang} /></p>
+          </div>)}
+        </div>
+        {count < block.steps.length && <Button className="lesson-reveal-button" aria-expanded={count > 0} aria-controls={`${id}-steps`} onClick={() => onReveal(count + 1)}>{labels.next}</Button>}
+        {block.steps.length > 1 && count < block.steps.length && <Button className="lesson-reveal-all" aria-expanded={count === block.steps.length} aria-controls={`${id}-steps`} onClick={() => onReveal(block.steps.length)}>{labels.all}</Button>}
+      </>}
   </section>;
 }
 
@@ -175,8 +179,8 @@ export function LessonSourceAttribution({ book, section }: { book: Lesson['book'
   </p>;
 }
 
-export function LessonBlockView({ block, blockKey, revealed, onReveal, uiLang = 'en' }: {
-  block: LessonBlock; blockKey: string; revealed: number; onReveal: (value: number) => void; uiLang?: Lang;
+export function LessonBlockView({ block, blockKey, revealed, onReveal, uiLang = 'en', solutionLocked = false }: {
+  block: LessonBlock; blockKey: string; revealed: number; onReveal: (value: number) => void; uiLang?: Lang; solutionLocked?: boolean;
 }) {
   const formula = (latex?: string) => latex?.trim() ? <div className="lesson-attached-formula" dir="ltr"><LessonMath latex={latex} label={uiLang === 'fa' ? 'فرمول همراه متن' : 'Text formula'} uiLang={uiLang} /></div> : null;
   if (block.type === 'heading') return <div className="lesson-text-block"><h3 className="lesson-block-heading" lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></h3>{formula(block.latex)}</div>;
@@ -185,7 +189,7 @@ export function LessonBlockView({ block, blockKey, revealed, onReveal, uiLang = 
   if (block.type === 'definition') return <section className="lesson-block lesson-definition" lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}>
     <h4>{uiLang === 'fa' ? 'تعریف' : 'Definition'}</h4><p><LessonText text={block.text} lang={block.lang} /></p>{block.latex && <LessonMath latex={block.latex} label={uiLang === 'fa' ? 'فرمول تعریف' : 'Definition formula'} uiLang={uiLang} />}
   </section>;
-  if (block.type === 'example') return <LessonExample block={block} blockKey={blockKey} revealed={revealed} onReveal={onReveal} uiLang={uiLang} />;
+  if (block.type === 'example') return <LessonExample block={block} blockKey={blockKey} revealed={revealed} onReveal={onReveal} uiLang={uiLang} solutionLocked={solutionLocked} />;
   if (block.type === 'math') return block.text ? <figure className="lesson-math-figure"><figcaption lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></figcaption><LessonMath latex={block.latex} label={uiLang === 'fa' ? 'فرمول درس' : 'Lesson formula'} uiLang={uiLang} /></figure> : <LessonMath latex={block.latex} label={uiLang === 'fa' ? 'فرمول درس' : 'Lesson formula'} uiLang={uiLang} />;
   if (block.type === 'image') return <LessonImage src={block.src} alt={block.alt} caption={block.caption} lang={block.lang} uiLang={uiLang} />;
   if (block.type === 'image-description') return <figure className="lesson-image-fallback"><span className="lesson-image-fallback-label" role="status" lang={uiLang}>{uiLang === 'fa' ? 'تصویر در دسترس نیست.' : 'Image unavailable.'}</span><figcaption><details><summary lang={uiLang}>{uiLang === 'fa' ? 'نمایش توضیح تصویر' : 'Show image description'}</summary><p lang={languageForText(block.text, block.lang)} dir={contentDirection(block.text, block.lang)}><LessonText text={block.text} lang={block.lang} /></p></details></figcaption></figure>;

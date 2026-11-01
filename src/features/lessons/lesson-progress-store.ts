@@ -1,12 +1,12 @@
 import { allowedWorkKeys, normalizeWorkAnswers } from './lesson-work-items';
 import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
-import type { Lesson, LessonCheckAnswer, LessonProgress, LessonStatus } from './types';
+import type { Lesson, LessonCheckAnswer, LessonChunkAnswer, LessonExampleAttempt, LessonPracticeResult, LessonProgress, LessonStatus } from './types';
 import { buildLessonSections } from './lesson-sections';
 
 export const LESSON_PROGRESS_PREFIX = 'math-scratchpad-lesson-progress-v1';
 export const LESSON_PROGRESS_SCHEMA = 1;
-const MAX_RECORD_LENGTH = 1_000_000;
+const MAX_RECORD_LENGTH = 4_000_000;
 const safeId = /^[\w.-]{1,80}$/;
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/;
 const statuses = new Set<LessonStatus>(['learning', 'practising', 'done']);
@@ -86,7 +86,15 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
   }
   if (Array.isArray(value.activePracticeQuestionIds) && value.activePracticeQuestionIds.some(id => (value.completedPracticeQuestionIds as unknown[] | undefined)?.includes(id))) return undefined;
   const conceptIds = new Set(lesson.concepts.map(concept => concept.id));
+  if (value.activePracticeConceptId !== undefined && (typeof value.activePracticeConceptId !== 'string' || !conceptIds.has(value.activePracticeConceptId))) return undefined;
   const checkIds = new Set(lesson.concepts.flatMap(concept => concept.checkQuestionIds));
+  const learningChunks = lesson.concepts.flatMap(concept => concept.learningChunks ?? []);
+  const chunkIds = new Set(learningChunks.map(chunk => chunk.id));
+  const practiceResultsAllowed = new Set([...practiceQuestionIds]);
+  const exampleKeys = new Set<string>();
+  lesson.concepts.forEach(concept => concept.blocks.forEach((block, blockIndex) => {
+    if (block.type === 'example') exampleKeys.add(`ex:${concept.id}:${blockIndex}`);
+  }));
   if (!Array.isArray(value.completedConceptIds) || !Array.isArray(value.answeredCheckIds) || !Array.isArray(value.skippedChecks) || !record(value.revealedSteps)) return undefined;
   if (!value.completedConceptIds.every((id): id is string => typeof id === 'string' && conceptIds.has(id)) || !value.answeredCheckIds.every((id): id is string => typeof id === 'string' && checkIds.has(id))) return undefined;
   const completedConceptIds = value.completedConceptIds as string[];
@@ -116,6 +124,58 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
     }
   }
   if (answeredCheckIds.some(id => !Object.hasOwn(checkAnswers, id))) return undefined;
+
+  const completedLearningChunkIds: string[] = [];
+  if (value.completedLearningChunkIds !== undefined) {
+    if (!Array.isArray(value.completedLearningChunkIds) || !value.completedLearningChunkIds.every((id): id is string => typeof id === 'string' && chunkIds.has(id))) return undefined;
+    completedLearningChunkIds.push(...new Set(value.completedLearningChunkIds));
+  }
+  if (value.currentChunkId !== undefined && (typeof value.currentChunkId !== 'string' || !chunkIds.has(value.currentChunkId))) return undefined;
+  if (value.activeConceptPhase !== undefined && !['reading', 'solving', 'summary'].includes(String(value.activeConceptPhase))) return undefined;
+  if (value.conceptSummaryId !== undefined && (typeof value.conceptSummaryId !== 'string' || !conceptIds.has(value.conceptSummaryId))) return undefined;
+
+  const chunkAnswers: Record<string, LessonChunkAnswer> = {};
+  if (value.chunkAnswers !== undefined) {
+    if (!record(value.chunkAnswers)) return undefined;
+    const allowedChunkQuestions = new Set(learningChunks.flatMap(chunk => chunk.questionIds));
+    for (const [questionId, rawAnswer] of Object.entries(value.chunkAnswers)) {
+      if (!allowedChunkQuestions.has(questionId) || !record(rawAnswer) || typeof rawAnswer.value !== 'string' || rawAnswer.value.length > 4000 || !timestamp(rawAnswer.updatedAt)
+        || (rawAnswer.submittedAt !== undefined && !timestamp(rawAnswer.submittedAt))) return undefined;
+      chunkAnswers[questionId] = { value: rawAnswer.value, updatedAt: rawAnswer.updatedAt, ...(timestamp(rawAnswer.submittedAt) ? { submittedAt: rawAnswer.submittedAt } : {}) };
+    }
+  }
+
+  const exampleAttempts: Record<string, LessonExampleAttempt> = {};
+  if (value.exampleAttempts !== undefined) {
+    if (!record(value.exampleAttempts)) return undefined;
+    for (const [key, rawAttempt] of Object.entries(value.exampleAttempts)) {
+      if (!exampleKeys.has(key) || !record(rawAttempt) || !timestamp(rawAttempt.attemptedAt) || (rawAttempt.comparedAt !== undefined && !timestamp(rawAttempt.comparedAt))) return undefined;
+      exampleAttempts[key] = { attemptedAt: rawAttempt.attemptedAt, ...(timestamp(rawAttempt.comparedAt) ? { comparedAt: rawAttempt.comparedAt } : {}) };
+    }
+  }
+
+  const practiceResults: Record<string, LessonPracticeResult> = {};
+  if (value.practiceResults !== undefined) {
+    if (!record(value.practiceResults)) return undefined;
+    for (const [questionId, rawResult] of Object.entries(value.practiceResults)) {
+      if (!practiceResultsAllowed.has(questionId) || !record(rawResult)
+        || !['not_started', 'draft', 'answered', 'skipped'].includes(String(rawResult.status))
+        || !Array.isArray(rawResult.steps) || rawResult.steps.length > 40
+        || !rawResult.steps.every(step => record(step) && typeof step.latex === 'string' && step.latex.length <= 20000 && typeof step.final === 'boolean')
+        || !timestamp(rawResult.updatedAt)
+        || (rawResult.answer !== undefined && (typeof rawResult.answer !== 'string' || rawResult.answer.length > 4000))
+        || (rawResult.startedAt !== undefined && !timestamp(rawResult.startedAt))
+        || (rawResult.submittedAt !== undefined && !timestamp(rawResult.submittedAt))) return undefined;
+      practiceResults[questionId] = {
+        status: rawResult.status as LessonPracticeResult['status'],
+        ...(typeof rawResult.answer === 'string' ? { answer: rawResult.answer } : {}),
+        steps: rawResult.steps.map(step => ({ latex: (step as { latex: string }).latex, final: (step as { final: boolean }).final })),
+        ...(timestamp(rawResult.startedAt) ? { startedAt: rawResult.startedAt } : {}),
+        updatedAt: rawResult.updatedAt,
+        ...(timestamp(rawResult.submittedAt) ? { submittedAt: rawResult.submittedAt } : {}),
+      };
+    }
+  }
   const confidenceByCheckId: Record<string, 1 | 2 | 3 | 4 | 5> = {};
   if (value.confidenceByCheckId !== undefined) {
     if (!record(value.confidenceByCheckId)) return undefined;
@@ -141,11 +201,19 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
     currentSectionIndex: sectionIndex as number,
     completedSectionIds: [...new Set((value.completedSectionIds ?? []) as string[])],
     ...(typeof value.activePracticeSectionId === 'string' ? { activePracticeSectionId: value.activePracticeSectionId } : {}),
+    ...(typeof value.activePracticeConceptId === 'string' ? { activePracticeConceptId: value.activePracticeConceptId } : {}),
     ...(Array.isArray(value.completedPracticeQuestionIds) ? { completedPracticeQuestionIds: [...new Set(value.completedPracticeQuestionIds as string[])] } : {}),
     ...(Array.isArray(value.activePracticeQuestionIds) ? { activePracticeQuestionIds: [...new Set(value.activePracticeQuestionIds as string[])] } : {}),
     completedConceptIds: [...new Set(completedConceptIds)],
     answeredCheckIds: [...new Set(answeredCheckIds)],
     skippedChecks,
+    ...(value.currentChunkId !== undefined ? { currentChunkId: value.currentChunkId as string } : {}),
+    ...(completedLearningChunkIds.length ? { completedLearningChunkIds } : {}),
+    ...(value.activeConceptPhase !== undefined ? { activeConceptPhase: value.activeConceptPhase as LessonProgress['activeConceptPhase'] } : {}),
+    ...(typeof value.conceptSummaryId === 'string' ? { conceptSummaryId: value.conceptSummaryId } : {}),
+    ...(Object.keys(chunkAnswers).length ? { chunkAnswers } : {}),
+    ...(Object.keys(exampleAttempts).length ? { exampleAttempts } : {}),
+    ...(Object.keys(practiceResults).length ? { practiceResults } : {}),
     ...(typeof value.summaryOpen === 'boolean' ? { summaryOpen: value.summaryOpen } : {}),
     ...(Object.keys(checkAnswers).length ? { checkAnswers } : {}),
     ...(Object.keys(confidenceByCheckId).length ? { confidenceByCheckId } : {}),
