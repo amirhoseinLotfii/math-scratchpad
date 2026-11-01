@@ -76,6 +76,12 @@ export function buildSectionWorkItems(section: LessonSection | undefined, checks
   return items;
 }
 
+/** All example and guided-example scratch work for one active v22 concept. */
+export function buildConceptWorkItems(concept: LessonSection['concepts'][number]['concept'], conceptIndex: number): LessonWorkItem[] {
+  const section: LessonSection = { id: concept.id, concepts: [{ concept, conceptIndex, blocks: concept.blocks }] };
+  return buildSectionWorkItems(section, [], []);
+}
+
 /** Keeps the selection when it still exists in this section, otherwise picks the first item. */
 export function resolveSelectedWorkItem(items: LessonWorkItem[], selectedKey: string | undefined): LessonWorkItem | undefined {
   return items.find(item => item.key === selectedKey) ?? items[0];

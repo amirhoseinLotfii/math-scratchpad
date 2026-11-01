@@ -5,7 +5,7 @@ import { Button } from '../../shared/ui/button';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import { getPracticeQuestionConceptId, getPracticeQuestionOrigin, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import type { Lesson } from './types';
-import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';
+import { contentDirection, displayEducationalHeading, ExtraSourceBadge, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';
 import { buildLessonSections, type LessonSection } from './lesson-sections';
 
 function pageText(value: string, uiLang: 'fa' | 'en'): string {
@@ -16,6 +16,7 @@ function ReadOnlyQuestion({ question, title, onSelect, uiLang }: { question: Ban
   const fa = uiLang === 'fa';
   return <article className="lesson-reference-check">
     <h4><span>{title}</span><span aria-hidden="true"> · </span><bdi dir="ltr">{question.id}</bdi></h4>
+    <ExtraSourceBadge visible={question.tags?.source === 'extra'} />
     {question.prompt && <p lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
     <QuestionSource source={question.source} mode={question.mode} label={fa ? 'عبارت سؤال' : 'Question expression'} mathLabel={fa ? 'عبارت ریاضی سؤال' : 'Question math expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />
     {question.answerType === 'choice' && question.choices && <ul className="lesson-reference-choices" dir="ltr" aria-label={fa ? 'گزینه‌ها' : 'Answer choices'}>{question.choices.map((choice, index) => <li key={`${question.id}-${index}`}><QuestionChoice choice={choice} index={index} uiLang={uiLang} /></li>)}</ul>}

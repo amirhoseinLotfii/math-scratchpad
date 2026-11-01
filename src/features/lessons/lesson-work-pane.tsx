@@ -7,6 +7,7 @@ import { LessonMathCheck } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
 import type { LessonWorkItem, LessonWorkKind } from './lesson-work-items';
+import type { LessonExampleAttempt } from './types';
 
 const KIND_LABEL: Record<LessonWorkKind, { fa: string; en: string }> = {
   example: { fa: 'مثال حل‌شده', en: 'Worked example' },
@@ -26,7 +27,7 @@ export function workItemLabel(item: LessonWorkItem, index: number, uiLang: 'fa' 
  * The lesson "Your work" pane: a selector over the current section's work items and the app's
  * existing step editor + math toolbar (composed through LessonMathCheck, never modified).
  */
-export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore, onWork, renderCheck, savedSteps }: {
+export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore, onWork, renderCheck, savedSteps, exampleAttempts, onCompareExample }: {
   items: LessonWorkItem[];
   selected: LessonWorkItem | undefined;
   onSelect: (key: string) => void;
@@ -35,6 +36,8 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
   onWork: (key: string, answer: { type: 'math'; steps: Step[] }) => void;
   renderCheck: (question: BankQuestion) => ReactNode;
   savedSteps: (key: string) => Step[] | undefined;
+  exampleAttempts?: Record<string, LessonExampleAttempt>;
+  onCompareExample?: (key: string) => void;
 }) {
   const fa = uiLang === 'fa', selectId = useId();
   const [solutionShown, setSolutionShown] = useState<Record<string, boolean>>({});
@@ -69,11 +72,11 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
         {block?.type === 'example' && <div className="lesson-work-feedback">
           {!attempted
             ? <p className="lesson-work-hint">{fa ? 'اول خودت حداقل یک گام بنویس؛ بعد می‌توانی حلِ همین مثال در درس‌نامه را ببینی.' : 'Write at least one step first; then you can compare with the lesson’s solution.'}</p>
-            : solutionShown[item.key]
+            : (exampleAttempts?.[item.key]?.comparedAt || solutionShown[item.key])
               ? <ol className="lesson-work-solution" aria-label={fa ? 'حل مثال در درس‌نامه' : 'Lesson solution'}>{block.steps.map((text, index) => <li key={index} lang={languageForText(text)} dir={contentDirection(text)}><LessonText text={text} /></li>)}</ol>
-              : <Button onClick={() => setSolutionShown(value => ({ ...value, [item.key]: true }))}>{fa ? 'مقایسه با حل درس‌نامه' : 'Compare with the lesson solution'}</Button>}
+              : <Button onClick={() => { setSolutionShown(value => ({ ...value, [item.key]: true })); onCompareExample?.(item.key); }}>{fa ? 'مقایسه با حل درس‌نامه' : 'Compare with the lesson solution'}</Button>}
         </div>}
-        {item.kind !== 'example' && <p className="lesson-work-hint">{fa ? 'جواب نهایی این مورد در بانک نیست؛ کارت فقط روی همین دستگاه ذخیره می‌شود و نمره داده نمی‌شود.' : 'This item has no stored answer; your work is saved on this device only and is not graded.'}</p>}
+        {item.kind !== 'example' && <p className="lesson-work-hint">{fa ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : 'No answer key; send your export for review.'}</p>}
       </>}
     </div>
   </aside>;

@@ -3,18 +3,22 @@ import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
-import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
-import { getLearnChecks, getPracticeQuestionOrigin, getPracticeQuestions, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
+import type { Lesson, LessonCheckAnswer, LessonPracticeResult, LessonProgress, MixedReviewRun } from './types';
+import { getLearnChecks, getPracticeQuestionConceptId, getPracticeQuestionOrigin, getPracticeQuestions, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
-import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits } from './lesson-content';
-import { buildLessonSections, type LessonSection } from './lesson-sections';
+import { LessonChunkChecks } from './lesson-chunk-checks';
+import { contentDirection, displayEducationalHeading, ExtraSourceBadge, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
+import { buildActiveLessonChunks, buildLessonSections, type ActiveLessonChunk, type LessonSection } from './lesson-sections';
 import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
 import { MAX_SESSION_EXERCISES, stepIsBlank, type Step } from '../../model';
-import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
+import { buildConceptWorkItems, buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
+import type { LessonExampleAttempt } from './types';
+import { nextTextbookPracticeBatch } from './lesson-practice-batches';
+import { buildMixedReviewSet, createMixedReviewRun, mixedReviewHistory, type MixedReviewMode } from './mixed-review';
 
 function subscribeSplit(change: () => void) {
   if (typeof window.matchMedia !== 'function') return () => {};
@@ -31,9 +35,13 @@ type Props = {
   lesson: Lesson | null;
   loading?: boolean;
   initialProgress?: LessonProgress;
+  progressByLesson?: Record<string, LessonProgress>;
   onBack: () => void;
   onProgress?: (progress: LessonProgress) => void;
-  onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], sectionId?: string) => void;
+  onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], sectionId?: string, conceptId?: string) => void;
+  onStartMixedReview?: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], run: MixedReviewRun) => void;
+  onDownloadLesson?: (format: 'md' | 'json') => void;
+  onDownloadChapter?: (format: 'md' | 'json') => void;
   practiceError?: string;
   progressMessage?: string;
 };
@@ -44,8 +52,8 @@ function newProgress(lessonId: string): LessonProgress {
   return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
 }
 
-function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSingleConceptHeading = false }: {
-  section: LessonSection; onReveal: (key: string, value: number) => void; revealedSteps: Record<string, number>; uiLang: 'fa' | 'en'; hideSingleConceptHeading?: boolean;
+function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSingleConceptHeading = false, solutionLocked = false }: {
+  section: LessonSection; onReveal: (key: string, value: number) => void; revealedSteps: Record<string, number>; uiLang: 'fa' | 'en'; hideSingleConceptHeading?: boolean; solutionLocked?: boolean;
 }) {
   return <div className="lesson-section-content">
     {section.concepts.map(({ concept, conceptIndex, blocks }) => {
@@ -53,7 +61,7 @@ function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSi
         const originalIndex = concept.blocks.indexOf(block);
         if (isRedundantOpeningHeading(concept, block, originalIndex)) return null;
         const key = `${concept.id}:${originalIndex >= 0 ? originalIndex : blockIndex}`;
-        return <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
+        return <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} solutionLocked={solutionLocked} />;
       })}</div>;
       if (hideSingleConceptHeading && section.concepts.length === 1) return <div className="lesson-section-concept" key={concept.id}>{content}</div>;
       return <section className="lesson-section-concept" key={concept.id} aria-labelledby={`lesson-section-concept-${concept.id}`}>
@@ -71,7 +79,7 @@ function ReviewQuestionContent({ question }: { question: BankQuestion }) {
   return <span lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></span>;
 }
 
-function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage }: ReadyProps) {
+function ReadyLegacyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage, onDownloadLesson, onDownloadChapter }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
   const sections = useMemo(() => buildLessonSections(lesson), [lesson]);
@@ -351,6 +359,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   return <section className="lesson-screen" aria-label={fa ? 'درس‌نامه' : 'Lesson notes'} lang={uiLang} dir={fa ? 'rtl' : 'ltr'}>
     <header className="lesson-header">
       <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />{fa ? 'بازگشت به تمرین' : 'Back to question'}</Button>
+      <LessonDownloadControls uiLang={uiLang} onDownloadLesson={onDownloadLesson} onDownloadChapter={onDownloadChapter} />
       <Button variant="ghost" className="lesson-info-toggle" aria-expanded={lessonInfoOpen} aria-controls="lesson-info-panel" onClick={() => setLessonInfoOpen(open => !open)}>
         <span>{fa ? (lessonInfoOpen ? 'بستن اطلاعات درس' : 'اطلاعات درس') : (lessonInfoOpen ? 'Hide lesson information' : 'Lesson information')}</span>
         <ChevronDown aria-hidden="true" className={lessonInfoOpen ? 'lesson-info-chevron lesson-info-chevron-open' : 'lesson-info-chevron'} />
@@ -409,7 +418,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
         {split
           ? <ul className="lesson-check-links">{checks.map(question => <li key={question.id}>
               <Button variant="ghost" className="lesson-check-link" aria-current={selectedWorkItem?.key === `q:${question.id}` ? 'true' : undefined} onClick={() => setSelectedWorkKey(`q:${question.id}`)}>
-                <bdi dir="ltr">{question.id}</bdi> · <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span>
+                <bdi dir="ltr">{question.id}</bdi> · <ExtraSourceBadge visible={question.tags?.source === 'extra'} /> <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span>
                 <span className="lesson-check-link-status">{progress.answeredCheckIds.includes(question.id) ? (fa ? 'پاسخ داده شد' : 'Answered') : progress.skippedChecks.some(item => item.questionId === question.id) ? (fa ? 'ردشده' : 'Skipped') : (fa ? 'حل در «کار من»' : 'Solve in Your work')}</span>
               </Button>
             </li>)}</ul>
@@ -443,6 +452,492 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       </DialogContent>
     </Dialog>
   </section>;
+}
+
+function LessonDownloadControls({ uiLang, onDownloadLesson, onDownloadChapter }: {
+  uiLang: 'fa' | 'en'; onDownloadLesson?: (format: 'md' | 'json') => void; onDownloadChapter?: (format: 'md' | 'json') => void;
+}) {
+  const fa = uiLang === 'fa';
+  const menu = (title: string, id: string, download?: (format: 'md' | 'json') => void) => download && <details className="lesson-export-menu" key={id}>
+    <summary aria-label={title}>{title}</summary>
+    <div className="lesson-export-menu-options" aria-label={title}>
+      <Button variant="ghost" onClick={event => { download('md'); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{fa ? 'Markdown (.md)' : 'Markdown (.md)'}</Button>
+      <Button variant="ghost" onClick={event => { download('json'); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{fa ? 'JSON (.json)' : 'JSON (.json)'}</Button>
+    </div>
+  </details>;
+  return <div className="lesson-download-controls">
+    {menu(fa ? 'دانلود خروجی کامل درس' : 'Download full lesson export', 'lesson-export', onDownloadLesson)}
+    {menu(fa ? 'دانلود خروجی کامل فصل' : 'Download full chapter export', 'chapter-export', onDownloadChapter)}
+  </div>;
+}
+
+function ReadyActiveLessonFlow({ bank, lesson, initialProgress, progressByLesson, onBack, onProgress, onStartPractice, onStartMixedReview, practiceError, progressMessage, onDownloadLesson, onDownloadChapter }: ReadyProps) {
+  const layout = useWorkspaceLayout(), phone = layout === 'phone';
+  const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
+  const chunks = useMemo(() => buildActiveLessonChunks(lesson), [lesson]);
+  const legacySections = useMemo(() => buildLessonSections(lesson), [lesson]);
+  const questionById = useMemo(() => new Map(bank.questions.map(question => [question.id, question])), [bank.questions]);
+  const allPracticeQuestions = useMemo(() => getPracticeQuestions(bank, lesson.id), [bank, lesson.id]);
+  const initialChunkIndex = useMemo(() => {
+    const savedId = initialProgress?.currentChunkId;
+    const savedAt = savedId ? chunks.findIndex(chunk => chunk.id === savedId) : -1;
+    if (savedAt >= 0) return savedAt;
+    const conceptIndex = initialProgress?.currentConceptIndex ?? 0;
+    return Math.max(0, chunks.findIndex(chunk => chunk.conceptIndex === conceptIndex));
+  }, [chunks, initialProgress]);
+  const [progress, setProgress] = useState<LessonProgress>(() => initialProgress ?? newProgress(lesson.id));
+  const progressRef = useRef(progress);
+  const [chunkIndex, setChunkIndex] = useState(initialChunkIndex);
+  const [lessonSummary, setLessonSummary] = useState(initialProgress?.summaryOpen ?? (!!initialProgress?.learnDoneAt && initialProgress.status === 'done'));
+  const [lessonInfoOpen, setLessonInfoOpen] = useState(false);
+  const [paneTab, setPaneTab] = useState<'lesson' | 'work'>('lesson');
+  const [selectedWorkKey, setSelectedWorkKey] = useState<string | undefined>();
+  const [splitRatio, setSplitRatio] = useState(readSplitRatio);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const summaryHeadingRef = useRef<HTMLHeadingElement>(null);
+  const workStores = useRef(new Map<string, ScratchStore>());
+  const paneMode = lessonPaneMode(useSyncExternalStore(subscribeSplit, splitSnapshot, () => false));
+  const split = paneMode === 'split';
+  const currentChunk = chunks[chunkIndex];
+  const phase = progress.activeConceptPhase ?? 'reading';
+  const concept = currentChunk?.concept;
+  const chunkQuestions = currentChunk?.questionIds.flatMap(id => questionById.get(id) ?? []) ?? [];
+  const conceptPracticeQuestions = useMemo(() => concept ? allPracticeQuestions.filter(question =>
+    getPracticeQuestionOrigin(question, lesson.id) === 'textbook' && getPracticeQuestionConceptId(question, lesson.id) === concept.id) : [], [allPracticeQuestions, concept, lesson.id]);
+  const conceptMorePracticeQuestions = useMemo(() => concept ? allPracticeQuestions.filter(question =>
+    question.origin === 'generated' && question.id.includes('-MORE-') && question.tags?.concept === concept.id) : [], [allPracticeQuestions, concept]);
+  const conceptPracticeBatch = useMemo(() => nextTextbookPracticeBatch(conceptPracticeQuestions, progress.completedPracticeQuestionIds), [conceptPracticeQuestions, progress.completedPracticeQuestionIds]);
+  const conceptMorePracticeBatch = useMemo(() => conceptMorePracticeQuestions.filter(question => !(progress.completedPracticeQuestionIds ?? []).includes(question.id)), [conceptMorePracticeQuestions, progress.completedPracticeQuestionIds]);
+  const conceptMorePracticeAttempted = conceptMorePracticeQuestions.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result && (result.status === 'draft' || result.status === 'answered')) || (progress.completedPracticeQuestionIds ?? []).includes(question.id);
+  }).length;
+  const reviewHistory = useMemo(() => mixedReviewHistory({ ...(progressByLesson ?? {}), [lesson.id]: progress }), [lesson.id, progress, progressByLesson]);
+  const lessonMixedReviewCount = useMemo(() => buildMixedReviewSet(bank, { lessonId: lesson.id, mode: 'lesson', history: reviewHistory }).length, [bank, lesson.id, reviewHistory]);
+  const chapterMixedReviewCount = useMemo(() => buildMixedReviewSet(bank, { lessonId: lesson.id, mode: 'chapter', history: reviewHistory }).length, [bank, lesson.id, reviewHistory]);
+  const conceptWorkItems = useMemo(() => concept ? buildConceptWorkItems(concept, currentChunk?.conceptIndex ?? 0) : [], [concept, currentChunk?.conceptIndex]);
+  const selectedWorkItem = resolveSelectedWorkItem(conceptWorkItems, selectedWorkKey);
+  const requiredExamples = conceptWorkItems.filter(item => item.kind === 'example');
+  const exampleAttempts = progress.exampleAttempts ?? {};
+  const examplesAttempted = requiredExamples.every(item => !!exampleAttempts[item.key]?.attemptedAt);
+  const savedChunkAnswer = (questionId: string) => {
+    const current = progress.chunkAnswers?.[questionId];
+    if (current) return current;
+    const legacy = progress.checkAnswers?.[questionId];
+    if (legacy?.type === 'text' || legacy?.type === 'choice') return { value: legacy.value, updatedAt: progress.learnStartedAt ?? new Date(0).toISOString(), ...(progress.answeredCheckIds.includes(questionId) ? { submittedAt: progress.learnStartedAt ?? new Date(0).toISOString() } : {}) };
+    return undefined;
+  };
+  const chunkIsComplete = (chunk: ActiveLessonChunk | undefined) => !!chunk && chunk.questionIds.every(questionId => {
+    const response = savedChunkAnswer(questionId);
+    const question = questionById.get(questionId);
+    return !!response?.value.trim() && (!question?.requiresExplanation || !!response.explanation?.trim()) && !!response.submittedAt;
+  });
+  const activeConceptChunks = currentChunk ? chunks.filter(chunk => chunk.concept.id === currentChunk.concept.id) : [];
+  const activeConceptChunkIndex = activeConceptChunks.findIndex(chunk => chunk.id === currentChunk?.id);
+  const isFinalChunkForConcept = activeConceptChunkIndex === activeConceptChunks.length - 1;
+  const completedChunks = new Set(progress.completedLearningChunkIds ?? []);
+  const allCompletedChunkIds = chunks.filter(chunk => chunkIsComplete(chunk)).map(chunk => chunk.id);
+  const totalChunkAnswerCount = allCompletedChunkIds.length;
+  const completedConceptCount = progress.completedConceptIds.length;
+  const uncompletedPractice = allPracticeQuestions.filter(question => !(progress.completedPracticeQuestionIds ?? []).includes(question.id));
+  const practiceBatch = uncompletedPractice.slice(0, MAX_SESSION_EXERCISES);
+  const conceptSummary = !!concept && progress.conceptSummaryId === concept.id && phase === 'summary';
+  const summaryOpen = lessonSummary;
+
+  const commitProgress = useCallback((next: LessonProgress) => {
+    progressRef.current = next;
+    setProgress(next);
+    onProgress?.(next);
+  }, [onProgress]);
+
+  useEffect(() => {
+    if (!currentChunk || progressRef.current.currentChunkId === currentChunk.id) return;
+    commitProgress({ ...progressRef.current, currentChunkId: currentChunk.id, currentConceptIndex: currentChunk.conceptIndex, activeConceptPhase: progressRef.current.activeConceptPhase ?? 'reading' });
+  }, [commitProgress, currentChunk]);
+
+  useEffect(() => {
+    const target = summaryOpen ? summaryHeadingRef.current : headingRef.current;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+  }, [chunkIndex, phase, summaryOpen, conceptSummary]);
+
+  const getWorkStore = useCallback((item: LessonWorkItem) => {
+    let store = workStores.current.get(item.key);
+    if (!store) {
+      store = createLessonMathStore(item.workQuestion, phone, progressRef.current.workAnswers?.[item.key]?.steps);
+      workStores.current.set(item.key, store);
+    }
+    return store;
+  }, [phone]);
+
+  const setWork = useCallback((key: string, { steps }: { type: 'math'; steps: Step[] }) => {
+    const before = progressRef.current;
+    const workAnswers = { ...before.workAnswers };
+    const previous = workAnswers[key];
+    const blank = steps.every(step => stepIsBlank(step));
+    if (blank && !previous) return;
+    if (previous && previous.steps === steps) return;
+    if (blank) delete workAnswers[key];
+    else workAnswers[key] = { type: 'math', steps };
+    let attempts = before.exampleAttempts;
+    if (!blank && key.startsWith('ex:') && !attempts?.[key]) attempts = { ...attempts, [key]: { attemptedAt: new Date().toISOString() } };
+    commitProgress({ ...before, ...(attempts ? { exampleAttempts: attempts } : {}), workAnswers: Object.keys(workAnswers).length ? workAnswers : undefined });
+  }, [commitProgress]);
+
+  function compareExample(key: string) {
+    const before = progressRef.current, attempt = before.exampleAttempts?.[key];
+    if (!attempt || attempt.comparedAt) return;
+    commitProgress({ ...before, exampleAttempts: { ...before.exampleAttempts, [key]: { ...attempt, comparedAt: new Date().toISOString() } } });
+  }
+
+  function changeChunkAnswer(questionId: string, value: string, explanation?: string) {
+    const before = progressRef.current;
+    const chunkAnswers = { ...before.chunkAnswers, [questionId]: { value, ...(explanation !== undefined ? { explanation } : {}), updatedAt: new Date().toISOString() } };
+    commitProgress({ ...before, chunkAnswers });
+  }
+
+  function submitChunkAnswer(questionId: string) {
+    const before = progressRef.current, response = before.chunkAnswers?.[questionId];
+    const question = questionById.get(questionId);
+    if (!response?.value.trim() || (question?.requiresExplanation && !response.explanation?.trim())) return;
+    const now = new Date().toISOString();
+    commitProgress({ ...before, chunkAnswers: { ...before.chunkAnswers, [questionId]: { ...response, updatedAt: now, submittedAt: now } } });
+  }
+
+  function updateLegacySection(nextChunk: ActiveLessonChunk) {
+    const sourceIndex = legacySections.findIndex(section => section.concepts.some(entry => entry.concept.id === nextChunk.concept.id));
+    return Math.max(0, sourceIndex);
+  }
+
+  function completeChunk(next: ActiveLessonChunk, phaseNext: 'reading' | 'solving') {
+    const before = progressRef.current;
+    const doneIds = [...new Set([...(before.completedLearningChunkIds ?? []), currentChunk!.id])];
+    commitProgress({ ...before, currentChunkId: next.id, currentConceptIndex: next.conceptIndex, currentSectionIndex: updateLegacySection(next), completedLearningChunkIds: doneIds, activeConceptPhase: phaseNext, conceptSummaryId: undefined, summaryOpen: false });
+    setChunkIndex(chunks.findIndex(chunk => chunk.id === next.id));
+    setPaneTab('lesson');
+  }
+
+  function nextFromReading() {
+    if (!currentChunk || !chunkIsComplete(currentChunk)) return;
+    if (!isFinalChunkForConcept) {
+      const next = chunks[chunkIndex + 1];
+      if (next) completeChunk(next, 'reading');
+      return;
+    }
+    const before = progressRef.current;
+    const doneIds = [...new Set([...(before.completedLearningChunkIds ?? []), currentChunk.id])];
+    commitProgress({ ...before, completedLearningChunkIds: doneIds, currentChunkId: currentChunk.id, activeConceptPhase: 'solving', conceptSummaryId: undefined, currentConceptIndex: currentChunk.conceptIndex, currentSectionIndex: updateLegacySection(currentChunk), summaryOpen: false });
+    setPaneTab('lesson');
+  }
+
+  function previousUnit() {
+    if (!currentChunk) return;
+    if (conceptSummary) {
+      commitProgress({ ...progressRef.current, conceptSummaryId: undefined, activeConceptPhase: 'solving' });
+      return;
+    }
+    if (phase === 'solving') {
+      const first = chunks.findIndex(chunk => chunk.concept.id === currentChunk.concept.id);
+      const last = chunkIndex > first ? chunkIndex - 1 : chunkIndex;
+      commitProgress({ ...progressRef.current, currentChunkId: chunks[last].id, activeConceptPhase: 'reading', conceptSummaryId: undefined });
+      setChunkIndex(last); setPaneTab('lesson'); return;
+    }
+    if (chunkIndex > 0) {
+      const previous = chunks[chunkIndex - 1];
+      commitProgress({ ...progressRef.current, currentChunkId: previous.id, currentConceptIndex: previous.conceptIndex, currentSectionIndex: updateLegacySection(previous), activeConceptPhase: 'reading' });
+      setChunkIndex(chunkIndex - 1); setPaneTab('lesson');
+    }
+  }
+
+  function startConceptPractice() {
+    if (!concept || !examplesAttempted || !conceptPracticeQuestions.length) return;
+    const nextBatch = nextTextbookPracticeBatch(conceptPracticeQuestions, progressRef.current.completedPracticeQuestionIds);
+    if (!nextBatch.length) return;
+    const now = new Date().toISOString();
+    const next: LessonProgress = {
+      ...progressRef.current,
+      status: 'practising',
+      currentChunkId: currentChunk?.id,
+      currentConceptIndex: currentChunk?.conceptIndex ?? progressRef.current.currentConceptIndex,
+      currentSectionIndex: updateLegacySection(currentChunk!),
+      activeConceptPhase: 'solving',
+      conceptSummaryId: undefined,
+      activePracticeConceptId: concept.id,
+      activePracticeSectionId: undefined,
+      activePracticeQuestionIds: nextBatch.map(question => question.id),
+      summaryOpen: false,
+      practiceStartedAt: now,
+    };
+    commitProgress(next);
+    onStartPractice(lesson, next, nextBatch, undefined, concept.id);
+  }
+
+  function startMorePractice() {
+    if (!concept || !examplesAttempted || !conceptMorePracticeBatch.length) return;
+    const now = new Date().toISOString();
+    const next: LessonProgress = {
+      ...progressRef.current,
+      status: 'practising',
+      currentChunkId: currentChunk?.id,
+      currentConceptIndex: currentChunk?.conceptIndex ?? progressRef.current.currentConceptIndex,
+      activeConceptPhase: 'summary',
+      conceptSummaryId: undefined,
+      activePracticeConceptId: concept.id,
+      activePracticeSectionId: undefined,
+      activePracticeQuestionIds: conceptMorePracticeBatch.map(question => question.id),
+      summaryOpen: false,
+      practiceStartedAt: now,
+    };
+    commitProgress(next);
+    onStartPractice(lesson, next, conceptMorePracticeBatch, undefined, concept.id);
+  }
+
+  function startMixedReview(mode: MixedReviewMode) {
+    if (!onStartMixedReview) return;
+    const questions = buildMixedReviewSet(bank, { lessonId: lesson.id, mode, history: reviewHistory });
+    if (!questions.length) return;
+    const now = new Date().toISOString();
+    const run = createMixedReviewRun(questions.map(question => question.id), mode, now);
+    const before = progressRef.current;
+    const next: LessonProgress = {
+      ...before,
+      status: 'practising',
+      activePracticeConceptId: undefined,
+      activePracticeSectionId: undefined,
+      activePracticeQuestionIds: undefined,
+      activeMixedReviewRunId: run.id,
+      mixedReviewRuns: [...(before.mixedReviewRuns ?? []), run],
+      summaryOpen: true,
+      practiceStartedAt: now,
+    };
+    commitProgress(next);
+    onStartMixedReview(lesson, next, questions, run);
+  }
+
+  function finishWithoutBookQuestions() {
+    if (!concept || !examplesAttempted || conceptPracticeQuestions.length) return;
+    const before = progressRef.current;
+    commitProgress({ ...before, completedConceptIds: [...new Set([...before.completedConceptIds, concept.id])], activeConceptPhase: 'summary', conceptSummaryId: concept.id, status: 'learning', summaryOpen: false });
+  }
+
+  function nextConceptFromSummary() {
+    if (!concept) return;
+    const next = chunks.find(chunk => chunk.conceptIndex > currentChunk!.conceptIndex);
+    const before = progressRef.current;
+    if (next) {
+      commitProgress({ ...before, currentChunkId: next.id, currentConceptIndex: next.conceptIndex, currentSectionIndex: updateLegacySection(next), activeConceptPhase: 'reading', conceptSummaryId: undefined, summaryOpen: false });
+      setChunkIndex(chunks.findIndex(chunk => chunk.id === next.id));
+      setPaneTab('lesson');
+      return;
+    }
+    commitProgress({ ...before, conceptSummaryId: undefined, activeConceptPhase: 'summary', summaryOpen: true, status: 'learning', learnDoneAt: before.learnDoneAt ?? new Date().toISOString() });
+    setLessonSummary(true);
+  }
+
+  function reviewActiveLesson() {
+    const first = chunks[0];
+    if (!first) return;
+    setLessonSummary(false);
+    setChunkIndex(0);
+    setPaneTab('lesson');
+    commitProgress({ ...progressRef.current, currentChunkId: first.id, currentConceptIndex: first.conceptIndex, currentSectionIndex: updateLegacySection(first), activeConceptPhase: 'reading', conceptSummaryId: undefined, summaryOpen: false });
+  }
+
+  function startRemainingPractice() {
+    if (!practiceBatch.length) return;
+    const now = new Date().toISOString();
+    const next = { ...progressRef.current, status: 'practising' as const, activePracticeConceptId: undefined, activePracticeSectionId: undefined, activePracticeQuestionIds: practiceBatch.map(question => question.id), summaryOpen: true, practiceStartedAt: now };
+    commitProgress(next);
+    onStartPractice(lesson, next, practiceBatch);
+  }
+
+  function updateSplitRatio(value: number) { const next = clampSplitRatio(value); setSplitRatio(next); writeSplitRatio(next); }
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const container = splitRef.current;
+    if (!container) return;
+    event.preventDefault();
+    const rtl = getComputedStyle(container).direction === 'rtl';
+    const move = (e: PointerEvent) => updateSplitRatio(ratioFromPointer(e.clientX, container.getBoundingClientRect(), rtl));
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  function resizeByKey(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const rtl = splitRef.current ? getComputedStyle(splitRef.current).direction === 'rtl' : fa;
+    const grow = rtl ? 'ArrowLeft' : 'ArrowRight', shrink = rtl ? 'ArrowRight' : 'ArrowLeft';
+    if (event.key === grow) { event.preventDefault(); updateSplitRatio(splitRatio + 5); }
+    else if (event.key === shrink) { event.preventDefault(); updateSplitRatio(splitRatio - 5); }
+    else if (event.key === 'Home') { event.preventDefault(); updateSplitRatio(30); }
+    else if (event.key === 'End') { event.preventDefault(); updateSplitRatio(70); }
+  }
+
+  if (!currentChunk || !concept) return <LessonAvailability loading={false} onBack={onBack} />;
+  const pageText = currentChunk.startPage ? currentChunk.startPage === currentChunk.endPage
+    ? localizeLessonDigits(currentChunk.startPage, uiLang)
+    : `${localizeLessonDigits(currentChunk.startPage, uiLang)}–${localizeLessonDigits(currentChunk.endPage ?? currentChunk.startPage + 1, uiLang)}` : '';
+  const displaySection: LessonSection = {
+    id: currentChunk.id,
+    title: currentChunk.title,
+    ...(currentChunk.startPage ? { startPage: currentChunk.startPage, endPage: currentChunk.endPage } : {}),
+    concepts: [{ concept, conceptIndex: currentChunk.conceptIndex, blocks: phase === 'solving' ? concept.blocks : currentChunk.blocks }],
+  };
+  const currentConceptChunksDone = activeConceptChunks.filter(chunk => completedChunks.has(chunk.id) || chunkIsComplete(chunk)).length;
+  const conceptLearnQuestions = concept?.checkQuestionIds.flatMap(id => questionById.get(id) ? [questionById.get(id)!] : []) ?? [];
+  const conceptPracticeItems = concept ? allPracticeQuestions.filter(question => question.tags?.concept === concept.id || getPracticeQuestionConceptId(question, lesson.id) === concept.id) : [];
+  const conceptLearnAttempted = conceptLearnQuestions.filter(question => {
+    if (progress.skippedChecks.some(item => item.questionId === question.id)) return false;
+    const answer = savedChunkAnswer(question.id);
+    const legacyAnswer = progress.checkAnswers?.[question.id];
+    return !!answer?.value.trim() || !!answer?.explanation?.trim() || progress.answeredCheckIds.includes(question.id) || !!legacyAnswer;
+  }).length;
+  const conceptLearnSkipped = conceptLearnQuestions.filter(question => progress.skippedChecks.some(item => item.questionId === question.id)).length;
+  const conceptExampleAttempted = requiredExamples.filter(item => !!exampleAttempts[item.key]?.attemptedAt).length;
+  const conceptPracticeAttempted = conceptPracticeItems.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result && (result.status === 'draft' || result.status === 'answered')) || (progress.completedPracticeQuestionIds ?? []).includes(question.id);
+  }).length;
+  const conceptPracticeSkipped = conceptPracticeItems.filter(question => progress.practiceResults?.[question.id]?.status === 'skipped').length;
+  const conceptActivityTotal = conceptLearnQuestions.length + requiredExamples.length + conceptPracticeItems.length;
+  const conceptItemsAttempted = conceptLearnAttempted + conceptExampleAttempted + conceptPracticeAttempted;
+  const conceptItemsSkipped = conceptLearnSkipped + conceptPracticeSkipped;
+  const conceptCorrectKnown = conceptPracticeItems.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result?.status === 'draft' || result?.status === 'answered') && result.correctness === 'correct';
+  }).length;
+  const conceptIncorrectKnown = conceptPracticeItems.filter(question => {
+    const result = progress.practiceResults?.[question.id];
+    return (result?.status === 'draft' || result?.status === 'answered') && result.correctness === 'incorrect';
+  }).length;
+  const conceptCorrectnessUnknown = Math.max(0, conceptItemsAttempted - conceptCorrectKnown - conceptIncorrectKnown);
+  const conceptItemsOpen = Math.max(0, conceptActivityTotal - conceptItemsAttempted - conceptItemsSkipped);
+
+  return <section className="lesson-screen lesson-active-flow" aria-label={fa ? 'درس‌نامهٔ تعاملی' : 'Interactive lesson'} lang={uiLang} dir={fa ? 'rtl' : 'ltr'}>
+    <header className="lesson-header">
+      <Button variant="ghost" className="lesson-back" onClick={onBack}><ArrowLeft aria-hidden="true" />{fa ? 'بازگشت به تمرین' : 'Back to question'}</Button>
+      <LessonDownloadControls uiLang={uiLang} onDownloadLesson={onDownloadLesson} onDownloadChapter={onDownloadChapter} />
+      <Button variant="ghost" className="lesson-info-toggle" aria-expanded={lessonInfoOpen} aria-controls="lesson-info-panel" onClick={() => setLessonInfoOpen(open => !open)}>
+        <span>{fa ? (lessonInfoOpen ? 'بستن اطلاعات درس' : 'اطلاعات درس') : (lessonInfoOpen ? 'Hide lesson information' : 'Lesson information')}</span>
+        <ChevronDown aria-hidden="true" className={lessonInfoOpen ? 'lesson-info-chevron lesson-info-chevron-open' : 'lesson-info-chevron'} />
+      </Button>
+      <div id="lesson-info-panel" className={`lesson-info-panel${lessonInfoOpen ? '' : ' lesson-info-panel-collapsed'}`}>
+        <p className="lesson-book-line" dir="ltr"><bdi>{lesson.book}</bdi> · {lesson.section}{lesson.pages && <> · <bdi>pp. {lesson.pages.replace(/(\d)\s*-\s*(\d)/, '$1–$2')}</bdi></>}</p>
+        <LessonSourceAttribution book={lesson.book} section={lesson.section} />
+      </div>
+      <h1 lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></h1>
+      {practiceError && <p className="lesson-practice-error" role="alert">{practiceError}</p>}
+      {progressMessage && <p className="lesson-progress-message" role="alert">{progressMessage}</p>}
+      {!summaryOpen && <div className="lesson-active-progress" aria-label={fa ? 'پیشرفت فصل' : 'Chapter progress'}>
+        <p role="status" aria-live="polite">{fa ? `${localizeLessonDigits(totalChunkAnswerCount, uiLang)} از ${localizeLessonDigits(chunks.length, uiLang)} گام پاسخ داده شد · ${localizeLessonDigits(completedConceptCount, uiLang)} از ${localizeLessonDigits(lesson.concepts.length, uiLang)} مفهوم کامل شد` : `${totalChunkAnswerCount} of ${chunks.length} chunks answered · ${completedConceptCount} of ${lesson.concepts.length} concepts complete`}</p>
+        <div className="lesson-active-progress-track" role="progressbar" aria-label={fa ? 'پیشرفت گام‌های درس' : 'Lesson chunk progress'} aria-valuemin={0} aria-valuemax={chunks.length} aria-valuenow={totalChunkAnswerCount}><span style={{ width: `${totalChunkAnswerCount / Math.max(chunks.length, 1) * 100}%` }} /></div>
+      </div>}
+    </header>
+
+    {summaryOpen ? <section className="lesson-summary" aria-labelledby="active-lesson-summary-title">
+      <div className="lesson-summary-heading"><BookOpen aria-hidden="true" /><h2 id="active-lesson-summary-title" ref={summaryHeadingRef} tabIndex={-1}>{fa ? 'جمع‌بندی فصل' : 'Chapter summary'}</h2></div>
+      <p className="lesson-active-summary-progress">{fa ? `${localizeLessonDigits(completedConceptCount, uiLang)} از ${localizeLessonDigits(lesson.concepts.length, uiLang)} مفهوم کامل شده است.` : `${completedConceptCount} of ${lesson.concepts.length} concepts completed.`}</p>
+      <ul className="lesson-summary-concepts">{lesson.concepts.map((entry, index) => <li key={entry.id}>
+        <span><span>{localizeLessonDigits(index + 1, uiLang)}. </span><bdi lang={languageForText(entry.title)} dir={contentDirection(entry.title)}><LessonText text={displayEducationalHeading(entry.title)} /></bdi></span>
+        <span className="lesson-summary-count">{progress.completedConceptIds.includes(entry.id) ? (fa ? 'کامل شد' : 'Complete') : (fa ? 'باقی مانده' : 'Remaining')}</span>
+      </li>)}</ul>
+      {uncompletedPractice.length > 0 ? <section className="lesson-section-practice">
+        <h3>{fa ? 'تمرین‌های تکمیلی یا باقی‌ماندهٔ فصل' : 'Remaining chapter practice'}</h3>
+        <p>{fa ? `${localizeLessonDigits(uncompletedPractice.length, uiLang)} سؤال باقی مانده است. تمرین‌های کتاب پیش از تمرین‌های تکمیلی می‌آیند.` : `${uncompletedPractice.length} questions remain. Textbook exercises come before extra practice.`}</p>
+        <Button className="lesson-primary-action" onClick={startRemainingPractice}>{fa ? 'ادامهٔ تمرین فصل' : 'Continue chapter practice'}</Button>
+      </section> : <p className="lesson-section-practice-done" role="status">{fa ? 'همهٔ تمرین‌های فصل انجام شده‌اند.' : 'All chapter practice is complete.'}</p>}
+      {(lessonMixedReviewCount > 0 || chapterMixedReviewCount > 0) && <section className="lesson-section-practice lesson-mixed-review" aria-label={fa ? 'مرور ترکیبی' : 'Mixed review'}>
+        <h3>{fa ? 'مرور ترکیبیِ سؤال‌های دیده‌شده تا اینجا' : 'Mixed review of everything so far'}</h3>
+        <p>{fa ? 'سؤال‌ها از برچسب‌های درس، مفهوم و مهارت انتخاب و به‌هم‌ریخته می‌شوند. موضوع هر سؤال تا وقتی پاسخی وارد نکنی پنهان می‌ماند.' : 'Questions are selected from bank tags and shuffled. Lesson and concept labels stay hidden until you enter a response.'}</p>
+        {lessonMixedReviewCount > 0 && <Button className="lesson-primary-action" onClick={() => startMixedReview('lesson')}>{fa ? `شروع مرور ترکیبی · ${localizeLessonDigits(lessonMixedReviewCount, uiLang)} سؤال` : `Start mixed review · ${lessonMixedReviewCount} questions`}</Button>}
+        {chapterMixedReviewCount > 0 && <Button onClick={() => startMixedReview('chapter')}>{fa ? `آزمون ترکیبی فصل · ${localizeLessonDigits(chapterMixedReviewCount, uiLang)} سؤال` : `Chapter mixed test · ${chapterMixedReviewCount} questions`}</Button>}
+      </section>}
+      <Button className="lesson-review-action" onClick={reviewActiveLesson}>{fa ? 'مرور دوبارهٔ درس' : 'Review lesson'}</Button>
+    </section> : conceptSummary ? <section className="lesson-concept-summary" aria-labelledby="concept-summary-title">
+      <h2 id="concept-summary-title" ref={summaryHeadingRef} tabIndex={-1}>{fa ? 'جمع‌بندی این مفهوم' : 'Concept summary'}</h2>
+      <p className="lesson-concept-summary-title" lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></p>
+      <p>{fa ? `پرسش‌های نوشتاری: ${localizeLessonDigits(currentConceptChunksDone, uiLang)} از ${localizeLessonDigits(activeConceptChunks.length, uiLang)} گام ثبت شد؛ مثال‌ها: ${localizeLessonDigits(requiredExamples.filter(item => !!exampleAttempts[item.key]?.attemptedAt).length, uiLang)} از ${localizeLessonDigits(requiredExamples.length, uiLang)} تلاش شد؛ تمرین‌های کتاب: ${localizeLessonDigits(conceptPracticeQuestions.length, uiLang)} از ${localizeLessonDigits(conceptPracticeQuestions.filter(question => (progress.completedPracticeQuestionIds ?? []).includes(question.id)).length, uiLang)} انجام شد.` : `${currentConceptChunksDone} of ${activeConceptChunks.length} reading chunks answered; ${requiredExamples.filter(item => !!exampleAttempts[item.key]?.attemptedAt).length} of ${requiredExamples.length} examples attempted; ${conceptPracticeQuestions.filter(question => (progress.completedPracticeQuestionIds ?? []).includes(question.id)).length} of ${conceptPracticeQuestions.length} book exercises completed.`}</p>
+      <p className="lesson-concept-activity-count" role="status">{fa
+        ? `کل موارد: ${localizeLessonDigits(conceptActivityTotal, uiLang)} · تلاش‌شده: ${localizeLessonDigits(conceptItemsAttempted, uiLang)} · ردشده: ${localizeLessonDigits(conceptItemsSkipped, uiLang)} · درستِ تأییدشده: ${localizeLessonDigits(conceptCorrectKnown, uiLang)} · نادرستِ تأییدشده: ${localizeLessonDigits(conceptIncorrectKnown, uiLang)} · باز: ${localizeLessonDigits(conceptItemsOpen, uiLang)} · بی‌کلید/نامشخص: ${localizeLessonDigits(conceptCorrectnessUnknown, uiLang)}`
+        : `Total items: ${conceptActivityTotal} · Attempted: ${conceptItemsAttempted} · Skipped: ${conceptItemsSkipped} · Confirmed correct: ${conceptCorrectKnown} · Confirmed incorrect: ${conceptIncorrectKnown} · Open: ${conceptItemsOpen} · Unkeyed/unknown: ${conceptCorrectnessUnknown}`}</p>
+      <section className="lesson-active-summary-group"><h3>{fa ? 'پرسش‌هایی که جواب دادی' : 'Your chunk responses'}</h3>
+        {activeConceptChunks.map((chunk, index) => <details key={chunk.id} className="lesson-summary-answer-group"><summary>{fa ? `گام ${localizeLessonDigits(index + 1, uiLang)} · ${chunk.title}` : `Chunk ${index + 1} · ${chunk.title}`}</summary>
+          {chunk.questionIds.map(questionId => {
+            const question = questionById.get(questionId); const answer = savedChunkAnswer(questionId);
+            return <article key={questionId} className="lesson-summary-answer"><p><ExtraSourceBadge visible={question?.tags?.source === 'extra'} /> {question?.prompt || question?.source}</p><p className="lesson-summary-student-answer">{answer?.value || (fa ? 'پاسخی ثبت نشده' : 'No response saved')}</p>{answer?.explanation && <p className="lesson-summary-student-answer">{fa ? 'دلیل تو: ' : 'Your reason: '}{answer.explanation}</p>}<p className="lesson-no-key">{fa ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : 'No answer key; send your export for review.'}</p></article>;
+          })}
+        </details>)}
+      </section>
+      <section className="lesson-active-summary-group"><h3>{fa ? 'تلاش برای مثال‌ها' : 'Worked-example attempts'}</h3>
+        {requiredExamples.length ? <ul>{requiredExamples.map(item => <li key={item.key}>{item.title} · {exampleAttempts[item.key]?.attemptedAt ? (fa ? `تلاش ثبت شد${exampleAttempts[item.key].comparedAt ? '؛ با حل درس‌نامه مقایسه شد' : ''}` : `Attempt saved${exampleAttempts[item.key].comparedAt ? '; compared with lesson solution' : ''}`) : (fa ? 'تلاش ثبت نشده' : 'Not attempted')}</li>)}</ul> : <p>{fa ? 'برای این مفهوم مثال حل‌شده‌ای ثبت نشده است.' : 'No worked examples are attached to this concept.'}</p>}
+      </section>
+      <section className="lesson-active-summary-group"><h3>{fa ? 'تمرین‌های کتاب و کار ثبت‌شده' : 'Book exercises and saved work'}</h3>
+        {conceptPracticeQuestions.length ? <div className="lesson-summary-exercises">{conceptPracticeQuestions.map(question => {
+          const result = progress.practiceResults?.[question.id];
+          return <details key={question.id} className="lesson-summary-answer-group"><summary><bdi dir="ltr">{question.id}</bdi> · {result?.status === 'answered' ? (fa ? 'پاسخ ثبت شد' : 'Answered') : result?.status === 'draft' ? (fa ? 'پیش‌نویس' : 'Draft') : result?.status === 'skipped' ? (fa ? 'ردشده' : 'Skipped') : (fa ? 'انجام نشده' : 'Not started')}</summary>
+            <p><ExtraSourceBadge visible={question.tags?.source === 'extra'} /></p><p lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></p>
+            {question.mode === 'math' && <QuestionSource source={question.source} mode={question.mode} label={fa ? 'صورت تمرین' : 'Exercise prompt'} mathLabel={fa ? 'صورت ریاضی تمرین' : 'Exercise expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />}
+            {result?.answer && <p className="lesson-summary-student-answer">{result.answer}</p>}
+            {!!result?.steps.length && <ol>{result.steps.map((step, stepIndex) => <li key={stepIndex}><bdi dir="ltr"><MathDisplay latex={step.latex} label={fa ? `گام ${localizeLessonDigits(stepIndex + 1, uiLang)}` : `Step ${stepIndex + 1}`} display={false} /></bdi>{step.final ? ` · ${fa ? 'پاسخ نهایی' : 'Final answer'}` : ''}</li>)}</ol>}
+            {result?.updatedAt && <time dateTime={result.updatedAt}>{fa ? `آخرین ذخیره: ${result.updatedAt}` : `Last saved: ${result.updatedAt}`}</time>}
+            <p className="lesson-no-key">{fa ? 'بدون کلید؛ برای بررسی خروجی را بفرست' : 'No answer key; send your export for review.'}</p>
+          </details>;
+        })}</div> : <p>{fa ? 'برای این مفهوم تمرین کتابی ثبت نشده است.' : 'No book exercises are assigned to this concept.'}</p>}
+      </section>
+      <section className="lesson-active-summary-group lesson-more-practice"><h3>{fa ? 'تمرین اضافه (هم‌سطح کتاب)' : 'More practice (same level as the book)'}</h3>
+        {conceptMorePracticeQuestions.length ? <>
+          <p>{fa ? `${localizeLessonDigits(conceptMorePracticeAttempted, uiLang)} از ${localizeLessonDigits(conceptMorePracticeQuestions.length, uiLang)} تمرین اضافه تلاش شده است. پاسخ‌ها خودکار نمره‌گذاری نمی‌شوند.` : `${conceptMorePracticeAttempted} of ${conceptMorePracticeQuestions.length} extra items attempted. These responses are not automatically graded.`}</p>
+          <ol>{conceptMorePracticeQuestions.map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi> · <ExtraSourceBadge visible={question.tags?.source === 'extra'} /> <span lang={languageForText(question.prompt || question.source)} dir={contentDirection(question.prompt || question.source)}><LessonText text={question.prompt || question.source} /></span></li>)}</ol>
+          {conceptMorePracticeBatch.length > 0 && <Button onClick={startMorePractice}>{fa ? `تمرین بیشتر · ${localizeLessonDigits(conceptMorePracticeBatch.length, uiLang)} مورد ←` : `More practice · ${conceptMorePracticeBatch.length} items →`}</Button>}
+          {!conceptMorePracticeBatch.length && <p role="status">{fa ? 'همهٔ تمرین‌های اضافه تلاش شده‌اند.' : 'All extra practice items have been attempted.'}</p>}
+        </> : <p>{fa ? 'تمرین اضافه‌ای در این بانک نیست.' : 'No extra practice items are available in this bank.'}</p>}
+      </section>
+      <p className="lesson-section-practice-done" role="status">{fa ? 'مراحل لازم این مفهوم کامل است. پاسخ‌ها نمره‌گذاری نشده‌اند؛ تنها مثال‌های حل‌شده امکان مقایسه دارند.' : 'This concept is complete. Responses are not automatically graded; worked examples can be compared with their lesson solutions.'}</p>
+      <div className="lesson-concept-navigation"><Button onClick={previousUnit}>{fa ? 'مرور مثال‌ها' : 'Review examples'}</Button><Button className="lesson-primary-action" onClick={nextConceptFromSummary}>{chunkIndex === chunks.length - 1 ? (fa ? 'پایان و جمع‌بندی فصل ←' : 'Finish chapter summary →') : (fa ? 'مفهوم بعدی ←' : 'Next concept →')}</Button></div>
+    </section> : <>
+      {!split && <div className="lesson-pane-tabs" role="tablist" aria-label={fa ? 'درس‌نامه یا کار من' : 'Lesson or your work'}>
+        <button type="button" role="tab" id="lesson-tab-lesson" aria-controls="lesson-panel-lesson" aria-selected={paneTab === 'lesson'} className="lesson-pane-tab" onClick={() => setPaneTab('lesson')}>{fa ? 'درس‌نامه' : 'Lesson'}</button>
+        <button type="button" role="tab" id="lesson-tab-work" aria-controls="lesson-panel-work" aria-selected={paneTab === 'work'} className="lesson-pane-tab" onClick={() => setPaneTab('work')}>{fa ? (phase === 'reading' ? 'پاسخ‌نویسی' : 'کار من') : (phase === 'reading' ? 'Write answers' : 'Your work')}{phase === 'reading' ? ` · ${localizeLessonDigits(chunkQuestions.length, uiLang)}` : ` · ${localizeLessonDigits(conceptWorkItems.length, uiLang)}`}</button>
+      </div>}
+      <div ref={splitRef} className={`lesson-split ${split ? 'lesson-split-wide' : 'lesson-split-tabs'}`} data-pane-mode={paneMode} style={split ? { ['--lesson-split' as string]: `${splitRatio}%` } : undefined}>
+        {(split || paneTab === 'lesson') && <div className="lesson-split-lesson" id="lesson-panel-lesson" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-lesson' })}>
+          <section className="lesson-concept" aria-labelledby="lesson-concept-title">
+            <div className="lesson-concept-heading"><p className="lesson-section-label">{fa ? `مفهوم ${localizeLessonDigits(currentChunk.conceptIndex + 1, uiLang)} از ${localizeLessonDigits(lesson.concepts.length, uiLang)} · گام ${localizeLessonDigits(activeConceptChunkIndex + 1, uiLang)} از ${localizeLessonDigits(activeConceptChunks.length, uiLang)}` : `Concept ${currentChunk.conceptIndex + 1} of ${lesson.concepts.length} · Chunk ${activeConceptChunkIndex + 1} of ${activeConceptChunks.length}`}</p>{pageText && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {pageText}</span>}</div>
+            <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></h2>
+            {phase === 'reading' && currentChunk.title.trim() !== concept.title.trim() && <h3 className="lesson-chunk-title" lang={languageForText(currentChunk.title)} dir={contentDirection(currentChunk.title)}><LessonText text={displayEducationalHeading(currentChunk.title)} /></h3>}
+            {phase === 'solving' && <p className="lesson-solving-context">{fa ? 'این مفهوم را خوانده‌ای. حالا مثال‌ها و تمرین‌های کتاب را به ترتیب حل کن.' : 'You have read this concept. Now solve its examples and book exercises in order.'}</p>}
+            <LessonSectionContent section={displaySection} revealedSteps={{}} onReveal={() => undefined} uiLang={uiLang} hideSingleConceptHeading solutionLocked />
+          </section>
+          {phase === 'reading' ? <section className="lesson-concept-navigation" aria-label={fa ? 'پیمایش گام‌های درس' : 'Lesson chunk navigation'}>
+            <Button onClick={previousUnit} disabled={chunkIndex === 0}>{fa ? '→ گام قبلی' : '← Previous chunk'}</Button>
+            <Button className="lesson-primary-action" onClick={nextFromReading} disabled={!chunkIsComplete(currentChunk)}>{isFinalChunkForConcept ? (fa ? 'رفتن به مثال‌ها و تمرین‌ها ←' : 'Continue to examples and practice →') : (fa ? 'گام بعدی ←' : 'Next chunk →')}</Button>
+          </section> : <section className="lesson-concept-navigation" aria-label={fa ? 'حل و تمرین مفهوم' : 'Concept solving controls'}>
+            <Button onClick={previousUnit}>{fa ? '→ بازگشت به متن' : '← Back to reading'}</Button>
+            {conceptPracticeQuestions.length ? <Button className="lesson-primary-action" onClick={startConceptPractice} disabled={!examplesAttempted || !conceptPracticeBatch.length}>{fa ? `شروع بستهٔ ${localizeLessonDigits(conceptPracticeBatch.length, uiLang)} تمرین کتاب ←` : `Start the next ${conceptPracticeBatch.length} book exercises →`}</Button>
+              : <Button className="lesson-primary-action" onClick={finishWithoutBookQuestions} disabled={!examplesAttempted}>{fa ? 'پایان مثال‌ها و جمع‌بندی ←' : 'Finish examples and review →'}</Button>}
+          </section>}
+          {phase === 'solving' && <section className="lesson-section-practice lesson-concept-practice-list" aria-label={fa ? 'تمرین‌های کتاب این مفهوم' : 'Book exercises for this concept'}>
+            <h2>{fa ? 'تمرین‌های کتاب برای همین مفهوم' : 'Book exercises for this concept'}</h2>
+            {conceptPracticeQuestions.length ? <>
+              <p>{fa ? `${localizeLessonDigits(conceptPracticeQuestions.length, uiLang)} سؤال کتاب، به ترتیب بانک. هر بسته حداکثر ${localizeLessonDigits(MAX_SESSION_EXERCISES, uiLang)} سؤال دارد. ابتدا تلاش برای همهٔ مثال‌های بالا را ثبت کن؛ بعد حل بستهٔ بعدی در ویرایشگر اصلی باز می‌شود.` : `${conceptPracticeQuestions.length} textbook questions in bank order, in batches of at most ${MAX_SESSION_EXERCISES}. Record an attempt for every example above first; then solve the next batch in the main editor.`}</p>
+              <ol>{conceptPracticeQuestions.map(question => <li key={question.id}><bdi dir="ltr">{question.id}</bdi>{question.tags?.source === 'extra' && <> · <ExtraSourceBadge /></>}{question.prompt && <> · <span lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></span></>}</li>)}</ol>
+              <p>{fa ? 'برای ادامه باید همهٔ سؤال‌های کتاب را در ویرایشگر اصلی پاسخ‌گذاری کنی. پاسخ درست/نادرست اعلام نمی‌شود؛ کلید پاسخ در بانک عمومی وجود ندارد.' : 'Continue only after attempting every book question in the main editor. No correctness will be claimed; the public bank has no answer keys.'}</p>
+            </> : <p>{fa ? 'تمرین کتابی برای این مفهوم ثبت نشده است.' : 'No textbook exercises are assigned to this concept.'}</p>}
+            {!examplesAttempted && <p className="lesson-practice-locked" role="status">{fa ? `برای بازشدن تمرین‌ها، ${localizeLessonDigits(requiredExamples.filter(item => !exampleAttempts[item.key]?.attemptedAt).length, uiLang)} مثال باقی‌مانده را در «کار من» تلاش کن.` : `${requiredExamples.filter(item => !exampleAttempts[item.key]?.attemptedAt).length} example attempts remain in Your work before these exercises unlock.`}</p>}
+          </section>}
+        </div>}
+        {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
+        {(split || paneTab === 'work') && <div className="lesson-split-work" id="lesson-panel-work" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-work' })}>
+          {phase === 'reading' ? <LessonChunkChecks key={currentChunk.id} questions={chunkQuestions} answers={Object.fromEntries(chunkQuestions.map(question => [question.id, savedChunkAnswer(question.id)]))} uiLang={uiLang} onChange={changeChunkAnswer} onSubmit={submitChunkAnswer} />
+            : <LessonWorkPane items={conceptWorkItems} selected={selectedWorkItem} onSelect={setSelectedWorkKey} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={() => null} savedSteps={key => progress.workAnswers?.[key]?.steps} exampleAttempts={exampleAttempts} onCompareExample={compareExample} />}
+        </div>}
+      </div>
+    </>}
+  </section>;
+}
+
+function ReadyLessonScreen(props: ReadyProps) {
+  return props.lesson.concepts.some(concept => concept.learningChunks?.length)
+    ? <ReadyActiveLessonFlow {...props} />
+    : <ReadyLegacyLessonScreen {...props} />;
 }
 
 function LessonAvailability({ loading, onBack }: { loading: boolean; onBack: () => void }) {

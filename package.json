@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "npm run typecheck && vite build && node scripts/standalone.mjs",
+    "bank:v22": "node scripts/build-bank-v22.mjs",
+    "bank:v23": "node scripts/build-bank-v23.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test:unit": "vitest run tests/unit tests/store.test.ts tests/assessment.test.ts tests/legacy.test.ts tests/wide/layout-model.test.ts",
     "test:integration": "vitest run tests/integration tests/app.test.tsx tests/fraction-round.test.tsx tests/keyboard-ux.test.tsx tests/wide/workspace.test.tsx tests/integration/tutor-export-ui.test.tsx",
