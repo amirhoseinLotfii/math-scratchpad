@@ -452,6 +452,22 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  }
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
+ function restoreInsertFocus() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+   const invoker = insertInvoker.current;
+   const invokerIsWorkControl = !!invoker?.isConnected && (invoker.matches('math-field') || !!invoker.closest('[data-step-id]'));
+   if (invoker?.isConnected && (restoreInsert.current || invokerIsWorkControl)) {
+    invoker.focus({ preventScroll: true });
+    invoker.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const mathfield = invoker.closest('math-field') as (HTMLElement & { hasFocus?: () => boolean }) | null;
+    if (mathfield) requestAnimationFrame(() => {
+     if (mathfield.isConnected && mathfield.hasFocus?.() === false && document.activeElement === document.body) {
+      mathfield.focus({ preventScroll: true });
+     }
+    });
+   } else focusCurrentMathControl();
+  }));
+ }
  function insert(kind: string) {
   const stepId = store.getState().doc.cursor.stepId;
   if (!insertMathSymbol(stepId, kind)) {
@@ -759,12 +775,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
-  <Dialog open={insertOpen} onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } }}><DialogContent className="insert-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => dialogRefs.current[0]?.focus({ preventScroll: true })); }} onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => requestAnimationFrame(() => {
-   const invoker = insertInvoker.current;
-   const invokerIsWorkControl = !!invoker?.isConnected && (invoker.matches('math-field') || !!invoker.closest('[data-step-id]'));
-   if (invoker?.isConnected && (restoreInsert.current || invokerIsWorkControl)) { invoker.focus({ preventScroll: true }); invoker.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }
-   else focusCurrentMathControl();
-  })); }}>
+  <Dialog open={insertOpen} onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } }}><DialogContent className="insert-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => dialogRefs.current[0]?.focus({ preventScroll: true })); }} onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); restoreInsertFocus(); }}>
    <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'Show fewer' : `Show more (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>

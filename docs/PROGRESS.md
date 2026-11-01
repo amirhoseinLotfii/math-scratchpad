@@ -43,7 +43,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 ## Persian changelog
 
-- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
+- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. بازگشت فوکوس به ورودی MathLive پس از بستن کاتالوگ ابزار ریاضی هم پایدار شد. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
 
 ## P0-1 test notes
 
@@ -51,4 +51,5 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - Timed scopes cover session, lesson, page-based concept chunk, section, question and the focused MathLive step; focus/visibility/idle time is shared.
 - Final local gate: 444 passed, 52 viewport-conditional skips in the 496-test Playwright matrix; `src/sync` line coverage 93.21%.
 - `npm run build`, `npm run typecheck`, `npm run test:typecheck`, targeted unit/integration tests and the event E2E passed.
+- After the focus restoration adjustment, the laptop `WIDE-08` slash-tool flow passed 10 consecutive browser repetitions; both TypeScript checks passed again.
 - «نیاز به تست»: Safari/iOS visibility and focus behavior on a physical device.
