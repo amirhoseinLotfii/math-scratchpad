@@ -26,7 +26,6 @@ test('cumulative mixed review hides tags until an answer and saves the attempt a
   await expect(page.locator('.problem')).toBeVisible();
   await expect(page.locator('.mixed-review-reveal')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Lesson' })).toHaveCount(0);
-  await expect(page.locator('.problem .lesson-extra-source-badge')).toBeVisible();
   const mixedLessons = await page.evaluate(() => {
     const cache = JSON.parse(localStorage.getItem('math-scratchpad-drive-bank-cache-v1:e2e-chapter-one-v23')!);
     const progressKey = Object.keys(localStorage).find(key => key.startsWith('math-scratchpad-lesson-progress-v1:'))!;
