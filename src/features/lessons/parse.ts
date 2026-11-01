@@ -1,4 +1,4 @@
-import type { Concept, Difficulty, Lesson, LessonBlock, LessonSectionDefinition, Lang } from './types';
+import type { Concept, Difficulty, Lesson, LessonBlock, LessonSectionDefinition, LearningChunk, Lang } from './types';
 
 export type LessonParseResult = { lessons: Lesson[]; warnings: string[] };
 const safeId = /^[\w.-]{1,80}$/;
@@ -82,6 +82,66 @@ function parseBlocks(value: unknown, path: string, warnings: string[]): LessonBl
   return value.slice(0, 100).map((block, index) => parseBlock(block, `${path}[${index}]`, warnings));
 }
 
+function parseLearningChunks(value: unknown, path: string, blockCount: number, knownQuestions: Set<string>, warnings: string[]): LearningChunk[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 100) {
+    warning(warnings, path, 'learningChunks must be an array of at most 100 chunks');
+    return undefined;
+  }
+  const seenIds = new Set<string>(), seenBlocks = new Set<number>();
+  const chunks: LearningChunk[] = [];
+  for (const [index, raw] of value.entries()) {
+    const itemPath = `${path}[${index}]`;
+    if (!isRecord(raw) || typeof raw.id !== 'string' || !safeId.test(raw.id) || seenIds.has(raw.id)) {
+      warning(warnings, itemPath, 'chunk ID is invalid or duplicated; chunk was ignored');
+      continue;
+    }
+    if (raw.title !== undefined && !boundedText(raw.title, 500)) {
+      warning(warnings, `${itemPath}.title`, 'invalid chunk title; chunk was ignored');
+      continue;
+    }
+    if (raw.pages !== undefined && !parseSectionPages(raw.pages)) {
+      warning(warnings, `${itemPath}.pages`, 'invalid chunk page reference; chunk was ignored');
+      continue;
+    }
+    if (!Array.isArray(raw.blockIndexes) || raw.blockIndexes.length < 1
+      || !raw.blockIndexes.every(blockIndex => Number.isInteger(blockIndex) && (blockIndex as number) >= 0 && (blockIndex as number) < blockCount)) {
+      warning(warnings, `${itemPath}.blockIndexes`, 'blockIndexes must reference existing lesson blocks; chunk was ignored');
+      continue;
+    }
+    const blockIndexes = raw.blockIndexes as number[];
+    if (blockIndexes.some((blockIndex, position) => position > 0 && blockIndex <= blockIndexes[position - 1] || seenBlocks.has(blockIndex))) {
+      warning(warnings, `${itemPath}.blockIndexes`, 'block indexes must be ordered and cannot be repeated; chunk was ignored');
+      continue;
+    }
+    if (!Array.isArray(raw.questionIds) || raw.questionIds.length < 1 || raw.questionIds.length > 3
+      || !raw.questionIds.every(questionId => typeof questionId === 'string' && knownQuestions.has(questionId))) {
+      warning(warnings, `${itemPath}.questionIds`, 'each learning chunk must reference one to three known questions; chunk was ignored');
+      continue;
+    }
+    const questionIds = [...new Set(raw.questionIds as string[])];
+    if (questionIds.length !== raw.questionIds.length) {
+      warning(warnings, `${itemPath}.questionIds`, 'duplicate question references are not allowed; chunk was ignored');
+      continue;
+    }
+    seenIds.add(raw.id);
+    blockIndexes.forEach(blockIndex => seenBlocks.add(blockIndex));
+    chunks.push({
+      id: raw.id,
+      ...(typeof raw.title === 'string' ? { title: raw.title } : {}),
+      ...(typeof raw.pages === 'string' ? { pages: raw.pages.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/\s*[–-]\s*/g, '–') } : {}),
+      blockIndexes: [...blockIndexes],
+      questionIds,
+    });
+  }
+  if (!chunks.length) return undefined;
+  if (seenBlocks.size !== blockCount || Array.from({ length: blockCount }, (_, index) => index).some(index => !seenBlocks.has(index))) {
+    warning(warnings, path, 'learning chunks must cover every lesson block exactly once; chunks were ignored');
+    return undefined;
+  }
+  return chunks;
+}
+
 function parseConcepts(value: unknown, lessonId: string, knownQuestions: Set<string>, usedIds: Set<string>, warnings: string[]): Concept[] {
   if (!Array.isArray(value)) {
     warning(warnings, `lessons.${lessonId}.concepts`, 'concepts must be an array');
@@ -122,6 +182,14 @@ function parseConcepts(value: unknown, lessonId: string, knownQuestions: Set<str
         }
         seenChecks.add(questionId);
         concept.checkQuestionIds.push(questionId);
+      }
+    }
+    const learningChunks = parseLearningChunks(raw.learningChunks, `${path}.learningChunks`, concept.blocks.length, knownQuestions, warnings);
+    if (learningChunks) {
+      concept.learningChunks = learningChunks;
+      const existing = new Set(concept.checkQuestionIds);
+      for (const chunk of learningChunks) for (const questionId of chunk.questionIds) {
+        if (!existing.has(questionId)) { existing.add(questionId); concept.checkQuestionIds.push(questionId); }
       }
     }
     concepts.push(concept);

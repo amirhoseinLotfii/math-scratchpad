@@ -189,6 +189,31 @@ export function validateBank(input: unknown): DriveBank {
     }
   }
 
+  const chunkQuestionOwner = new Map<string, string>();
+  for (const lesson of parsedLessons.lessons) for (const concept of lesson.concepts) {
+    if (!concept.learningChunks) continue;
+    let valid = true;
+    for (const chunk of concept.learningChunks) for (const questionId of chunk.questionIds) {
+      const question = questionById.get(questionId);
+      if (!question || question.lessonId !== lesson.id || question.conceptId !== concept.id || question.stage !== 'learn') {
+        warnings.push(`lessons.${lesson.id}.concepts.${concept.id}.learningChunks.${chunk.id}: ${questionId} must be a learn question for this concept; learning chunks were ignored`);
+        valid = false;
+      }
+      const owner = chunkQuestionOwner.get(questionId);
+      if (owner && owner !== chunk.id) {
+        warnings.push(`lessons.${lesson.id}.concepts.${concept.id}.learningChunks.${chunk.id}: ${questionId} is already assigned to ${owner}; learning chunks were ignored`);
+        valid = false;
+      } else chunkQuestionOwner.set(questionId, chunk.id);
+    }
+    if (valid) {
+      const referencedChecks = new Set(concept.checkQuestionIds);
+      if (concept.learningChunks.some(chunk => chunk.questionIds.some(id => !referencedChecks.has(id)))) {
+        warnings.push(`lessons.${lesson.id}.concepts.${concept.id}.learningChunks: all chunk questions must also appear in checkQuestionIds; learning chunks were ignored`);
+        delete concept.learningChunks;
+      }
+    } else delete concept.learningChunks;
+  }
+
   return {
     schema_version: BANK_SCHEMA,
     bank_id: data.bank_id,

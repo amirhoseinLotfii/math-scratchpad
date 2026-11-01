@@ -13,7 +13,16 @@ export interface ImageDescriptionBlock extends BlockBase { type: 'image-descript
 export interface UnsupportedBlock { type: 'unsupported'; originalType: string; source?: string }
 export type LessonBlock = TextBlock | DefinitionBlock | ExampleBlock | MathBlock | ImageBlock | ImageDescriptionBlock | UnsupportedBlock;
 
-export interface Concept { id: string; title: string; pages?: string; blocks: LessonBlock[]; checkQuestionIds: string[] }
+export interface Concept { id: string; title: string; pages?: string; blocks: LessonBlock[]; checkQuestionIds: string[]; learningChunks?: LearningChunk[] }
+/** An ordered reading chunk with one to three answerable, question-only checks. */
+export interface LearningChunk {
+  id: string;
+  title?: string;
+  pages?: string;
+  /** Zero-based indexes into Concept.blocks; chunks partition the source in book order. */
+  blockIndexes: number[];
+  questionIds: string[];
+}
 /** A short, source-page-sized unit in a complete lesson/chapter bank. */
 export interface LessonSectionDefinition {
   id: string;
@@ -40,6 +49,16 @@ export type LessonStatus = 'not_started' | 'learning' | 'practising' | 'done';
 export type LessonCheckAnswer =
   | { type: 'text' | 'choice'; value: string }
   | { type: 'math'; steps: Step[] };
+export type LessonChunkAnswer = { value: string; updatedAt: string; submittedAt?: string };
+export type LessonExampleAttempt = { attemptedAt: string; comparedAt?: string };
+export type LessonPracticeResult = {
+  status: 'not_started' | 'draft' | 'answered' | 'skipped';
+  answer?: string;
+  steps: { latex: string; final: boolean }[];
+  startedAt?: string;
+  updatedAt: string;
+  submittedAt?: string;
+};
 export interface LessonProgress {
   lessonId: string;
   status: LessonStatus;
@@ -47,6 +66,7 @@ export interface LessonProgress {
   currentSectionIndex?: number;
   completedSectionIds?: string[];
   activePracticeSectionId?: string;
+  activePracticeConceptId?: string;
   /** Textbook-first question IDs completed across end-of-lesson practice batches. */
   completedPracticeQuestionIds?: string[];
   /** Question IDs in the currently active end-of-lesson batch (at most 100). */
@@ -63,7 +83,16 @@ export interface LessonProgress {
   practiceStartedAt?: string;
   /** Whether the saved in-Learn view is the lesson summary rather than a concept. */
   summaryOpen?: boolean;
+  /** Active v22 read/solve phase; absent in v21 progress. */
+  currentChunkId?: string;
+  completedLearningChunkIds?: string[];
+  activeConceptPhase?: 'reading' | 'solving' | 'summary';
+  conceptSummaryId?: string;
+  chunkAnswers?: Record<string, LessonChunkAnswer>;
+  exampleAttempts?: Record<string, LessonExampleAttempt>;
+  /** Per-question snapshots from the existing practice editor, keyed by bank question ID. */
+  practiceResults?: Record<string, LessonPracticeResult>;
   revealedSteps: Record<string, number>;
-  /** Learn-only scratch work from the lesson work pane, keyed `ex:<concept>:<block>` or `q:<questionId>`; never exported or graded. */
+  /** Learn-only scratch work from the lesson work pane, keyed `ex:<concept>:<block>` or `q:<questionId>`. */
   workAnswers?: Record<string, { type: 'math'; steps: Step[] }>;
 }
