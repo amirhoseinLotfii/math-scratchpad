@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import { Button } from '../../shared/ui/button';
 import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
@@ -26,7 +26,7 @@ export function workItemLabel(item: LessonWorkItem, index: number, uiLang: 'fa' 
  * The lesson "Your work" pane: a selector over the current section's work items and the app's
  * existing step editor + math toolbar (composed through LessonMathCheck, never modified).
  */
-export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore, onWork, renderCheck, savedSteps }: {
+export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore, onWork, renderCheck, savedSteps, onFocusItem, onBlurItem, onRevealSolution }: {
   items: LessonWorkItem[];
   selected: LessonWorkItem | undefined;
   onSelect: (key: string) => void;
@@ -35,9 +35,13 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
   onWork: (key: string, answer: { type: 'math'; steps: Step[] }) => void;
   renderCheck: (question: BankQuestion) => ReactNode;
   savedSteps: (key: string) => Step[] | undefined;
+  onFocusItem?: (item: LessonWorkItem) => void;
+  onBlurItem?: (item: LessonWorkItem) => void;
+  onRevealSolution?: (item: LessonWorkItem) => void;
 }) {
   const fa = uiLang === 'fa', selectId = useId();
   const [solutionShown, setSolutionShown] = useState<Record<string, boolean>>({});
+  const focusedItem = useRef<string | null>(null);
   if (!items.length) return <aside className="lesson-work-pane" aria-label={fa ? 'کار من' : 'Your work'}>
     <h2 className="lesson-work-title">{fa ? 'کار من' : 'Your work'}</h2>
     <p className="lesson-work-empty">{fa ? 'برای این بخش مثال یا تمرینی برای حل ثبت نشده است.' : 'This section has nothing to work on yet.'}</p>
@@ -46,7 +50,18 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
   const steps = savedSteps(item.key);
   const block = item.kind === 'example' || item.kind === 'guided' ? item.block : undefined;
   const attempted = !!steps?.some(step => !stepIsBlank(step));
-  return <aside className="lesson-work-pane" aria-label={fa ? 'کار من' : 'Your work'}>
+  function handleFocus() {
+    if (item.kind === 'check' || focusedItem.current === item.key) return;
+    focusedItem.current = item.key;
+    onFocusItem?.(item);
+  }
+  function handleBlur(event: FocusEvent<HTMLElement>) {
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget.contains(next)) return;
+    if (focusedItem.current === item.key) onBlurItem?.(item);
+    focusedItem.current = null;
+  }
+  return <aside className="lesson-work-pane" aria-label={fa ? 'کار من' : 'Your work'} onFocusCapture={handleFocus} onBlurCapture={handleBlur}>
     <h2 className="lesson-work-title">{fa ? 'کار من' : 'Your work'}</h2>
     <label className="lesson-work-select-label" htmlFor={selectId}>{fa ? 'روی کدام مورد این بخش کار می‌کنی؟' : 'What are you working on?'}</label>
     <select id={selectId} className="lesson-work-select" dir={fa ? 'rtl' : 'ltr'} value={item.key} onChange={event => onSelect(event.currentTarget.value)}>
@@ -71,7 +86,7 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
             ? <p className="lesson-work-hint">{fa ? 'اول خودت حداقل یک گام بنویس؛ بعد می‌توانی حلِ همین مثال در درس‌نامه را ببینی.' : 'Write at least one step first; then you can compare with the lesson’s solution.'}</p>
             : solutionShown[item.key]
               ? <ol className="lesson-work-solution" aria-label={fa ? 'حل مثال در درس‌نامه' : 'Lesson solution'}>{block.steps.map((text, index) => <li key={index} lang={languageForText(text)} dir={contentDirection(text)}><LessonText text={text} /></li>)}</ol>
-              : <Button onClick={() => setSolutionShown(value => ({ ...value, [item.key]: true }))}>{fa ? 'مقایسه با حل درس‌نامه' : 'Compare with the lesson solution'}</Button>}
+              : <Button onClick={() => { onRevealSolution?.(item); setSolutionShown(value => ({ ...value, [item.key]: true })); }}>{fa ? 'مقایسه با حل درس‌نامه' : 'Compare with the lesson solution'}</Button>}
         </div>}
         {item.kind !== 'example' && <p className="lesson-work-hint">{fa ? 'جواب نهایی این مورد در بانک نیست؛ کارت فقط روی همین دستگاه ذخیره می‌شود و نمره داده نمی‌شود.' : 'This item has no stored answer; your work is saved on this device only and is not graded.'}</p>}
       </>}

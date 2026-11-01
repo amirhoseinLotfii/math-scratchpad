@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
-import { ascii, example, leaves, symbolList, stepLatex } from './model';
+import { ascii, example, leaves, stepIsBlank, symbolList, stepLatex } from './model';
 import { parse } from './parser';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
@@ -44,6 +44,8 @@ import { buildLessonSections } from './features/lessons/lesson-sections';
 import { contentDirection, languageForText, LessonSourceAttribution, LessonText, QuestionChoice, QuestionSource } from './features/lessons/lesson-content';
 import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
 import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
+import { ActivityTracker } from './sync/activity-tracker';
+import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
 
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
@@ -71,6 +73,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const resetCancelRef = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
+ const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false), [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
@@ -111,6 +114,103 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const multipleQuestions = state.doc.exercises.length > 1;
  const batch = multipleQuestions || !!activePracticeLessonId, last = exerciseIndex === state.doc.exercises.length - 1;
  const sessionId = state.doc.session?.id ?? '';
+ const practiceEventContext = useMemo(() => contextForQuestion({
+  bankVersion: loadedBank?.version ?? 'unknown', session: sessionId || 'unknown', chapter: matchingBank?.bank.chapter?.number,
+  lesson: currentBankQuestion?.lessonId, section: currentBankQuestion?.sectionId, concept: currentBankQuestion?.conceptId,
+  question: currentBankQuestion,
+ }), [currentBankQuestion, loadedBank?.version, matchingBank?.bank.chapter?.number, sessionId]);
+ const sessionEventContext = useMemo<LearnEventContext>(() => ({
+  bankVersion: loadedBank?.version ?? 'unknown', session: sessionId || 'unknown', chapter: matchingBank?.bank.chapter?.number ?? 0,
+  lesson: 'unknown', section: 'unknown', concept: 'unknown',
+ }), [loadedBank?.version, matchingBank?.bank.chapter?.number, sessionId]);
+ const lessonEventContext = useMemo<LearnEventContext>(() => ({
+  bankVersion: loadedBank?.version ?? 'unknown', session: sessionId || 'unknown', chapter: matchingBank?.bank.chapter?.number ?? 0,
+  lesson: lessonScreen?.id ?? 'unknown', section: 'unknown', concept: 'unknown',
+ }), [lessonScreen?.id, loadedBank?.version, matchingBank?.bank.chapter?.number, sessionId]);
+ const activityTrackerRef = useRef<ActivityTracker | null>(null);
+ if (!activityTrackerRef.current) activityTrackerRef.current = new ActivityTracker(practiceEventContext);
+ const activityTracker = activityTrackerRef.current;
+ activityTracker.setBaseContext(practiceEventContext);
+ const practiceAttemptCounts = useRef(new Map<string, number>());
+ const pendingAppEvents = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+ const referenceScopeId = useRef<string | null>(null);
+ const reportedDiagnosticAttempts = useRef(new Set<string>());
+ const appStoreStateRef = useRef(store.getState());
+ useEffect(() => activityTracker.listen(), [activityTracker]);
+ useEffect(() => {
+  if (!sessionId) return;
+  const scopeId = `session:${sessionId}`;
+  activityTracker.startScope({ id: scopeId, openType: 'session_start', closeType: 'session_end', context: sessionEventContext });
+  return () => activityTracker.stopScope(scopeId);
+ }, [activityTracker, sessionId]);
+ useEffect(() => { if (manualTimerPause.current) activityTracker.setPaused(true); }, [activityTracker]);
+ useEffect(() => {
+  if (trackedExerciseId.current === ex.id) return;
+  trackedExerciseId.current = ex.id;
+  manualTimerPause.current = false;
+  activityTracker.setPaused(false);
+ }, [activityTracker, ex.id]);
+ useEffect(() => {
+  if (lessonScreen || referenceLesson) return;
+  const question = currentBankQuestion;
+  const context = contextForQuestion({
+   bankVersion: loadedBank?.version ?? 'unknown', session: sessionId, chapter: matchingBank?.bank.chapter?.number,
+   lesson: question?.lessonId, section: question?.sectionId, concept: question?.conceptId, question,
+  });
+  const scopeId = `question:${ex.id}`;
+  const itemType = answerType === 'choice' ? 'mcq' : answerType === 'text' ? 'typed' : 'step_by_step';
+  activityTracker.startScope({ id: scopeId, openType: 'question_open', closeType: 'question_close', context, fields: {
+   itemId: question?.id ?? ex.id, itemType, questionText: (ex.prompt || ex.source).slice(0, 8_000),
+  } });
+  return () => activityTracker.stopScope(scopeId);
+ }, [activityTracker, answerType, currentBankQuestion, ex.id, ex.prompt, ex.source, lessonScreen, loadedBank?.version, matchingBank?.bank.chapter?.number, referenceLesson, sessionId]);
+ useEffect(() => {
+  const unsubscribe = store.subscribe(next => {
+   const previous = appStoreStateRef.current;
+   appStoreStateRef.current = next;
+   const before = exerciseOf(previous.doc), after = exerciseOf(next.doc);
+   if (before.id !== after.id) return;
+   const bank = loadedBankRef.current;
+   const question = bank?.bank.questions.find(item => item.id === after.bankQuestionId);
+   const context = contextForQuestion({
+    bankVersion: bank?.version ?? 'unknown', session: next.doc.session?.id ?? 'unknown', chapter: bank?.bank.chapter?.number,
+    lesson: question?.lessonId, section: question?.sectionId, concept: question?.conceptId, question,
+   });
+   const itemId = question?.id ?? after.id;
+   const questionText = (after.prompt || after.source).slice(0, 8_000);
+   if (before.answerText !== after.answerText) {
+    const key = `answer:${after.id}`;
+    const previousTimer = pendingAppEvents.current.get(key);
+    if (previousTimer) clearTimeout(previousTimer);
+    pendingAppEvents.current.set(key, setTimeout(() => {
+     pendingAppEvents.current.delete(key);
+     emitLearnEvent(context, { type: 'answer_edited', itemId, itemType: after.answerType === 'choice' ? 'mcq' : after.answerType === 'text' ? 'typed' : 'step_by_step', questionText, userAnswer: (after.answerText ?? '').slice(0, 8_000) });
+    }, 650));
+   }
+   const beforeIds = new Set(before.steps.map(step => step.id));
+   const added = after.steps.filter(step => !beforeIds.has(step.id));
+   const steps = after.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+   if (added.length) {
+    for (const step of added) emitLearnEvent(context, { type: 'step_added', itemId: step.id, itemType: 'step_by_step', questionText, steps });
+   } else if (before.steps.map(step => `${step.id}:${stepLatex(step)}:${step.final}`).join('|') !== after.steps.map(step => `${step.id}:${stepLatex(step)}:${step.final}`).join('|')) {
+    const key = `steps:${after.id}`;
+    const previousTimer = pendingAppEvents.current.get(key);
+    if (previousTimer) clearTimeout(previousTimer);
+    pendingAppEvents.current.set(key, setTimeout(() => {
+     pendingAppEvents.current.delete(key);
+     emitLearnEvent(context, { type: 'step_edited', itemId: after.steps.find(step => step.id === next.doc.cursor.stepId)?.id ?? itemId, itemType: 'step_by_step', questionText, steps });
+    }, 650));
+   }
+   if (before.confidence !== after.confidence && after.confidence) emitLearnEvent(context, { type: 'confidence_set', itemId, itemType: 'step_by_step', questionText, confidence: after.confidence });
+   if (!before.skipped && after.skipped) emitLearnEvent(context, { type: 'check_skipped', itemId, questionText });
+   if (!before.guidanceOpenedAt && after.guidanceOpenedAt) emitLearnEvent(context, { type: 'hint_used', itemId, questionText, hintLevel: 1 });
+  });
+  return () => {
+   unsubscribe();
+   for (const timer of pendingAppEvents.current.values()) clearTimeout(timer);
+   pendingAppEvents.current.clear();
+  };
+ }, [store]);
  const needWellbeing = multipleQuestions && !!sessionId && state.doc.session?.anxiety === undefined && state.doc.session?.energy === undefined && wellbeingDismissed !== sessionId && !wellbeingAsked(sessionId) && state.storageState?.kind !== 'conflict';
  const [askingFor, setAskingFor] = useState<string | null>(null), [editingScales, setEditingScales] = useState(false), askWellbeing = !!askingFor && askingFor === sessionId && wellbeingDismissed !== sessionId;
  useEffect(() => { if (needWellbeing) { setEditingScales(false); setAskingFor(sessionId); } }, [needWellbeing, sessionId]);
@@ -191,9 +291,17 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    updateLessonProgressState({ ...progress, activePanelEvent: { questionId: currentBankQuestion.id, openedAt: isoLocal() } });
   }
   if (wasRunning && current) dispatch(actions.timerPause({ exerciseId: current.id, now: Date.now(), paused: true }));
+  const scopeId = `lesson-reference:${lesson.id}`;
+  const context = contextForQuestion({ bankVersion: loadedBank?.version ?? 'unknown', session: sessionId || 'unknown', chapter: matchingBank?.bank.chapter?.number, lesson: lesson.id });
+  if (referenceScopeId.current) activityTracker.stopScope(referenceScopeId.current);
+  referenceScopeId.current = scopeId;
+  activityTracker.startScope({ id: scopeId, openType: 'lesson_open', closeType: 'lesson_close', context, fields: { itemId: lesson.id, questionText: lesson.title } });
+  emitLearnEvent(context, { type: 'chunk_read', itemId: lesson.id, questionText: lesson.title, note: 'Read-only lesson reference opened.' });
   setReferenceLesson(lesson);
  }
  function closeReference(targetExerciseId?: string) {
+  if (referenceScopeId.current) activityTracker.stopScope(referenceScopeId.current);
+  referenceScopeId.current = null;
   setReferenceLesson(null);
   const progress = lessonProgressRef.current;
   if (progress.activePanelEvent) {
@@ -384,23 +492,43 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    }
   }
   const data = buildTutorExport(doc, new Date(), lessonExport), text = JSON.stringify(data, null, 2);
+  emitLearnEvent(sessionEventContext, { type: 'report_generated', itemId: `session:${data.session_id}`, note: 'Tutor export generated.' });
   const copiedOk = await writeClipboard(text), saved = downloadText(`math-session-${data.session_id}.json`, text);
   if (!copiedOk) { jsonForm.reset({ json: text }); setBackup(true); }
   dispatch(actions.notice(`Tutor export ready${copiedOk ? ' · copied' : ''}${saved ? ' · downloaded' : ''}.`));
  }
- function downloadBackup() { dispatch(actions.notice(downloadText(`math-scratchpad-backup-${stamp()}.json`, serialize(store.getState())) ? 'Backup file downloaded.' : 'Download blocked. Use Session JSON to copy the backup.')); }
+ function downloadBackup() { const saved = downloadText(`math-scratchpad-backup-${stamp()}.json`, serialize(store.getState())); if (saved) emitLearnEvent(sessionEventContext, { type: 'backup_created', itemId: `session:${sessionId || 'unknown'}` }); dispatch(actions.notice(saved ? 'Backup file downloaded.' : 'Download blocked. Use Session JSON to copy the backup.')); }
  async function importFile(file: File | undefined) {
   if (!file) return;
-  try { if (file.size > 1000000) throw Error('Backup file is too large.'); const raw = JSON.parse(await file.text()); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); setShowResults(false); }
+  try { if (file.size > 1000000) throw Error('Backup file is too large.'); const raw = JSON.parse(await file.text()); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); emitLearnEvent(sessionEventContext, { type: 'backup_restored', itemId: file.name }); setShowResults(false); }
   catch (error) { dispatch(actions.notice(`Import failed: ${error instanceof Error ? error.message : 'invalid file'}`)); }
   finally { if (fileInput.current) fileInput.current.value = ''; }
  }
  function confirmReset() {
   const kind = resetKind; setResetKind(null);
-  if (kind === 'session') { dispatch(actions.resetSession()); setShowResults(false); setManual(''); }
-  else if (kind === 'all') { if (store.clearStorage) store.clearStorage(); else clearAppStorage(); window.location.reload(); }
+  if (kind === 'session') { emitLearnEvent(sessionEventContext, { type: 'session_reset', itemId: sessionId || undefined }); dispatch(actions.resetSession()); setShowResults(false); setManual(''); }
+  else if (kind === 'all') { emitLearnEvent(sessionEventContext, { type: 'session_reset', itemId: sessionId || undefined, note: 'All local storage cleared.' }); if (store.clearStorage) store.clearStorage(); else clearAppStorage(); window.location.reload(); }
+ }
+ function recordPracticeAttempt() {
+  if (ex.diagnosticId !== undefined) return; // The diagnostic result event is emitted after the reliable checker runs.
+  const steps = ex.steps.filter(step => !stepIsBlank(step)).map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+  const answer = (ex.answerText ?? '').slice(0, 8_000);
+  if (!answer && !steps.length) return;
+  const itemId = currentBankQuestion?.id ?? ex.id;
+  const attemptNo = (practiceAttemptCounts.current.get(itemId) ?? 0) + 1;
+  practiceAttemptCounts.current.set(itemId, attemptNo);
+  emitLearnEvent(practiceEventContext, {
+   type: currentBankQuestion?.stage === 'learn' ? 'check_answer' : 'exercise_attempt',
+   itemId,
+   itemType: answerType === 'choice' ? 'mcq' : answerType === 'text' ? 'typed' : 'step_by_step',
+   questionText: (ex.prompt || ex.source).slice(0, 8_000),
+   ...(answer ? { userAnswer: answer } : {}),
+   ...(steps.length ? { steps } : {}),
+   verdict: 'submitted', verdictSource: 'none', attemptNo,
+  });
  }
  function commit(action: Decision) {
+  recordPracticeAttempt();
   if (action === 'next') { dispatch(actions.adjacentExercise(1)); setManual(''); setShowResults(false); }
   else if (action === 'complete') { if (!markLessonPracticeDone()) setComplete(true); }
   else void copyReview();
@@ -426,7 +554,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   } catch (error) { problemForm.setError('source', { message: error instanceof Error ? error.message : 'Invalid problem.' }, { shouldFocus: true }); }
  });
  const loadBackup = jsonForm.handleSubmit(value => {
-  try { const raw = JSON.parse(value.json); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); setBackup(false); setShowResults(false); }
+  try { const raw = JSON.parse(value.json); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); emitLearnEvent(sessionEventContext, { type: 'backup_restored', itemId: 'session-json' }); setBackup(false); setShowResults(false); }
   catch (error) { jsonForm.setError('json', { message: error instanceof Error ? error.message : 'Invalid session JSON.' }, { shouldFocus: true }); }
  });
  function keyboard(event: KeyboardEvent<HTMLElement>) {
@@ -490,6 +618,30 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const examGrades = useMemo(() => !showResults || !exam ? [] : questionBank.map(question => {
   const entry = state.doc.exercises.find(x => x.diagnosticId === question.id); return { question, result: !entry || entry.skipped ? null : gradeDiagnostic(entry, question) };
  }), [showResults, exam, questionBank, state.doc]);
+ useEffect(() => {
+  if (!showResults || !exam || !examGrades.length) return;
+  const snapshot = examGrades.map(({ question, result }) => {
+   const entry = state.doc.exercises.find(item => item.diagnosticId === question.id);
+   return [question.id, result?.numeric ?? 'skipped', entry?.answerText ?? '', entry?.steps.map(step => stepLatex(step)) ?? []];
+  });
+  const signature = `${sessionId}:${JSON.stringify(snapshot)}`;
+  if (reportedDiagnosticAttempts.current.has(signature)) return;
+  reportedDiagnosticAttempts.current.add(signature);
+  const eventContext: LearnEventContext = { bankVersion: 'diagnostic', session: sessionId || 'unknown', chapter: 0, lesson: 'diagnostic', section: 'diagnostic', concept: 'arithmetic' };
+  for (const { question, result } of examGrades) {
+   const entry = state.doc.exercises.find(item => item.diagnosticId === question.id);
+   if (!entry || entry.skipped || !result) continue;
+   const itemId = String(question.id);
+   const attemptNo = (practiceAttemptCounts.current.get(itemId) ?? 0) + 1;
+   practiceAttemptCounts.current.set(itemId, attemptNo);
+   const steps = entry.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+   const verdict: LearnEventDraft['verdict'] = result.numeric === 'correct' || result.numeric === 'incorrect' ? result.numeric : 'submitted';
+   const verdictSource: LearnEventDraft['verdictSource'] = verdict === 'submitted' ? 'none' : 'checker';
+   const event = { itemId, itemType: 'step_by_step' as const, questionText: question.stem.slice(0, 8_000), userAnswer: (entry.answerText || steps.join('\n')).slice(0, 8_000), steps, verdict, verdictSource, attemptNo };
+   emitLearnEvent(eventContext, { ...event, type: 'exercise_attempt' });
+   if (verdict === 'incorrect') emitLearnEvent(eventContext, { ...event, type: 'mistake_logged', verdict: 'incorrect', verdictSource: 'checker' });
+  }
+ }, [exam, examGrades, sessionId, showResults, state.doc.exercises]);
  async function copyReport() { const text = examGrades.map(({question,result}) => `Q${question.id} | ${question.stem}\nExpected: ${question.expected}\n${result?.numeric ?? 'skipped'}`).join('\n\n'); if (await writeClipboard(text)) dispatch(actions.notice('Diagnostic report copied.')); else setManual(text); }
  const activeMathfield = mathfieldForStep(state.doc.cursor.stepId);
  const canUndo = !!activeMathfield?.canUndo() || state.past.some(d => d.exerciseId === ex.id);
@@ -555,7 +707,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
    {batch && <section className="exercise-bar" hidden={layout !== 'phone'} aria-label="Question navigation"><label>Current question<select aria-label="Select question" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} · {questionStatus(entry)}</option>)}</select></label></section>}
    <section className="problem" aria-label="Current problem">{(wide || linkedLesson || fractions) && <div className="question-heading"><h2>Question {exerciseIndex + 1}</h2>{fractions && <span className="topic-badge">Fractions</span>}{linkedLesson && <Button ref={lessonButton} className="lesson-reference-trigger" onClick={() => openReference(linkedLesson)}><BookOpen aria-hidden="true" />Lesson</Button>}</div>}{ex.prompt && <p className="question-statement" lang={languageForText(ex.prompt)} dir={contentDirection(ex.prompt)}><LessonText text={ex.prompt} /></p>}{(ex.mode === 'math' || (ex.source.trim() && ex.source.trim() !== ex.prompt?.trim())) && <QuestionSource source={ex.source} mode={ex.mode} label="Original problem" mathLabel="Original question expression" textClassName="question-source-text" mathClassName="problem-formula" />}{ex.guidance && <details className="question-guidance" open={guidanceOpen} onToggle={e => { const open = e.currentTarget.open; if (open !== guidanceOpen) setGuidanceOpen(open); if (open) dispatch(actions.openGuidance()); }}><summary>Question guidance{ex.guidanceOpenedAt ? <span className="small guidance-used"> · Used</span> : null}</summary><p lang={languageForText(ex.guidance)} dir={contentDirection(ex.guidance)}><LessonText text={ex.guidance} /></p></details>}{linkedLesson && <LessonSourceAttribution book={linkedLesson.book} section={linkedLesson.section} />}</section>
-    <QuestionTimer key={ex.id} exerciseId={ex.id} />
+    <QuestionTimer key={ex.id} exerciseId={ex.id} onPauseChange={paused => { manualTimerPause.current = paused; activityTracker.setPaused(paused); }} />
     </div>
     <div className={`editor-layout work-pane ${isMathAnswer && state.keyboardOpen ? 'keyboard-visible' : 'keyboard-hidden'}`} role={wide ? 'region' : undefined} aria-label={wide ? (isMathAnswer ? 'Your work' : 'Your response') : undefined}><div className="notebook-main">
     {wide && isMathAnswer && mathTools}
@@ -595,7 +747,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    </div></div>
    </div>
   </div>
-  {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} /></div>}
+  {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} activityTracker={activityTracker} eventContext={lessonEventContext} /></div>}
   <LessonPicker open={lessonPickerOpen} lessons={lessons} progressByLesson={lessonProgressById} hasBank={!!matchingBank} onLoadBank={loadBankFromLessons} onOpenChange={setLessonPickerOpen} onChoose={openLesson} onCloseAutoFocus={event => { event.preventDefault(); if (!lessonScreen) menuInvoker.current?.focus({ preventScroll: true }); }} />
   {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} question={currentBankQuestion} onSelectPracticeQuestion={openQuestionFromReference} onOpenInteractiveLesson={openInteractiveLessonFromReference} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
