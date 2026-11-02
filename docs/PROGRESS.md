@@ -5,7 +5,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | Card | Status | PR / evidence |
 | --- | --- | --- |
 | P0-1 Event model | complete | PR #27 and zero-skip follow-up PR #31 merged; CI green and Pages live |
-| P0-2 Durable Object + Worker | implementation in progress | `feat/p0-2-durable-object-worker`; local Worker integration tests and Wrangler dry-run pass; CI, authenticated deploy and live check pending |
+| P0-2 Durable Object + Worker | ready to merge | [PR #32](https://github.com/amirhoseinLotfii/math-scratchpad/pull/32); CI green; Worker deployed and live health/CORS/auth-boundary checks passed |
 | P0-3 Browser outbox + migration | todo | — |
 | P0-4 Drive mirror | todo | — |
 | P0-5 Notion mirror | todo | — |
@@ -44,7 +44,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 ## Persian changelog
 
 - P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. پس از شکست فوکوس در CI، بازگردانی فوکوس MathLive به ورودی زندهٔ همان گام چندبار در فریم‌های بعدی تلاش می‌کند. PR #27 و پیگیری حذف skipها در PR #31 ادغام شدند؛ تست‌های محدود به viewport با انتخاب پروژه اجرا می‌شوند و gate کامل CI بدون تست skipشده سبز شد. Pages نیز به commit نهایی P0-1 منتشر شد. رویدادهای سمت مرورگر تا کارت P0-3 در حافظه می‌مانند.
-- P0-2 (در پیاده‌سازی): Worker همگام‌سازی با Hono، اعتبارسنجی ID token گوگل با JWKS، محدودکردن دسترسی به ایمیل مالک و CORS دقیق GitHub Pages، ذخیرهٔ append-only در SQLite Durable Object، idempotency، pagination و rate limit اضافه شده است. ۱۶ تست Workers Vitest و Wrangler dry-run محلی سبز هستند. انتشار واقعی، بررسی زنده و CI این کارت هنوز در انتظارند.
+- P0-2: Worker همگام‌سازی با Hono، اعتبارسنجی ID token گوگل با JWKS، محدودکردن دسترسی به ایمیل مالک و CORS دقیق GitHub Pages، ذخیرهٔ append-only در SQLite Durable Object، idempotency، pagination و rate limit اضافه شد. ۱۶ تست Workers Vitest و Wrangler dry-run سبز هستند. CI در اجرای `41378938028` با ۸۰۰ تست واحد/یکپارچه، ۱۶ تست Worker و ۴۴۴ تست Playwright، بدون skip یا شکست، سبز شد. Worker با نسخهٔ `9d5c41bd-b338-45bb-b0bc-70c8129be568` منتشر شد. بررسی زنده: `/health` برابر ۲۰۰ و پاسخ سالم است؛ preflight مبدأ GitHub Pages برابر ۲۰۴، مبدأ دیگر برابر ۴۰۳ و `/sync` بدون توکن برابر ۴۰۱ است. مالک پاسخ HTTPS سلامت را هم در مرورگر موبایل تأیید کرد. PR #32 آمادهٔ ادغام است.
 
 ## P0-1 test notes
 
@@ -61,4 +61,4 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 ## P0-2 verification notes
 
 - Local `npm run test:gate`: typechecks passed, all 800 unit/integration tests passed, 16 Workers integration tests passed, and all 444 Playwright tests passed with zero skipped, failed, or flaky tests.
-- `npm run build` passed for the app, standalone bundle, and Wrangler Worker dry-run. Authenticated Cloudflare deployment, PR CI, and a live `/health` check remain pending.
+- `npm run build` passed for the app, standalone bundle, and Wrangler Worker dry-run. Authenticated deployment succeeded at `https://math-scratchpad-sync.math-scratchpad-redux.workers.dev`; `/health` returned `{"ok":true,"service":"math-scratchpad-sync"}` over HTTPS (confirmed by the owner) and HTTP (checked here). Live API boundary checks returned 204 for the allowed Pages preflight, 403 for a foreign origin, and 401 for `/sync` without a bearer token. The task environment proxy returned a TLS 503 for direct HTTPS calls to `workers.dev`, so those API boundary checks were exercised over HTTP; the same routes are covered by the green Worker integration suite. PR #32 is ready to merge.
