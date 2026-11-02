@@ -109,6 +109,8 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   app.get('/snapshot', authorize, c => proxy(c, '/snapshot', 'GET'));
   app.get('/drive/status', authorize, c => proxy(c, '/drive/status', 'GET'));
   app.post('/drive/sync', authorize, c => proxy(c, '/drive/sync', 'POST', false));
+  app.get('/notion/status', authorize, c => proxy(c, '/notion/status', 'GET'));
+  app.post('/notion/sync', authorize, c => proxy(c, '/notion/sync', 'POST', false));
 
   app.notFound(c => finalizeResponse(jsonError('not_found', 404), c));
   app.onError((_error, c) => finalizeResponse(jsonError('internal_error', 500), c));

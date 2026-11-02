@@ -9,6 +9,14 @@ export interface WorkerEnv {
   GOOGLE_DRIVE_CLIENT_SECRET?: string;
   /** Owner-only refresh token with drive.file and userinfo.email authorization. */
   GOOGLE_DRIVE_REFRESH_TOKEN?: string;
+  /** Internal Notion integration key; set with wrangler secret put NOTION_API_KEY. */
+  NOTION_API_KEY?: string;
+  /** Public Notion data-source identifiers. Never put credentials in these bindings. */
+  NOTION_DATA_SOURCE_ATTEMPTS?: string;
+  NOTION_DATA_SOURCE_SESSIONS?: string;
+  NOTION_DATA_SOURCE_MISTAKES?: string;
+  NOTION_DATA_SOURCE_CONCEPTS?: string;
+  NOTION_DATA_SOURCE_DAILY_REPORTS?: string;
   EVENT_RATE_LIMIT?: string;
 }
 

@@ -15,6 +15,11 @@
     "ALLOWED_ORIGIN": "https://amirhoseinlotfii.github.io",
     "OWNER_EMAIL": "amirhoseinlotfalizadeprogramer@gmail.com",
     "GOOGLE_CLIENT_ID": "644646241119-b3u1ahcqnbhm1miec5a78pts6kplp68q.apps.googleusercontent.com",
-    "EVENT_RATE_LIMIT": "120"
+    "EVENT_RATE_LIMIT": "120",
+    "NOTION_DATA_SOURCE_ATTEMPTS": "0303207d-a6a8-4631-9fa8-3b09942e9046",
+    "NOTION_DATA_SOURCE_SESSIONS": "87f156ae-7937-4fbe-9301-103c7dfb57a7",
+    "NOTION_DATA_SOURCE_MISTAKES": "c94b70b8-1ca5-4ddc-9519-edc43a075cc4",
+    "NOTION_DATA_SOURCE_CONCEPTS": "e2f2f7a0-dfb8-424a-b464-fb8af13566c7",
+    "NOTION_DATA_SOURCE_DAILY_REPORTS": "6c154e26-ac84-4537-a66a-9e6be62d4f23"
   }
 }
