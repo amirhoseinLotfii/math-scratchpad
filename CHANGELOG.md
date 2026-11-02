@@ -137,3 +137,11 @@
 - اجرای CI شمارهٔ `41486421259` روی head برابر `2dfab885e7988d9f56081cb22f04a486328dfc9e` با `test:gate` و build سبز شد. PR #37 تازه بررسی شد: باز، draft و ادغام‌نشده است.
 - `npm run test:manual-gate` هنوز به‌علت ۱۸ بررسی دستیِ pending در `docs/testing/manual-acceptance.json` بسته است؛ این موارد شامل دستگاه واقعی و دسترس‌پذیری‌اند و با CI خودکار جایگزین نمی‌شوند.
 - این نشست ابزار GitHub دارد، اما به Chrome محلی مالک یا Cloudflare وصل نیست. اینجا هیچ بررسی زندهٔ تازه‌ای از Cloudflare، Google، Drive یا Notion، تغییر حساب یا deploy انجام نشد؛ مشاهدات زندهٔ قبلی در بالا سابقه‌اند، نه تأیید وضعیت فعلی. P0-3 تا P0-7 تا انجام OAuth/Secrets، deploy و read-back واقعی باز می‌مانند.
+
+
+## بررسی زندهٔ جدید Cloudflare و CI — ۱۴۰۵/۰۸/۱۱
+
+- PR #37 باز و draft ماند. head فعلی `6f495c1b808c9e3ce1e5c6583670b7e9b39774c6` در اجرای کامل CI شمارهٔ `41493469737` با موفقیت از gate و build گذشت.
+- اتصال Cloudflare MCP در این نشست فقط‌خواندنی بود. Worker Production `math-scratchpad-sync` همچنان نسخهٔ `9d5c41bd-b338-45bb-b0bc-70c8129be568` را روی `workers.dev` اجرا می‌کند؛ فقط binding `EVENT_STORE` و چهار متغیر پایه حاضرند. پنج متغیر Notion، سه نام Secret لازم و Cron هفتگی در Production حاضر نیستند. هیچ route، دامنه، DNS، Secret یا deployment تغییر نکرد.
+- درخواست تازهٔ `/health` قابل تأیید نبود. در Drive پوشهٔ خصوصی `Math_Project/06_Backups` با ۱۵ مورد دیده شد اما فایل پشتیبان زمان‌بندی‌شده وجود نداشت؛ `03_Sync` پیدا نشد. هیچ رویداد یا فایل آزمایشی نوشته نشد و Notion read-back انجام نشد.
+- نبود Secretها مانع deploy و آزمون زندهٔ Drive/Notion است. کارت‌های P0-3 تا P0-7 باز می‌مانند؛ PR #37 ادغام نشده است.
