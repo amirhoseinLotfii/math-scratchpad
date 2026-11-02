@@ -461,7 +461,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     invoker.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     const mathfield = invoker.closest('math-field') as (HTMLElement & { hasFocus?: () => boolean }) | null;
     if (mathfield) requestAnimationFrame(() => {
-     if (mathfield.isConnected && mathfield.hasFocus?.() === false && document.activeElement === document.body) {
+     // MathLive can complete focus only after the dialog focus scope has been removed.
+     if (mathfield.isConnected && mathfield.hasFocus?.() === false) {
       mathfield.focus({ preventScroll: true });
      }
     });

@@ -51,6 +51,6 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - Timed scopes cover session, lesson, page-based concept chunk, section, question and the focused MathLive step; focus/visibility/idle time is shared.
 - Final local gate: 444 passed, 52 viewport-conditional skips in the 496-test Playwright matrix; `src/sync` line coverage 93.21%.
 - `npm run build`, `npm run typecheck`, `npm run test:typecheck`, targeted unit/integration tests and the event E2E passed.
-- After the focus restoration adjustment, the laptop `WIDE-08` slash-tool flow passed 10 consecutive browser repetitions; both TypeScript checks passed again.
+- After the focus restoration adjustment, WIDE-08 passed 20 consecutive runs across 1024px and 1440px, and the full keyboard-only lesson flow passed 10 consecutive runs; both TypeScript checks passed again.
 - CI runs the full Playwright matrix with one worker to avoid flaky focus behavior on the constrained GitHub runner; local runs retain two workers.
 - «نیاز به تست»: Safari/iOS visibility and focus behavior on a physical device.
