@@ -153,3 +153,11 @@
 - Cloudflare MCP فعال است؛ Worker نسخهٔ `9d5c41bd` را با ۱۰۰٪ ترافیک اجرا می‌کند. پنج data source variable، سه نام Secret و Cron در Production نیستند. deploy انجام نشد.
 - در Google Console، OAuth هنوز External / Testing است؛ پیوند Privacy/Terms خالی و scope `userinfo.email` در فهرست دیده نشد. هیچ credential خوانده/ساخته نشد. در Notion Developer connection وجود ندارد و ساخت آن پذیرش Developer Terms می‌خواهد.
 - Drive owner match شد؛ پوشهٔ backup ۱۵ مورد دارد اما فایل زمان‌بندی‌شده ندارد و پوشهٔ `03_Sync` پیدا نشد. داده‌ای نخواندیم/ننوشتم. کارت‌های P0-3 تا P0-7 تا تکمیل شرط‌های خود باز می‌مانند.
+
+
+## تست‌های محلی پس از بررسی سرویس‌ها — 2026-11-03
+
+- `npm test`: ۸۴۱ تست برنامه در ۵۷ فایل و ۵۳ تست Worker در ۳ فایل موفق شدند.
+- `npm run test:typecheck -- --pretty false` و `XDG_CONFIG_HOME=/tmp/math-scratchpad-xdg npm run build` موفق شدند؛ build شامل standalone bundle و Wrangler dry-run بود.
+- CI run `41513230008`، شامل `npm run test:gate` و build، سبز شد. هشدارهای bundle و `use client` غیرمسدودکننده بودند.
+- هیچ deploy یا نوشتن زنده‌ای در Drive/Notion انجام نشد.
