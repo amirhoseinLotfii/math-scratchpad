@@ -14,7 +14,7 @@ import {
   type SequencedLearnEvent,
 } from '../src/drive-projection';
 import { DriveMirrorError, GoogleDriveClient } from '../src/google-drive';
-import { createApp, type IdTokenVerifier } from '../src/index';
+import { createApp, requestWeeklyDriveBackup, type IdTokenVerifier } from '../src/index';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
 
 const OWNER_EMAIL = 'amirhoseinlotfalizadeprogramer@gmail.com';
@@ -366,7 +366,10 @@ describe('authenticated Drive status endpoints', () => {
     const app = createApp(validVerifier);
     const status = await request(app, '/drive/status');
     expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ status: 'not_configured', lastSyncedAt: null, pendingCount: 0, lastError: null });
+    expect(await status.json()).toEqual({
+      status: 'not_configured', lastSyncedAt: null, pendingCount: 0, lastError: null,
+      weeklyBackup: { status: 'not_configured', lastCreatedAt: null, lastError: null },
+    });
     const sync = await request(app, '/drive/sync', 'POST');
     expect(sync.status).toBe(503);
     expect(await sync.json()).toMatchObject({ drive: { status: 'not_configured' } });
@@ -388,7 +391,8 @@ describe('Durable Object Drive mirror integration', () => {
       ensureFolder: async (name: string, parentId: string) => {
         if (name === '03_Sync') expect(parentId).toBe('root-folder');
         if (name === 'events' || name === 'state') expect(parentId).toBe('sync-folder');
-        return name === '03_Sync' ? 'sync-folder' : name === 'events' ? 'events-folder' : 'state-folder';
+        if (name === '06_Backups') expect(parentId).toBe('root-folder');
+        return name === '03_Sync' ? 'sync-folder' : name === 'events' ? 'events-folder' : name === '06_Backups' ? 'backups-folder' : 'state-folder';
       },
       upsertTextFile: async (input: {
         name: string; parentId: string; desiredContent: string; knownFile?: { id: string; etag: string };
@@ -485,6 +489,7 @@ describe('Durable Object Drive mirror integration', () => {
             event.id, JSON.stringify(event), event.ts,
           );
         }
+
       });
     });
     const drive = makeMemoryDrive();
@@ -500,4 +505,110 @@ describe('Durable Object Drive mirror integration', () => {
     expect(JSON.parse(drive.contentByName.get('sync_manifest.json')!).lastSeq).toBe(50_000);
     expect(elapsedMs).toBeLessThan(20_000);
   }, 60_000);
+
+  async function runWeeklyBackup(client: object, now: Date) {
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    return runInDurableObject(stub, instance => {
+      const internals = instance as unknown as {
+        driveClient?: object;
+        driveConfigured: () => boolean;
+        performWeeklyBackup: (date: Date) => Promise<unknown>;
+      };
+      internals.driveConfigured = () => true;
+      internals.driveClient = client;
+      return internals.performWeeklyBackup(now);
+    });
+  }
+
+  it('creates a private, checksummed weekly snapshot in Math_Project/06_Backups and is idempotent for its date', async () => {
+    const event = makeEvent(31, { type: 'check_answer', questionText: 'Domain?', userAnswer: '{1,2}', verdict: 'submitted', verdictSource: 'none' });
+    await appendForOwner(event);
+    const drive = makeMemoryDrive();
+    const date = new Date('2026-11-08T02:00:00.000Z');
+    const first = await runWeeklyBackup(drive.client, date) as { status: string; lastCreatedAt: string | null; lastError: string | null };
+    expect(first).toMatchObject({ status: 'created', lastCreatedAt: date.toISOString(), lastError: null });
+    expect(drive.uploads.at(-1)).toMatchObject({ name: 'sync_backup_2026-11-08.json', parentId: 'backups-folder' });
+    const backup = JSON.parse(drive.contentByName.get('sync_backup_2026-11-08.json')!) as {
+      format: string; snapshot: { lastSeq: number; eventCount: number; progress: { lastEventId: string | null } };
+      events: Array<{ seq: number; event: LearnEvent }>; sha256: string;
+    };
+    expect(backup).toMatchObject({ format: 'math-scratchpad-weekly-backup/v1', snapshot: { lastSeq: 1, eventCount: 1, progress: { lastEventId: event.id } }, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(backup.events).toEqual([{ seq: 1, event }]);
+    const { sha256, ...unsigned } = backup;
+    const canonical = (value: unknown): string => {
+      if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
+      }
+      return JSON.stringify(value);
+    };
+    expect(await sha256Hex(canonical(unsigned))).toBe(sha256);
+    const uploadCount = drive.uploads.length;
+    await runWeeklyBackup(drive.client, date);
+    expect(drive.uploads).toHaveLength(uploadCount);
+  });
+
+  it('serializes weekly backup and event mirroring that share the Drive manifest', async () => {
+    await appendForOwner(makeEvent(32));
+    const drive = makeMemoryDrive();
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    const date = new Date('2026-11-08T02:00:00.000Z');
+    const [weekly, mirror] = await runInDurableObject(stub, async instance => {
+      const internals = instance as unknown as {
+        driveClient?: object;
+        driveConfigured: () => boolean;
+        syncWeeklyBackup: (now: Date) => Promise<{ status: string }>;
+        syncDrive: () => Promise<{ status: string }>;
+      };
+      internals.driveConfigured = () => true;
+      internals.driveClient = drive.client;
+      return Promise.all([internals.syncWeeklyBackup(date), internals.syncDrive()]);
+    });
+    expect(weekly.status).toBe('created');
+    expect(mirror.status).toBe('synced');
+    expect(drive.uploads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'sync_backup_2026-11-08.json', parentId: 'backups-folder' }),
+      expect.objectContaining({ name: 'events_2026-11.jsonl', parentId: 'events-folder' }),
+      expect.objectContaining({ name: 'sync_manifest.json', parentId: 'sync-folder' }),
+    ]));
+  });
+
+  it('does not let public event traffic rate-limit the owner-scoped scheduled backup', async () => {
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    const currentWindow = Math.floor(Date.now() / 60_000) * 60_000;
+    await runInDurableObject(stub, (_instance, state) => {
+      state.storage.sql.exec(
+        'INSERT INTO rate_windows (window_start, request_count) VALUES (?, ?)',
+        currentWindow, 10_000,
+      );
+    });
+    const response = await stub.fetch(new Request('https://event-store.internal/internal/weekly-backup', { method: 'POST' }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ weeklyBackup: { status: 'not_configured' } });
+  });
+});
+
+describe('scheduled weekly backup trigger', () => {
+  it('targets only the normalized owner Durable Object and passes the scheduled instant', async () => {
+    const requests: Array<{ owner: string; url: string; method: string }> = [];
+    const fakeNamespace = {
+      idFromName(ownerId: string) { return ownerId; },
+      get(ownerId: string) {
+        return { fetch: async (request: Request) => {
+          requests.push({ owner: ownerId, url: request.url, method: request.method });
+          return Response.json({ weeklyBackup: { status: 'created' } });
+        } };
+      },
+    };
+    const scheduledTime = Date.UTC(2026, 10, 8, 2);
+    await requestWeeklyDriveBackup({ OWNER_EMAIL: ` ${OWNER_EMAIL.toUpperCase()} `, EVENT_STORE: fakeNamespace } as unknown as Pick<WorkerEnv, 'OWNER_EMAIL' | 'EVENT_STORE'>, scheduledTime);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].owner).toBe(OWNER_EMAIL.toLowerCase());
+    expect(new URL(requests[0].url).searchParams.get('scheduledTime')).toBe(String(scheduledTime));
+    expect(requests[0].method).toBe('POST');
+  });
 });

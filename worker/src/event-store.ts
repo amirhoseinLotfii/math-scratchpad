@@ -48,7 +48,14 @@ type DriveMirrorState = {
   pendingCount: number;
   lastSyncedAt?: string;
   lastError?: DriveMirrorErrorCode;
-  folders?: { rootId: string; syncId: string; eventsId: string; stateId: string };
+  folders?: { rootId: string; syncId: string; eventsId: string; stateId: string; backupsId?: string };
+  weeklyBackup?: {
+    status: 'scheduled' | 'created' | 'error';
+    date?: string;
+    lastCreatedAt?: string;
+    lastSeq?: number;
+    lastError?: DriveMirrorErrorCode;
+  };
   files: Record<string, DriveFileRef>;
   fileHashes: Record<string, string>;
 };
@@ -57,11 +64,17 @@ export type DriveMirrorStatus = {
   lastSyncedAt: string | null;
   pendingCount: number;
   lastError: DriveMirrorErrorCode | null;
+  weeklyBackup: {
+    status: 'not_configured' | 'scheduled' | 'created' | 'error';
+    lastCreatedAt: string | null;
+    lastError: DriveMirrorErrorCode | null;
+  };
 };
 
 const DRIVE_STATE_KEY = 'drive-mirror-state-v1';
 const DRIVE_DEBOUNCE_MS = 5_000;
 const DRIVE_RETRY_MS = 60_000;
+const WEEKLY_BACKUP_RETRY_MS = 60_000;
 const DRIVE_MIRROR_PAGE_SIZE = 500;
 const NOTION_PROJECTION_PAGE_SIZE = 1_000;
 const NOTION_EVENTS_PER_RUN = 5;
@@ -92,6 +105,26 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function mergeWeeklyBackupContent(remote: string, desired: string): string {
+  let current: unknown, next: unknown;
+  try { current = JSON.parse(remote); next = JSON.parse(desired); }
+  catch { throw new Error('event_id_conflict'); }
+  if (!current || typeof current !== 'object' || !next || typeof next !== 'object'
+    || (current as { format?: unknown }).format !== 'math-scratchpad-weekly-backup/v1'
+    || (next as { format?: unknown }).format !== 'math-scratchpad-weekly-backup/v1'
+    || !Array.isArray((current as { events?: unknown }).events) || !Array.isArray((next as { events?: unknown }).events)) {
+    throw new Error('event_id_conflict');
+  }
+  const latestEvents = (next as { events: Array<{ seq: number; event: LearnEvent }> }).events;
+  const latest = new Map(latestEvents.map(item => [item.event.id, canonicalJson(item)]));
+  for (const item of (current as { events: Array<{ seq: number; event: LearnEvent }> }).events) {
+    if (!latest.has(item.event.id) || latest.get(item.event.id) !== canonicalJson(item)) {
+      throw new Error('event_id_conflict');
+    }
+  }
+  return desired;
+}
+
 function integerQuery(url: URL, name: string, fallback: number): number | null {
   const raw = url.searchParams.get(name);
   if (raw === null) return fallback;
@@ -105,6 +138,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private readonly rateLimit: number;
   private driveClient: GoogleDriveClient | undefined;
   private driveSyncPromise: Promise<DriveMirrorStatus> | undefined;
+  private weeklyBackupPromise: Promise<DriveMirrorStatus['weeklyBackup']> | undefined;
+  private driveOperationQueue: Promise<void> = Promise.resolve();
   private notionClient: NotionClientPort | undefined;
   private notionSyncPromise: Promise<NotionMirrorStatus> | undefined;
   private readonly notionRequests = new NotionRequestQueue();
@@ -138,8 +173,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const url = new URL(request.url);
     const supported = (request.method === 'POST' && url.pathname === '/events')
       || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status'))
-      || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync'));
+      || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup'));
     if (!supported) return json({ error: 'not_found' }, 404);
+
+    if (url.pathname === '/internal/weekly-backup') {
+      const scheduledTime = Number(url.searchParams.get('scheduledTime'));
+      const now = Number.isSafeInteger(scheduledTime) && scheduledTime > 0 ? new Date(scheduledTime) : new Date();
+      return json({ weeklyBackup: await this.syncWeeklyBackup(now) });
+    }
 
     const rate = this.consumeRateLimit();
     if (rate) return rate;
@@ -161,7 +202,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   /** Durable Object alarm retries configured private mirrors after transient failures. */
   async alarm(): Promise<void> {
-    if (this.driveConfigured()) await this.syncDrive();
+    if (this.driveConfigured()) {
+      await this.syncDrive();
+      if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
+    }
     if (notionDataSourcesFromEnv(this.env)) await this.syncNotion();
   }
 
@@ -350,7 +394,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private async getDriveStatus(): Promise<DriveMirrorStatus> {
     const maxSeq = await this.maxSequence();
     if (!this.driveConfigured()) {
-      return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, lastError: null };
+      return {
+        status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, lastError: null,
+        weeklyBackup: { status: 'not_configured', lastCreatedAt: null, lastError: null },
+      };
     }
     const state = await this.readDriveState();
     return {
@@ -358,6 +405,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       lastSyncedAt: state.lastSyncedAt ?? null,
       pendingCount: Math.max(0, maxSeq - state.lastSeq),
       lastError: state.lastError ?? null,
+      weeklyBackup: {
+        status: state.weeklyBackup?.status ?? 'scheduled',
+        lastCreatedAt: state.weeklyBackup?.lastCreatedAt ?? null,
+        lastError: state.weeklyBackup?.lastError ?? null,
+      },
     };
   }
 
@@ -567,10 +619,90 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
   }
 
+  private syncWeeklyBackup(now = new Date()): Promise<DriveMirrorStatus['weeklyBackup']> {
+    if (!this.driveConfigured()) {
+      return Promise.resolve({ status: 'not_configured', lastCreatedAt: null, lastError: null });
+    }
+    if (this.weeklyBackupPromise) return this.weeklyBackupPromise;
+    this.weeklyBackupPromise = this.withDriveOperation(() => this.performWeeklyBackup(now)).finally(() => { this.weeklyBackupPromise = undefined; });
+    return this.weeklyBackupPromise;
+  }
+
+  /** Drive sync and scheduled backups share one persisted file manifest, so serialize their writes. */
+  private withDriveOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.driveOperationQueue.then(operation, operation);
+    this.driveOperationQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  private async performWeeklyBackup(now = new Date()): Promise<DriveMirrorStatus['weeklyBackup']> {
+    if (!this.driveConfigured()) return { status: 'not_configured', lastCreatedAt: null, lastError: null };
+    const state = await this.readDriveState();
+    const date = formatTehran(now).slice(0, 10);
+    if (state.weeklyBackup?.status === 'created' && state.weeklyBackup.date === date) {
+      return { status: 'created', lastCreatedAt: state.weeklyBackup.lastCreatedAt ?? null, lastError: null };
+    }
+
+    try {
+      this.driveClient ??= new GoogleDriveClient(this.env);
+      const client = this.driveClient;
+      let folders = state.folders;
+      if (!folders) {
+        const rootId = await client.ensureRootFolder('Math_Project');
+        const syncId = await client.ensureFolder('03_Sync', rootId);
+        const eventsId = await client.ensureFolder('events', syncId);
+        const stateId = await client.ensureFolder('state', syncId);
+        folders = { rootId, syncId, eventsId, stateId };
+      }
+      const backupsId = folders.backupsId ?? await client.ensureFolder('06_Backups', folders.rootId);
+      folders = { ...folders, backupsId };
+      state.folders = folders;
+      await this.saveDriveState({ ...state, status: state.status, folders });
+
+      const through = await this.maxSequence();
+      const events = this.readEventsThrough(through);
+      const unsigned = {
+        format: 'math-scratchpad-weekly-backup/v1',
+        schemaVersion: 1,
+        backupDateTehran: date,
+        createdAtUtc: now.toISOString(),
+        createdAtTehran: formatTehran(now),
+        snapshot: {
+          lastSeq: through,
+          eventCount: events.length,
+          progress: buildProgressProjection(events, now),
+        },
+        events,
+      };
+      const contents = `${JSON.stringify({ ...unsigned, sha256: await sha256Hex(canonicalJson(unsigned)) }, null, 2)}\n`;
+      const name = `sync_backup_${date}.json`;
+      const path = `backups/${name}`;
+      const saved = await client.upsertTextFile({
+        name,
+        parentId: backupsId,
+        mimeType: 'application/json',
+        desiredContent: contents,
+        knownFile: state.files[path],
+        mergeContent: mergeWeeklyBackupContent,
+      });
+      state.files[path] = { id: saved.id, etag: saved.etag };
+      state.weeklyBackup = { status: 'created', date, lastCreatedAt: now.toISOString(), lastSeq: through };
+      await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
+      return { status: 'created', lastCreatedAt: now.toISOString(), lastError: null };
+    } catch (error) {
+      const code = error instanceof DriveMirrorError ? error.code
+        : error instanceof Error && error.message === 'event_id_conflict' ? 'etag_conflict' : 'network_error';
+      state.weeklyBackup = { ...state.weeklyBackup, status: 'error', date, lastError: code };
+      await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
+      await this.scheduleAlarmIn(WEEKLY_BACKUP_RETRY_MS);
+      return { status: 'error', lastCreatedAt: state.weeklyBackup.lastCreatedAt ?? null, lastError: code };
+    }
+  }
+
   private async syncDrive(): Promise<DriveMirrorStatus> {
     if (!this.driveConfigured()) return this.getDriveStatus();
     if (this.driveSyncPromise) return this.driveSyncPromise;
-    this.driveSyncPromise = this.performDriveSync().finally(() => { this.driveSyncPromise = undefined; });
+    this.driveSyncPromise = this.withDriveOperation(() => this.performDriveSync()).finally(() => { this.driveSyncPromise = undefined; });
     return this.driveSyncPromise;
   }
 
@@ -668,6 +800,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         lastSyncedAt: finalState.lastSyncedAt ?? null,
         pendingCount: finalState.pendingCount,
         lastError: null,
+        weeklyBackup: {
+          status: finalState.weeklyBackup?.status ?? 'scheduled',
+          lastCreatedAt: finalState.weeklyBackup?.lastCreatedAt ?? null,
+          lastError: finalState.weeklyBackup?.lastError ?? null,
+        },
       };
     } catch (error) {
       const code = error instanceof DriveMirrorError ? error.code : error instanceof Error && error.message === 'event_id_conflict'
@@ -686,6 +823,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         lastSyncedAt: failed.lastSyncedAt ?? null,
         pendingCount: failed.pendingCount,
         lastError: failed.lastError ?? null,
+        weeklyBackup: {
+          status: failed.weeklyBackup?.status ?? 'scheduled',
+          lastCreatedAt: failed.weeklyBackup?.lastCreatedAt ?? null,
+          lastError: failed.weeklyBackup?.lastError ?? null,
+        },
       };
     }
   }

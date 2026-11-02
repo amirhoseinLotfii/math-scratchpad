@@ -3,6 +3,9 @@
   "name": "math-scratchpad-sync",
   "main": "./src/index.ts",
   "compatibility_date": "2026-11-02",
+  "triggers": {
+    "crons": ["0 2 * * 0"]
+  },
   "durable_objects": {
     "bindings": [
       { "name": "EVENT_STORE", "class_name": "LearningEventStore" }

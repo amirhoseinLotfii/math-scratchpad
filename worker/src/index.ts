@@ -118,5 +118,23 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
 }
 
 const app = createApp();
-export default app;
+
+export async function requestWeeklyDriveBackup(
+  env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>,
+  scheduledTime: number,
+): Promise<void> {
+  const owner = env.OWNER_EMAIL.trim().toLowerCase();
+  if (!owner || !Number.isSafeInteger(scheduledTime) || scheduledTime <= 0) throw new Error('weekly_backup_request_invalid');
+  const id = env.EVENT_STORE.idFromName(owner);
+  const stub = env.EVENT_STORE.get(id);
+  const response = await stub.fetch(new Request(`https://event-store.internal/internal/weekly-backup?scheduledTime=${scheduledTime}`, { method: 'POST' }));
+  if (!response.ok) throw new Error('weekly_backup_request_failed');
+}
+
+export default {
+  fetch: (request: Request, env: WorkerEnv, execution: ExecutionContext) => app.fetch(request, env, execution),
+  scheduled: (controller: ScheduledController, env: WorkerEnv, execution: ExecutionContext) => {
+    execution.waitUntil(requestWeeklyDriveBackup(env, controller.scheduledTime));
+  },
+};
 export { LearningEventStore } from './event-store';
