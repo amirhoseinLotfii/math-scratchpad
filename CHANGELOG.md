@@ -129,3 +129,11 @@
 ## پیگیری CI نهایی — ۱۴۰۵/۰۸/۱۱
 
 - اجرای `41472444422` روی commit مستنداتی `64065f5b237fa20d6d8e146d18bdb5b321c7a232` با موفقیت کامل شد؛ `npm run test:gate` و `npm run build` سبز شدند. PR #37 باز و draft ماند و هیچ تغییری در Cloudflare Production یا داده‌های Drive/Notion انجام نشد.
+
+
+## پیگیری تازهٔ کد و CI — ۱۴۰۵/۰۸/۱۱
+
+- روی شاخهٔ `feat/p0-7-backup-restore` محدودیت ۵۰ مگابایتی خروجی پشتیبان با محدودیت ورودی یکسان شد و تست مرزی برای اندازهٔ مجاز و یک بایت بیشتر اضافه شد. تست متمرکز ۷ مورد، `npm test` شامل ۸۴۱ تست برنامه و ۵۳ تست Worker، typecheck، build و `git diff --check` موفق شدند.
+- اجرای CI شمارهٔ `41486421259` روی head برابر `2dfab885e7988d9f56081cb22f04a486328dfc9e` با `test:gate` و build سبز شد. PR #37 تازه بررسی شد: باز، draft و ادغام‌نشده است.
+- `npm run test:manual-gate` هنوز به‌علت ۱۸ بررسی دستیِ pending در `docs/testing/manual-acceptance.json` بسته است؛ این موارد شامل دستگاه واقعی و دسترس‌پذیری‌اند و با CI خودکار جایگزین نمی‌شوند.
+- این نشست ابزار GitHub دارد، اما به Chrome محلی مالک یا Cloudflare وصل نیست. اینجا هیچ بررسی زندهٔ تازه‌ای از Cloudflare، Google، Drive یا Notion، تغییر حساب یا deploy انجام نشد؛ مشاهدات زندهٔ قبلی در بالا سابقه‌اند، نه تأیید وضعیت فعلی. P0-3 تا P0-7 تا انجام OAuth/Secrets، deploy و read-back واقعی باز می‌مانند.
