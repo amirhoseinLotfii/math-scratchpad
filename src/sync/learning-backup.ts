@@ -89,6 +89,12 @@ function unsignedBackup(backup: FullLearningBackup) {
   return { format: backup.format, schemaVersion: backup.schemaVersion, createdAt: backup.createdAt, stores: backup.stores };
 }
 
+export function serializeFullLearningBackup(backup: FullLearningBackup, maxBytes = MAX_FULL_BACKUP_BYTES): string {
+  const contents = `${JSON.stringify(backup, null, 2)}\n`;
+  if (new TextEncoder().encode(contents).byteLength > maxBytes) throw new Error('حجم فایل پشتیبان از حد مجاز بیشتر است؛ خروجی ساخته نشد.');
+  return contents;
+}
+
 function equal(left: unknown, right: unknown): boolean { return canonicalJson(left) === canonicalJson(right); }
 function blankCounts(): Counts { return { cache: 0, outbox: 0, serverEvents: 0, meta: 0 }; }
 function counts(stores: LearningStores): Counts {
@@ -234,9 +240,9 @@ export async function createFullLearningBackup(now = new Date()): Promise<string
   catch { throw new Error('داده‌های ذخیره‌شده برای ساخت پشتیبان کامل ساختار معتبری ندارند.'); }
   validateStoreSemantics(validatedStores);
   await validateCacheContents(validatedStores.cache);
-  const unsigned = { format: FULL_BACKUP_FORMAT, schemaVersion: 1 as const, createdAt: now.toISOString(), stores: validatedStores };
+  const unsigned = { format: FULL_BACKUP_FORMAT as typeof FULL_BACKUP_FORMAT, schemaVersion: 1 as const, createdAt: now.toISOString(), stores: validatedStores };
   const backup = { ...unsigned, sha256: await digest(unsigned) };
-  return `${JSON.stringify(backup, null, 2)}\n`;
+  return serializeFullLearningBackup(backup);
 }
 
 export async function parseFullLearningBackup(contents: string): Promise<FullLearningBackup> {
