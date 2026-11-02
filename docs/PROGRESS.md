@@ -10,7 +10,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 Drive mirror | in progress | PR #34 (`feat/p0-4-drive-mirror`); CI run `41412052462` green. Live Drive write/read-back remains blocked by the missing Google OAuth Worker Secrets. |
 | P0-5 Notion mirror | in progress | PR #35 (`feat/p0-5-notion-mirror`); CI run `41415634995` green. Live Notion write/read-back remains blocked by the missing `NOTION_API_KEY`. |
 | P0-6 Sync status UI | in progress | PR #36 (`feat/p0-6-sync-status-ui`); CI run `41417365846` green. Authenticated live status checks remain pending while mirror credentials are absent. |
-| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); latest code head `2dfab885e7988d9f56081cb22f04a486328dfc9e` passed full gate/build in `41486421259`. Live Cron and Drive read-back remain pending. |
+| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); current head `6f495c1b808c9e3ce1e5c6583670b7e9b39774c6` passed full gate/build in `41493469737`. Live Cron and Drive read-back remain pending. |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
 | P1-3 Active interleaved lesson flow | in progress | [PR #26](https://github.com/amirhoseinLotfii/math-scratchpad/pull/26), CI green; held unmerged until P0 foundations |
@@ -133,3 +133,15 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - `npm run test:manual-gate` remains blocked by 18 pending physical-device/accessibility/manual acceptance checks recorded in `docs/testing/manual-acceptance.json`. This is separate from the green automated P0 CI gate.
 - This session has GitHub access, but no control connected to the owner's local Chrome profile and no Cloudflare connector. No fresh Cloudflare/Google/Drive/Notion live check, secret inspection, account change, or deployment was performed in this session; earlier live observations above remain historical evidence.
 - P0-3 through P0-7 remain in progress until their own owner-account OAuth/secret, deployment, and live read-back checks are completed. The referenced `CODEX_SYNC_AND_FEATURES _1_.md` is still absent, so no scope is inferred from it.
+
+
+## بررسی زندهٔ تازه پس از اتصال Cloudflare MCP — ۱۴۰۵/۰۸/۱۱
+
+این ثبت، وضعیت دسترسی را در بخش قبلی که Cloudflare MCP در دسترس نبود به‌روز می‌کند؛ تاریخچهٔ آن بخش مربوط به نشست پیشین است.
+
+- PR #37 روی شاخهٔ `feat/p0-7-backup-restore` باز، draft و ادغام‌نشده است. commit فعلی `6f495c1b808c9e3ce1e5c6583670b7e9b39774c6` اجرای کامل `test:gate` و build را در CI `41493469737` با موفقیت گذراند.
+- بررسی فقط‌خواندنی Cloudflare، Worker موجود `math-scratchpad-sync` را در Production و روی `workers.dev` نشان داد؛ نسخهٔ فعال `9d5c41bd-b338-45bb-b0bc-70c8129be568` است. binding موجود `EVENT_STORE` و متغیرهای پایهٔ `ALLOWED_ORIGIN`، `EVENT_RATE_LIMIT`، `GOOGLE_CLIENT_ID` و `OWNER_EMAIL` هستند.
+- پنج متغیر `NOTION_DATA_SOURCE_ATTEMPTS`، `NOTION_DATA_SOURCE_SESSIONS`، `NOTION_DATA_SOURCE_MISTAKES`، `NOTION_DATA_SOURCE_CONCEPTS` و `NOTION_DATA_SOURCE_DAILY_REPORTS` در Production حاضر نیستند. نام هر سه Worker Secret لازم، `GOOGLE_DRIVE_CLIENT_SECRET`، `GOOGLE_DRIVE_REFRESH_TOKEN` و `NOTION_API_KEY` نیز در فهرست نیست؛ هیچ مقدار محرمانه‌ای خوانده نشد.
+- هیچ Cron trigger، custom domain یا route برای Worker ثبت نیست؛ zone به نام `codevibe.ir` در حساب انتخاب‌شده یافت نشد. هیچ DNS، تنظیم Worker یا deployment تغییر نکرد.
+- پاسخ `/health` در این نوبت از مسیر درخواست فقط‌خواندنی قابل تأیید نبود؛ گزارش HTTP 200 قبلی صرفاً سابقه است. در Google Drive فقط فراداده بررسی شد: `Math_Project/06_Backups` موجود است، ۱۵ مورد دارد و فایل `sync_backup_*.json` ندارد؛ `Math_Project/03_Sync` پیدا نشد. هیچ فایل یا رویداد آزمایشی نوشته یا read-back نشد.
+- به‌دلیل نبود Secretها، deploy انجام نشد. وضعیت زندهٔ احرازشدهٔ Drive/Notion، backup زمان‌بندی‌شده و read-back واقعی همچنان لازم است؛ P0-3 تا P0-7 در حال انجام می‌مانند.
