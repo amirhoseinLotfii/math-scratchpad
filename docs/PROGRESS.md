@@ -10,7 +10,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 Drive mirror | in progress | PR #34 (`feat/p0-4-drive-mirror`); CI run `41412052462` green. Live Drive write/read-back remains blocked by the missing Google OAuth Worker Secrets. |
 | P0-5 Notion mirror | in progress | PR #35 (`feat/p0-5-notion-mirror`); CI run `41415634995` green. Live Notion write/read-back remains blocked by the missing `NOTION_API_KEY`. |
 | P0-6 Sync status UI | in progress | PR #36 (`feat/p0-6-sync-status-ui`); CI run `41417365846` green. Authenticated live status checks remain pending while mirror credentials are absent. |
-| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); full-gate/build runs `41465555192` and `41472444422` passed on the current stacked branch. Live Cron and Drive read-back remain blocked. |
+| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); latest code head `2dfab885e7988d9f56081cb22f04a486328dfc9e` passed full gate/build in `41486421259`. Live Cron and Drive read-back remain pending. |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
 | P1-3 Active interleaved lesson flow | in progress | [PR #26](https://github.com/amirhoseinLotfii/math-scratchpad/pull/26), CI green; held unmerged until P0 foundations |
@@ -124,3 +124,12 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-5 | PR #35 CI `41415634995` and current stacked gate/build passed; the five configured Notion sources resolve to expected titles. No integration exists in the workspace. | Review and accept Notion Developer Terms to create the project connection, share only the five listed sources, configure `NOTION_API_KEY`, then verify a tagged Attempt and linked Session. |
 | P0-6 | PR #36 CI `41417365846` and current stacked gate/build passed; local typecheck/build pass. | Deploy the branch after credentials are ready, then inspect authenticated `/drive/status` and `/notion/status`. |
 | P0-7 | Full-gate/build runs `41465555192` and `41472444422` passed; PR #37 remains open and draft. | Add the five Notion variables and three Worker Secrets, deploy the weekly Cron, then verify a tagged Drive backup and read-back. |
+
+
+## Current-session code and access check — 2026-11-02
+
+- PR #37 was freshly checked: still open, draft, and unmerged. The code/test head is `2dfab885e7988d9f56081cb22f04a486328dfc9e`; run `41486421259` completed successfully, including `npm run test:gate` and `npm run build`.
+- A backup export size guard now matches the import limit. The focused regression suite passed 7 tests; `npm test` passed 841 application and 53 Worker tests; typecheck, build (with a task-specific Wrangler config directory), and `git diff --check` passed locally.
+- `npm run test:manual-gate` remains blocked by 18 pending physical-device/accessibility/manual acceptance checks recorded in `docs/testing/manual-acceptance.json`. This is separate from the green automated P0 CI gate.
+- This session has GitHub access, but no control connected to the owner's local Chrome profile and no Cloudflare connector. No fresh Cloudflare/Google/Drive/Notion live check, secret inspection, account change, or deployment was performed in this session; earlier live observations above remain historical evidence.
+- P0-3 through P0-7 remain in progress until their own owner-account OAuth/secret, deployment, and live read-back checks are completed. The referenced `CODEX_SYNC_AND_FEATURES _1_.md` is still absent, so no scope is inferred from it.
