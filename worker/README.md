@@ -77,3 +77,22 @@ Returns a paginated replay snapshot of the append-only event log, with a fixed `
 Public readiness check. Returns `{ "ok": true, "service": "math-scratchpad-sync" }` and does not expose account or storage details.
 
 The authenticated data routes use a per-owner fixed-window request limit of 120 requests per minute by default. A test-only Miniflare binding sets the limit to 5 to verify the `429` response without changing the deploy configuration.
+
+## Private Google Drive mirror (P0-4)
+
+When configured, the Durable Object mirrors the complete event stream to the owner's private Drive:
+
+- `Math_Project/03_Sync/events/events_YYYY-MM.jsonl` — one full validated event per line, grouped by UTC month.
+- `Math_Project/03_Sync/state/progress.json` — current chapter, lesson, section and chunk, gate state, completion, unlocked sections, bank version, and last event/sequence.
+- `Math_Project/03_Sync/sync_manifest.json` — last sequence/event, UTC and Tehran timestamps, and SHA-256 hashes for event and progress files.
+
+The Worker creates or reuses these app-owned folders and files. It does not call Drive's permissions or delete endpoints; new files inherit the owner's private Drive access. Small files use conditional ETag writes. A `412` response triggers a read, an event-ID merge, and up to three retries. Files over 5 MB use Drive's resumable upload protocol while keeping the ETag condition. Partial failures retain the last successful file checkpoints and retry after one minute. Normal event sync is queued for five seconds after the event arrives.
+
+The OAuth refresh token must belong to the configured `OWNER_EMAIL` and have the `drive.file` and `userinfo.email` scopes. Set the OAuth consent screen to **In production** so the refresh token does not expire after the Testing-mode seven-day limit. Obtain the token in the owner's Google browser flow, then add it directly to Cloudflare Worker Secrets; never paste it into source files, shell history, issues, or chat:
+
+```sh
+npx wrangler secret put GOOGLE_DRIVE_CLIENT_SECRET --config worker/wrangler.jsonc
+npx wrangler secret put GOOGLE_DRIVE_REFRESH_TOKEN --config worker/wrangler.jsonc
+```
+
+The prompts accept secret values without adding them to the repository. Until both secrets are present, `/drive/status` reports `not_configured` and `/drive/sync` returns `503`. After configuring secrets, verify the returned account is the owner and confirm one `isTest: true` learner event is visible in Drive before relying on the mirror. Do not run that live check until the owner approves the Cloudflare and Google OAuth steps.
