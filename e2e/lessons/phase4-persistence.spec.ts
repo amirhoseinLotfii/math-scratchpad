@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('Learn progress restores in the connected app and its lesson status survives Practice reload', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'This test exercises the connected flow at its reference mobile viewport.');
+test('Learn progress restores in the connected app and its lesson status survives Practice reload', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());

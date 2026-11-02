@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-test('lesson tables stay readable and scroll locally at practical viewport sizes', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390');
+test('lesson tables stay readable and scroll locally at practical viewport sizes', { tag: '@only-mobile-390' }, async ({ page }) => {
   test.setTimeout(120_000);
   for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 640 }, { width: 390, height: 844 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(viewport);
@@ -29,8 +28,7 @@ test('lesson tables stay readable and scroll locally at practical viewport sizes
   }
 });
 
-test('read-only lesson notation displays sets, unruled arrays and indexed roots', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390');
+test('read-only lesson notation displays sets, unruled arrays and indexed roots', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?notation=1');
   const start = page.getByRole('dialog', { name: 'Before you start this batch' });

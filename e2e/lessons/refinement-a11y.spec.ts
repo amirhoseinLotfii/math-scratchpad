@@ -1,8 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '../support/test';
 
-test('Learn choice, math keyboard, and skip dialog have no automated WCAG A/AA violations', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Learn accessibility states are audited once at the reference mobile size.');
+test('Learn choice, math keyboard, and skip dialog have no automated WCAG A/AA violations', { tag: '@only-mobile-390' }, async ({ page }, info) => {
 
   for (const state of ['choice', 'math', 'skip'] as const) {
     await page.goto(`/e2e/fixtures/lesson-preview.html?view=${state === 'skip' ? 'text' : state}`);

@@ -9,9 +9,8 @@ const views = [
   { width: 1440, height: 900 },
 ];
 
-test('connected Learn flow, reference panel and responsive layouts', async ({ page }, testInfo) => {
+test('connected Learn flow, reference panel and responsive layouts', { tag: '@only-mobile-390' }, async ({ page }) => {
   test.setTimeout(120_000);
-  if (testInfo.project.name !== 'mobile-390') test.skip();
   await page.addInitScript(() => localStorage.removeItem('math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview'));
 
   for (const viewport of views) {

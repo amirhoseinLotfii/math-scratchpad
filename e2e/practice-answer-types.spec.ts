@@ -8,9 +8,8 @@ const viewports = [
   { width: 1440, height: 900 },
 ];
 
-test('Practice text and choice answers remain usable across narrow, tablet and desktop layouts', async ({ page }, info) => {
+test('Practice text and choice answers remain usable across narrow, tablet and desktop layouts', { tag: '@only-mobile-390' }, async ({ page }) => {
   test.setTimeout(60_000);
-  test.skip(info.project.name !== 'mobile-390', 'Resize through the QA viewport set once.');
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
