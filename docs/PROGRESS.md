@@ -156,3 +156,12 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - **Notion:** Developer Connections صفحهٔ «No connections yet» را نشان داد. ساخت connection مستلزم موافقت با Developer Terms است؛ فرم بسته شد و هیچ connection یا اشتراکی ساخته نشد. `NOTION_API_KEY` موجود نیست.
 - **Drive:** حساب connector با مالک Worker تطبیق داشت. `Math_Project/06_Backups` با ۱۵ مورد موجود است ولی `sync_backup_*.json` ندارد؛ `Math_Project/03_Sync` در پوشهٔ پروژه پیدا نشد. فقط فراداده خوانده شد.
 - هیچ Secret، Cron، route، دامنه، deployment، رویداد یا ردیف زنده تغییر نکرد. هیچ دادهٔ یادگیرنده‌ای خوانده یا نوشته نشد. P0-3 به لینک‌های عمومی، scope کامل و OAuth امن؛ P0-4 به Google Worker Secrets و Drive read-back؛ P0-5 به تصمیم مالک دربارهٔ Developer Terms، connection و اشتراک پنج source؛ P0-6 به deploy و status زنده؛ و P0-7 به deploy Cron و backup read-back مسدود می‌مانند.
+
+
+## تأیید محلی پس از اتصال ابزارها — 2026-11-03
+
+- روی checkout شاخهٔ `feat/p0-7-backup-restore`، `npm test` با ۸۴۱ تست برنامه (۵۷ فایل) و ۵۳ تست Worker (۳ فایل) موفق شد.
+- `npm run test:typecheck -- --pretty false` موفق شد.
+- `XDG_CONFIG_HOME=/tmp/math-scratchpad-xdg npm run build` موفق شد؛ app، standalone bundle و Wrangler dry-run ساخته شدند. هشدارهای اندازهٔ bundle و دستورهای `use client` وابستگی‌ها غیرمسدودکننده بودند.
+- CI run `41513230008` روی head مستنداتی `082559193c62cd532c7dd23bfb0208bbd31814bf`، شامل `test:gate` و build، با موفقیت کامل شد. PR #37 همچنان باز و draft است.
+- این آزمون‌ها deploy یا تغییر Production را انجام ندادند؛ live read-back مربوط به Drive/Notion و Cron همچنان انجام‌نشده است.
