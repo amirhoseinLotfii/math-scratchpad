@@ -105,3 +105,6 @@
 - Google Cloud Console در Chrome برای ادامه به تأیید MFA مالک نیاز دارد. هیچ OAuth secret، refresh token یا API token ساخته یا خوانده نشد. PR #37 باز و draft باقی ماند.
 - اجرای CI `41438762659` روی commit مستنداتی `2679f3f` نیز با موفقیت کامل `test:gate` و build را گذراند. وضعیت فعلی Cloudflare دوباره بررسی شد: چهار متغیر پایه و binding `EVENT_STORE` حاضرند؛ پنج متغیر `NOTION_DATA_SOURCE_*`، سه Secret لازم و Cron هفتگی حاضر نیستند. deploy انجام نشد.
 - پروفایل Drive متصل با `OWNER_EMAIL` شاخه مطابقت دارد، اما تب Google Cloud در Chrome روی حساب سازمانی Ziprin مانده و MFA را می‌طلبد. بازبینی امنیتی مرورگر از مشاهدهٔ بیشتر آن حساب سازمانی جلوگیری کرد؛ طبق Scope حساب شخصی هنوز برای OAuth استفاده نشده و هیچ اعتبارنامه‌ای ساخته نشد. PR #37 همچنان باز و draft است.
+
+- پیگیری تازه: اجرای CI `41443911466` روی head مستنداتی `8e06b41` با `test:gate` و build سبز شد. حساب Google Cloud متصل با `OWNER_EMAIL` شاخه تطبیق دارد و مانع MFA برطرف شده، اما جست‌وجوی پروژه `divine-descent-511113-c9` در انتخابگر پروژه پیام «No resources to display» داد؛ وضعیت OAuth هنوز قابل بررسی نیست و هیچ اعتبارنامه‌ای ساخته نشد.
+- پنجرهٔ اشتراک Math Attempts فقط مالک را نشان می‌دهد؛ هیچ Integration اضافه یا ردیفی در Notion نوشته نشد. Production Cloudflare بدون تغییر باقی ماند و PR #37 باز و draft است.
