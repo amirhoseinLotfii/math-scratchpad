@@ -10,7 +10,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 Drive mirror | in progress | `feat/p0-4-drive-mirror`; `npm test`, 60 persistence Playwright tests, and build pass locally; live Drive check and PR CI await owner OAuth/Cloudflare setup |
 | P0-5 Notion mirror | in progress | `feat/p0-5-notion-mirror`; additive Notion schema and Worker mirror implemented; 11 focused Worker tests and both TypeScript checks pass; live Notion check and PR CI await Cloudflare secret approval |
 | P0-6 Sync status UI | in progress | `feat/p0-6-sync-status-ui`; separate server/Drive/Notion indicators, safe details, and manual mirror sync implemented; draft PR/CI pending; live status check awaits owner Cloudflare approval |
-| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); local suites green. PR CI, Cloudflare approval and live Drive verification remain. |
+| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); local suites and CI run `41421397869` pass. Cloudflare approval and live Drive verification remain. |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
 | P1-3 Active interleaved lesson flow | in progress | [PR #26](https://github.com/amirhoseinLotfii/math-scratchpad/pull/26), CI green; held unmerged until P0 foundations |
@@ -65,7 +65,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - Weekly Worker backup tests verify the private `06_Backups` folder, the complete sequenced event list and progress snapshot, SHA-256 correctness, same-week idempotency, cron owner targeting, Drive operation serialization, and independence from public event rate limits.
 - `npm test`: all 840 application tests and 53 Worker tests passed. `npm run test:typecheck -- --pretty false` and the final `npm run build` including Wrangler dry-run passed.
 - `npm run test:sync`: all 64 persistence Playwright tests passed, including export/wipe/restore at mobile 390 and desktop 1280. Both screenshots are saved at `/workspace/p0-7-screenshots/`.
-- «نیاز به تست»: Cloudflare cron deployment, OAuth-backed Drive write/read-back in the owner's account, and PR CI. Nothing was deployed or written to live Drive.
+- «نیاز به تست»: Cloudflare cron deployment and OAuth-backed Drive write/read-back in the owner's account. PR CI run `41421397869` passed. Nothing was deployed or written to live Drive.
 
 ## P0-1 test notes
 
