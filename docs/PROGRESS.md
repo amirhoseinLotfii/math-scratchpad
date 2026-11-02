@@ -4,7 +4,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 | Card | Status | PR / evidence |
 | --- | --- | --- |
-| P0-1 Event model | in progress | `feat/p0-1-learn-events`; local gate green, PR/CI and Pages live check pending |
+| P0-1 Event model | in progress | `feat/p0-1-learn-events`; PR #27 open; latest hosted CI still fails WIDE-08 focus restoration |
 | P0-2 Durable Object + Worker | todo | — |
 | P0-3 Browser outbox + migration | todo | — |
 | P0-4 Drive mirror | todo | — |
@@ -43,14 +43,15 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 ## Persian changelog
 
-- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. بازگشت فوکوس به ورودی MathLive پس از بستن کاتالوگ ابزار ریاضی هم پایدار شد. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
+- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. پس از شکست ناپایدار فوکوس در CI، بازگردانی فوکوس MathLive به‌روزرسانی شد تا ورودی زندهٔ همان گام را پیدا کند و در چند فریم دوباره تلاش کند. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
 
 ## P0-1 test notes
 
 - The event API is in-memory at this stage. Durable offline persistence belongs to P0-3.
 - Timed scopes cover session, lesson, page-based concept chunk, section, question and the focused MathLive step; focus/visibility/idle time is shared.
-- Final local gate: 444 passed, 52 viewport-conditional skips in the 496-test Playwright matrix; `src/sync` line coverage 93.21%.
+- Initial full local gate: 444 passed, 52 viewport-conditional skips in the 496-test Playwright matrix; `src/sync` line coverage 93.21% (before final focus/test-infrastructure adjustments).
 - `npm run build`, `npm run typecheck`, `npm run test:typecheck`, targeted unit/integration tests and the event E2E passed.
-- After the focus restoration adjustment, WIDE-08 passed 20 consecutive runs across 1024px and 1440px, and the full keyboard-only lesson flow passed 10 consecutive runs; both TypeScript checks passed again.
+- WIDE-08 passed 20 consecutive runs across 1024px and 1440px after the prior focus adjustment and 20 consecutive 1440px runs after the latest retry change; both TypeScript checks passed again.
+- Latest hosted CI run `41366840960` failed WIDE-08 at 1440px after its single retry; the new live-field/frame retry fix is pushed for another CI run before merge or deploy.
 - CI runs the full Playwright matrix with one worker and one retry for transient focus flakes on constrained hosted runners; repeated failures still block the gate. Local runs retain two workers. Push CI is limited to `main`; feature branches are validated by their PR run.
 - «نیاز به تست»: Safari/iOS visibility and focus behavior on a physical device.

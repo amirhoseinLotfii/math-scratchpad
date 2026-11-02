@@ -453,21 +453,32 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function restoreInsertFocus() {
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-   const invoker = insertInvoker.current;
-   const invokerIsWorkControl = !!invoker?.isConnected && (invoker.matches('math-field') || !!invoker.closest('[data-step-id]'));
-   if (invoker?.isConnected && (restoreInsert.current || invokerIsWorkControl)) {
-    invoker.focus({ preventScroll: true });
-    invoker.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    const mathfield = invoker.closest('math-field') as (HTMLElement & { hasFocus?: () => boolean }) | null;
-    if (mathfield) requestAnimationFrame(() => {
-     // MathLive can complete focus only after the dialog focus scope has been removed.
-     if (mathfield.isConnected && mathfield.hasFocus?.() === false) {
-      mathfield.focus({ preventScroll: true });
-     }
-    });
-   } else focusCurrentMathControl();
-  }));
+  const invoker = insertInvoker.current;
+  const mathfieldInvoker = invoker?.matches('math-field') ? invoker as HTMLElement & { hasFocus?: () => boolean } : null;
+  const stepId = mathfieldInvoker?.dataset.stepId;
+  const restore = (attempt = 0) => {
+   // Prefer the live MathLive instance for this step. State updates caused by
+   // inserting a symbol can replace the custom element while Radix is closing.
+   const currentMathfield = (stepId ? mathfieldForStep(stepId) : null) as (HTMLElement & { hasFocus?: () => boolean }) | null;
+   const target = currentMathfield?.isConnected ? currentMathfield : invoker;
+   const isWorkControl = !!target?.isConnected && (target.matches('math-field') || !!target.closest('[data-step-id]'));
+   if (target?.isConnected && (restoreInsert.current || isWorkControl)) {
+    const active = document.activeElement === target;
+    const mathFocus = target.matches('math-field') ? (target as HTMLElement & { hasFocus?: () => boolean }).hasFocus?.() : undefined;
+    if (!active || mathFocus === false) target.focus({ preventScroll: true });
+    target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    // The modal focus scope and MathLive's shadow editor can both settle after
+    // the first focus call. Retry briefly if another close-time blur wins.
+    if (attempt < 8 && (document.activeElement !== target || (target.matches('math-field') && (target as HTMLElement & { hasFocus?: () => boolean }).hasFocus?.() === false))) {
+     requestAnimationFrame(() => restore(attempt + 1));
+    }
+    return;
+   }
+   if (attempt < 8) requestAnimationFrame(() => restore(attempt + 1));
+   else focusCurrentMathControl();
+  };
+  // Wait until Radix has removed its focus scope before restoring MathLive.
+  requestAnimationFrame(() => requestAnimationFrame(() => restore()));
  }
  function insert(kind: string) {
   const stepId = store.getState().doc.cursor.stepId;
