@@ -10,7 +10,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 Drive mirror | in progress | `feat/p0-4-drive-mirror`; `npm test`, 60 persistence Playwright tests, and build pass locally; live Drive check and PR CI await owner OAuth/Cloudflare setup |
 | P0-5 Notion mirror | in progress | `feat/p0-5-notion-mirror`; additive Notion schema and Worker mirror implemented; 11 focused Worker tests and both TypeScript checks pass; live Notion check and PR CI await Cloudflare secret approval |
 | P0-6 Sync status UI | in progress | `feat/p0-6-sync-status-ui`; separate server/Drive/Notion indicators, safe details, and manual mirror sync implemented; draft PR/CI pending; live status check awaits owner Cloudflare approval |
-| P0-7 Backup and restore | in progress | Local export/restore and weekly Drive backup implementation; local suite green. Cloudflare approval, PR CI and live Drive verification remain. |
+| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); local suites green. PR CI, Cloudflare approval and live Drive verification remain. |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
 | P1-3 Active interleaved lesson flow | in progress | [PR #26](https://github.com/amirhoseinLotfii/math-scratchpad/pull/26), CI green; held unmerged until P0 foundations |
