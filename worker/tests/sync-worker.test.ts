@@ -151,6 +151,23 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect(await snapshot.json()).toMatchObject({ events: [], cursor: 0, through: 0 });
   });
 
+  it('accepts bounded legacy migration chunks and returns them in the private replay snapshot', async () => {
+    const app = createApp(validVerifier);
+    const migrationId = crypto.randomUUID();
+    const event = {
+      ...makeEvent(),
+      bankVersion: 'migration-v1', session: `migration-${migrationId}`, chapter: 0,
+      lesson: 'unknown', section: 'unknown', concept: 'legacy-storage', type: 'legacy_state_migration',
+      itemId: 'math-scratchpad-session-v3',
+      migrationChunk: { id: migrationId, key: 'math-scratchpad-session-v3', index: 0, count: 1, sha256: 'a'.repeat(64), data: 'e30=' },
+    };
+    const posted = await call(app, '/events', { method: 'POST', token: 'valid-test-token', body: { events: [event] } });
+    expect(posted.status).toBe(200);
+    const snapshot = await call(app, '/snapshot?limit=100', { token: 'valid-test-token' });
+    const body = await snapshot.json() as { events: Array<{ event: { migrationChunk?: { id: string; data: string } } }> };
+    expect(body.events).toContainEqual(expect.objectContaining({ event: expect.objectContaining({ migrationChunk: expect.objectContaining({ id: migrationId, data: 'e30=' }) }) }));
+  });
+
   it('rejects oversized event batches before forwarding them to storage', async () => {
     const app = createApp(validVerifier);
     const largeEvent = { ...makeEvent(), note: 'x'.repeat(250_001) };

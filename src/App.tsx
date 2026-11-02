@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen } from 'lucide-react';
+import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
 import { ascii, example, leaves, stepIsBlank, symbolList, stepLatex } from './model';
@@ -46,6 +46,9 @@ import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStor
 import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
 import { ActivityTracker } from './sync/activity-tracker';
 import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
+import { SyncPanel } from './sync/sync-panel';
+import { flushLearningStorage, subscribeLearningStorage } from './sync/browser-db';
+import { getDefaultSyncRuntime } from './sync/runtime';
 
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
@@ -53,6 +56,8 @@ const INSERT_OPTIONS = [
  { name: 'Parentheses', kind: 'group' }, { name: '+', kind: '+' },
  { name: '−', kind: '−' }, { name: '×', kind: '×' }, { name: '÷', kind: '÷' }, { name: '=', kind: '=' },
 ];
+const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0 };
+const NO_SYNC_SUBSCRIBE = () => () => undefined;
 type Decision = 'next' | 'complete' | 'copy';
 function freshLessonProgress(lessonId: string): LessonProgress {
  return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
@@ -62,6 +67,8 @@ export const INSERT_VISIBLE = 8;
 /** `initialBank` is used by isolated browser previews/tests; normal app startup loads through DriveBankPanel. */
 export function App({ initialBank }: { initialBank?: { bank: DriveBank; version: string } } = {}) {
  const layout = useWorkspaceLayout(), wide = layout !== 'phone';
+ const syncRuntime = getDefaultSyncRuntime();
+ const syncStatus = useSyncExternalStore(syncRuntime?.subscribe ?? NO_SYNC_SUBSCRIBE, syncRuntime?.getSnapshot ?? (() => EMPTY_SYNC_STATUS), () => EMPTY_SYNC_STATUS);
  const insertOptions = useMemo(() => wide ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({name:item.title,kind:item.key}))] : INSERT_OPTIONS, [wide]);
  const [shortcutsOpen, setShortcutsOpen] = useState(false), [insertExpanded, setInsertExpanded] = useState(false);
  const [guidanceOpen, setGuidanceOpen] = useState(false);
@@ -76,6 +83,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false), [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
+ const [syncPanelOpen, setSyncPanelOpen] = useState(false);
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [, setDriveBankAvailable] = useState(false);
  const [loadedBank, setLoadedBank] = useState<{ bank: DriveBank; version: string } | null>(initialBank ?? null);
@@ -248,13 +256,14 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (!activeBank || activeBank.bank.bank_id !== next.bankId || activeBank.version !== next.bankVersion) return;
   const result = saveLessonProgress(activeBank.bank, activeBank.version, next);
   setLessonPersistenceMessage(result.saved ? (next.persistenceBlocked ? next.warning : '') : result.message);
+  if (result.saved) void flushLearningStorage().catch(() => setLessonPersistenceMessage('IndexedDB could not confirm the lesson save; old browser data remains protected.'));
  }, []);
  useEffect(() => {
   if (!loadedBank) return;
   const bankForSync: DriveBank = loadedBank.bank;
   const versionForSync: string = loadedBank.version;
   const key = lessonProgressStorageKey(bankForSync.bank_id, versionForSync);
-  function onLessonStorage(event: StorageEvent) {
+  function onLessonStorage(event: { key: string | null; newValue: string | null }) {
    if (event.key !== key) return;
    if (event.newValue === null) {
     const cleared = emptyLessonProgressState(bankForSync.bank_id, versionForSync);
@@ -265,8 +274,10 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    if (restored.persistenceBlocked) { setLessonPersistenceMessage(restored.warning); return; }
    lessonProgressRef.current = restored; setLessonProgressState(restored); setLessonPersistenceMessage(''); setLessonRemoteRevision(value => value + 1);
   }
-  window.addEventListener('storage', onLessonStorage);
-  return () => window.removeEventListener('storage', onLessonStorage);
+  const unsubscribeLearningStorage = subscribeLearningStorage(onLessonStorage);
+  const nativeStorageEvent = (event: StorageEvent) => onLessonStorage(event);
+  window.addEventListener('storage', nativeStorageEvent);
+  return () => { unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); };
  }, [loadedBank]);
  const rememberLessonProgress = useCallback((progress: LessonProgress) => {
   const current = lessonProgressRef.current;
@@ -332,7 +343,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   setLessonScreen(lesson);
   setShowResults(false);
  }
- function startReferencePracticeQuestion(questionId: string) {
+ async function startReferencePracticeQuestion(questionId: string) {
   const targetBank = loadedBank;
   const question = targetBank?.bank.questions.find(item => item.id === questionId);
   const lesson = question?.lessonId ? targetBank?.bank.lessons?.find(item => item.id === question.lessonId) : undefined;
@@ -343,7 +354,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    const doc = bankDocument(targetBank.bank, targetBank.version, [question]);
    const before = store.getState();
    closeReference();
-   archiveSession(before);
+   await archiveSession(before);
    dispatch(actions.load({ doc }));
    dispatch(actions.keyboard(initialKeyboardOpen(false)));
    dispatch(actions.notice('Lesson practice started.'));
@@ -366,21 +377,21 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    setPracticeStartError(error instanceof Error ? error.message : 'Could not open this practice question. The current session was kept.');
   }
  }
- function openQuestionFromReference(questionId: string) {
+ async function openQuestionFromReference(questionId: string) {
   const existing = store.getState().doc.exercises.find(item => item.bankQuestionId === questionId);
   if (existing) closeReference(existing.id);
-  else startReferencePracticeQuestion(questionId);
+  else await startReferencePracticeQuestion(questionId);
  }
  function openDriveBank() { setDriveBankInitialized(true); setDriveBankOpen(true); }
  function loadBankFromLessons() { setLessonPickerOpen(false); openDriveBank(); }
- function startLessonPractice(lesson: Lesson, progress: LessonProgress, selectedQuestions: BankQuestion[], sectionId?: string) {
+ async function startLessonPractice(lesson: Lesson, progress: LessonProgress, selectedQuestions: BankQuestion[], sectionId?: string) {
   const targetBank = loadedBank;
   if (!targetBank) { setPracticeStartError('The lesson bank is not available for this session. Reconnect to the same bank version and try again.'); return; }
   const questions = selectedQuestions.length ? selectedQuestions : sectionId ? [] : getPracticeQuestions(targetBank.bank, lesson.id);
   if (!questions.length) { setPracticeStartError('No practice questions yet'); return; }
   try {
    const doc = bankDocument(targetBank.bank, targetBank.version, questions);
-   archiveSession(store.getState());
+   await archiveSession(store.getState());
    dispatch(actions.load({ doc }));
    dispatch(actions.keyboard(initialKeyboardOpen(false)));
    dispatch(actions.notice('Lesson practice started.'));
@@ -678,7 +689,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
-    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Saved locally at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : state.savedAt ? 'Saved ✓' : 'Local draft'}</span>
+    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Browser cache updated at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : syncStatus.pending > 0 ? `Queued ${syncStatus.pending}` : syncStatus.phase === 'syncing' ? 'Syncing…' : syncStatus.phase === 'synced' && (!state.savedAt || Date.parse(syncStatus.lastSyncedAt ?? '') >= Date.parse(state.savedAt)) ? 'Synced ✓' : state.savedAt ? 'Browser cache' : 'Waiting for sync'}</span>
      {isMathAnswer && <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; writeKeyboardChoice(open); dispatch(actions.keyboard(open)); if (open) requestAnimationFrame(focusEditor); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>}
      <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onKeyDown={rememberMenuKeyboardActivation} onClick={toggleMenuFromClick}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu">
       <DropdownMenuItem className="menu-primary-action" onSelect={() => request('copy')}><ClipboardCheck aria-hidden="true" />Check · Copy for Review</DropdownMenuItem>
@@ -711,6 +722,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={downloadBackup}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
        <DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
        <DropdownMenuItem onSelect={() => { jsonForm.reset({ json: '' }); setBackup(true); }}>Import session JSON</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setSyncPanelOpen(value => !value)}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
 
        <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>
@@ -722,6 +734,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     </div></header>
 
    {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} />}
+   {syncPanelOpen && <SyncPanel onClose={() => setSyncPanelOpen(false)} />}
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
    {(confirmExam || confirmFractions) && <section className="setup-panel" aria-label={confirmFractions ? 'Confirm fraction round start' : 'Confirm diagnostic start'}><h2>Start {confirmFractions ? 'Round 1 · 20 fraction questions' : 'diagnostic'}?</h2><p>Export Session JSON first to keep your current work.</p><div className="toolbar"><Button variant="default" onClick={() => { dispatch(confirmFractions ? actions.startFractionRound() : actions.startDiagnostic()); if (!wide) dispatch(actions.keyboard(true)); setConfirmExam(false); setConfirmFractions(false); setShowResults(false); }}>{confirmFractions ? 'Start 20 Questions' : 'Start 30 Questions'}</Button><Button onClick={() => { setConfirmExam(false); setConfirmFractions(false); }}>Cancel</Button></div></section>}
