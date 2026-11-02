@@ -20,18 +20,19 @@ function run(mode: string) {
 }
 describe('GATE-RUN: aggregate exit codes and stale evidence', () => {
  it('records automated-pass only when every subprocess actually succeeds', () => {
-  const { result, record } = run('success'); expect(result.status).toBe(0); expect(record.status).toBe('automated-passed'); expect(record.results).toHaveLength(3);
+  const { result, record } = run('success'); expect(result.status).toBe(0); expect(record.status).toBe('automated-passed'); expect(record.results).toHaveLength(4);
   expect(result.stdout).toContain('Manual acceptance remains required');
  });
  it('retains a type-check failure while still collecting the other results', () => {
   const { result, record } = run('types-fail'); expect(result.status).toBe(1); expect(record.status).toBe('blocked');
-  expect(record.results.map((r: { status: number }) => r.status)).toEqual([7,0,0]);
+  expect(record.results.map((r: { status: number }) => r.status)).toEqual([7,0,0,0]);
  });
  it('treats browser launch failure as blocked rather than a successful skip', () => {
-  const { result, record } = run('browser-fail'); expect(result.status).toBe(1); expect(record.status).toBe('blocked'); expect(record.results[2].status).toBe(127);
+  const { result, record } = run('browser-fail'); expect(result.status).toBe(1); expect(record.status).toBe('blocked'); expect(record.results[3].status).toBe(127);
  });
  it('missing test executables cannot reuse stale successful evidence', () => {
   const { result, record, cwd } = run('missing'); expect(result.status).toBe(1); expect(record.status).toBe('blocked');
+  expect(record.results).toHaveLength(4);
   expect(record.results.every((r: { status: number | null; error: string }) => r.status === null && !!r.error)).toBe(true);
   expect(() => readFileSync(join(cwd,'test-results','vitest.json'),'utf8')).toThrow();
  });
