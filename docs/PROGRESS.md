@@ -145,3 +145,14 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - هیچ Cron trigger، custom domain یا route برای Worker ثبت نیست؛ zone به نام `codevibe.ir` در حساب انتخاب‌شده یافت نشد. هیچ DNS، تنظیم Worker یا deployment تغییر نکرد.
 - پاسخ `/health` در این نوبت از مسیر درخواست فقط‌خواندنی قابل تأیید نبود؛ گزارش HTTP 200 قبلی صرفاً سابقه است. در Google Drive فقط فراداده بررسی شد: `Math_Project/06_Backups` موجود است، ۱۵ مورد دارد و فایل `sync_backup_*.json` ندارد؛ `Math_Project/03_Sync` پیدا نشد. هیچ فایل یا رویداد آزمایشی نوشته یا read-back نشد.
 - به‌دلیل نبود Secretها، deploy انجام نشد. وضعیت زندهٔ احرازشدهٔ Drive/Notion، backup زمان‌بندی‌شده و read-back واقعی همچنان لازم است؛ P0-3 تا P0-7 در حال انجام می‌مانند.
+
+
+## بررسی ترتیبی تازهٔ Cloudflare، Google، Notion و Drive — ۱۴۰۵/۰۸/۱۱
+
+- PR #37 روی head `89edf424e2783cfe2ac0db32c02a7c66c7868619` باز، draft و ادغام‌نشده است. اجرای CI `41499408955` با موفقیت کامل `test:gate` و `npm run build` را گذراند.
+- شاخهٔ محلی درست است، اما HEAD محلی `2679f3f` از head PR عقب است و فایل‌های مستندات محلی تغییر دارند. hash هر ۱۱ فایل کد، تست و Worker/config تغییرکرده در PR با محتوای همان فایل‌ها در head فعلی یکی است؛ این checkout یک clone تمیز از commit جاری نیست.
+- **Cloudflare:** MCP احراز است. Worker `math-scratchpad-sync` روی نسخهٔ فعال `9d5c41bd-b338-45bb-b0bc-70c8129be568` با ۱۰۰٪ ترافیک قرار دارد و workers.dev فعال است. bindingهای فعلی `EVENT_STORE` و چهار متغیر پایه‌اند؛ پنج `NOTION_DATA_SOURCE_*`، هر سه نام Secret لازم، و Cron در Production غایب‌اند. config شاخه Cron `0 2 * * 0` و پنج data source ID را دارد. health در این نوبت بررسی نشد.
+- **Google OAuth:** پروژهٔ `math-scratchpad` و یک Web client موجودند؛ audience برابر External / Testing است. Branding پیوند Privacy و Terms ندارد؛ Data Access فقط `drive.file` نشان می‌دهد و `userinfo.email` که README Worker لازم می‌داند دیده نشد. کنترل‌های scope در UI کلیک‌پذیر نبودند؛ هیچ تنظیمی ذخیره و هیچ client secret/refresh token نمایش یا ساخته نشد.
+- **Notion:** Developer Connections صفحهٔ «No connections yet» را نشان داد. ساخت connection مستلزم موافقت با Developer Terms است؛ فرم بسته شد و هیچ connection یا اشتراکی ساخته نشد. `NOTION_API_KEY` موجود نیست.
+- **Drive:** حساب connector با مالک Worker تطبیق داشت. `Math_Project/06_Backups` با ۱۵ مورد موجود است ولی `sync_backup_*.json` ندارد؛ `Math_Project/03_Sync` در پوشهٔ پروژه پیدا نشد. فقط فراداده خوانده شد.
+- هیچ Secret، Cron، route، دامنه، deployment، رویداد یا ردیف زنده تغییر نکرد. هیچ دادهٔ یادگیرنده‌ای خوانده یا نوشته نشد. P0-3 به لینک‌های عمومی، scope کامل و OAuth امن؛ P0-4 به Google Worker Secrets و Drive read-back؛ P0-5 به تصمیم مالک دربارهٔ Developer Terms، connection و اشتراک پنج source؛ P0-6 به deploy و status زنده؛ و P0-7 به deploy Cron و backup read-back مسدود می‌مانند.
