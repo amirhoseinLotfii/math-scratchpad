@@ -108,3 +108,12 @@
 
 - پیگیری تازه: اجرای CI `41443911466` روی head مستنداتی `8e06b41` با `test:gate` و build سبز شد. حساب Google Cloud متصل با `OWNER_EMAIL` شاخه تطبیق دارد و مانع MFA برطرف شده، اما جست‌وجوی پروژه `divine-descent-511113-c9` در انتخابگر پروژه پیام «No resources to display» داد؛ وضعیت OAuth هنوز قابل بررسی نیست و هیچ اعتبارنامه‌ای ساخته نشد.
 - پنجرهٔ اشتراک Math Attempts فقط مالک را نشان می‌دهد؛ هیچ Integration اضافه یا ردیفی در Notion نوشته نشد. Production Cloudflare بدون تغییر باقی ماند و PR #37 باز و draft است.
+
+
+## پیگیری زندهٔ Cloudflare و همگام‌سازی — ۱۴۰۵/۰۸/۱۱
+
+- PR #37 روی head `343f25f7a9f7d5c4ef217decc963bf38187c16a5` باز و draft ماند. اجرای `41452398541` با `test:gate` کامل و build سبز شد؛ تست‌های محلی ۸۴۰ برنامه و ۵۳ Worker، typecheck و build نیز روی کد همسان با head موفق بودند.
+- پروژهٔ `divine-descent-511113-c9` در جست‌وجوی انتخابگر Google Cloud نبود و فرم رسمی ایجاد پروژه اعلام کرد Project ID در دسترس نیست؛ پروژهٔ جایگزینی ساخته نشد. پروژهٔ انتخاب‌شدنی `math-scratchpad` همان OAuth client تنظیم‌شده در شاخه را دارد. نشانی خانهٔ عمومی برنامه ذخیره شد و scopeهای `drive.file` و `userinfo.email` تأیید شدند؛ consent همچنان Testing است و به‌علت خالی‌بودن پیوند سیاست حریم خصوصی و شرایط، OAuth credential ساخته نشد.
+- Worker Production هنوز نسخهٔ `9d5c41bd` و health سالم دارد. فقط `EVENT_STORE` و چهار متغیر پایه حاضرند؛ پنج متغیر Notion، سه نام Secret لازم و Cron هفتگی غایب‌اند. Wrangler احرازنشده بود، Cloudflare MCP در دسترس نیست و deploy یا تغییر Production انجام نشد.
+- در Drive فقط فراداده بررسی شد: `Math_Project/06_Backups` موجود است اما فایل پشتیبان زمان‌بندی‌شده دیده نشد و `03_Sync` وجود ندارد. Developer portal در Notion هیچ connectionای نشان نداد؛ فرم ساخت، پذیرش Developer Terms را شرط می‌کند، پس پیش از ساخت connection، اشتراک منبع‌ها یا ایجاد key متوقف شدم. هیچ ردیفی به Notion نوشته نشد.
+- فایل `CODEX_SYNC_AND_FEATURES _1_.md` همچنان در شاخه نیست. کارت‌های P0-3 تا P0-7 در انتظار بررسی‌های زندهٔ credential، deploy و read-back باقی ماندند؛ PR #37 ادغام نشد.
