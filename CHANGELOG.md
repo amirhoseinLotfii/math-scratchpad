@@ -145,3 +145,11 @@
 - اتصال Cloudflare MCP در این نشست فقط‌خواندنی بود. Worker Production `math-scratchpad-sync` همچنان نسخهٔ `9d5c41bd-b338-45bb-b0bc-70c8129be568` را روی `workers.dev` اجرا می‌کند؛ فقط binding `EVENT_STORE` و چهار متغیر پایه حاضرند. پنج متغیر Notion، سه نام Secret لازم و Cron هفتگی در Production حاضر نیستند. هیچ route، دامنه، DNS، Secret یا deployment تغییر نکرد.
 - درخواست تازهٔ `/health` قابل تأیید نبود. در Drive پوشهٔ خصوصی `Math_Project/06_Backups` با ۱۵ مورد دیده شد اما فایل پشتیبان زمان‌بندی‌شده وجود نداشت؛ `03_Sync` پیدا نشد. هیچ رویداد یا فایل آزمایشی نوشته نشد و Notion read-back انجام نشد.
 - نبود Secretها مانع deploy و آزمون زندهٔ Drive/Notion است. کارت‌های P0-3 تا P0-7 باز می‌مانند؛ PR #37 ادغام نشده است.
+
+
+## ثبت پیگیری زندهٔ سرویس‌های همگام‌سازی — ۱۴۰۵/۰۸/۱۱
+
+- CI head فعلی PR #37، run `41499408955`، شامل gate کامل و build سبز است؛ PR باز و draft ماند.
+- Cloudflare MCP فعال است؛ Worker نسخهٔ `9d5c41bd` را با ۱۰۰٪ ترافیک اجرا می‌کند. پنج data source variable، سه نام Secret و Cron در Production نیستند. deploy انجام نشد.
+- در Google Console، OAuth هنوز External / Testing است؛ پیوند Privacy/Terms خالی و scope `userinfo.email` در فهرست دیده نشد. هیچ credential خوانده/ساخته نشد. در Notion Developer connection وجود ندارد و ساخت آن پذیرش Developer Terms می‌خواهد.
+- Drive owner match شد؛ پوشهٔ backup ۱۵ مورد دارد اما فایل زمان‌بندی‌شده ندارد و پوشهٔ `03_Sync` پیدا نشد. داده‌ای نخواندیم/ننوشتم. کارت‌های P0-3 تا P0-7 تا تکمیل شرط‌های خود باز می‌مانند.
