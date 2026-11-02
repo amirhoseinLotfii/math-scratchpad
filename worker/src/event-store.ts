@@ -2,6 +2,16 @@ import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
 import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
+import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode } from './google-drive';
+import {
+  buildProgressProjection,
+  groupEventsByUtcMonth,
+  formatTehran,
+  mergeJsonlEventContent,
+  serializeJsonlEvents,
+  sha256Hex,
+  type SequencedLearnEvent,
+} from './drive-projection';
 
 const MAX_BODY_BYTES = 250_000;
 const MAX_BATCH_SIZE = 50;
@@ -10,6 +20,27 @@ const RATE_WINDOW_MS = 60_000;
 
 type StoredEvent = { seq: number; event: LearnEvent };
 type AppendResult = { id: string; seq: number; duplicate: boolean };
+type DriveMirrorState = {
+  status: 'pending' | 'syncing' | 'synced' | 'error';
+  lastSeq: number;
+  pendingCount: number;
+  lastSyncedAt?: string;
+  lastError?: DriveMirrorErrorCode;
+  folders?: { rootId: string; syncId: string; eventsId: string; stateId: string };
+  files: Record<string, DriveFileRef>;
+  fileHashes: Record<string, string>;
+};
+export type DriveMirrorStatus = {
+  status: 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
+  lastSyncedAt: string | null;
+  pendingCount: number;
+  lastError: DriveMirrorErrorCode | null;
+};
+
+const DRIVE_STATE_KEY = 'drive-mirror-state-v1';
+const DRIVE_DEBOUNCE_MS = 5_000;
+const DRIVE_RETRY_MS = 60_000;
+const DRIVE_MIRROR_PAGE_SIZE = 500;
 
 function json(data: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers);
@@ -37,6 +68,8 @@ function integerQuery(url: URL, name: string, fallback: number): number | null {
 /** One owner-scoped, append-only SQLite event log. */
 export class LearningEventStore extends DurableObject<WorkerEnv> {
   private readonly rateLimit: number;
+  private driveClient: GoogleDriveClient | undefined;
+  private driveSyncPromise: Promise<DriveMirrorStatus> | undefined;
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env);
@@ -60,14 +93,27 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const supported = (request.method === 'POST' && url.pathname === '/events')
-      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot'));
+      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status'))
+      || (request.method === 'POST' && url.pathname === '/drive/sync');
     if (!supported) return json({ error: 'not_found' }, 404);
 
     const rate = this.consumeRateLimit();
     if (rate) return rate;
 
     if (url.pathname === '/events') return this.append(request);
+    if (url.pathname === '/drive/status') return json(await this.getDriveStatus());
+    if (url.pathname === '/drive/sync') {
+      const status = await this.syncDrive();
+      const ok = status.status === 'synced' || (status.status === 'pending' && status.pendingCount === 0);
+      return json({ drive: status }, ok ? 200 : status.status === 'not_configured' ? 503 : 502);
+    }
     return this.readPage(url, url.pathname === '/snapshot');
+  }
+
+  /** Durable Object alarm retries the private Drive mirror after transient failures. */
+  async alarm(): Promise<void> {
+    if (!this.driveConfigured()) return;
+    await this.syncDrive();
   }
 
   private parseRateLimit(raw: string | undefined): number {
@@ -163,7 +209,197 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return result;
     });
     const cursor = Math.max(0, ...ordered.map(item => item.seq));
+    await this.queueDriveMirror(cursor);
     return json({ events: ordered, cursor }, 200);
+  }
+
+  private driveConfigured(): boolean {
+    return Boolean(this.env.GOOGLE_CLIENT_ID && this.env.GOOGLE_DRIVE_CLIENT_SECRET && this.env.GOOGLE_DRIVE_REFRESH_TOKEN);
+  }
+
+  private async readDriveState(): Promise<DriveMirrorState> {
+    const stored = await this.ctx.storage.get<DriveMirrorState>(DRIVE_STATE_KEY);
+    return stored ?? { status: 'pending', lastSeq: 0, pendingCount: 0, files: {}, fileHashes: {} };
+  }
+
+  private async saveDriveState(state: DriveMirrorState): Promise<void> {
+    await this.ctx.storage.put(DRIVE_STATE_KEY, state);
+  }
+
+  private async maxSequence(): Promise<number> {
+    return Number(this.ctx.storage.sql.exec<{ seq: number }>(
+      'SELECT COALESCE(MAX(seq), 0) AS seq FROM learning_events',
+    ).one().seq);
+  }
+
+  private async getDriveStatus(): Promise<DriveMirrorStatus> {
+    const maxSeq = await this.maxSequence();
+    if (!this.driveConfigured()) {
+      return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, lastError: null };
+    }
+    const state = await this.readDriveState();
+    return {
+      status: state.status,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      lastError: state.lastError ?? null,
+    };
+  }
+
+  private async queueDriveMirror(cursor: number): Promise<void> {
+    if (!this.driveConfigured()) return;
+    const state = await this.readDriveState();
+    if (cursor <= state.lastSeq) return;
+    const maxSeq = await this.maxSequence();
+    await this.saveDriveState({
+      ...state,
+      status: 'pending',
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      lastError: undefined,
+    });
+    await this.ctx.storage.setAlarm(Date.now() + DRIVE_DEBOUNCE_MS);
+  }
+
+  private async syncDrive(): Promise<DriveMirrorStatus> {
+    if (!this.driveConfigured()) return this.getDriveStatus();
+    if (this.driveSyncPromise) return this.driveSyncPromise;
+    this.driveSyncPromise = this.performDriveSync().finally(() => { this.driveSyncPromise = undefined; });
+    return this.driveSyncPromise;
+  }
+
+  private async performDriveSync(): Promise<DriveMirrorStatus> {
+    const state = await this.readDriveState();
+    const through = await this.maxSequence();
+    if (through === state.lastSeq && state.status === 'synced') return this.getDriveStatus();
+    await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq), lastError: undefined });
+
+    try {
+      this.driveClient ??= new GoogleDriveClient(this.env);
+      const client = this.driveClient;
+      const events = this.readEventsThrough(through);
+      const newEvents = events.filter(item => item.seq > state.lastSeq);
+      let folders = state.folders;
+      if (!folders) {
+        const rootId = await client.ensureRootFolder('Math_Project');
+        const syncId = await client.ensureFolder('03_Sync', rootId);
+        const eventsId = await client.ensureFolder('events', syncId);
+        const stateId = await client.ensureFolder('state', syncId);
+        folders = { rootId, syncId, eventsId, stateId };
+        state.folders = folders;
+        await this.saveDriveState({ ...state, status: 'syncing', folders, pendingCount: Math.max(0, through - state.lastSeq) });
+      }
+
+      const months = groupEventsByUtcMonth(newEvents);
+      for (const [month, monthEvents] of months) {
+        const name = `events_${month}.jsonl`;
+        const path = `events/${name}`;
+        const content = serializeJsonlEvents(events.filter(item => {
+          const date = new Date(item.event.ts);
+          return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}` === month;
+        }));
+        const saved = await client.upsertTextFile({
+          name,
+          parentId: folders.eventsId,
+          mimeType: 'application/x-ndjson',
+          desiredContent: content,
+          knownFile: state.files[path],
+          mergeContent: mergeJsonlEventContent,
+        });
+        state.files[path] = { id: saved.id, etag: saved.etag };
+        state.fileHashes[path] = await sha256Hex(saved.content);
+        await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq) });
+      }
+
+      const progress = buildProgressProjection(events);
+      const desiredProgress = `${JSON.stringify(progress, null, 2)}\n`;
+      const progressFile = await client.upsertTextFile({
+        name: 'progress.json',
+        parentId: folders.stateId,
+        mimeType: 'application/json',
+        desiredContent: desiredProgress,
+        knownFile: state.files['state/progress.json'],
+        mergeContent: mergeProgressContent,
+      });
+      state.files['state/progress.json'] = { id: progressFile.id, etag: progressFile.etag };
+      state.fileHashes['state/progress.json'] = await sha256Hex(progressFile.content);
+
+      const latest = events.at(-1);
+      const now = new Date();
+      const tehranTime = formatTehran(now);
+      const manifest = {
+        schemaVersion: 1,
+        lastSeq: latest?.seq ?? 0,
+        lastEventId: latest?.event.id ?? null,
+        lastSuccessAtUtc: now.toISOString(),
+        lastSuccessAtTehran: tehranTime,
+        files: Object.entries(state.fileHashes).sort(([a], [b]) => a.localeCompare(b)).map(([path, sha256]) => ({ path, sha256 })),
+      };
+      const manifestFile = await client.upsertTextFile({
+        name: 'sync_manifest.json',
+        parentId: folders.syncId,
+        mimeType: 'application/json',
+        desiredContent: `${JSON.stringify(manifest, null, 2)}\n`,
+        knownFile: state.files['sync_manifest.json'],
+        mergeContent: mergeManifestContent,
+      });
+      state.files['sync_manifest.json'] = { id: manifestFile.id, etag: manifestFile.etag };
+
+      const currentMax = await this.maxSequence();
+      const pendingCount = Math.max(0, currentMax - through);
+      const finalState: DriveMirrorState = {
+        ...state,
+        status: pendingCount === 0 ? 'synced' : 'pending',
+        lastSeq: through,
+        pendingCount,
+        lastSyncedAt: now.toISOString(),
+        lastError: undefined,
+      };
+      await this.saveDriveState(finalState);
+      if (pendingCount > 0) await this.ctx.storage.setAlarm(Date.now() + DRIVE_DEBOUNCE_MS);
+      return {
+        status: finalState.status,
+        lastSyncedAt: finalState.lastSyncedAt ?? null,
+        pendingCount: finalState.pendingCount,
+        lastError: null,
+      };
+    } catch (error) {
+      const code = error instanceof DriveMirrorError ? error.code : error instanceof Error && error.message === 'event_id_conflict'
+        ? 'etag_conflict' : 'network_error';
+      const currentMax = await this.maxSequence();
+      const failed: DriveMirrorState = {
+        ...state,
+        status: 'error',
+        pendingCount: Math.max(0, currentMax - state.lastSeq),
+        lastError: code,
+      };
+      await this.saveDriveState(failed);
+      await this.ctx.storage.setAlarm(Date.now() + DRIVE_RETRY_MS);
+      return {
+        status: failed.status,
+        lastSyncedAt: failed.lastSyncedAt ?? null,
+        pendingCount: failed.pendingCount,
+        lastError: failed.lastError ?? null,
+      };
+    }
+  }
+
+  private readEventsThrough(through: number): SequencedLearnEvent[] {
+    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+      'SELECT seq, event_json FROM learning_events WHERE seq <= ? ORDER BY seq ASC LIMIT ?',
+      through, DRIVE_MIRROR_PAGE_SIZE,
+    ).toArray();
+    const events: SequencedLearnEvent[] = rows.map(row => ({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent }));
+    let cursor = events.at(-1)?.seq ?? 0;
+    while (cursor < through) {
+      const page = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+        'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+        cursor, through, DRIVE_MIRROR_PAGE_SIZE,
+      ).toArray();
+      if (page.length === 0) break;
+      for (const row of page) events.push({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent });
+      cursor = events.at(-1)!.seq;
+    }
+    return events;
   }
 
   private readPage(url: URL, isSnapshot: boolean): Response {
@@ -198,3 +434,27 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 }
 
 class EventConflictError extends Error {}
+
+function mergeProgressContent(remote: string, desired: string): string {
+  const previous = parseJsonContent(remote);
+  const current = parseJsonContent(desired);
+  if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
+  return desired;
+}
+
+function mergeManifestContent(remote: string, desired: string): string {
+  const previous = parseJsonContent(remote);
+  const current = parseJsonContent(desired);
+  if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
+  return desired;
+}
+
+function parseJsonContent(content: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(content);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    return value as Record<string, unknown>;
+  } catch {
+    throw new DriveMirrorError('invalid_response');
+  }
+}

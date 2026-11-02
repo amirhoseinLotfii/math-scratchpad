@@ -38,6 +38,8 @@ function availableStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
 export const learnEventSchema = z.object({
   id: uuidV4,
   schema: z.literal(1),
+  /** Marks owner-created live checks so learning projections can ignore them. */
+  isTest: z.boolean().optional(),
   ts: isoDateTime,
   endTs: isoDateTime.optional(),
   durationMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
