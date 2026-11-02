@@ -1,6 +1,7 @@
 import { metadataSchema } from './features/session/schemas/session-schema';
 import { ascii, fields, leaves, MAX_SESSION_EXERCISES, templateCounts, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta } from './model';
 import { initialState, type ScratchState } from './store';
+import { getLearningStorage } from './sync/browser-db';
 const KEY = 'math-scratchpad-redux-v2';
 type Bag = Record<string, any>;
 const isoText = (v: unknown): v is string => typeof v === 'string' && v.length <= 40 && /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/.test(v);
@@ -61,8 +62,8 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
 }
 export function restoreState(): ScratchState {
   const state = initialState();
-  try { const raw = localStorage.getItem(KEY) ?? localStorage.getItem('math-scratchpad-flow-v1'); if (raw) { const saved = validateSession(JSON.parse(raw)); state.doc = saved.doc; if (saved.prefs) state.prefs = saved.prefs; state.keyboardOpen = JSON.parse(raw).keyboardOpen === true; } } catch { state.notice = 'Previous draft could not be restored. Import a session backup if available.'; }
+  try { const storage = getLearningStorage(); const raw = storage.getItem(KEY) ?? storage.getItem('math-scratchpad-flow-v1'); if (raw) { const saved = validateSession(JSON.parse(raw)); state.doc = saved.doc; if (saved.prefs) state.prefs = saved.prefs; state.keyboardOpen = JSON.parse(raw).keyboardOpen === true; } } catch { state.notice = 'Previous draft could not be restored. Import a session backup if available.'; }
   return state;
 }
 export const serialize = (state: ScratchState) => JSON.stringify({ version: 2, doc: state.doc, prefs: state.prefs, keyboardOpen: state.keyboardOpen }, null, 2);
-export function saveState(state: ScratchState): boolean { try { localStorage.setItem(KEY, serialize(state)); return true; } catch { return false; } }
+export function saveState(state: ScratchState): boolean { try { getLearningStorage().setItem(KEY, serialize(state)); return true; } catch { return false; } }

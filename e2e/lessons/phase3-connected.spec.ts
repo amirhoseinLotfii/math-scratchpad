@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { resetLearningDatabase } from '../support/indexeddb';
 
 const views = [
   { width: 320, height: 740 },
@@ -11,10 +12,11 @@ const views = [
 
 test('connected Learn flow, reference panel and responsive layouts', { tag: '@only-mobile-390' }, async ({ page }) => {
   test.setTimeout(120_000);
-  await page.addInitScript(() => localStorage.removeItem('math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview'));
 
   for (const viewport of views) {
     await page.setViewportSize(viewport);
+    await page.goto('/');
+    await resetLearningDatabase(page);
     await page.goto('/e2e/fixtures/lesson-connected-preview.html');
     const batchStart = page.getByRole('dialog', { name: 'Before you start this batch' });
     if (await batchStart.isVisible().catch(() => false)) await batchStart.getByRole('button', { name: 'Skip for now' }).click();
@@ -98,6 +100,8 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
   }
 
   await page.setViewportSize({ width: 390, height: 640 });
+  await page.goto('/');
+  await resetLearningDatabase(page);
   await page.goto('/e2e/fixtures/lesson-connected-preview.html');
   const batchStart = page.getByRole('dialog', { name: 'Before you start this batch' });
   if (await batchStart.isVisible().catch(() => false)) await batchStart.getByRole('button', { name: 'Skip for now' }).click();

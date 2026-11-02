@@ -31,11 +31,11 @@ describe('validateBank: top level', () => {
     expect(invalid.chapter).toBeUndefined();
     expect(invalid.parseWarnings?.join(' ')).toContain('chapter: invalid chapter metadata');
   });
-  it('loads, archives, serializes, and restores a 73-question lesson section', () => {
+  it('loads, archives, serializes, and restores a 73-question lesson section', async () => {
     const parsed = validateBank(bank({ questions: Array.from({ length: 73 }, (_, i) => q(`PC-1.1-P${String(i + 1).padStart(2, '0')}`)) }));
     const state = initialState(); state.doc = bankDocument(parsed, 'section-v1');
     expect(validateSession(JSON.parse(serialize(state))).doc.exercises).toHaveLength(73);
-    archiveSession(state);
+    await archiveSession(state);
     expect(validateSession(JSON.parse(readArchive()[0].data)).doc.exercises).toHaveLength(73);
   });
   it('drops unknown fields from output', () => { const out = validateBank(bank({ extra: 1, questions: [q('Q1', { note: 'x' })] })); expect(out).not.toHaveProperty('extra'); expect(out.questions[0]).not.toHaveProperty('note'); });
@@ -131,8 +131,8 @@ describe('archive', () => {
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify([{ id: 1 }])); expect(() => readArchive()).toThrow('Saved sessions could not be read');
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify({})); expect(() => readArchive()).toThrow();
   });
-  it('does not duplicate identical snapshots and keeps the data restorable', () => {
-    const s = initialState(); archiveSession(s); archiveSession(s); expect(readArchive()).toHaveLength(1);
+  it('does not duplicate identical snapshots and keeps the data restorable', async () => {
+    const s = initialState(); await archiveSession(s); await archiveSession(s); expect(readArchive()).toHaveLength(1);
     expect(() => validateSession(JSON.parse(readArchive()[0].data))).not.toThrow();
   });
 });

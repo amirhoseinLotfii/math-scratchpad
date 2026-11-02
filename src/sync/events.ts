@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getLearningStorage } from './browser-db';
 
 export const LEARN_EVENT_TYPES = [
   'lesson_open', 'lesson_close', 'chunk_open', 'chunk_read', 'section_open', 'section_close',
@@ -11,7 +12,7 @@ export const LEARN_EVENT_TYPES = [
   'reverse_attempt', 'timed_round', 'error_tagged', 'mastery_changed',
   'tab_hidden', 'tab_visible', 'window_blur', 'window_focus', 'idle_start',
   'idle_end', 'mood_logged', 'gate_attempt', 'gate_passed', 'gate_failed',
-  'goal_status', 'backup_created', 'backup_restored', 'report_generated',
+  'goal_status', 'backup_created', 'backup_restored', 'report_generated', 'legacy_state_migration',
   'section_complete', 'practice_started', 'lesson_skip', 'scope_paused', 'scope_resumed',
 ] as const;
 
@@ -20,8 +21,18 @@ export const LEARN_EVENT_ITEM_TYPES = ['typed', 'mcq', 'true_false_why', 'find_m
 const uuidV4 = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, 'Expected a UUID v4.');
 const isoDateTime = z.string().datetime({ offset: true });
 const boundedText = (max: number) => z.string().max(max);
+export const legacyMigrationChunkSchema = z.object({
+  id: uuidV4,
+  key: z.string().min(1).max(200),
+  index: z.number().int().min(0).max(100_000),
+  count: z.number().int().min(1).max(100_001),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  data: z.string().max(8_500),
+}).strict().superRefine((chunk, ctx) => {
+  if (chunk.index >= chunk.count) ctx.addIssue({ code: 'custom', path: ['index'], message: 'Chunk index must be below count.' });
+});
 function availableStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
-  try { return globalThis.localStorage; } catch { return undefined; }
+  try { return getLearningStorage(); } catch { return undefined; }
 }
 
 export const learnEventSchema = z.object({
@@ -58,7 +69,14 @@ export const learnEventSchema = z.object({
   distractedMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
   pausedMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
   mood: z.enum(['tired', 'neutral', 'energized']).optional(),
+  migrationChunk: legacyMigrationChunkSchema.optional(),
 }).strict().superRefine((event, ctx) => {
+  if (event.type === 'legacy_state_migration' && !event.migrationChunk) {
+    ctx.addIssue({ code: 'custom', path: ['migrationChunk'], message: 'Legacy migration events require a chunk payload.' });
+  }
+  if (event.type !== 'legacy_state_migration' && event.migrationChunk) {
+    ctx.addIssue({ code: 'custom', path: ['migrationChunk'], message: 'Migration chunks are only allowed on migration events.' });
+  }
   if (event.endTs && Date.parse(event.endTs) < Date.parse(event.ts)) {
     ctx.addIssue({ code: 'custom', path: ['endTs'], message: 'endTs cannot be earlier than ts.' });
   }

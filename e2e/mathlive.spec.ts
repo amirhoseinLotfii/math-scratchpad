@@ -1,4 +1,5 @@
 import { expect, test } from './support/test';
+import { readLearningCache } from './support/indexeddb';
 
 test('MathLive keeps precise editing, explicit keypad access, and a lossless saved Step', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
@@ -75,10 +76,11 @@ test('MathLive keeps precise editing, explicit keypad access, and a lossless sav
   const stepId = await field.getAttribute('data-step-id');
   await page.getByRole('button', { name: 'Mark Step 1 as final' }).click();
   await expect(page.getByRole('button', { name: 'Mark Step 1 as final' })).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(() => page.evaluate(() => {
-    const saved = JSON.parse(localStorage.getItem('math-scratchpad-session-v3') ?? 'null');
+  await expect.poll(async () => {
+    const raw = await readLearningCache(page, 'math-scratchpad-session-v3');
+    const saved = raw ? JSON.parse(raw) : null;
     return saved?.state?.session?.doc?.exercises?.[0]?.steps?.[0]?.mathLatex ?? null;
-  })).toBe(beforeReload);
+  }).toBe(beforeReload);
 
   await page.reload();
   const restoredField = page.locator('math-field[aria-label="Step 1 expression"]');
@@ -181,6 +183,13 @@ test('MathLive inserts and edits calculus and matrix structures without changing
   const beforeReload = await readLatex();
   const stepId = await field.getAttribute('data-step-id');
   await page.getByRole('button', { name: 'Mark Step 1 as final' }).click();
+  await expect(page.getByRole('button', { name: 'Mark Step 1 as final' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => {
+    const raw = await readLearningCache(page, 'math-scratchpad-session-v3');
+    const saved = raw ? JSON.parse(raw) : null;
+    const step = saved?.state?.session?.doc?.exercises?.[0]?.steps?.[0];
+    return { mathLatex: step?.mathLatex ?? null, final: step?.final ?? false };
+  }).toEqual({ mathLatex: beforeReload, final: true });
   await page.reload();
   const restored = page.locator('math-field[aria-label="Step 1 expression"]');
   await expect.poll(() => restored.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe(beforeReload);
