@@ -117,3 +117,7 @@
 - Worker Production هنوز نسخهٔ `9d5c41bd` و health سالم دارد. فقط `EVENT_STORE` و چهار متغیر پایه حاضرند؛ پنج متغیر Notion، سه نام Secret لازم و Cron هفتگی غایب‌اند. Wrangler احرازنشده بود، Cloudflare MCP در دسترس نیست و deploy یا تغییر Production انجام نشد.
 - در Drive فقط فراداده بررسی شد: `Math_Project/06_Backups` موجود است اما فایل پشتیبان زمان‌بندی‌شده دیده نشد و `03_Sync` وجود ندارد. Developer portal در Notion هیچ connectionای نشان نداد؛ فرم ساخت، پذیرش Developer Terms را شرط می‌کند، پس پیش از ساخت connection، اشتراک منبع‌ها یا ایجاد key متوقف شدم. هیچ ردیفی به Notion نوشته نشد.
 - فایل `CODEX_SYNC_AND_FEATURES _1_.md` همچنان در شاخه نیست. کارت‌های P0-3 تا P0-7 در انتظار بررسی‌های زندهٔ credential، deploy و read-back باقی ماندند؛ PR #37 ادغام نشد.
+
+## پیگیری CI پس از ثبت وضعیت زنده — ۱۴۰۵/۰۸/۱۱
+
+- اجرای `41459736025` روی commit مستنداتی `7003216` با موفقیت کامل شد؛ `npm run test:gate` و build سبز هستند. PR #37 باز و draft است. این ثبت مستندات، deploy یا تغییر Cloudflare انجام نمی‌دهد.
