@@ -12,9 +12,11 @@ import { createLessonMathStore } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
-import { MAX_SESSION_EXERCISES, stepIsBlank, type Step } from '../../model';
+import { MAX_SESSION_EXERCISES, stepIsBlank, stepLatex, type Step } from '../../model';
 import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
+import { ActivityTracker } from '../../sync/activity-tracker';
+import { emitLearnEvent, type LearnEventContext, type LearnEventDraft } from '../../sync/events';
 
 function subscribeSplit(change: () => void) {
   if (typeof window.matchMedia !== 'function') return () => {};
@@ -36,6 +38,8 @@ type Props = {
   onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], sectionId?: string) => void;
   practiceError?: string;
   progressMessage?: string;
+  activityTracker?: ActivityTracker;
+  eventContext?: LearnEventContext;
 };
 
 type ReadyProps = Props & { bank: DriveBank; lesson: Lesson };
@@ -71,7 +75,7 @@ function ReviewQuestionContent({ question }: { question: BankQuestion }) {
   return <span lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></span>;
 }
 
-function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage }: ReadyProps) {
+function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage, activityTracker, eventContext }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
   const sections = useMemo(() => buildLessonSections(lesson), [lesson]);
@@ -102,6 +106,11 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const [selectedWorkKey, setSelectedWorkKey] = useState<string | undefined>();
   const workStores = useRef(new Map<string, ScratchStore>());
   const splitRef = useRef<HTMLDivElement>(null);
+  const focusedCheckScope = useRef<string | null>(null);
+  const focusedWorkScope = useRef<string | null>(null);
+  const attemptCounts = useRef(new Map<string, number>());
+  const pendingAnswerEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const pendingWorkEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const commitProgress = useCallback((next: LessonProgress) => {
     progressRef.current = next;
@@ -115,6 +124,81 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const workItems = useMemo(() => buildSectionWorkItems(currentSection, checks, sectionPracticeQuestions), [currentSection, checks, sectionPracticeQuestions]);
   const selectedWorkItem = resolveSelectedWorkItem(workItems, selectedWorkKey);
   const allQuestions = useMemo(() => new Map(bank.questions.map(question => [question.id, question])), [bank.questions]);
+
+  const lessonEventContext = useMemo<LearnEventContext>(() => {
+    const sectionNumber = Number(lesson.section.match(/^\s*(\d+)/)?.[1]);
+    return {
+      ...eventContext,
+      bankVersion: eventContext?.bankVersion ?? bank.version ?? 'unknown',
+      session: eventContext?.session ?? 'unknown',
+      chapter: eventContext?.chapter ?? bank.chapter?.number ?? (Number.isInteger(sectionNumber) ? sectionNumber : 0),
+      lesson: lesson.id,
+      section: 'unknown',
+      concept: 'unknown',
+    };
+  }, [bank.chapter?.number, bank.version, eventContext, lesson.id, lesson.section]);
+
+  const makeEventContext = useCallback((question?: BankQuestion, section = currentSection, conceptId?: string): LearnEventContext => {
+    return {
+      ...lessonEventContext,
+      section: question?.sectionId ?? section?.id ?? 'unknown',
+      concept: question?.conceptId ?? conceptId ?? section?.concepts[0]?.concept.id ?? 'unknown',
+      ...(section?.startPage ? { bookPage: section.startPage } : {}),
+    };
+  }, [currentSection, lessonEventContext]);
+
+  const nextAttemptNo = useCallback((itemId: string) => {
+    const next = (attemptCounts.current.get(itemId) ?? 0) + 1;
+    attemptCounts.current.set(itemId, next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    const context = lessonEventContext;
+    const scopeId = `lesson:${lesson.id}`;
+    if (activityTracker) activityTracker.startScope({ id: scopeId, openType: 'lesson_open', closeType: 'lesson_close', context, fields: { itemId: lesson.id, questionText: lesson.title } });
+    else emitLearnEvent(context, { type: 'lesson_open', itemId: lesson.id, questionText: lesson.title });
+    return () => {
+      if (activityTracker) activityTracker.stopScope(scopeId);
+      else emitLearnEvent(context, { type: 'lesson_close', itemId: lesson.id, questionText: lesson.title });
+    };
+  }, [activityTracker, lesson.id, lesson.title, lessonEventContext]);
+
+  useEffect(() => {
+    if (summary || !currentSection) return;
+    const context = makeEventContext(undefined, currentSection);
+    const scopeId = `lesson-section:${lesson.id}:${currentSection.id}`;
+    const fields = { itemId: currentSection.id, questionText: currentSection.title || currentSection.concepts.map(entry => entry.concept.title).join(' · ') };
+    if (activityTracker) activityTracker.startScope({ id: scopeId, openType: 'section_open', closeType: 'section_close', context, fields });
+    else emitLearnEvent(context, { ...fields, type: 'section_open' });
+    const pageNote = currentSection.startPage
+      ? `${currentSection.startPage}${currentSection.endPage && currentSection.endPage !== currentSection.startPage ? `-${currentSection.endPage}` : ''}`
+      : undefined;
+    const chunkScopeIds = currentSection.concepts.map(({ concept }) => {
+      const chunkContext = makeEventContext(undefined, currentSection, concept.id);
+      const chunkScopeId = `lesson-chunk:${lesson.id}:${currentSection.id}:${concept.id}`;
+      const chunkFields = { itemId: concept.id, questionText: concept.title, ...(pageNote ? { note: `book pages ${pageNote}` } : {}) };
+      if (activityTracker) activityTracker.startScope({ id: chunkScopeId, openType: 'chunk_open', closeType: 'chunk_read', context: chunkContext, fields: chunkFields });
+      else emitLearnEvent(chunkContext, { ...chunkFields, type: 'chunk_read' });
+      return chunkScopeId;
+    });
+    return () => {
+      for (const chunkScopeId of chunkScopeIds) activityTracker?.stopScope(chunkScopeId);
+      if (activityTracker) activityTracker.stopScope(scopeId);
+      else emitLearnEvent(context, { ...fields, type: 'section_close' });
+      if (focusedCheckScope.current) activityTracker?.stopScope(focusedCheckScope.current);
+      if (focusedWorkScope.current) activityTracker?.stopScope(focusedWorkScope.current);
+      focusedCheckScope.current = null;
+      focusedWorkScope.current = null;
+    };
+  }, [activityTracker, currentSection, lesson.id, makeEventContext, summary]);
+
+  useEffect(() => () => {
+    for (const timer of pendingAnswerEdits.current.values()) clearTimeout(timer);
+    for (const timer of pendingWorkEdits.current.values()) clearTimeout(timer);
+    pendingAnswerEdits.current.clear();
+    pendingWorkEdits.current.clear();
+  }, []);
 
   useEffect(() => {
     const target = (summary ? summaryHeadingRef : headingRef).current;
@@ -154,17 +238,99 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     return store;
   }, [phone]);
 
+  const engageCheck = useCallback((questionId: string) => {
+    if (!activityTracker) return;
+    const id = `lesson-check:${lesson.id}:${questionId}`;
+    if (focusedCheckScope.current === id) return;
+    if (focusedCheckScope.current) activityTracker.stopScope(focusedCheckScope.current);
+    if (focusedWorkScope.current) activityTracker.stopScope(focusedWorkScope.current);
+    focusedWorkScope.current = null;
+    const question = allQuestions.get(questionId);
+    if (!question) return;
+    focusedCheckScope.current = id;
+    activityTracker.startScope({
+      id, openType: 'question_open', closeType: 'question_close', context: makeEventContext(question),
+      fields: {
+        itemId: question.id,
+        itemType: question.answerType === 'choice' ? 'mcq' : question.answerType === 'text' || question.mode === 'text' ? 'typed' : 'step_by_step',
+        questionText: question.prompt || question.source,
+      },
+    });
+  }, [activityTracker, allQuestions, lesson.id, makeEventContext]);
+
+  const leaveCheck = useCallback((questionId: string) => {
+    const id = `lesson-check:${lesson.id}:${questionId}`;
+    if (focusedCheckScope.current !== id) return;
+    activityTracker?.stopScope(id);
+    focusedCheckScope.current = null;
+  }, [activityTracker, lesson.id]);
+
+  const engageWorkItem = useCallback((item: LessonWorkItem) => {
+    if (!activityTracker || item.kind === 'check') return;
+    const id = `lesson-work:${lesson.id}:${item.key}`;
+    if (focusedWorkScope.current === id) return;
+    if (focusedWorkScope.current) activityTracker.stopScope(focusedWorkScope.current);
+    if (focusedCheckScope.current) activityTracker.stopScope(focusedCheckScope.current);
+    focusedCheckScope.current = null;
+    const question = item.kind === 'exercise' ? item.question : undefined;
+    focusedWorkScope.current = id;
+    activityTracker.startScope({
+      id, openType: 'question_open', closeType: 'question_close',
+      context: makeEventContext(question, currentSection, item.kind === 'example' || item.kind === 'guided' ? item.conceptId : undefined),
+      fields: {
+        itemId: question?.id ?? item.key,
+        itemType: 'step_by_step',
+        questionText: item.title,
+      },
+    });
+  }, [activityTracker, currentSection, lesson.id, makeEventContext]);
+
+  const leaveWorkItem = useCallback((item: LessonWorkItem) => {
+    const id = `lesson-work:${lesson.id}:${item.key}`;
+    if (focusedWorkScope.current !== id) return;
+    activityTracker?.stopScope(id);
+    focusedWorkScope.current = null;
+  }, [activityTracker, lesson.id]);
+
   const setWork = useCallback((key: string, { steps }: { type: 'math'; steps: Step[] }) => {
     const before = progressRef.current;
     const workAnswers = { ...before.workAnswers };
     const previous = workAnswers[key];
     const blank = steps.every(step => stepIsBlank(step));
     if (blank && !previous) return;
-    if (previous && previous.steps === steps) return;
+    const signature = JSON.stringify(steps.map(step => stepLatex(step)));
+    if (previous && JSON.stringify(previous.steps.map(step => stepLatex(step))) === signature) return;
     if (blank) delete workAnswers[key];
     else workAnswers[key] = { type: 'math', steps };
     commitProgress({ ...before, workAnswers: Object.keys(workAnswers).length ? workAnswers : undefined });
-  }, [commitProgress]);
+    const item = workItems.find(candidate => candidate.key === key);
+    if (!item || blank) return;
+    const eventSteps = steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+    const questionText = (item.kind === 'check' || item.kind === 'exercise') ? (item.question.prompt || item.question.source) : item.title;
+    const itemId = item.kind === 'check' || item.kind === 'exercise' ? item.question.id : item.key;
+    const context = makeEventContext(item.kind === 'check' || item.kind === 'exercise' ? item.question : undefined, currentSection, item.kind === 'example' || item.kind === 'guided' ? item.conceptId : undefined);
+    if (!previous) {
+      const type = item.kind === 'example' || item.kind === 'guided' ? 'example_attempt' : item.kind === 'exercise' ? 'exercise_attempt' : 'check_answer';
+      emitLearnEvent(context, {
+        type, itemId, itemType: 'step_by_step', questionText, userAnswer: eventSteps.join('\n').slice(0, 8_000), steps: eventSteps,
+        verdict: 'submitted', verdictSource: 'none', attemptNo: nextAttemptNo(itemId),
+      });
+    } else {
+      const timer = pendingWorkEdits.current.get(key);
+      if (timer) clearTimeout(timer);
+      const nextTimer = setTimeout(() => {
+        pendingWorkEdits.current.delete(key);
+        const latest = progressRef.current.workAnswers?.[key]?.steps;
+        if (!latest) return;
+        const latestSteps = latest.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+        emitLearnEvent(context, { type: 'step_edited', itemId, itemType: 'step_by_step', questionText, userAnswer: latestSteps.join('\n').slice(0, 8_000), steps: latestSteps });
+      }, 700);
+      pendingWorkEdits.current.set(key, nextTimer);
+    }
+    if (previous && steps.length > previous.steps.length) {
+      for (const added of steps.slice(previous.steps.length)) emitLearnEvent(context, { type: 'step_added', itemId: added.id, itemType: 'step_by_step', questionText, steps: eventSteps });
+    }
+  }, [commitProgress, currentSection, makeEventContext, nextAttemptNo, workItems]);
 
   const updateSplitRatio = useCallback((value: number) => { const next = clampSplitRatio(value); setSplitRatio(next); writeSplitRatio(next); }, []);
   function startResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -194,6 +360,10 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       ? value.steps.some(step => !stepIsBlank(step))
       : !!value.value.trim();
     const before = progressRef.current;
+    const question = allQuestions.get(questionId);
+    const previousAnswer = before.checkAnswers?.[questionId];
+    const currentSignature = JSON.stringify(value);
+    const previousSignature = JSON.stringify(previousAnswer);
     const checkAnswers = { ...before.checkAnswers };
     if (value) checkAnswers[questionId] = value;
     else delete checkAnswers[questionId];
@@ -202,12 +372,39 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       : before.answeredCheckIds.filter(id => id !== questionId);
     const skippedChecks = answered ? before.skippedChecks.filter(item => item.questionId !== questionId) : before.skippedChecks;
     commitProgress({ ...before, answeredCheckIds, skippedChecks, ...(Object.keys(checkAnswers).length ? { checkAnswers } : { checkAnswers: undefined }) });
-  }, [commitProgress]);
+    if (!question || currentSignature === previousSignature) return;
+    const context = makeEventContext(question);
+    const steps = value?.type === 'math' ? value.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40) : undefined;
+    const answerText = value?.type === 'math' ? steps?.join('\n') ?? '' : value?.value ?? '';
+    const baseFields = {
+      itemId: question.id,
+      itemType: question.answerType === 'choice' ? 'mcq' as const : question.answerType === 'text' || question.mode === 'text' ? 'typed' as const : 'step_by_step' as const,
+      questionText: (question.prompt || question.source).slice(0, 8_000),
+      userAnswer: answerText.slice(0, 8_000),
+      ...(steps ? { steps } : {}),
+      verdict: 'submitted' as const,
+      verdictSource: 'none' as const,
+    };
+    if (answered && !before.answeredCheckIds.includes(questionId)) {
+      const attemptNo = nextAttemptNo(questionId);
+      emitLearnEvent(context, { ...baseFields, type: 'check_answer', attemptNo });
+    } else {
+      const existing = pendingAnswerEdits.current.get(questionId);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        pendingAnswerEdits.current.delete(questionId);
+        emitLearnEvent(context, { ...baseFields, type: 'answer_edited', ...(answered ? {} : { note: 'Response cleared.' }) });
+      }, 700);
+      pendingAnswerEdits.current.set(questionId, timer);
+    }
+  }, [allQuestions, commitProgress, makeEventContext, nextAttemptNo]);
 
   const setConfidence = useCallback((questionId: string, value: 1 | 2 | 3 | 4 | 5) => {
     const before = progressRef.current;
     commitProgress({ ...before, confidenceByCheckId: { ...before.confidenceByCheckId, [questionId]: value } });
-  }, [commitProgress]);
+    const question = allQuestions.get(questionId);
+    if (question) emitLearnEvent(makeEventContext(question), { type: 'confidence_set', itemId: question.id, confidence: value, questionText: (question.prompt || question.source).slice(0, 8_000) });
+  }, [allQuestions, commitProgress, makeEventContext]);
 
   function confirmSkip() {
     if (!skipQuestion) return;
@@ -216,12 +413,27 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       ? before.skippedChecks
       : [...before.skippedChecks, { questionId: skipQuestion.id, at: new Date().toISOString() }];
     commitProgress({ ...before, skippedChecks });
+    emitLearnEvent(makeEventContext(skipQuestion), {
+      type: 'check_skipped', itemId: skipQuestion.id,
+      itemType: skipQuestion.answerType === 'choice' ? 'mcq' : skipQuestion.answerType === 'text' || skipQuestion.mode === 'text' ? 'typed' : 'step_by_step',
+      questionText: (skipQuestion.prompt || skipQuestion.source).slice(0, 8_000),
+    });
     setSkipQuestion(null);
   }
 
   function revealStep(key: string, value: number) {
     const before = progressRef.current;
     commitProgress({ ...before, revealedSteps: { ...before.revealedSteps, [key]: value } });
+    if (value > (before.revealedSteps[key] ?? 0)) {
+      const [conceptId, blockIndexText] = key.split(':');
+      const concept = currentSection?.concepts.find(entry => entry.concept.id === conceptId)?.concept;
+      const block = concept?.blocks[Number(blockIndexText)];
+      emitLearnEvent(makeEventContext(undefined, currentSection, conceptId), {
+        type: block?.type === 'example' ? 'example_revealed' : 'content_revealed',
+        itemId: key,
+        ...(block?.type === 'example' ? { questionText: [block.title, block.text, block.latex].filter(Boolean).join('\n').slice(0, 8_000) } : {}),
+      });
+    }
   }
 
   const goPrevious = useCallback(() => {
@@ -245,8 +457,12 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       const lastAppearance = sections.map(section => section.concepts.some(entry => entry.concept.id === concept.id)).lastIndexOf(true);
       if (lastAppearance !== sectionIndex) continue;
       const allChecksComplete = getLearnChecks(bank, concept.id).every(question => isCheckComplete(question.id));
-      if (allChecksComplete) completedConceptIds.add(concept.id);
+      if (allChecksComplete && !completedConceptIds.has(concept.id)) {
+        completedConceptIds.add(concept.id);
+        emitLearnEvent(makeEventContext(undefined, currentSection, concept.id), { type: 'concept_complete', itemId: concept.id, questionText: concept.title });
+      }
     }
+    emitLearnEvent(makeEventContext(undefined, currentSection), { type: 'section_complete', itemId: currentSection.id, questionText: currentSection.title ?? '' });
     const nextIndex = sectionIndex + 1;
     const nextSection = sections[nextIndex];
     if (nextSection) {
@@ -256,9 +472,10 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       return;
     }
     const noPractice = practiceQuestions.length === 0;
+    emitLearnEvent(lessonEventContext, { type: 'lesson_complete', itemId: lesson.id, questionText: lesson.title });
     commitProgress({ ...before, currentConceptIndex: currentSection.concepts.at(-1)?.conceptIndex ?? before.currentConceptIndex, currentSectionIndex: sectionIndex, completedConceptIds: [...completedConceptIds], status: noPractice ? 'done' : 'learning', summaryOpen: true, learnDoneAt: new Date().toISOString() });
     setSummary(true);
-  }, [bank, commitProgress, conceptComplete, currentSection, isCheckComplete, practiceQuestions.length, sectionIndex, sections]);
+  }, [bank, commitProgress, conceptComplete, currentSection, isCheckComplete, lessonEventContext, lesson.id, lesson.title, makeEventContext, practiceQuestions.length, sectionIndex, sections]);
 
   function startSectionPractice() {
     if (!currentSection || !sectionPracticeQuestions.length) return;
@@ -275,6 +492,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       practiceStartedAt: now,
     };
     commitProgress(next);
+    emitLearnEvent(makeEventContext(undefined, currentSection), { type: 'practice_started', itemId: currentSection.id, note: `${sectionPracticeQuestions.length} section questions` });
     onStartPractice(lesson, next, sectionPracticeQuestions, currentSection.id);
   }
 
@@ -323,12 +541,27 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const practiceBatchCount = Math.ceil(practiceQuestions.length / MAX_SESSION_EXERCISES);
   const sectionQuestionWord = sectionPracticeQuestions.length === 1 ? (fa ? 'سؤال' : 'question') : (fa ? 'سؤال' : 'questions');
 
+  function selectWorkItem(key: string) {
+    setSelectedWorkKey(key);
+    const item = workItems.find(candidate => candidate.key === key);
+    if (!item) return;
+    if (item.kind === 'check') engageCheck(item.question.id);
+    else engageWorkItem(item);
+  }
+
+  function revealWorkSolution(item: LessonWorkItem) {
+    if (item.kind !== 'example') return;
+    const fullText = [item.title, item.block.type === 'example' ? item.block.text : '', item.block.type === 'example' ? item.block.latex : ''].filter(Boolean).join('\n');
+    emitLearnEvent(makeEventContext(undefined, currentSection, item.conceptId), { type: 'example_revealed', itemId: item.key, itemType: 'step_by_step', questionText: fullText.slice(0, 8_000), note: 'Learner requested comparison after writing work.' });
+  }
+
   const renderCheck = (question: BankQuestion) => <LessonCheck key={question.id} question={question}
           uiLang={uiLang}
           mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
           answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
           skipped={progress.skippedChecks.some(item => item.questionId === question.id)}
-          onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => { skipCheckInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setSkipQuestion(allQuestions.get(questionId) ?? null); }} />;
+          onAnswer={setAnswer} onConfidence={setConfidence} onSkip={questionId => { skipCheckInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setSkipQuestion(allQuestions.get(questionId) ?? null); }}
+          onEngage={engageCheck} onLeave={leaveCheck} />;
 
   function startWholeLessonPractice(skipLearn = false) {
     if (!practiceBatch.length) return;
@@ -345,6 +578,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       practiceStartedAt: now,
     };
     commitProgress(next);
+    if (skipLearn) emitLearnEvent(lessonEventContext, { type: 'lesson_skip', itemId: lesson.id, questionText: lesson.title, note: 'Learner chose to skip lesson checks and start practice.' });
+    emitLearnEvent(lessonEventContext, { type: 'practice_started', itemId: lesson.id, note: `${practiceBatch.length} end-of-lesson questions` });
     if (skipLearn) setSkipPracticeOpen(false);
     onStartPractice(lesson, next, practiceBatch);
   }
@@ -423,7 +658,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       </div>}
       {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
       {(split || paneTab === 'work') && <div className="lesson-split-work" id="lesson-panel-work" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-work' })}>
-        <LessonWorkPane items={workItems} selected={selectedWorkItem} onSelect={setSelectedWorkKey} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={renderCheck} savedSteps={key => progress.workAnswers?.[key]?.steps} />
+        <LessonWorkPane items={workItems} selected={selectedWorkItem} onSelect={selectWorkItem} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={renderCheck} savedSteps={key => progress.workAnswers?.[key]?.steps} onFocusItem={engageWorkItem} onBlurItem={leaveWorkItem} onRevealSolution={revealWorkSolution} />
       </div>}
       </div>
     </> : null}
