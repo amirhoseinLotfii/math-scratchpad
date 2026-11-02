@@ -23,6 +23,11 @@ export type MirrorSyncStatus = {
   pendingCount: number;
   lastSyncedAt: string | null;
   lastError: string | null;
+  weeklyBackup?: {
+    status: 'not_configured' | 'scheduled' | 'created' | 'error';
+    lastCreatedAt: string | null;
+    lastError: string | null;
+  };
 };
 export type SyncStatus = {
   phase: SyncPhase;
@@ -311,10 +316,16 @@ export class BrowserSyncRuntime {
 
 function isMirrorSyncStatus(value: unknown): value is MirrorSyncStatus {
   if (!isRecord(value)) return false;
-  return (value.status === 'not_configured' || value.status === 'pending' || value.status === 'syncing' || value.status === 'synced' || value.status === 'error')
+  const base = (value.status === 'not_configured' || value.status === 'pending' || value.status === 'syncing' || value.status === 'synced' || value.status === 'error')
     && typeof value.pendingCount === 'number' && Number.isFinite(value.pendingCount) && value.pendingCount >= 0
     && (value.lastSyncedAt === null || typeof value.lastSyncedAt === 'string')
     && (value.lastError === null || typeof value.lastError === 'string');
+  if (!base || value.weeklyBackup === undefined) return base;
+  const backup = value.weeklyBackup;
+  return isRecord(backup)
+    && (backup.status === 'not_configured' || backup.status === 'scheduled' || backup.status === 'created' || backup.status === 'error')
+    && (backup.lastCreatedAt === null || typeof backup.lastCreatedAt === 'string')
+    && (backup.lastError === null || typeof backup.lastError === 'string');
 }
 
 let defaultRuntime: BrowserSyncRuntime | undefined;

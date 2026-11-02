@@ -139,7 +139,7 @@ describe('sync and migration panel', () => {
     expect(await within(notionStatus).findByText('4 رویداد در صف')).toBeTruthy();
 
     await userEvent.click(screen.getByText('جزئیات آخرین همگام‌سازی و خطاها'));
-    expect(screen.getByText('هنوز همگام نشده')).toBeTruthy();
+    expect(screen.getAllByText('هنوز همگام نشده').length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole('button', { name: 'همگام‌سازی الان' }));
     await vi.waitFor(() => expect(within(driveStatus).getByText('همگام‌شده')).toBeTruthy());
     expect(paths).toContainEqual({ path: '/drive/sync', method: 'POST' });

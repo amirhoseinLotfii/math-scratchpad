@@ -241,6 +241,11 @@ export function subscribeLearningStorage(listener: (change: { key: string; newVa
 
 export function getLearningDb(): Promise<IDBPDatabase<LearningDb>> { return database(); }
 
+/** Refresh the synchronous Storage facade after a validated backup import; callers reload the app afterward. */
+export function refreshLearningStorageValues(records: CacheRecord[]): void {
+  values = new Map(records.map(record => [record.key, record.value]));
+}
+
 export async function flushLearningStorage(): Promise<void> {
   while (pendingWrites.size) await Promise.all([...pendingWrites]);
 }
@@ -289,11 +294,13 @@ export function learningDbWriteError(): string {
 }
 
 export async function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
-  const db = await database();
-  const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
-  const serialized = JSON.stringify(event);
-  if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
-  if (!existing) await db.put(LEARNING_OUTBOX_STORE, { id: event.id, event, queuedAt: event.ts, ...(migrationId ? { migrationId } : {}) });
+  return trackWrite((async () => {
+    const db = await database();
+    const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
+    const serialized = JSON.stringify(event);
+    if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
+    if (!existing) await db.put(LEARNING_OUTBOX_STORE, { id: event.id, event, queuedAt: event.ts, ...(migrationId ? { migrationId } : {}) });
+  })());
 }
 
 export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {
