@@ -17,11 +17,20 @@ const MAX_BATCH_BYTES = 190_000;
 const MAX_BATCH_EVENTS = 50;
 
 export type SyncPhase = 'idle' | 'needs-auth' | 'queued' | 'syncing' | 'synced' | 'retrying' | 'error';
+export type MirrorPhase = 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
+export type MirrorSyncStatus = {
+  status: MirrorPhase;
+  pendingCount: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+};
 export type SyncStatus = {
   phase: SyncPhase;
   pending: number;
   lastSyncedAt?: string;
   lastError?: string;
+  driveMirror: MirrorSyncStatus | null;
+  notionMirror: MirrorSyncStatus | null;
 };
 
 type SyncPage = { events: Array<{ seq: number; event: LearnEvent }>; cursor: number; through: number; hasMore: boolean; snapshotCursor?: number };
@@ -45,10 +54,11 @@ export class BrowserSyncRuntime {
   private readonly random: () => number;
   private readonly now: () => number;
   private readonly listeners = new Set<() => void>();
-  private current: SyncStatus = { phase: 'idle', pending: 0 };
+  private current: SyncStatus = { phase: 'idle', pending: 0, driveMirror: null, notionMirror: null };
   private token: string | null = null;
   private unsubscribeEvents?: () => void;
   private running?: Promise<void>;
+  private mirrorStatusObservers = 0;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private retryAttempt = 0;
   private started = false;
@@ -105,6 +115,32 @@ export class BrowserSyncRuntime {
     void this.syncNow();
   }
 
+  observeMirrorStatuses(): () => void {
+    this.mirrorStatusObservers += 1;
+    void this.refreshMirrorStatuses();
+    return () => { this.mirrorStatusObservers = Math.max(0, this.mirrorStatusObservers - 1); };
+  }
+
+  /** Refresh the separately reported server-side Drive and Notion mirror states. */
+  async refreshMirrorStatuses(): Promise<void> {
+    if (!this.started || !this.token) return;
+    await Promise.all([this.refreshMirrorStatus('drive'), this.refreshMirrorStatus('notion')]);
+  }
+
+  /** Push/pull local events, then ask each configured private mirror to sync now. */
+  async syncAllNow(): Promise<void> {
+    await this.syncNow();
+    if (!this.started || !this.token) return;
+    await this.refreshMirrorStatuses();
+
+    const configured = [
+      { path: '/drive/sync', status: this.current.driveMirror },
+      { path: '/notion/sync', status: this.current.notionMirror },
+    ].filter(item => item.status?.status !== 'not_configured');
+    await Promise.allSettled(configured.map(item => this.request(item.path, { method: 'POST' })));
+    await this.refreshMirrorStatuses();
+  }
+
   async syncNow(): Promise<void> {
     if (this.running) return this.running;
     if (!this.started) return;
@@ -151,6 +187,28 @@ export class BrowserSyncRuntime {
     }
     if (!response.ok) throw new SyncRequestError(`سرور همگام‌سازی پاسخ ${response.status} داد.`, response.status, response.status >= 500);
     return response;
+  }
+
+  private async refreshMirrorStatus(kind: 'drive' | 'notion'): Promise<void> {
+    const path = kind === 'drive' ? '/drive/status' : '/notion/status';
+    try {
+      const response = await this.request(path, { method: 'GET' });
+      const value: unknown = await response.json();
+      if (!isMirrorSyncStatus(value)) throw new SyncRequestError('پاسخ وضعیت همگام‌سازی معتبر نبود.');
+      this.update(kind === 'drive' ? { driveMirror: value } : { notionMirror: value });
+    } catch (error) {
+      if (error instanceof SyncRequestError && error.status === 401) {
+        this.token = null;
+        this.update({ phase: 'needs-auth', lastError: 'ورود گوگل منقضی شده است؛ دوباره متصل شو.' });
+      }
+      const unavailable: MirrorSyncStatus = {
+        status: 'error',
+        pendingCount: 0,
+        lastSyncedAt: null,
+        lastError: error instanceof Error ? error.message : 'وضعیت همگام‌سازی دریافت نشد.',
+      };
+      this.update(kind === 'drive' ? { driveMirror: unavailable } : { notionMirror: unavailable });
+    }
   }
 
   private async pushOutbox(): Promise<void> {
@@ -229,6 +287,7 @@ export class BrowserSyncRuntime {
       const pending = await this.refreshCount();
       this.retryAttempt = 0;
       this.update({ phase: pending ? 'queued' : 'synced', lastSyncedAt: new Date(this.now()).toISOString(), lastError: undefined });
+      if (this.mirrorStatusObservers > 0) await this.refreshMirrorStatuses();
       if (hasMore || pending) this.scheduleRetry(100);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'همگام‌سازی ناموفق بود.';
@@ -236,6 +295,7 @@ export class BrowserSyncRuntime {
       if (requestError?.status === 401) this.token = null;
       const pending = await this.refreshCount();
       this.update({ phase: requestError?.status === 401 ? 'needs-auth' : requestError?.retryable === false ? 'error' : 'retrying', pending, lastError: message });
+      if (this.mirrorStatusObservers > 0) await this.refreshMirrorStatuses();
       if (requestError?.retryable !== false && requestError?.status !== 401 && navigator.onLine !== false) {
         this.retryAttempt += 1;
         this.scheduleRetry(requestError?.retryAfterMs ?? retryDelay(this.retryAttempt, this.random));
@@ -247,6 +307,14 @@ export class BrowserSyncRuntime {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => { this.retryTimer = undefined; void this.syncNow(); }, delayMs);
   }
+}
+
+function isMirrorSyncStatus(value: unknown): value is MirrorSyncStatus {
+  if (!isRecord(value)) return false;
+  return (value.status === 'not_configured' || value.status === 'pending' || value.status === 'syncing' || value.status === 'synced' || value.status === 'error')
+    && typeof value.pendingCount === 'number' && Number.isFinite(value.pendingCount) && value.pendingCount >= 0
+    && (value.lastSyncedAt === null || typeof value.lastSyncedAt === 'string')
+    && (value.lastError === null || typeof value.lastError === 'string');
 }
 
 let defaultRuntime: BrowserSyncRuntime | undefined;

@@ -56,7 +56,7 @@ const INSERT_OPTIONS = [
  { name: 'Parentheses', kind: 'group' }, { name: '+', kind: '+' },
  { name: '−', kind: '−' }, { name: '×', kind: '×' }, { name: '÷', kind: '÷' }, { name: '=', kind: '=' },
 ];
-const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0 };
+const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
 type Decision = 'next' | 'complete' | 'copy';
 function freshLessonProgress(lessonId: string): LessonProgress {

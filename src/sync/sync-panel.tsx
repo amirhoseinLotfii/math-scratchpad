@@ -5,10 +5,10 @@ import { createVerifiedDriveBackup } from './drive-backup';
 import { mountGoogleIdButton } from './google-id-token';
 import { permittedAccount } from '../features/drive-bank/identity';
 import { finishLegacyMigration, legacyMigrationBackupContents, markLegacyMigrationDriveVerified, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
-import { getDefaultSyncRuntime } from './runtime';
+import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
 import { readLegacyMigration, type LegacyMigration } from './browser-db';
 
-const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0 };
+const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
 
 function statusLabel(phase: string): string {
   if (phase === 'syncing') return 'در حال ارسال';
@@ -18,6 +18,47 @@ function statusLabel(phase: string): string {
   if (phase === 'error') return 'همگام‌سازی متوقف شد';
   if (phase === 'queued') return 'در صف ارسال';
   return 'آمادهٔ همگام‌سازی';
+}
+
+function mirrorStatusLabel(status: MirrorSyncStatus | null): string {
+  if (!status) return 'پس از ورود بررسی می‌شود';
+  if (status.status === 'not_configured') return 'راه‌اندازی نشده';
+  if (status.status === 'pending') return 'در صف ارسال';
+  if (status.status === 'syncing') return 'در حال ارسال';
+  if (status.status === 'synced') return 'همگام‌شده';
+  return 'ارسال ناموفق';
+}
+
+function mirrorErrorLabel(kind: 'drive' | 'notion', error: string | null): string {
+  if (!error) return 'بدون خطا';
+  const errors: Record<string, string> = kind === 'drive' ? {
+    not_configured: 'اتصال Drive در Worker تنظیم نشده است.',
+    reauthorization_required: 'اتصال Google Drive نیاز به ورود دوباره دارد.',
+    account_mismatch: 'حساب Drive با حساب مجاز پروژه هم‌خوان نیست.',
+    permission_denied: 'دسترسی Drive اجازهٔ نوشتن نمی‌دهد.',
+    quota_exceeded: 'سهمیهٔ Drive پر شده است.',
+    etag_conflict: 'نسخهٔ فایل تغییر کرده؛ ارسال دوباره لازم است.',
+    invalid_response: 'پاسخ Drive قابل‌خواندن نبود.',
+    duplicate_file: 'فایل همگام‌سازی تکراری پیدا شد.',
+    network_error: 'اتصال به Drive برقرار نشد.',
+  } : {
+    token_invalid: 'کلید Integration در Cloudflare معتبر نیست.',
+    database_not_shared: 'دیتابیس‌های لازم با Integration به‌اشتراک گذاشته نشده‌اند.',
+    schema_mismatch: 'ساختار یکی از دیتابیس‌های Notion با داده سازگار نیست.',
+    rate_limited: 'Notion درخواست‌ها را موقتاً محدود کرده است.',
+    remote_error: 'Notion موقتاً پاسخ نمی‌دهد.',
+    network_error: 'اتصال به Notion برقرار نشد.',
+  };
+  return errors[error] ?? (error.startsWith('سرور همگام‌سازی') ? error : 'خطای همگام‌سازی رخ داد.');
+}
+
+function formatSyncTime(value: string | null | undefined): string {
+  if (!value) return 'هنوز همگام نشده';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'زمان در دسترس نیست';
+  return new Intl.DateTimeFormat('fa-IR', {
+    timeZone: 'Asia/Tehran', dateStyle: 'medium', timeStyle: 'short',
+  }).format(date);
 }
 
 async function awaitDriveToken(): Promise<string> {
@@ -50,6 +91,13 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    if (!runtime) return;
+    const stopObserving = runtime.observeMirrorStatuses();
+    const timer = window.setInterval(() => { void runtime.refreshMirrorStatuses(); }, 30_000);
+    return () => { window.clearInterval(timer); stopObserving(); };
+  }, [runtime]);
+
+  useEffect(() => {
     let active = true;
     void readLegacyMigration().then(value => { if (active) setMigration(value); }).catch(() => { if (active) setError('وضعیت مهاجرت اطلاعات قدیمی خوانده نشد.'); });
     return () => { active = false; };
@@ -68,7 +116,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const syncNow = useCallback(async () => {
     if (!runtime) { setError('سرویس صف آفلاین هنوز آماده نشده است.'); return; }
     setError(''); setMessage(''); setBusy(true);
-    try { await runtime.syncNow(); }
+    try { await runtime.syncAllNow(); }
     catch (problem) { setError(problem instanceof Error ? problem.message : 'همگام‌سازی انجام نشد.'); }
     finally { setBusy(false); }
   }, [runtime]);
@@ -122,10 +170,31 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const needsMigrationBackup = migration && migration.status !== 'complete';
   return <section aria-labelledby="sync-panel-title" lang="fa" className="mx-auto mt-4 w-full max-w-3xl rounded-xl border border-white/15 bg-white/5 p-4 text-start" dir="rtl">
     <div className="flex items-center justify-between gap-3"><h2 id="sync-panel-title" className="text-base font-semibold">همگام‌سازی و حفظ داده‌ها</h2>{onClose && <button type="button" aria-label="بستن تنظیم همگام‌سازی" onClick={onClose} className="rounded-md p-2"><X aria-hidden="true" /></button>}</div>
-    <p className="mt-1 text-sm opacity-80" role="status" aria-live="polite">
-      {statusLabel(status.phase)}{status.pending ? ` · ${status.pending} رویداد در صف` : ''}
-    </p>
-    {status.lastError && <p className="mt-1 text-sm text-amber-300">{status.lastError}</p>}
+    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+      <div role="group" aria-label="وضعیت سرور" className="rounded-lg border border-white/15 p-3">
+        <p className="text-sm font-semibold">سرور</p>
+        <p className="mt-1 text-sm opacity-85" role="status" aria-live="polite">{statusLabel(status.phase)}</p>
+        <p className="mt-1 text-xs opacity-75">{status.pending} رویداد در صف محلی</p>
+      </div>
+      <div role="group" aria-label="وضعیت Google Drive" className="rounded-lg border border-white/15 p-3">
+        <p className="text-sm font-semibold">Google Drive</p>
+        <p className="mt-1 text-sm opacity-85" role="status">{mirrorStatusLabel(status.driveMirror)}</p>
+        <p className="mt-1 text-xs opacity-75">{status.driveMirror?.pendingCount ?? '—'} رویداد در صف</p>
+      </div>
+      <div role="group" aria-label="وضعیت Notion" className="rounded-lg border border-white/15 p-3">
+        <p className="text-sm font-semibold">Notion</p>
+        <p className="mt-1 text-sm opacity-85" role="status">{mirrorStatusLabel(status.notionMirror)}</p>
+        <p className="mt-1 text-xs opacity-75">{status.notionMirror?.pendingCount ?? '—'} رویداد در صف</p>
+      </div>
+    </div>
+    <details className="mt-3 rounded-lg border border-white/15 px-3 py-2">
+      <summary className="cursor-pointer text-sm font-medium">جزئیات آخرین همگام‌سازی و خطاها</summary>
+      <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+        <div><dt className="font-medium">سرور · آخرین ارسال</dt><dd className="mt-1 opacity-80">{formatSyncTime(status.lastSyncedAt)}</dd><dd className="mt-1 opacity-80">{status.lastError ?? 'بدون خطا'}</dd></div>
+        <div><dt className="font-medium">Drive · آخرین ارسال</dt><dd className="mt-1 opacity-80">{formatSyncTime(status.driveMirror?.lastSyncedAt)}</dd><dd className="mt-1 opacity-80">{mirrorErrorLabel('drive', status.driveMirror?.lastError ?? null)}</dd></div>
+        <div><dt className="font-medium">Notion · آخرین ارسال</dt><dd className="mt-1 opacity-80">{formatSyncTime(status.notionMirror?.lastSyncedAt)}</dd><dd className="mt-1 opacity-80">{mirrorErrorLabel('notion', status.notionMirror?.lastError ?? null)}</dd></div>
+      </dl>
+    </details>
     <div className="mt-3 flex flex-wrap items-center gap-3">
       <div ref={googleButton} aria-label="ورود امن به حساب Google" />
       <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy || status.phase === 'syncing'} onClick={() => void syncNow()}>
