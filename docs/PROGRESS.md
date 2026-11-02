@@ -57,3 +57,8 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - Merge commit `4a186e1` passed Pages deployment; the live page and its referenced JS asset both returned HTTP 200.
 - CI runs the full Playwright matrix with one worker and one retry for transient focus flakes on constrained hosted runners; repeated failures still block the gate. Local runs retain two workers. Push CI is limited to `main`; feature branches are validated by their PR run.
 - «نیاز به تست»: Safari/iOS visibility and focus behavior on a physical device.
+
+## P0-2 verification notes
+
+- Local `npm run test:gate`: typechecks passed, all 800 unit/integration tests passed, 16 Workers integration tests passed, and all 444 Playwright tests passed with zero skipped, failed, or flaky tests.
+- `npm run build` passed for the app, standalone bundle, and Wrangler Worker dry-run. Authenticated Cloudflare deployment, PR CI, and a live `/health` check remain pending.
