@@ -96,3 +96,10 @@
 - No local solver, graphing or direct ChatGPT message sending.
 - Partial LaTeX importer; advanced templates transfer losslessly through JSON sessions.
 - Physical Android and screen-reader checks remain pending.
+
+## گزارش بررسی زندهٔ همگام‌سازی Cloudflare — ۱۴۰۵/۰۸/۱۱
+
+- شاخهٔ `feat/p0-7-backup-restore` روی commit `70fa8cd` بررسی شد. CIهای `41426538336` و `41433389336` سبز هستند؛ `npm test` با ۸۴۰ تست برنامه و ۵۳ تست Worker، typecheck و build محلی هم گذشتند. gate محلی به timeout فوکوس و کتابخانه‌های مرورگرِ نصب‌نشده در محیط محدود شد.
+- Worker Production همچنان نسخهٔ `9d5c41bd` را اجرا می‌کند و `/health` پاسخ سالم داد. Secretهای Google و Notion و پنج متغیر data source در Production حاضر نیستند؛ Cron هفتگی هم هنوز تنظیم نشده است. deploy جدید انجام نشد.
+- پوشهٔ خصوصی `Math_Project/06_Backups` وجود دارد اما فایل `sync_backup_*.json` در آن دیده نشد؛ `03_Sync` پیدا نشد. پنج data source پیکربندی‌شدهٔ Notion به عنوان Math Attempts، Sessions، Mistakes، Concepts و Daily Reports تأیید شدند؛ هیچ ردیفی نوشته نشد.
+- Google Cloud Console در Chrome برای ادامه به تأیید MFA مالک نیاز دارد. هیچ OAuth secret، refresh token یا API token ساخته یا خوانده نشد. PR #37 باز و draft باقی ماند.

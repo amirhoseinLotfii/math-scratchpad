@@ -10,7 +10,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 Drive mirror | in progress | PR #34 (`feat/p0-4-drive-mirror`); CI run `41412052462` green. Live Drive write/read-back remains blocked by the missing Google OAuth Worker Secrets. |
 | P0-5 Notion mirror | in progress | PR #35 (`feat/p0-5-notion-mirror`); CI run `41415634995` green. Live Notion write/read-back remains blocked by the missing `NOTION_API_KEY`. |
 | P0-6 Sync status UI | in progress | PR #36 (`feat/p0-6-sync-status-ui`); CI run `41417365846` green. Live mirror status checks remain pending because the authenticated owner API session and required secrets are unavailable. |
-| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); CI run `41426538336` green. Live cron deployment and Drive write/read-back remain blocked; Production has no cron trigger and the required Drive Secrets are absent. |
+| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); code run `41426538336` and run `41433389336` for commit `70fa8cd` are green. `npm test` (840 app + 53 Worker), typecheck, and build pass on that commit; live cron and Drive read-back remain blocked. |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
 | P1-3 Active interleaved lesson flow | in progress | [PR #26](https://github.com/amirhoseinLotfii/math-scratchpad/pull/26), CI green; held unmerged until P0 foundations |
@@ -105,12 +105,24 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - Live Notion API requests, schema write validation, Cloudflare deployment, and a tagged learner-event read-back have not been run. They require the owner's Cloudflare approval, a Notion integration key shared with the five listed data sources, and green PR CI.
 
 
-## Current Cloudflare verification snapshot — 2026-11-02
+## Current verification snapshot — 2026-11-02
 
-- PR #37 is open and draft on `feat/p0-7-backup-restore`, HEAD `4e7c1cf223af6cb540c53fcf4c272ed3c14d3890`. No matching local checkout of this feature branch is available in this session, so local tests and deploy were not run.
-- GitHub PR runs for P0-3 through P0-7 were freshly checked and succeeded: `41405734437`, `41412052462`, `41415634995`, `41417365846`, and `41426538336`, respectively.
-- Read-only inspection of the connected Cloudflare dashboard showed Production Worker `math-scratchpad-sync`, version `9d5c41bd`, Ready, on its `workers.dev` hostname. The `/health` response body was `{"ok":true,"service":"math-scratchpad-sync"}`.
-- Production has only the `EVENT_STORE` Durable Object binding and four base runtime variables. The five `NOTION_DATA_SOURCE_*` variables present in this branch's `worker/wrangler.jsonc` are not present in the live dashboard.
-- No Cron trigger is configured, despite the branch config declaring `0 2 * * 0`. No custom domain or Worker route is configured.
-- No entries for `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`, or `NOTION_API_KEY` appear in the Production variables/secrets list. Secret values were not accessed.
-- Cloudflare MCP was not available in this session; the dashboard was inspected through the connected local Chrome. No OAuth flow, API token creation, Cloudflare setting change, Worker deployment, Drive write, or Notion write was performed.
+- At the start of this verification, PR #37 was open and draft on `feat/p0-7-backup-restore` at HEAD `70fa8cd29fe54d8bba94e86cf5030c286bea1bb0`. CI runs `41426538336` (code) and `41433389336` (that HEAD) both succeeded; the earlier card runs `41405734437`, `41412052462`, `41415634995`, and `41417365846` are also green. This report changes documentation only.
+- A clean, isolated clone was used without changing other checkouts. `npm ci` succeeded; `npm test` passed 840 app and 53 Worker tests; `npm run test:typecheck -- --pretty false` and `XDG_CONFIG_HOME=/tmp/math-scratchpad-p0-7-xdg npm run build` passed, including the Wrangler dry-run.
+- The local `npm run test:gate` is blocked by this executor: 108 browser cases passed before one mobile-390 focus timeout stopped the browser matrix; Firefox/WebKit were initially absent, and although their Playwright binaries downloaded, required system libraries are missing. The CI job installed its browser dependencies and its full gate plus build succeeded. Generated screenshot changes were restored; the only tracked changes now are these requested documentation updates.
+- The connected Chrome dashboard shows Production Worker `math-scratchpad-sync`, active version prefix `9d5c41bd`, Ready, on `workers.dev`. The current `/health` page displayed `{"ok":true,"service":"math-scratchpad-sync"}`.
+- Production has the `EVENT_STORE` Durable Object and four base variables only. The five `NOTION_DATA_SOURCE_*` variables defined in this branch's `worker/wrangler.jsonc` are absent. The three required Worker Secret names—`GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and `NOTION_API_KEY`—are absent; no secret values were read.
+- The Worker has no Cron trigger although this branch declares `0 2 * * 0`; no custom domain or route is configured. No setting or deployment changed.
+- Drive metadata confirms the private `Math_Project/06_Backups` folder exists and contains no `sync_backup_*.json`; the `Math_Project/03_Sync` folder was not found. No Drive content was read or written.
+- The five configured Notion data-source IDs resolve to Math Attempts, Sessions, Mistakes, Concepts, and Daily Reports. Integration sharing and Worker API access are not verified; no Notion write was made and the paused Events database was left untouched.
+- Google Cloud Console in the connected Chrome requires the account owner's MFA before the OAuth client and consent-screen state can be inspected. No OAuth credential was generated. The app's live migration and server/Drive hash-count read-back were not run, and no local browser keys were cleared.
+- The referenced `CODEX_SYNC_AND_FEATURES _1_.md` file is absent from this branch; this update follows the available card instructions and existing `docs/PROGRESS.md` without inferring extra scope from the missing file.
+- No Cloudflare MCP tool is available in this Work mode session. Cloudflare's official `prompt.md` was read from the Cloudflare documentation repository; it specifies Codex MCP registration/login, but the `codex` CLI is absent here. The connected dashboard was used for read-only checks; no API token was created. PR #37 remains unmerged and draft.
+
+| Card | Current evidence | Live work still required |
+| --- | --- | --- |
+| P0-3 | PR #33 CI `41405734437` and stacked branch CI `41433389336` green; automated migration tests pass. | Owner Google MFA/OAuth, tagged server and Drive backup read-back with hash/count, then the app's safe migration flow; no browser data cleared. |
+| P0-4 | PR #34 CI `41412052462` and stacked branch CI `41433389336` green; Worker tests and build pass. | Configure Google Worker Secrets, deploy the branch, then verify the private sync files and one documented tagged test event; `03_Sync` is not present yet. |
+| P0-5 | PR #35 CI `41415634995` and stacked branch CI `41433389336` green; five configured Notion sources resolve to the expected titles. | Confirm/share only the five sources with the project integration, configure `NOTION_API_KEY`, then verify a tagged Attempt and its Session relation. |
+| P0-6 | PR #36 CI `41417365846` and stacked branch CI `41433389336` green; local typecheck/build pass. | Deploy and inspect authenticated `/drive/status` and `/notion/status` responses after required credentials are configured. |
+| P0-7 | CI `41426538336` and `41433389336` green; local unit/Worker tests, typecheck, and build pass. Local full gate is blocked by host browser dependencies/focus timeout. | Configure secrets and five Notion variables, deploy this branch with Cron `0 2 * * 0`, then verify one tagged Drive backup/write/read-back and the scheduled backup. |
