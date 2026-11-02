@@ -11,7 +11,7 @@ import {
   storeServerEvents,
   writeLearningItem,
 } from '../../src/sync/browser-db';
-import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup } from '../../src/sync/learning-backup';
+import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, serializeFullLearningBackup } from '../../src/sync/learning-backup';
 import type { LearnEvent } from '../../src/sync/events';
 import { initialState } from '../../src/store';
 
@@ -49,6 +49,15 @@ afterEach(async () => {
 });
 
 describe('full learning backup', () => {
+  it('enforces the same byte limit when serializing an export as when importing it', async () => {
+    const backup = await parseFullLearningBackup(await createFullLearningBackup());
+    const expected = `${JSON.stringify(backup, null, 2)}\n`;
+    const byteLength = new TextEncoder().encode(expected).byteLength;
+
+    expect(serializeFullLearningBackup(backup, byteLength)).toBe(expected);
+    expect(() => serializeFullLearningBackup(backup, byteLength - 1)).toThrow(/حجم فایل پشتیبان/);
+  });
+
   it('exports, wipes, validates, and restores the exact cache, outbox, server events, and metadata', async () => {
     await writeLearningItem('math-scratchpad-lesson-progress-v1:bank-1:v21', progress('progress'));
     const session = initialState();
