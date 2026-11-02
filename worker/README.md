@@ -78,6 +78,18 @@ Public readiness check. Returns `{ "ok": true, "service": "math-scratchpad-sync"
 
 The authenticated data routes use a per-owner fixed-window request limit of 120 requests per minute by default. A test-only Miniflare binding sets the limit to 5 to verify the `429` response without changing the deploy configuration.
 
+## Private Notion mirror (P0-5)
+
+The Worker mirrors answer-like events into the existing Math Attempts source and updates the existing canonical Sessions source. It also maintains the new Mistakes, Concepts, and Daily Reports sources under the Math project. It does not write to the workspace Events database, which is paused. Test events are marked with both Data Mode = Test and isTest = true; test events do not affect live concept or daily projections.
+
+The source identifiers are non-secret bindings in wrangler.jsonc. The Notion integration key is not in the repository. After the Notion integration exists, share only these five sources with it: Math Attempts, Sessions, Mistakes, Concepts, and Daily Reports. Then add the key directly to Cloudflare Worker Secrets:
+
+    npx wrangler secret put NOTION_API_KEY --config worker/wrangler.jsonc
+
+The authenticated API exposes GET /notion/status and POST /notion/sync. The status returns only a safe state, pending event count, last successful sync time, and a sanitized error code. Manual sync handles a bounded group of five events, and a Durable Object alarm continues queued events. Notion requests are serialized with a 350 ms minimum interval (under three requests per second); 429 and server errors use bounded retries. Each successful event advances a durable cursor, so a partial failure resumes without creating duplicate rows.
+
+Until NOTION_API_KEY is configured, /notion/status reports not_configured and /notion/sync returns 503. Do not mark the Notion mirror as live until a tagged test answer appears in the Attempts source and its linked session is verified. Do not put a Notion key in code, frontend configuration, logs, or chat.
+
 ## Private Google Drive mirror (P0-4)
 
 When configured, the Durable Object mirrors the complete event stream to the owner's private Drive:
