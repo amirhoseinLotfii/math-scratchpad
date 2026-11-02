@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "math-scratchpad-sync",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-11-02",
+  "durable_objects": {
+    "bindings": [
+      { "name": "EVENT_STORE", "class_name": "LearningEventStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["LearningEventStore"] }
+  ],
+  "vars": {
+    "ALLOWED_ORIGIN": "https://amirhoseinlotfii.github.io",
+    "OWNER_EMAIL": "amirhoseinlotfalizadeprogramer@gmail.com",
+    "GOOGLE_CLIENT_ID": "644646241119-b3u1ahcqnbhm1miec5a78pts6kplp68q.apps.googleusercontent.com",
+    "EVENT_RATE_LIMIT": "120"
+  }
+}
