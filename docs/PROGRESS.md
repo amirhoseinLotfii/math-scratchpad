@@ -10,7 +10,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 Drive mirror | in progress | PR #34 (`feat/p0-4-drive-mirror`); CI run `41412052462` green. Live Drive write/read-back remains blocked by the missing Google OAuth Worker Secrets. |
 | P0-5 Notion mirror | in progress | PR #35 (`feat/p0-5-notion-mirror`); CI run `41415634995` green. Live Notion write/read-back remains blocked by the missing `NOTION_API_KEY`. |
 | P0-6 Sync status UI | in progress | PR #36 (`feat/p0-6-sync-status-ui`); CI run `41417365846` green. Authenticated live status checks remain pending while mirror credentials are absent. |
-| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); full-gate/build runs `41452398541`, `41459736025`, and `41465555192` passed on the current stacked branch. Live Cron and Drive read-back remain blocked. |
+| P0-7 Backup and restore | in progress | [draft PR #37](https://github.com/amirhoseinLotfii/math-scratchpad/pull/37); full-gate/build runs `41465555192` and `41472444422` passed on the current stacked branch. Live Cron and Drive read-back remain blocked. |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
 | P1-3 Active interleaved lesson flow | in progress | [PR #26](https://github.com/amirhoseinLotfii/math-scratchpad/pull/26), CI green; held unmerged until P0 foundations |
@@ -107,7 +107,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 ## Current verification snapshot — 2026-11-02
 
-- PR #37 remains open and draft on `feat/p0-7-backup-restore`. Documentation commit `2c0a1c6dfeef1eee196f2a0991125780389593ed` passed run `41465555192`, including `npm run test:gate` and `npm run build`; preceding stacked runs `41452398541` and `41459736025` and earlier P0-3–P0-6 runs (`41405734437`, `41412052462`, `41415634995`, `41417365846`) also passed.
+- PR #37 remains open and draft on `feat/p0-7-backup-restore`. Latest documentation commit `64065f5b237fa20d6d8e146d18bdb5b321c7a232` passed run `41472444422`, including `npm run test:gate` and `npm run build`; preceding stacked runs `41465555192`, `41452398541`, and `41459736025` and earlier P0-3–P0-6 runs (`41405734437`, `41412052462`, `41415634995`, `41417365846`) also passed.
 - Local `npm test` passed 840 application and 53 Worker tests; `npm run test:typecheck -- --pretty false` and `XDG_CONFIG_HOME=/tmp/math-scratchpad-xdg npm run build` passed, including Wrangler dry-run, on code identical to the current remote head. Local `npm run test:gate` was not run; CI completed the full gate and build.
 - The connected Chrome profile is the personal Google account that matches the configured owner. Project selector search for `divine-descent-511113-c9` returned no resources; the official project creation form then reported `Project ID is not available.` No project was created. The existing selectable `math-scratchpad` project contains the OAuth client configured in `worker/wrangler.jsonc`.
 - Google Auth Platform for `math-scratchpad` remains External / Testing and `Publish app` is disabled. The verified GitHub Pages home page was saved, and Data Access now contains `drive.file` and `userinfo.email`. Privacy-policy and terms links remain empty. No OAuth client secret or refresh token was generated.
@@ -123,4 +123,4 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-4 | PR #34 CI `41412052462` and current stacked gate/build passed; Worker tests and build pass. | Configure the two Google Worker Secrets, deploy after credentials and auth are ready, then verify one `isTest` event and Drive read-back. `03_Sync` is absent. |
 | P0-5 | PR #35 CI `41415634995` and current stacked gate/build passed; the five configured Notion sources resolve to expected titles. No integration exists in the workspace. | Review and accept Notion Developer Terms to create the project connection, share only the five listed sources, configure `NOTION_API_KEY`, then verify a tagged Attempt and linked Session. |
 | P0-6 | PR #36 CI `41417365846` and current stacked gate/build passed; local typecheck/build pass. | Deploy the branch after credentials are ready, then inspect authenticated `/drive/status` and `/notion/status`. |
-| P0-7 | Current stacked gate `41465555192` and preceding runs `41452398541` / `41459736025` passed the full gate and build; PR #37 remains open and draft. |
+| P0-7 | Full-gate/build runs `41465555192` and `41472444422` passed; PR #37 remains open and draft. | Add the five Notion variables and three Worker Secrets, deploy the weekly Cron, then verify a tagged Drive backup and read-back. |
