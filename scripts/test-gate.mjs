@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 const commands = [
  ['types', 'npm', ['run','test:typecheck']],
+ ['worker-integration', 'npm', ['run','test:worker']],
  ['unit-dom-coverage', 'npm', ['run','test:coverage','--','--reporter=json','--outputFile=test-results/vitest.json']],
  ['browser', 'npx', ['playwright','test','--max-failures=1',`--workers=${process.env.CI ? 1 : 2}`,...(process.env.CI ? ['--retries=1'] : [])]],
 ];

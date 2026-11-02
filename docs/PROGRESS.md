@@ -4,8 +4,8 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 | Card | Status | PR / evidence |
 | --- | --- | --- |
-| P0-1 Event model | verification follow-up | PR #27 merged as `cc52dd0` and Pages live; zero-skip test-selection follow-up on `test/p0-1-zero-skips` |
-| P0-2 Durable Object + Worker | todo | — |
+| P0-1 Event model | complete | PR #27 and zero-skip follow-up PR #31 merged; CI green and Pages live |
+| P0-2 Durable Object + Worker | implementation in progress | `feat/p0-2-durable-object-worker`; local Worker integration tests and Wrangler dry-run pass; CI, authenticated deploy and live check pending |
 | P0-3 Browser outbox + migration | todo | — |
 | P0-4 Drive mirror | todo | — |
 | P0-5 Notion mirror | todo | — |
@@ -43,16 +43,22 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 ## Persian changelog
 
-- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. پس از شکست فوکوس در CI، بازگردانی فوکوس MathLive به ورودی زندهٔ همان گام چندبار در فریم‌های بعدی تلاش می‌کند. PR #27 با موفقیت merge و روی Pages منتشر شد؛ بعد از آن شرط «بدون تست skipشده» را در گزارش CI پیدا کردم و تست‌های محدود به viewport را به فیلتر پروژه‌ای منتقل کردم. تا سبزشدن gate بدون skip، کارت P0-1 بازِ راستی‌آزمایی می‌ماند. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
+- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. پس از شکست فوکوس در CI، بازگردانی فوکوس MathLive به ورودی زندهٔ همان گام چندبار در فریم‌های بعدی تلاش می‌کند. PR #27 و پیگیری حذف skipها در PR #31 ادغام شدند؛ تست‌های محدود به viewport با انتخاب پروژه اجرا می‌شوند و gate کامل CI بدون تست skipشده سبز شد. Pages نیز به commit نهایی P0-1 منتشر شد. رویدادهای سمت مرورگر تا کارت P0-3 در حافظه می‌مانند.
+- P0-2 (در پیاده‌سازی): Worker همگام‌سازی با Hono، اعتبارسنجی ID token گوگل با JWKS، محدودکردن دسترسی به ایمیل مالک و CORS دقیق GitHub Pages، ذخیرهٔ append-only در SQLite Durable Object، idempotency، pagination و rate limit اضافه شده است. ۱۶ تست Workers Vitest و Wrangler dry-run محلی سبز هستند. انتشار واقعی، بررسی زنده و CI این کارت هنوز در انتظارند.
 
 ## P0-1 test notes
 
 - The event API is in-memory at this stage. Durable offline persistence belongs to P0-3.
 - Timed scopes cover session, lesson, page-based concept chunk, section, question and the focused MathLive step; focus/visibility/idle time is shared.
-- PR #27 validation: 444 passed and 52 viewport-conditional skips. Because the prompt forbids skipped tests, this is not accepted as the final gate even though the check was green.
-- `npm run build`, `npm run typecheck`, `npm run test:typecheck`, targeted unit/integration tests and the event E2E passed.
+- PR #27 initially reported 444 passed and 52 viewport-conditional skips. The follow-up PR #31 replaced runtime skips with Playwright project filters; all 444 selected tests passed without skipped tests.
+- The final PR #31 CI run passed the browser gate, typecheck and build. Pages was deployed from merge commit `4a186e1` and the live page plus its referenced JS asset returned HTTP 200.
 - WIDE-08 passed 20 consecutive runs across 1024px and 1440px after the prior focus adjustment and 20 consecutive 1440px runs after the latest retry change; both TypeScript checks passed again.
-- `src/sync` line coverage is 93.21%. PR CI run `41368996698` passed all 444 runnable tests, but reported 52 inapplicable executions as skipped. Follow-up `test/p0-1-zero-skips` replaces runtime `test.skip` guards with Playwright tag-based project selection; `npx playwright test --list` now reports 444 selected tests, and the test typecheck passes. The full browser gate is pending after the execution environment restarted during the local run.
-- Merge commit `cc52dd0` passed Pages build/deploy run `41371804858`; the live page and its referenced JS asset both return HTTP 200. The duplicate `Validate editor` run on `main` is still running.
+- `src/sync` line coverage is 93.21%. Follow-up `test/p0-1-zero-skips` replaces runtime `test.skip` guards with Playwright tag-based project selection; `npx playwright test --list` reports 444 selected tests. The follow-up PR CI passed with 444 passed, zero skipped, and zero failed.
+- Merge commit `4a186e1` passed Pages deployment; the live page and its referenced JS asset both returned HTTP 200.
 - CI runs the full Playwright matrix with one worker and one retry for transient focus flakes on constrained hosted runners; repeated failures still block the gate. Local runs retain two workers. Push CI is limited to `main`; feature branches are validated by their PR run.
 - «نیاز به تست»: Safari/iOS visibility and focus behavior on a physical device.
+
+## P0-2 verification notes
+
+- Local `npm run test:gate`: typechecks passed, all 800 unit/integration tests passed, 16 Workers integration tests passed, and all 444 Playwright tests passed with zero skipped, failed, or flaky tests.
+- `npm run build` passed for the app, standalone bundle, and Wrangler Worker dry-run. Authenticated Cloudflare deployment, PR CI, and a live `/health` check remain pending.
