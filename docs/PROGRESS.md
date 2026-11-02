@@ -4,7 +4,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 | Card | Status | PR / evidence |
 | --- | --- | --- |
-| P0-1 Event model | in progress | `feat/p0-1-learn-events`; PR #27 open; latest hosted CI still fails WIDE-08 focus restoration |
+| P0-1 Event model | verification follow-up | PR #27 merged as `cc52dd0` and Pages live; zero-skip test-selection follow-up on `test/p0-1-zero-skips` |
 | P0-2 Durable Object + Worker | todo | — |
 | P0-3 Browser outbox + migration | todo | — |
 | P0-4 Drive mirror | todo | — |
@@ -43,15 +43,16 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 ## Persian changelog
 
-- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. پس از شکست ناپایدار فوکوس در CI، بازگردانی فوکوس MathLive به‌روزرسانی شد تا ورودی زندهٔ همان گام را پیدا کند و در چند فریم دوباره تلاش کند. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
+- P0-1: رویدادهای یادگیریِ اعتبارسنجی‌شده و تغییرناپذیر اضافه شد. زمان فعالِ جلسه، درس، تکهٔ صفحه‌ای، سکشن، سؤال و گام با کنارگذاشتن زمان بیکاری، تب پس‌زمینه و توقف دستی ثبت می‌شود. پاسخ‌ها فقط پس از تلاش ثبت می‌شوند و نتیجهٔ درست/نادرست فقط از checker معتبر می‌آید. پس از شکست فوکوس در CI، بازگردانی فوکوس MathLive به ورودی زندهٔ همان گام چندبار در فریم‌های بعدی تلاش می‌کند. PR #27 با موفقیت merge و روی Pages منتشر شد؛ بعد از آن شرط «بدون تست skipشده» را در گزارش CI پیدا کردم و تست‌های محدود به viewport را به فیلتر پروژه‌ای منتقل کردم. تا سبزشدن gate بدون skip، کارت P0-1 بازِ راستی‌آزمایی می‌ماند. رویدادها هنوز در حافظه‌اند؛ ذخیرهٔ پایدار در کارت P0-3 اضافه می‌شود.
 
 ## P0-1 test notes
 
 - The event API is in-memory at this stage. Durable offline persistence belongs to P0-3.
 - Timed scopes cover session, lesson, page-based concept chunk, section, question and the focused MathLive step; focus/visibility/idle time is shared.
-- Initial full local gate: 444 passed, 52 viewport-conditional skips in the 496-test Playwright matrix; `src/sync` line coverage 93.21% (before final focus/test-infrastructure adjustments).
+- PR #27 validation: 444 passed and 52 viewport-conditional skips. Because the prompt forbids skipped tests, this is not accepted as the final gate even though the check was green.
 - `npm run build`, `npm run typecheck`, `npm run test:typecheck`, targeted unit/integration tests and the event E2E passed.
 - WIDE-08 passed 20 consecutive runs across 1024px and 1440px after the prior focus adjustment and 20 consecutive 1440px runs after the latest retry change; both TypeScript checks passed again.
-- Latest hosted CI run `41366840960` failed WIDE-08 at 1440px after its single retry; the new live-field/frame retry fix is pushed for another CI run before merge or deploy.
+- `src/sync` line coverage is 93.21%. PR CI run `41368996698` passed all 444 runnable tests, but reported 52 inapplicable executions as skipped. Follow-up `test/p0-1-zero-skips` replaces runtime `test.skip` guards with Playwright tag-based project selection; `npx playwright test --list` now reports 444 selected tests, and the test typecheck passes. The full browser gate is pending after the execution environment restarted during the local run.
+- Merge commit `cc52dd0` passed Pages build/deploy run `41371804858`; the live page and its referenced JS asset both return HTTP 200. The duplicate `Validate editor` run on `main` is still running.
 - CI runs the full Playwright matrix with one worker and one retry for transient focus flakes on constrained hosted runners; repeated failures still block the gate. Local runs retain two workers. Push CI is limited to `main`; feature branches are validated by their PR run.
 - «نیاز به تست»: Safari/iOS visibility and focus behavior on a physical device.

@@ -47,8 +47,7 @@ test('menu stays within viewport and does not push the page horizontally', async
  expect(box!.x).toBeGreaterThanOrEqual(0);
  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
-test('batch progress and question selector stay readable at narrow phone widths', async ({ page }, info) => {
- if (!['mobile-320', 'mobile-390'].includes(info.project.name)) test.skip();
+test('batch progress and question selector stay readable at narrow phone widths', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
  await startBatch(page);
  const title = page.locator('.app-header .brand'), progress = page.locator('.header-progress'), actions = page.locator('.header-actions');
  const selector = page.getByRole('combobox', { name: 'Select question' });

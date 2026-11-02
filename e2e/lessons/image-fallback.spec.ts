@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('a failed lesson image stays concise and exposes its description on demand', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390');
+test('a failed lesson image stays concise and exposes its description on demand', { tag: '@only-mobile-390' }, async ({ page }) => {
   for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 640 }, { width: 390, height: 844 }, { width: 1024, height: 768 }]) {
     await page.setViewportSize(viewport);
     await page.goto('/e2e/fixtures/lesson-preview.html?view=image-error');

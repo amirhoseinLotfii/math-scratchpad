@@ -13,8 +13,7 @@ async function pressFocused(page: import('@playwright/test').Page, target: impor
   await page.keyboard.press(key);
 }
 
-test('keyboard-only route reaches Learn, summary, Practice and its lesson reference', async ({ page }, info) => {
-  test.skip(info.project.name !== 'laptop-1440', 'Run the physical-keyboard walkthrough in a desktop Chromium context.');
+test('keyboard-only route reaches Learn, summary, Practice and its lesson reference', { tag: '@only-laptop-1440' }, async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.addInitScript(() => localStorage.clear());

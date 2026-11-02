@@ -3,8 +3,7 @@ import { dismissWellbeing, expect, test } from '../support/test';
 
 const tags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-test('Learn concept, checks, summary and recovery states have no serious or critical WCAG A/AA findings', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Audit Learn states once at the 390 px reference viewport.');
+test('Learn concept, checks, summary and recovery states have no serious or critical WCAG A/AA findings', { tag: '@only-mobile-390' }, async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
   for (const view of ['concept', 'checks', 'summary', 'loading', 'unavailable', 'empty-picker', 'image-error'] as const) {
@@ -59,8 +58,7 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
   expect(editorA11y.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
 });
 
-test('an empty lesson list remains discoverable and offers the Drive bank action', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Check empty-bank behavior once at the mobile reference viewport.');
+test('an empty lesson list remains discoverable and offers the Drive bank action', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?empty=1');
   await dismissWellbeing(page);
   await expect(page.getByText('Sample practice 1.')).toBeVisible();

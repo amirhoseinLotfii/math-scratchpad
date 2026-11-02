@@ -1,7 +1,6 @@
 import { expect, test } from './support/test';
 
-test('MathLive keeps precise editing, explicit keypad access, and a lossless saved Step', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Exercise the phone editor once, then vary viewport size in a separate visual review.');
+test('MathLive keeps precise editing, explicit keypad access, and a lossless saved Step', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await page.goto('/');
   // These E2E browser contexts are isolated; clear only this test origin's app
@@ -91,8 +90,7 @@ test('MathLive keeps precise editing, explicit keypad access, and a lossless sav
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toHaveCount(0);
 });
 
-test('MathLive read-only rendering covers nested fractions, matrices, derivatives, integrals, and limits', async ({ page }, info) => {
-  test.skip(info.project.name !== 'laptop-1024', 'Exercise static math rendering once at tablet width.');
+test('MathLive read-only rendering covers nested fractions, matrices, derivatives, integrals, and limits', { tag: '@only-laptop-1024' }, async ({ page }) => {
   await page.goto('/');
   const expressions = [
     String.raw`\frac{1}{1+\frac{1}{2}}`,
@@ -129,8 +127,7 @@ test('MathLive read-only rendering covers nested fractions, matrices, derivative
   await expect(page.locator('math-field[aria-label="Step 1 expression"]')).toBeVisible();
 });
 
-test('MathLive inserts and edits calculus and matrix structures without changing saved Step identity', async ({ page }, info) => {
-  test.skip(info.project.name !== 'laptop-1024', 'Exercise advanced editable templates once at tablet width.');
+test('MathLive inserts and edits calculus and matrix structures without changing saved Step identity', { tag: '@only-laptop-1024' }, async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('math-scratchpad')).forEach(key => localStorage.removeItem(key)));
   await page.reload();

@@ -3,8 +3,7 @@ import { expect, test, mathField } from '../support/test';
 // This file includes a test of the batch wellbeing dialog itself; keep it visible.
 test.use({ autoDismissWellbeing: false });
 
-test('reset confirmation is visibly destructive, focuses Cancel first, and restores the menu trigger', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Run once in the narrow mobile Chromium project.');
+test('reset confirmation is visibly destructive, focuses Cancel first, and restores the menu trigger', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   const menu = page.getByRole('button', { name: 'Exercise menu' });
   await menu.click();
@@ -54,8 +53,7 @@ test('reset confirmation is visibly destructive, focuses Cancel first, and resto
   await expect(menu).toBeFocused();
 });
 
-test('batch wellbeing Skip for now returns focus to the practice editor', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Run once in the narrow mobile Chromium project.');
+test('batch wellbeing Skip for now returns focus to the practice editor', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
@@ -69,8 +67,7 @@ test('batch wellbeing Skip for now returns focus to the practice editor', async 
   await expect(mathField(page)).toBeFocused();
 });
 
-test('Skip to practice cancellation restores its trigger', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Run once in the narrow mobile Chromium project.');
+test('Skip to practice cancellation restores its trigger', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
@@ -84,8 +81,7 @@ test('Skip to practice cancellation restores its trigger', async ({ page }, info
   await expect(trigger).toBeFocused();
 });
 
-test('Add and Reset Step focus the math caret; Ctrl+Shift+Z returns focus to the editor', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Run once with Chromium keyboard-event emulation.');
+test('Add and Reset Step focus the math caret; Ctrl+Shift+Z returns focus to the editor', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   const first = mathField(page);
   await first.click();

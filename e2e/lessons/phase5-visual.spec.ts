@@ -19,8 +19,7 @@ async function openLesson(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
 }
 
-test('captures Phase 5 Learn and connected Practice views at desktop width', async ({ page }, info) => {
-  test.skip(info.project.name !== 'laptop-1440', 'Generate the Phase 5 desktop screenshots once with a desktop browser context.');
+test('captures Phase 5 Learn and connected Practice views at desktop width', { tag: '@only-laptop-1440' }, async ({ page }) => {
   test.setTimeout(120_000);
 
   for (const size of sizes) {

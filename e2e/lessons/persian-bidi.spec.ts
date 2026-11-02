@@ -10,9 +10,8 @@ const viewports = [
 const persianTitle = 'توابع و تابع‌نما';
 const mixedText = 'در این توضیح، عبارت انگلیسی (Functions and Function Notation) و (domain and range) با ترتیب درست نمایش داده می‌شوند.';
 
-test('Persian lesson content stays RTL and long titles wrap in Learn and the read-only reference', async ({ page }, info) => {
+test('Persian lesson content stays RTL and long titles wrap in Learn and the read-only reference', { tag: '@only-mobile-390' }, async ({ page }) => {
   test.setTimeout(90_000);
-  test.skip(info.project.name !== 'mobile-390', 'Resize through the narrow-mobile QA viewport set once.');
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);

@@ -8,8 +8,7 @@ async function capture(page: Page, name: string, fullPage = true) {
   await page.screenshot({ path, fullPage });
 }
 
-test('Learn layouts and interactions stay readable across phone, tablet, and desktop sizes', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'This test changes viewport sizes explicitly.');
+test('Learn layouts and interactions stay readable across phone, tablet, and desktop sizes', { tag: '@only-mobile-390' }, async ({ page }) => {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/e2e/fixtures/lesson-preview.html?view=concept');

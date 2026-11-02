@@ -14,8 +14,7 @@ function contrastRatio(foreground: number[], background: number[]) {
 
 const cssRgb = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
 
-test('neutral control borders and small practice labels are readable', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Exercise the responsive CSS at one Chromium project across the target widths.');
+test('neutral control borders and small practice labels are readable', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   const main = page.getByRole('main');
   await main.focus();
@@ -54,8 +53,7 @@ test('neutral control borders and small practice labels are readable', async ({ 
   await expect(sessionDetails).toHaveCSS('text-align', 'start');
 });
 
-test('the full confidence labels remain touch-sized across narrow and wide viewports', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Exercise responsive layouts once using Chromium viewport emulation.');
+test('the full confidence labels remain touch-sized across narrow and wide viewports', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();

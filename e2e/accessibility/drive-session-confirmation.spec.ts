@@ -7,8 +7,7 @@ const bankText = JSON.stringify({
   questions: [{ id: 'Q01', mode: 'math', source: '1+2' }],
 });
 
-test('batch and saved-session replacement use accessible in-app confirmations', async ({ page }, info) => {
-  test.skip(info.project.name !== 'mobile-390', 'Exercise the connected flow once in Chromium viewport emulation.');
+test('batch and saved-session replacement use accessible in-app confirmations', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
   // Isolated test identity: no account, token, or real Drive is used.
