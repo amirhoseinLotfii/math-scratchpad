@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from '../../src/sync/runtime';
 import { SyncPanel } from '../../src/sync/sync-panel';
@@ -104,13 +104,56 @@ afterEach(async () => {
 });
 
 describe('sync and migration panel', () => {
+  it('shows separate server, Drive, and Notion status and manually syncs configured mirrors', async () => {
+    await initializeLearningStorage();
+    installGooglePicker();
+    const paths: Array<{ path: string; method: string }> = [];
+    let drive = { status: 'pending', pendingCount: 3, lastSyncedAt: '2026-11-02T01:00:00.000Z', lastError: null };
+    const notion = { status: 'not_configured', pendingCount: 4, lastSyncedAt: null, lastError: null };
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input)), method = init?.method ?? 'GET';
+      paths.push({ path: url.pathname, method });
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      if (url.pathname === '/drive/status') return Response.json(drive);
+      if (url.pathname === '/notion/status') return Response.json(notion);
+      if (url.pathname === '/drive/sync' && method === 'POST') {
+        drive = { status: 'synced', pendingCount: 0, lastSyncedAt: '2026-11-02T01:15:00.000Z', lastError: null };
+        return Response.json({ drive });
+      }
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    setDefaultSyncRuntime(runtime);
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+
+    render(<SyncPanel />);
+    const driveStatus = screen.getByRole('group', { name: 'وضعیت Google Drive' });
+    const notionStatus = screen.getByRole('group', { name: 'وضعیت Notion' });
+    expect(within(screen.getByRole('group', { name: 'وضعیت سرور' })).getByText('همگام‌شده با سرور')).toBeTruthy();
+    expect(await within(driveStatus).findByText('در صف ارسال')).toBeTruthy();
+    expect(await within(driveStatus).findByText('3 رویداد در صف')).toBeTruthy();
+    expect(await within(notionStatus).findByText('راه‌اندازی نشده')).toBeTruthy();
+    expect(await within(notionStatus).findByText('4 رویداد در صف')).toBeTruthy();
+
+    await userEvent.click(screen.getByText('جزئیات آخرین همگام‌سازی و خطاها'));
+    expect(screen.getByText('هنوز همگام نشده')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'همگام‌سازی الان' }));
+    await vi.waitFor(() => expect(within(driveStatus).getByText('همگام‌شده')).toBeTruthy());
+    expect(paths).toContainEqual({ path: '/drive/sync', method: 'POST' });
+    expect(paths).not.toContainEqual({ path: '/notion/sync', method: 'POST' });
+    runtime.stop();
+  });
+
   it('announces current sync status and returns focus through its close action', async () => {
     await initializeLearningStorage();
     const onClose = vi.fn();
     installGooglePicker();
     render(<SyncPanel onClose={onClose} />);
     expect(await screen.findByRole('heading', { name: 'همگام‌سازی و حفظ داده‌ها' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('آمادهٔ همگام‌سازی');
+    expect(within(screen.getByRole('group', { name: 'وضعیت سرور' })).getByRole('status').textContent).toContain('آمادهٔ همگام‌سازی');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
     await userEvent.click(screen.getByRole('button', { name: 'بستن تنظیم همگام‌سازی' }));
     expect(onClose).toHaveBeenCalledTimes(1);

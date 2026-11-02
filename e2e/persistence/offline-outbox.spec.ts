@@ -43,6 +43,12 @@ async function installSyncWorker(page: Page, getOnline: () => boolean, posted: A
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events, cursor: next, through, snapshotCursor: through, hasMore: next < through }) });
       return;
     }
+    if (url.pathname === '/drive/status' || url.pathname === '/notion/status') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        status: 'not_configured', pendingCount: server.length, lastSyncedAt: null, lastError: null,
+      }) });
+      return;
+    }
     await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) });
   });
 }

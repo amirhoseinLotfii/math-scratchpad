@@ -9,7 +9,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | P0-3 Browser outbox + migration | in progress | [draft PR #33](https://github.com/amirhoseinLotfii/math-scratchpad/pull/33); CI run `41405734437` green; live browser/OAuth and Drive read-back verification remains |
 | P0-4 Drive mirror | in progress | `feat/p0-4-drive-mirror`; `npm test`, 60 persistence Playwright tests, and build pass locally; live Drive check and PR CI await owner OAuth/Cloudflare setup |
 | P0-5 Notion mirror | in progress | `feat/p0-5-notion-mirror`; additive Notion schema and Worker mirror implemented; 11 focused Worker tests and both TypeScript checks pass; live Notion check and PR CI await Cloudflare secret approval |
-| P0-6 Sync status UI | todo | — |
+| P0-6 Sync status UI | in progress | `feat/p0-6-sync-status-ui`; separate server/Drive/Notion indicators, safe details, and manual mirror sync implemented; draft PR/CI pending; live status check awaits owner Cloudflare approval |
 | P0-7 Backup and restore | todo | — |
 | P1-1 Mastery gating | todo | — |
 | P1-2 Pre-lesson review | todo | — |
@@ -48,6 +48,15 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - P0-3: outbox آفلاین در IndexedDB، مهاجرت بررسی‌شدهٔ دادهٔ قدیمی و پشتیبان‌گیری خصوصی Drive اضافه شد؛ پاک‌سازی دادهٔ قدیمی تنها بعد از تأیید hash/count سمت سرور و read-back پشتیبان انجام می‌شود. صفحهٔ همگام‌سازی نام حساب Drive را با مالک مجاز می‌سنجد. `npm test` با ۸۳۱ تست و ۱۷ تست Worker سبز است؛ تست‌های محدود موبایل 390 و دسکتاپ 1024/1280/1440، مهاجرت و MathLive پس از reload هم سبز شده‌اند. اجرای کامل مرورگر محلی ۲۵۰ تست را گذراند، یک timeout در WIDE-02 داشت و یک تست را قطع کرد؛ WIDE-02 در اجرای جداگانه ۵ بار پیاپی گذشت. Firefox محلی ۴ از ۴ تست را گذراند؛ چهار تست WebKit به‌دلیل کتابخانه‌های سیستمی نصب‌نشده launch نشدند. CI کامل PR #33 در اجرای `41405734437` سبز شد. «نیاز به تست»: مهاجرت و read-back واقعی Drive در مرورگر مالک.
 - P0-4: آینهٔ خصوصی Drive در Worker پیاده‌سازی شد: رویدادهای کامل JSONL ماهانه، projection پیشرفت، manifest با SHA-256 و زمان UTC/تهران؛ نوشتن با ETag، ادغام شناسهٔ رویداد و retry پس از شکست بخشی. برای فایل‌های بیش از ۵ مگابایت آپلود resumable افزوده شد و رویداد `isTest` در فایل ثبت می‌شود اما از projection یادگیری کنار می‌رود. `npm test` با ۸۳۱ تست برنامه و ۳۸ تست Worker، تست‌های persistence با ۶۰ سناریوی Playwright و `npm run build` سبز شدند. «نیاز به تست»: CI شاخه و تأیید زندهٔ یک رویداد آزمایشی پس از تنظیم OAuth Production و Worker Secrets توسط مالک.
 - P0-5: طرح Notion به‌صورت افزایشی روی Math Attempts و Sessions موجود ثبت شد و سه دیتابیس خالی Mistakes، Concepts و Daily Reports ساخته شد؛ دیتابیس Events که متوقف شده بود دست‌نخورده ماند و هیچ ردیفی به Notion اضافه نشد. Worker اکنون رویدادهای تمرینی را با شناسهٔ idempotent ثبت می‌کند، ردیف جلسه و گزارش روز تهران را به‌روزرسانی می‌کند، تمرین‌های خطادار یا درستِ کم‌اطمینان را برای مرور نگه می‌دارد و رویدادهای آزمایشی را از آمار زنده کنار می‌گذارد. جمع زمان کل فقط از رویداد پایان جلسه انجام می‌شود تا scopeهای تو‌در‌تو چندبار شمرده نشوند. صف با فاصلهٔ حداقل ۳۵۰ میلی‌ثانیه، retry محدود، checkpoint پایدار و ادامه پس از شکست جزئی پیاده‌سازی شد. «نیاز به تست»: کلید Integration فقط در Cloudflare Secret، اشتراک پنج دیتابیس با Integration، CI شاخه و بررسی زندهٔ یک پاسخ و relation آن با جلسه پس از تأیید مالک.
+- P0-6: نشانگرهای سرور، Drive و Notion از هم جدا شدند و هرکدام شمار رویدادهای در صف را نشان می‌دهد. جزئیات، زمان آخرین ارسال و خطای امن فارسی را نمایش می‌دهد؛ دکمهٔ «همگام‌سازی الان» صف سرور را می‌فرستد و آینه‌های تنظیم‌شده را جداگانه فعال می‌کند و برای آینهٔ تنظیم‌نشده درخواست نوشتن نمی‌فرستد. تست واحد و Playwright برای وضعیت‌ها، خطاها، دسترسی‌پذیری و چیدمان موبایل ۳۹۰ و دسکتاپ ۱۲۸۰ افزوده شد. «نیاز به تست»: بازبینی زندهٔ پاسخ وضعیت پس از تنظیم Cloudflare و تأیید مالک.
+
+## P0-6 verification notes
+
+- `npm test`: all 834 application tests and 49 Worker tests pass. `npm run test:typecheck -- --pretty false` and `npm run build` pass, including the Wrangler dry-run.
+- Focused sync-panel/browser-runtime tests: 24 passed. P0-6 Playwright flow: mobile 390 and desktop 1280 both pass, including status refresh, configured mirror actions, no horizontal overflow, and serious/critical Axe checks.
+- Full local persistence matrix: 60/62 passed on the first run; the two failures were rerun individually and passed. One was a navigation destroying an IndexedDB read context on laptop 1024; the other was an offline MathLive event not reaching IndexedDB at 1280 under the full matrix load. Both isolated reruns passed.
+- Screenshots: `/workspace/p0-6-screenshots/mobile-390.png` and `/workspace/p0-6-screenshots/desktop-1280.png`.
+- «نیاز به تست»: PR CI and a live `/drive/status` + `/notion/status` check after the owner approves Cloudflare configuration. No deployment or live sync was performed.
 
 ## P0-1 test notes
 

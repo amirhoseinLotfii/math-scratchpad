@@ -242,6 +242,80 @@ describe('browser sync runtime', () => {
     runtime.stop();
   });
 
+  it('reports separate Drive and Notion states and runs the configured mirrors manually', async () => {
+    await initializeLearningStorage();
+    const calls: Array<{ path: string; method: string }> = [];
+    let drive: Record<string, unknown> = {
+      status: 'pending', pendingCount: 3, lastSyncedAt: '2026-11-02T01:00:00.000Z', lastError: null,
+    };
+    let notion: Record<string, unknown> = {
+      status: 'error', pendingCount: 2, lastSyncedAt: '2026-11-02T00:30:00.000Z', lastError: 'database_not_shared',
+    };
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      calls.push({ path: url.pathname, method });
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      if (url.pathname === '/drive/status') return Response.json(drive);
+      if (url.pathname === '/notion/status') return Response.json(notion);
+      if (url.pathname === '/drive/sync' && method === 'POST') {
+        drive = { status: 'synced', pendingCount: 0, lastSyncedAt: '2026-11-02T01:15:00.000Z', lastError: null };
+        return Response.json({ drive });
+      }
+      if (url.pathname === '/notion/sync' && method === 'POST') {
+        notion = { status: 'synced', pendingCount: 0, lastSyncedAt: '2026-11-02T01:15:00.000Z', lastError: null };
+        return Response.json({ notion });
+      }
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    await runtime.refreshMirrorStatuses();
+    expect(runtime.getSnapshot()).toMatchObject({
+      driveMirror: { status: 'pending', pendingCount: 3 },
+      notionMirror: { status: 'error', pendingCount: 2, lastError: 'database_not_shared' },
+    });
+
+    await runtime.syncAllNow();
+
+    expect(runtime.getSnapshot()).toMatchObject({
+      driveMirror: { status: 'synced', pendingCount: 0 },
+      notionMirror: { status: 'synced', pendingCount: 0 },
+    });
+    expect(calls).toContainEqual({ path: '/drive/sync', method: 'POST' });
+    expect(calls).toContainEqual({ path: '/notion/sync', method: 'POST' });
+    runtime.stop();
+  });
+
+  it('does not issue manual writes to a mirror marked not configured', async () => {
+    await initializeLearningStorage();
+    const calls: Array<{ path: string; method: string }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input)), method = init?.method ?? 'GET';
+      calls.push({ path: url.pathname, method });
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      if (url.pathname === '/drive/status') return Response.json({ status: 'synced', pendingCount: 0, lastSyncedAt: null, lastError: null });
+      if (url.pathname === '/notion/status') return Response.json({ status: 'not_configured', pendingCount: 4, lastSyncedAt: null, lastError: null });
+      if (url.pathname === '/drive/sync' && method === 'POST') return Response.json({ drive: { status: 'synced', pendingCount: 0, lastSyncedAt: null, lastError: null } });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    await runtime.refreshMirrorStatuses();
+    await runtime.syncAllNow();
+
+    expect(calls).toContainEqual({ path: '/drive/sync', method: 'POST' });
+    expect(calls).not.toContainEqual({ path: '/notion/sync', method: 'POST' });
+    expect(runtime.getSnapshot().notionMirror).toMatchObject({ status: 'not_configured', pendingCount: 4 });
+    runtime.stop();
+  });
+
   it('retains the outbox during a network failure and retries after an online event', async () => {
     await initializeLearningStorage();
     let online = false;
