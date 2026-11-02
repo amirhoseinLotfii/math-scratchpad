@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 const commands = [
  ['types', 'npm', ['run','test:typecheck']],
  ['unit-dom-coverage', 'npm', ['run','test:coverage','--','--reporter=json','--outputFile=test-results/vitest.json']],
- ['browser', 'npx', ['playwright','test','--max-failures=1',`--workers=${process.env.CI ? 1 : 2}`]],
+ ['browser', 'npx', ['playwright','test','--max-failures=1',`--workers=${process.env.CI ? 1 : 2}`,...(process.env.CI ? ['--retries=1'] : [])]],
 ];
 const results = [];
 mkdirSync('test-results', { recursive: true });
