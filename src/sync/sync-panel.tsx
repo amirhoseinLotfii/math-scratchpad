@@ -4,7 +4,7 @@ import { getConfig, loadPicker, pickBackupFolder, requestToken } from '../featur
 import { createVerifiedDriveBackup } from './drive-backup';
 import { mountGoogleIdButton } from './google-id-token';
 import { permittedAccount } from '../features/drive-bank/identity';
-import { finishLegacyMigration, legacyMigrationBackupContents, markLegacyMigrationDriveVerified, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
+import { backupAndFinishLegacyMigration, finishLegacyMigration, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
 import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
 import { readLegacyMigration, type LegacyMigration } from './browser-db';
 import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, type FullLearningBackup, type LearningBackupPreview } from './learning-backup';
@@ -167,13 +167,11 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
       const token = await awaitDriveToken();
       await loadPicker();
       const folder = await awaitFolderSelection(config, token);
-      const contents = legacyMigrationBackupContents(migration);
-      const file = await createVerifiedDriveBackup(token, folder, migration, contents);
-      const backedUp = await markLegacyMigrationDriveVerified(migration, file);
-      setMigration(backedUp);
-      const result = await finishLegacyMigration();
+      const result = await backupAndFinishLegacyMigration(migration.id, (current, contents) =>
+        createVerifiedDriveBackup(token, folder, current, contents));
       setMigration(result.migration);
-      setMessage(`پشتیبان ${file.name} در پوشهٔ «${folder.name}» ساخته و خواندن دوباره‌اش تأیید شد؛ ${result.cleared.length} کلید قدیمی پاک شد.`);
+      const backupStatus = result.reused ? 'قبلاً ساخته و راستی‌آزمایی شده بود' : 'ساخته و خواندن دوباره‌اش تأیید شد';
+      setMessage(`پشتیبان ${result.file.name} در پوشهٔ «${folder.name}» ${backupStatus}؛ ${result.cleared.length} کلید قدیمی پاک شد.`);
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'پشتیبان‌گیری ناموفق بود؛ داده‌های قدیمی حفظ شدند.'); }
     finally { setBusy(false); }
   }, [migration]);
