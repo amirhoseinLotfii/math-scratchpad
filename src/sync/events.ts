@@ -38,8 +38,6 @@ function availableStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
 export const learnEventSchema = z.object({
   id: uuidV4,
   schema: z.literal(1),
-  /** Marks owner-created live checks so learning projections can ignore them. */
-  isTest: z.boolean().optional(),
   ts: isoDateTime,
   endTs: isoDateTime.optional(),
   durationMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
@@ -54,6 +52,7 @@ export const learnEventSchema = z.object({
   pdfPage: z.number().int().positive().max(100_000).optional(),
   bookPage: z.number().int().positive().max(100_000).optional(),
   type: z.enum(LEARN_EVENT_TYPES),
+  isTest: z.boolean().optional(),
   itemId: z.string().min(1).max(160).optional(),
   itemType: z.enum(LEARN_EVENT_ITEM_TYPES).optional(),
   questionText: boundedText(8_000).optional(),
@@ -156,8 +155,15 @@ export function emitLearnEvent(context: LearnEventContext, draft: LearnEventDraf
     section: draft.section ?? context.section ?? 'unknown', concept: draft.concept ?? context.concept ?? 'unknown',
     ...(context.skill ? { skill: context.skill } : {}), ...(context.pdfPage ? { pdfPage: context.pdfPage } : {}), ...(context.bookPage ? { bookPage: context.bookPage } : {}),
     ...draft,
+    // New app events must be explicitly classified before reaching external mirrors.
+    isTest: draft.isTest ?? false,
   };
   return emit(event as LearnEvent);
+}
+
+/** Emit an explicitly isolated event for owner-approved live integration checks. */
+export function emitTestLearnEvent(context: LearnEventContext, draft: LearnEventDraft): LearnEvent {
+  return emitLearnEvent(context, { ...draft, isTest: true });
 }
 
 export function subscribeToLearnEvents(listener: LearnEventListener): () => void {
