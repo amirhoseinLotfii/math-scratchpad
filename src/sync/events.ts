@@ -52,6 +52,7 @@ export const learnEventSchema = z.object({
   pdfPage: z.number().int().positive().max(100_000).optional(),
   bookPage: z.number().int().positive().max(100_000).optional(),
   type: z.enum(LEARN_EVENT_TYPES),
+  isTest: z.boolean().optional(),
   itemId: z.string().min(1).max(160).optional(),
   itemType: z.enum(LEARN_EVENT_ITEM_TYPES).optional(),
   questionText: boundedText(8_000).optional(),
