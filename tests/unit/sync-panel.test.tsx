@@ -104,6 +104,43 @@ afterEach(async () => {
 });
 
 describe('sync and migration panel', () => {
+  it('sends one explicitly classified synthetic event only when both mirrors are ready', async () => {
+    await initializeLearningStorage();
+    installGooglePicker();
+    const sent: Array<Record<string, unknown>> = [];
+    const mirror = { status: 'synced', pendingCount: 0, quarantinedCount: 0, lastSyncedAt: null, lastError: null };
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      if (url.pathname === '/drive/status' || url.pathname === '/notion/status') return Response.json(mirror);
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: Array<Record<string, unknown>> };
+        sent.push(...body.events);
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1 })) });
+      }
+      if (url.pathname === '/drive/sync') return Response.json({ drive: mirror });
+      if (url.pathname === '/notion/sync') return Response.json({ notion: mirror });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    setDefaultSyncRuntime(runtime);
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    render(<SyncPanel />);
+    const button = screen.getByRole('button', { name: 'تست امن اتصال Drive و Notion' });
+    await vi.waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(button);
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({ isTest: true, bankVersion: 'sync-test-v1', lesson: 'sync-verification' });
+    await vi.waitFor(() => {
+      expect(fetcher.mock.calls.some(([input]) => new URL(String(input)).pathname === '/drive/sync')).toBe(true);
+      expect(fetcher.mock.calls.some(([input]) => new URL(String(input)).pathname === '/notion/sync')).toBe(true);
+    });
+    runtime.stop();
+  });
+
   it('shows separate server, Drive, and Notion status and manually syncs configured mirrors', async () => {
     await initializeLearningStorage();
     installGooglePicker();
@@ -137,6 +174,7 @@ describe('sync and migration panel', () => {
     expect(await within(driveStatus).findByText('3 رویداد در صف')).toBeTruthy();
     expect(await within(driveStatus).findByText('2 رویداد بدون برچسب قرنطینه شد و ارسال نشد.')).toBeTruthy();
     expect(await within(notionStatus).findByText('راه‌اندازی نشده')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'تست امن اتصال Drive و Notion' }) as HTMLButtonElement).disabled).toBe(true);
     expect(await within(notionStatus).findByText('4 رویداد در صف')).toBeTruthy();
     expect(await within(notionStatus).findByText('رویداد بدون برچسبی برای قرنطینه وجود ندارد.')).toBeTruthy();
 
