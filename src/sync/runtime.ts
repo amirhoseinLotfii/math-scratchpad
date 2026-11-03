@@ -11,7 +11,8 @@ import {
   updateAuthenticatedServerToken,
 } from './browser-db';
 
-export const SYNC_API_ORIGIN = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
+import { SYNC_API_ORIGIN } from './sync-config';
+export { SYNC_API_ORIGIN } from './sync-config';
 const PAGE_LIMIT = 100;
 const MAX_PULL_PAGES_PER_RUN = 100;
 const MAX_BATCH_BYTES = 190_000;
