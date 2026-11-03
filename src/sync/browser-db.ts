@@ -8,6 +8,10 @@ export const LEARNING_OUTBOX_STORE = 'outbox';
 export const LEARNING_SERVER_EVENTS_STORE = 'serverEvents';
 export const LEARNING_META_STORE = 'meta';
 export const LEGACY_MIGRATION_META_KEY = 'legacy-migration-v1';
+const LEGACY_MIGRATION_LOCK_NAME = 'math-scratchpad-legacy-migration-v1';
+const LEGACY_MIGRATION_LOCK_KEY = 'legacy-migration-lock-v1';
+const LEGACY_MIGRATION_LOCK_LEASE_MS = 120_000;
+const LEGACY_MIGRATION_LOCK_TIMEOUT_MS = 15_000;
 
 export type OutboxRecord = { id: string; event: LearnEvent; queuedAt: string; migrationId?: string };
 export type ServerEventRecord = { seq: number; event: LearnEvent };
@@ -96,6 +100,62 @@ function database(): Promise<IDBPDatabase<LearningDb>> {
   return dbPromise;
 }
 
+async function withIndexedDbMigrationLease<T>(db: IDBPDatabase<LearningDb>, operation: () => Promise<T>): Promise<T> {
+  const owner = crypto.randomUUID();
+  const startedAt = Date.now();
+  while (true) {
+    const tx = db.transaction(LEARNING_META_STORE, 'readwrite');
+    const record = await tx.store.get(LEGACY_MIGRATION_LOCK_KEY);
+    const lease = record?.value as { owner?: unknown; expiresAt?: unknown } | undefined;
+    if (!lease || typeof lease.owner !== 'string' || typeof lease.expiresAt !== 'number' || lease.expiresAt <= Date.now()) {
+      await tx.store.put({ key: LEGACY_MIGRATION_LOCK_KEY, value: { owner, expiresAt: Date.now() + LEGACY_MIGRATION_LOCK_LEASE_MS } });
+      await tx.done;
+      break;
+    }
+    await tx.done;
+    if (Date.now() - startedAt >= LEGACY_MIGRATION_LOCK_TIMEOUT_MS) {
+      throw new Error('Another tab is completing the data migration. Try again; legacy data was left untouched.');
+    }
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+
+  let renewal = Promise.resolve();
+  const timer = setInterval(() => {
+    renewal = renewal.then(async () => {
+      const tx = db.transaction(LEARNING_META_STORE, 'readwrite');
+      const record = await tx.store.get(LEGACY_MIGRATION_LOCK_KEY);
+      const lease = record?.value as { owner?: unknown } | undefined;
+      if (lease?.owner === owner) {
+        await tx.store.put({ key: LEGACY_MIGRATION_LOCK_KEY, value: { owner, expiresAt: Date.now() + LEGACY_MIGRATION_LOCK_LEASE_MS } });
+      }
+      await tx.done;
+    }).catch(() => undefined);
+  }, 20_000);
+
+  try {
+    return await operation();
+  } finally {
+    clearInterval(timer);
+    await renewal;
+    try {
+      const tx = db.transaction(LEARNING_META_STORE, 'readwrite');
+      const record = await tx.store.get(LEGACY_MIGRATION_LOCK_KEY);
+      const lease = record?.value as { owner?: unknown } | undefined;
+      if (lease?.owner === owner) await tx.store.delete(LEGACY_MIGRATION_LOCK_KEY);
+      await tx.done;
+    } catch { /* An expired lease is safe; the next tab can acquire it. */ }
+  }
+}
+
+/** Serialize migration work across tabs; Web Locks is preferred, with an IndexedDB lease fallback. */
+export async function withLegacyMigrationLock<T>(operation: () => Promise<T>): Promise<T> {
+  const lockManager = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (typeof lockManager?.request === 'function') {
+    return lockManager.request(LEGACY_MIGRATION_LOCK_NAME, { mode: 'exclusive' }, operation);
+  }
+  return withIndexedDbMigrationLease(await database(), operation);
+}
+
 function localStorageIfAvailable(): Storage | undefined {
   try { return globalThis.localStorage; } catch { return undefined; }
 }
@@ -155,35 +215,41 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
       values = new Map(cached.map(item => [item.key, item.value]));
 
       const legacyStorage = localStorageIfAvailable();
-      const migrationRecord = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
-      let migration = migrationRecord?.value as LegacyMigration | undefined;
-      if (!migration && legacyStorage) {
-        const entries: LegacyLearningEntry[] = [];
-        const copiedCaches: Array<{ key: string; value: string }> = [];
-        for (let index = 0; index < legacyStorage.length; index++) {
-          const key = legacyStorage.key(index);
-          if (!key || !isIndexedDbCacheKey(key)) continue;
-          const value = legacyStorage.getItem(key);
-          if (value === null) continue;
-          const stored = await db.get(LEARNING_CACHE_STORE, key);
-          if (!stored) {
-            values.set(key, value);
-            await db.put(LEARNING_CACHE_STORE, { key, value, updatedAt: new Date().toISOString() });
+      let migration: LegacyMigration | null = null;
+      await withLegacyMigrationLock(async () => {
+        const migrationRecord = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
+        migration = (migrationRecord?.value as LegacyMigration | undefined) ?? null;
+        if (!migration && legacyStorage) {
+          const entries: LegacyLearningEntry[] = [];
+          const copiedCaches: Array<{ key: string; value: string }> = [];
+          for (let index = 0; index < legacyStorage.length; index++) {
+            const key = legacyStorage.key(index);
+            if (!key || !isIndexedDbCacheKey(key)) continue;
+            const value = legacyStorage.getItem(key);
+            if (value === null) continue;
+            const stored = await db.get(LEARNING_CACHE_STORE, key);
+            if (!stored) {
+              await db.put(LEARNING_CACHE_STORE, { key, value, updatedAt: new Date().toISOString() });
+            }
+            if (isLearningStorageKey(key)) entries.push({ key, value, sha256: '' });
+            else if (stored?.value === value || !stored) copiedCaches.push({ key, value });
           }
-          if (isLearningStorageKey(key)) entries.push({ key, value, sha256: '' });
-          else if (stored?.value === value || !stored) copiedCaches.push({ key, value });
+          if (entries.length) {
+            migration = {
+              id: crypto.randomUUID(), createdAt: new Date().toISOString(), entries, eventIds: [], status: 'pending',
+            };
+            await db.put(LEARNING_META_STORE, { key: LEGACY_MIGRATION_META_KEY, value: migration });
+          }
+          for (const cache of copiedCaches) {
+            const saved = await db.get(LEARNING_CACHE_STORE, cache.key);
+            if (saved?.value === cache.value && legacyStorage.getItem(cache.key) === cache.value) legacyStorage.removeItem(cache.key);
+          }
         }
-        if (entries.length) {
-          migration = {
-            id: crypto.randomUUID(), createdAt: new Date().toISOString(), entries, eventIds: [], status: 'pending',
-          };
-          await db.put(LEARNING_META_STORE, { key: LEGACY_MIGRATION_META_KEY, value: migration });
-        }
-        for (const cache of copiedCaches) {
-          const saved = await db.get(LEARNING_CACHE_STORE, cache.key);
-          if (saved?.value === cache.value && legacyStorage.getItem(cache.key) === cache.value) legacyStorage.removeItem(cache.key);
-        }
-      } else if (migration) {
+      });
+      // Refresh after acquiring the lock so a second tab sees the first tab's durable copy.
+      const cachedAfterMigration = await db.getAll(LEARNING_CACHE_STORE);
+      values = new Map(cachedAfterMigration.map(item => [item.key, item.value]));
+      if (migration) {
         // The original localStorage snapshot remains authoritative for the one-time migration.
         // It may intentionally differ from the newer IndexedDB cache after this page has resumed.
         for (const entry of migration.entries) {
@@ -265,12 +331,31 @@ export async function writeLegacyMigration(migration: LegacyMigration): Promise<
 export async function clearVerifiedLegacyKeys(migration: LegacyMigration): Promise<{ cleared: string[]; changed: string[] }> {
   const storage = localStorageIfAvailable();
   if (!storage) throw new Error('Legacy browser storage is unavailable; no legacy values were removed.');
-  const changed = migration.entries.filter(entry => storage.getItem(entry.key) !== entry.value).map(entry => entry.key);
+  const canResumeVerifiedCleanup = migration.status === 'drive-backed-up'
+    && Boolean(migration.backupFileId && migration.backupVerifiedAt);
+  const expectedKeys = new Set(migration.entries.map(entry => entry.key));
+  const addedKeys: string[] = [];
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index);
+    if (key && isLearningStorageKey(key) && !expectedKeys.has(key)) addedKeys.push(key);
+  }
+  const changedKeys = migration.entries.filter(entry => {
+    const current = storage.getItem(entry.key);
+    return current !== entry.value && !(canResumeVerifiedCleanup && current === null);
+  }).map(entry => entry.key);
+  const changed = [...new Set([...changedKeys, ...addedKeys])].sort();
   if (changed.length) return { cleared: [], changed };
+
   const cleared: string[] = [];
   for (const entry of migration.entries) {
-    storage.removeItem(entry.key);
-    if (storage.getItem(entry.key) !== null) throw new Error(`Legacy key ${entry.key} could not be cleared safely.`);
+    const current = storage.getItem(entry.key);
+    if (current === entry.value) {
+      storage.removeItem(entry.key);
+      if (storage.getItem(entry.key) !== null) throw new Error(`Legacy key ${entry.key} could not be cleared safely.`);
+    } else if (!(canResumeVerifiedCleanup && current === null)) {
+      return { cleared: [], changed: [entry.key] };
+    }
+    // A missing key is an already-completed deletion only after a verified Drive backup.
     cleared.push(entry.key);
   }
   return { cleared, changed: [] };
