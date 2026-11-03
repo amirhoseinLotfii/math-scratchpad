@@ -124,6 +124,9 @@ describe('sync and migration panel', () => {
     let uploadedContent = '';
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (String(_input).includes('/oauth2/v3/userinfo')) return Response.json({ email: 'owner@example.test', email_verified: true });
+      if (String(_input).includes('/drive/v3/files/backup-folder?')) return Response.json({
+        id: 'backup-folder', mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: false, capabilities: { canAddChildren: true },
+      });
       if (init?.method === 'POST') {
         const multipart = await readBlob(init.body as Blob);
         expect(multipart).toContain(expectedContents);
@@ -145,7 +148,7 @@ describe('sync and migration panel', () => {
     await userEvent.click(backupButton);
     await screen.findByText(/در پوشهٔ «06_Backups» ساخته و خواندن دوباره‌اش تأیید شد/);
 
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(4);
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
     expect((await readLegacyMigration())?.status).toBe('complete');
     expect(screen.getByRole('button', { name: 'Sign in with Google' }).isConnected).toBe(true);
@@ -166,6 +169,23 @@ describe('sync and migration panel', () => {
     expect(verified.status).toBe('server-verified');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(String(fetcher.mock.calls[0][0])).toContain('/oauth2/v3/userinfo');
+  });
+
+  it('keeps legacy data and never uploads when the selected backup folder is shared', async () => {
+    await initializeWithLegacySession();
+    installGooglePicker();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).includes('/oauth2/v3/userinfo')
+      ? Response.json({ email: 'owner@example.test', email_verified: true })
+      : Response.json({ id: 'backup-folder', mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: true, capabilities: { canAddChildren: true } }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<SyncPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('پوشهٔ پشتیبان باید خصوصی');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
+    expect(localStorage.getItem(LEGACY_KEY)).toBe('{"legacy":"preserve-me"}');
+    expect((await readLegacyMigration())?.status).toBe('server-verified');
   });
 
   it('refuses to upload a private backup when the selected Drive account is not the project owner', async () => {

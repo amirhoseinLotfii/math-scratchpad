@@ -70,3 +70,10 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - Focused Playwright: offline queue/reconnect passed at mobile 390 and desktop 1440/1280; migration fixture passed at desktop 1440; MathLive and outbox passed at laptop 1024/1440 and mobile 390. WIDE-02 timed out once in the full local browser gate; an isolated run and five consecutive repeats passed.
 - Full local gate is recorded as blocked: typecheck, Worker tests and unit/DOM coverage passed; Chromium ran 250 passed, one failed and one interrupted before the remaining 196 ran. The sync browser matrix ran all four Firefox tests successfully; WebKit could not launch because this executor lacks GTK/Graphene/Harfbuzz/Manette/Hyphen/GLES host libraries. CI installs Firefox/WebKit with `--with-deps` and remains the authoritative cross-browser result.
 - No live migration was performed: this environment has no connected browser session, and Gmail requires reauthentication. OAuth, private Drive backup/read-back and owner-account matching still need the owner's real browser session.
+
+
+## P0-3: private migration backup folder — 2026-11-03
+
+- The specification `CODEX_SYNC_AND_FEATURES (1).md` was located in the owner's private Google Drive; its content matches `CODEX_SYNC_AND_FEATURES.md`. Scope 21 lists 36 cards, with P0-3 the first incomplete card.
+- Migration backup now checks selected folder metadata before upload and rejects shared, shared-drive, unowned, unwritable, wrong-type or unverifiable folders. A failed check leaves legacy browser data intact. Existing Google Drive folder metadata reported the configured backup folder as not shared; the app's `drive.file` token path still requires live verification.
+- On the stacked P0-7 checkout containing the same change, focused tests passed (22), `npm test` passed (849 app and 53 Worker tests), test typecheck and build passed. This is not a substitute for PR #33 CI or a live migration/read-back, both pending on this branch.

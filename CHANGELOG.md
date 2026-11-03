@@ -96,3 +96,10 @@
 - No local solver, graphing or direct ChatGPT message sending.
 - Partial LaTeX importer; advanced templates transfer losslessly through JSON sessions.
 - Physical Android and screen-reader checks remain pending.
+
+
+## ایمنی پوشهٔ مهاجرت P0-3 — 2026-11-03
+
+- پیش از آپلود backup، مالکیت، خصوصی‌بودن، نوع و قابلیت نوشتن پوشه کنترل می‌شود؛ پوشهٔ مشترک یا وضعیت نامشخص بدون آپلود رد می‌شود و دادهٔ قدیمی باقی می‌ماند.
+- تست متمرکز ۲۲ مورد، تست کامل محلی روی checkout تجمیعی ۸۴۹ برنامه و ۵۳ Worker، typecheck و build موفق شدند. CI شاخهٔ P0-3 و بررسی زندهٔ Google Drive هنوز لازم‌اند.
+- مشخصات اصلی در Drive شخصی پیدا شد و Scope 21 شامل ۳۶ کارت است؛ P0-3 تا تأیید مهاجرت و backup واقعی ناتمام می‌ماند.

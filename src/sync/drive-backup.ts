@@ -9,6 +9,24 @@ export type DriveBackupResult = { id: string; name: string; parentId: string };
 /** Create a private JSON file in the folder explicitly selected by the owner, then read it back byte-for-byte. */
 export async function createVerifiedDriveBackup(token: string, folder: { id: string; name: string }, migration: LegacyMigration, contents: string): Promise<DriveBackupResult> {
   if (!token || !folder.id || !contents) throw new Error('Google Drive authorization and a backup folder are required.');
+  // Files inherit access from their parent folder. Fail closed before sending
+  // learning data if the selected folder is shared or cannot be verified.
+  const fields = new URLSearchParams({ fields: 'id,mimeType,ownedByMe,shared,driveId,capabilities(canAddChildren)' });
+  const folderResponse = await fetch(`${DRIVE_API}/${encodeURIComponent(folder.id)}?${fields}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  if (!folderResponse.ok) throw driveError(folderResponse.status, 'Checking the private backup folder in Drive');
+  const folderData: unknown = await folderResponse.json().catch(() => null);
+  const checked = folderData && typeof folderData === 'object' && !Array.isArray(folderData)
+    ? folderData as Record<string, unknown> : null;
+  const capabilities = checked?.capabilities && typeof checked.capabilities === 'object' && !Array.isArray(checked.capabilities)
+    ? checked.capabilities as Record<string, unknown> : null;
+  if (!checked || checked.id !== folder.id || checked.mimeType !== 'application/vnd.google-apps.folder'
+      || checked.ownedByMe !== true || checked.shared !== false || checked.driveId != null
+      || capabilities?.canAddChildren !== true) {
+    throw new Error('پوشهٔ پشتیبان باید خصوصی، متعلق به حساب شما و قابل نوشتن باشد؛ هیچ داده‌ای بارگذاری نشد.');
+  }
   const boundary = `mathscratchpad_${crypto.randomUUID().replace(/-/g, '')}`;
   const name = `MathScratchpad-Learning-Migration-${migration.id.slice(0, 8)}.json`;
   const metadata = JSON.stringify({

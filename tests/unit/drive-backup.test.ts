@@ -13,6 +13,10 @@ const migration: LegacyMigration = {
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
+function privateFolder(id: string) {
+  return { id, mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: false, capabilities: { canAddChildren: true } };
+}
+
 function readBlob(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -29,6 +33,7 @@ describe('private Google Drive migration backup', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       uploaded.push({ input: url, init });
+      if (url.includes('/files/chosen-folder?')) return Response.json(privateFolder('chosen-folder'));
       if (init?.method === 'POST') return Response.json({
         id: 'drive-backup-1',
         name: 'MathScratchpad-Learning-Migration-d23a8da1.json',
@@ -42,15 +47,16 @@ describe('private Google Drive migration backup', () => {
     const result = await createVerifiedDriveBackup('temporary-test-token', { id: 'chosen-folder', name: '06_Backups' }, migration, content);
 
     expect(result).toEqual({ id: 'drive-backup-1', name: 'MathScratchpad-Learning-Migration-d23a8da1.json', parentId: 'chosen-folder' });
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(uploaded[0].input).toContain('/upload/drive/v3/files?uploadType=multipart');
-    expect((uploaded[0].init?.headers as Record<string, string>).Authorization).toBe('Bearer temporary-test-token');
-    const multipart = await readBlob(uploaded[0].init?.body as Blob);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(uploaded[0].input).toContain('/files/chosen-folder?');
+    expect(uploaded[1].input).toContain('/upload/drive/v3/files?uploadType=multipart');
+    expect((uploaded[1].init?.headers as Record<string, string>).Authorization).toBe('Bearer temporary-test-token');
+    const multipart = await readBlob(uploaded[1].init?.body as Blob);
     expect(multipart).toContain('"parents":["chosen-folder"]');
     expect(multipart).toContain('Do not share publicly.');
     expect(multipart).toContain(content);
-    expect(uploaded[1].input).toBe('https://www.googleapis.com/drive/v3/files/drive-backup-1?alt=media');
-    expect((uploaded[1].init?.headers as Record<string, string>).Authorization).toBe('Bearer temporary-test-token');
+    expect(uploaded[2].input).toBe('https://www.googleapis.com/drive/v3/files/drive-backup-1?alt=media');
+    expect((uploaded[2].init?.headers as Record<string, string>).Authorization).toBe('Bearer temporary-test-token');
   });
 
   it('rejects missing authorization, folder, or content without making a request', async () => {
@@ -63,7 +69,7 @@ describe('private Google Drive migration backup', () => {
   });
 
   it('stops when the new file metadata points outside the selected folder', async () => {
-    const fetcher = vi.fn(async () => Response.json({
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => init?.method !== 'POST' ? Response.json(privateFolder('chosen-folder')) : Response.json({
       id: 'wrong-location',
       name: 'MathScratchpad-Learning-Migration-d23a8da1.json',
       mimeType: 'application/json',
@@ -71,15 +77,32 @@ describe('private Google Drive migration backup', () => {
     }));
     vi.stubGlobal('fetch', fetcher);
     await expect(createVerifiedDriveBackup('token', { id: 'chosen-folder', name: '06_Backups' }, migration, '{}')).rejects.toThrow(/unexpected location/);
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a read-back mismatch so the caller can retain the old browser keys', async () => {
-    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST'
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => String(input).includes('/files/folder?')
+      ? Response.json(privateFolder('folder')) : init?.method === 'POST'
       ? Response.json({ id: 'backup', name: 'MathScratchpad-Learning-Migration-d23a8da1.json', mimeType: 'application/json', parents: ['folder'] })
       : new Response('tampered', { status: 200 }));
     vi.stubGlobal('fetch', fetcher);
     await expect(createVerifiedDriveBackup('token', { id: 'folder', name: '06_Backups' }, migration, 'expected')).rejects.toThrow(/did not match/);
+  });
+
+  it.each([
+    ['shared folder', { ...privateFolder('folder'), shared: true }],
+    ['shared drive', { ...privateFolder('folder'), driveId: 'shared-drive' }],
+    ['not owned', { ...privateFolder('folder'), ownedByMe: false }],
+    ['unknown sharing', { ...privateFolder('folder'), shared: undefined }],
+    ['not writable', { ...privateFolder('folder'), capabilities: { canAddChildren: false } }],
+    ['wrong type', { ...privateFolder('folder'), mimeType: 'application/json' }],
+    ['wrong id', privateFolder('different-folder')],
+  ])('does not upload learning data to a %s', async (_label, metadata) => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json(metadata));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(createVerifiedDriveBackup('token', { id: 'folder', name: 'Folder' }, migration, '{}')).rejects.toThrow(/خصوصی/);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
   });
 
   it('surfaces Drive permission and transient service failures without cleanup', async () => {
