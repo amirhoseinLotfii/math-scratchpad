@@ -77,3 +77,10 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - The specification `CODEX_SYNC_AND_FEATURES (1).md` was located in the owner's private Google Drive; its content matches `CODEX_SYNC_AND_FEATURES.md`. Scope 21 lists 36 cards, with P0-3 the first incomplete card.
 - Migration backup now checks selected folder metadata before upload and rejects shared, shared-drive, unowned, unwritable, wrong-type or unverifiable folders. A failed check leaves legacy browser data intact. Existing Google Drive folder metadata reported the configured backup folder as not shared; the app's `drive.file` token path still requires live verification.
 - On the stacked P0-7 checkout containing the same change, focused tests passed (22), `npm test` passed (849 app and 53 Worker tests), test typecheck and build passed. This is not a substitute for PR #33 CI or a live migration/read-back, both pending on this branch.
+
+
+## P0-3: migration backup retry and access verification — 2026-11-03
+
+- The selected folder must be owned by the signed-in account, unshared, outside a shared drive, writable, and have exactly one active owner permission. Missing or inconsistent metadata fails closed before uploading learner data. The owner's existing backup folder was observed as unshared with an owner-only permission using the connected Drive metadata tool; the app's `drive.file` token path still requires live verification.
+- Before creating a migration backup the app searches for an existing matching file. One matching file is reused only after exact metadata and content read-back; multiple results, incomplete search or mismatched content stop the migration. This improves sequential retry after an interrupted response; concurrent devices remain unverified.
+- On the stacked local checkout, focused migration tests passed (33), `npm test` passed (860 app and 53 Worker tests), typecheck and build passed. CI for this exact commit and a live server/Drive migration are still required. The repository checkout is not the remote head; no production deployment or real learner data deletion occurred.
