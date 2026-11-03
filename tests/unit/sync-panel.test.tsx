@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from '../../src/sync/runtime';
 import { SyncPanel } from '../../src/sync/sync-panel';
@@ -141,7 +141,7 @@ describe('sync and migration panel', () => {
     expect(await within(notionStatus).findByText('رویداد بدون برچسبی برای قرنطینه وجود ندارد.')).toBeTruthy();
 
     await userEvent.click(screen.getByText('جزئیات آخرین همگام‌سازی و خطاها'));
-    expect(screen.getAllByText('هنوز همگام نشده').length).toBeGreaterThan(0);
+    expect(screen.getByText('هنوز همگام نشده')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: 'همگام‌سازی الان' }));
     await vi.waitFor(() => expect(within(driveStatus).getByText('همگام‌شده')).toBeTruthy());
     expect(paths).toContainEqual({ path: '/drive/sync', method: 'POST' });
@@ -155,7 +155,7 @@ describe('sync and migration panel', () => {
     installGooglePicker();
     render(<SyncPanel onClose={onClose} />);
     expect(await screen.findByRole('heading', { name: 'همگام‌سازی و حفظ داده‌ها' })).toBeTruthy();
-    expect(within(screen.getByRole('group', { name: 'وضعیت سرور' })).getByRole('status').textContent).toContain('آمادهٔ همگام‌سازی');
+    expect(screen.getByRole('status').textContent).toContain('آمادهٔ همگام‌سازی');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
     await userEvent.click(screen.getByRole('button', { name: 'بستن تنظیم همگام‌سازی' }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -169,6 +169,10 @@ describe('sync and migration panel', () => {
     let uploadedContent = '';
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (String(_input).includes('/oauth2/v3/userinfo')) return Response.json({ email: 'owner@example.test', email_verified: true });
+      if (String(_input).includes('/drive/v3/files/backup-folder?')) return Response.json({
+        id: 'backup-folder', mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: false, permissions: [{ type: 'user', role: 'owner' }], capabilities: { canAddChildren: true },
+      });
+      if (String(_input).startsWith('https://www.googleapis.com/drive/v3/files?')) return Response.json({ files: [] });
       if (init?.method === 'POST') {
         const multipart = await readBlob(init.body as Blob);
         expect(multipart).toContain(expectedContents);
@@ -190,7 +194,7 @@ describe('sync and migration panel', () => {
     await userEvent.click(backupButton);
     await screen.findByText(/در پوشهٔ «06_Backups» ساخته و خواندن دوباره‌اش تأیید شد/);
 
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(5);
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
     expect((await readLegacyMigration())?.status).toBe('complete');
     expect(screen.getByRole('button', { name: 'Sign in with Google' }).isConnected).toBe(true);
@@ -211,6 +215,54 @@ describe('sync and migration panel', () => {
     expect(verified.status).toBe('server-verified');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(String(fetcher.mock.calls[0][0])).toContain('/oauth2/v3/userinfo');
+  });
+
+  it('reuses an uploaded backup after read-back failure and preserves legacy data until verification', async () => {
+    const { verified } = await initializeWithLegacySession();
+    installGooglePicker();
+    const contents = legacyMigrationBackupContents(verified);
+    const metadata = { id: 'backup-file-id', name: `MathScratchpad-Learning-Migration-${verified.id.slice(0, 8)}.json`, mimeType: 'application/json', parents: ['backup-folder'] };
+    let uploaded = false;
+    let downloads = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/oauth2/v3/userinfo')) return Response.json({ email: 'owner@example.test', email_verified: true });
+      if (url.includes('/drive/v3/files/backup-folder?')) return Response.json({ id: 'backup-folder', mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: false, permissions: [{ type: 'user', role: 'owner' }], capabilities: { canAddChildren: true } });
+      if (url.startsWith('https://www.googleapis.com/drive/v3/files?')) return Response.json({ files: uploaded ? [metadata] : [] });
+      if (init?.method === 'POST') { uploaded = true; return Response.json(metadata); }
+      downloads += 1;
+      return downloads === 1 ? new Response('{}', { status: 503 }) : new Response(contents, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    render(<SyncPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/temporarily unavailable/i);
+    expect(localStorage.getItem(LEGACY_KEY)).toBe('{"legacy":"preserve-me"}');
+    expect((await readLegacyMigration())?.status).toBe('server-verified');
+
+    await userEvent.click(screen.getByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' }));
+    expect(await screen.findByText(/خواندن دوباره‌اش تأیید شد/)).toBeTruthy();
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+    expect((await readLegacyMigration())?.status).toBe('complete');
+  });
+
+  it('keeps legacy data and never uploads when the selected backup folder is shared', async () => {
+    await initializeWithLegacySession();
+    installGooglePicker();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).includes('/oauth2/v3/userinfo')
+      ? Response.json({ email: 'owner@example.test', email_verified: true })
+      : Response.json({ id: 'backup-folder', mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: true, capabilities: { canAddChildren: true } }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<SyncPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('پوشهٔ پشتیبان باید خصوصی');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
+    expect(localStorage.getItem(LEGACY_KEY)).toBe('{"legacy":"preserve-me"}');
+    expect((await readLegacyMigration())?.status).toBe('server-verified');
   });
 
   it('refuses to upload a private backup when the selected Drive account is not the project owner', async () => {
