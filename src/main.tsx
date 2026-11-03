@@ -26,7 +26,7 @@ function launchApp(serverOnly = false) {
   root!.textContent = '';
   const app = <Provider store={appRuntime!.store}><App /></Provider>;
   createRoot(root!).render(serverOnly
-    ? <ServerConnectionGate tokenProvider={() => currentAuthToken}>{app}</ServerConnectionGate>
+    ? <ServerConnectionGate tokenProvider={() => currentAuthToken} flushPendingDraft={() => appRuntime!.flush()}>{app}</ServerConnectionGate>
     : app);
 }
 
