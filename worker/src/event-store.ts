@@ -45,6 +45,7 @@ type AppendResult = { id: string; seq: number; duplicate: boolean };
 type DriveMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
   lastSeq: number;
+  appStateRevision?: number;
   pendingCount: number;
   quarantinedCount?: number;
   lastSyncedAt?: string;
@@ -74,13 +75,13 @@ export type DriveMirrorStatus = {
 };
 
 const DRIVE_STATE_KEY = 'drive-mirror-state-v1';
-const DRIVE_DEBOUNCE_MS = 5_000;
+const DRIVE_DEBOUNCE_MS = 1_000;
 const DRIVE_RETRY_MS = 60_000;
 const WEEKLY_BACKUP_RETRY_MS = 60_000;
 const DRIVE_MIRROR_PAGE_SIZE = 500;
 const NOTION_PROJECTION_PAGE_SIZE = 1_000;
-const NOTION_EVENTS_PER_RUN = 5;
-const NOTION_DEBOUNCE_MS = 5_000;
+const NOTION_EVENTS_PER_RUN = 20;
+const NOTION_DEBOUNCE_MS = 250;
 const NOTION_RETRY_MS = 60_000;
 const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
 
@@ -153,6 +154,12 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env);
     this.rateLimit = this.parseRateLimit(env.EVENT_RATE_LIMIT);
+    // Queryable operational mirror status: unlike internal Durable Object KV,
+    // this can be inspected through the authenticated Cloudflare SQL console.
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sync_health (destination TEXT PRIMARY KEY, status TEXT NOT NULL, pending_count INTEGER NOT NULL, last_error TEXT, last_synced_at TEXT, updated_at TEXT NOT NULL)');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT, revision INTEGER NOT NULL, updated_at TEXT NOT NULL)');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER NOT NULL)');
+    ctx.storage.sql.exec('INSERT OR IGNORE INTO app_state_meta (singleton, revision) VALUES (1, 0)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projections (projection_type TEXT NOT NULL, projection_key TEXT NOT NULL, projection_json TEXT NOT NULL, PRIMARY KEY (projection_type, projection_key))');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projection_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), last_seq INTEGER NOT NULL)');
     ctx.storage.sql.exec('INSERT OR IGNORE INTO notion_projection_meta (singleton, last_seq) VALUES (1, 0)');
@@ -178,8 +185,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const supported = (request.method === 'POST' && url.pathname === '/events')
-      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status'))
-      || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup'));
+      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status' || url.pathname === '/state'))
+      || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup' || url.pathname === '/state' || url.pathname === '/internal/sync-all'));
     if (!supported) return json({ error: 'not_found' }, 404);
 
     if (url.pathname === '/internal/weekly-backup') {
@@ -188,9 +195,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return json({ weeklyBackup: await this.syncWeeklyBackup(now) });
     }
 
+    if (url.pathname === '/internal/sync-all') {
+      const [drive, notion] = await Promise.all([this.syncDrive(), this.syncNotion()]);
+      return json({ drive, notion });
+    }
     const rate = this.consumeRateLimit();
     if (rate) return rate;
 
+    if (url.pathname === '/state') return request.method === 'GET' ? this.readAppState() : this.writeAppState(request);
     if (url.pathname === '/events') return this.append(request);
     if (url.pathname === '/drive/status') return json(await this.getDriveStatus());
     if (url.pathname === '/notion/status') return json(await this.getNotionStatus());
@@ -213,6 +225,54 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
     }
     if (notionDataSourcesFromEnv(this.env)) await this.syncNotion();
+  }
+
+  private appStateRevision(): number {
+    return Number(this.ctx.storage.sql.exec<{ revision: number }>(
+      'SELECT revision FROM app_state_meta WHERE singleton = 1',
+    ).one().revision);
+  }
+
+  private readAppState(): Response {
+    const records = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
+      'SELECT key, value, revision FROM app_state ORDER BY key',
+    ).toArray();
+    return json({ records, revision: this.appStateRevision() });
+  }
+
+  private async writeAppState(request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, MAX_BODY_BYTES);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder().decode(body)); }
+    catch { return json({ error: 'invalid_state_json' }, 400); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return json({ error: 'invalid_state' }, 400);
+    const item = value as { key?: unknown; value?: unknown; revision?: unknown };
+    if (typeof item.key !== 'string' || !item.key.startsWith('math-scratchpad') || item.key.length > 200
+      || !(typeof item.value === 'string' || item.value === null)
+      || (typeof item.value === 'string' && new TextEncoder().encode(item.value).byteLength > 200_000)
+      || !Number.isSafeInteger(item.revision) || Number(item.revision) < 0) {
+      return json({ error: 'invalid_state' }, 400);
+    }
+    const result = this.ctx.storage.transactionSync(() => {
+      const existing = this.ctx.storage.sql.exec<{ revision: number }>(
+        'SELECT revision FROM app_state WHERE key = ?', item.key!,
+      ).toArray()[0];
+      const current = existing?.revision ?? 0;
+      if (current !== item.revision) return { conflict: true, revision: current };
+      const revision = current + 1;
+      this.ctx.storage.sql.exec(
+        'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, updated_at=excluded.updated_at',
+        item.key!, item.value as string | null, revision, new Date().toISOString(),
+      );
+      this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = revision + 1 WHERE singleton = 1');
+      return { conflict: false, revision };
+    });
+    if (result.conflict) return json({ error: 'state_conflict', revision: result.revision }, 409);
+    await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
+    const state = await this.readDriveState();
+    if (this.driveConfigured()) await this.saveDriveState({ ...state, status: 'pending' });
+    return json({ key: item.key, revision: result.revision });
   }
 
   private parseRateLimit(raw: string | undefined): number {
@@ -329,6 +389,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async saveDriveState(state: DriveMirrorState): Promise<void> {
     await this.ctx.storage.put(DRIVE_STATE_KEY, state);
+    this.ctx.storage.sql.exec(
+      'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
+      'drive', state.status, state.pendingCount, state.lastError ?? null, state.lastSyncedAt ?? null, new Date().toISOString(),
+    );
   }
 
   private async maxSequence(): Promise<number> {
@@ -428,6 +492,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async saveNotionState(state: StoredNotionMirrorState): Promise<void> {
     await this.ctx.storage.put(NOTION_MIRROR_STATE_KEY, state);
+    this.ctx.storage.sql.exec(
+      'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
+      'notion', state.status, state.pendingCount, state.lastError ?? null, state.lastSyncedAt ?? null, new Date().toISOString(),
+    );
   }
 
   private async getNotionStatus(): Promise<NotionMirrorStatus> {
@@ -454,7 +522,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       ...state,
       status: 'pending',
       pendingCount: Math.max(0, maxSeq - state.lastSeq),
-      lastError: undefined,
+      // Keep the last failure visible until a mirror run actually succeeds.
+      lastError: state.lastError,
     });
     await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
   }
@@ -639,7 +708,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       ...state,
       status: 'pending',
       pendingCount: Math.max(0, maxSeq - state.lastSeq),
-      lastError: undefined,
+      // A newly queued event does not mean the previous Drive failure was fixed.
+      lastError: state.lastError,
     });
     await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
   }
@@ -737,7 +807,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private async performDriveSync(): Promise<DriveMirrorStatus> {
     const state = await this.readDriveState();
     const through = await this.maxSequence();
-    if (through === state.lastSeq && state.status === 'synced') return this.getDriveStatus();
+    if (through === state.lastSeq && state.appStateRevision === this.appStateRevision() && state.status === 'synced') return this.getDriveStatus();
     await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq), lastError: undefined });
 
     try {
@@ -791,6 +861,26 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       });
       state.files['state/progress.json'] = { id: progressFile.id, etag: progressFile.etag };
       state.fileHashes['state/progress.json'] = await sha256Hex(progressFile.content);
+      const stateRevision = this.appStateRevision();
+      const persistedState = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
+        'SELECT key, value, revision FROM app_state ORDER BY key',
+      ).toArray();
+      const stateContent = JSON.stringify({
+        format: 'math-scratchpad-server-state/v1',
+        revision: stateRevision,
+        records: persistedState,
+      }, null, 2) + '\n';
+      const stateFile = await client.upsertTextFile({
+        name: 'editor_state.json',
+        parentId: folders.stateId,
+        mimeType: 'application/json',
+        desiredContent: stateContent,
+        knownFile: state.files['state/editor_state.json'],
+        mergeContent: (_previous, current) => current,
+      });
+      state.files['state/editor_state.json'] = { id: stateFile.id, etag: stateFile.etag };
+      state.fileHashes['state/editor_state.json'] = await sha256Hex(stateFile.content);
+
 
       const latest = events.at(-1);
       const now = new Date();
@@ -820,6 +910,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         ...state,
         status: pendingCount === 0 ? 'synced' : 'pending',
         lastSeq: through,
+        appStateRevision: stateRevision,
         pendingCount,
         quarantinedCount,
         lastSyncedAt: now.toISOString(),

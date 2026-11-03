@@ -47,7 +47,7 @@ import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardC
 import { ActivityTracker } from './sync/activity-tracker';
 import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
 import { SyncPanel } from './sync/sync-panel';
-import { flushLearningStorage, subscribeLearningStorage } from './sync/browser-db';
+import { flushLearningStorage, isServerStorageActive, subscribeLearningStorage } from './sync/browser-db';
 import { getDefaultSyncRuntime } from './sync/runtime';
 
 const INSERT_OPTIONS = [
@@ -742,7 +742,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>
 
        <DropdownMenuLabel className="menu-section-heading danger-heading">Danger zone</DropdownMenuLabel>
-       <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>
+       {!isServerStorageActive() && <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>}
       </div>}
      </DropdownMenuContent></DropdownMenu>
     </div></header>

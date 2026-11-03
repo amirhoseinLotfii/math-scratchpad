@@ -8,9 +8,11 @@ import {
   readOutboxCount,
   setSyncMeta,
   storeServerEvents,
+  updateAuthenticatedServerToken,
 } from './browser-db';
 
-export const SYNC_API_ORIGIN = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
+import { SYNC_API_ORIGIN } from './sync-config';
+export { SYNC_API_ORIGIN } from './sync-config';
 const PAGE_LIMIT = 100;
 const MAX_PULL_PAGES_PER_RUN = 100;
 const MAX_BATCH_BYTES = 190_000;
@@ -113,6 +115,7 @@ export class BrowserSyncRuntime {
 
   setIdToken(token: string | null): void {
     this.token = token;
+    if (token) updateAuthenticatedServerToken(token);
     if (!token) {
       if (this.current.phase !== 'synced') this.update({ phase: this.current.pending ? 'needs-auth' : 'idle' });
       return;
@@ -143,8 +146,43 @@ export class BrowserSyncRuntime {
       { path: '/drive/sync', status: this.current.driveMirror },
       { path: '/notion/sync', status: this.current.notionMirror },
     ].filter(item => item.status?.status !== 'not_configured');
-    await Promise.allSettled(configured.map(item => this.request(item.path, { method: 'POST' })));
+    const results = await Promise.allSettled(configured.map(item => this.request(item.path, { method: 'POST' })));
     await this.refreshMirrorStatuses();
+    const failed = results.flatMap((result, index) => {
+      if (result.status !== 'rejected') return [];
+      const mirror = configured[index];
+      const name = mirror.path.startsWith('/drive/') ? 'Drive' : 'Notion';
+      const currentStatus = name === 'Drive' ? this.current.driveMirror : this.current.notionMirror;
+      return [`${name}: ${currentStatus?.lastError || (result.reason instanceof Error ? result.reason.message : 'ارسال ناموفق بود')}`];
+    });
+    for (const [kind, state] of [['Drive', this.current.driveMirror], ['Notion', this.current.notionMirror]] as const) {
+      if (state && state.status !== 'not_configured' && (state.status !== 'synced' || state.pendingCount > 0)) {
+        failed.push(`${kind}: ${state.lastError || `در انتظار تأیید ${state.pendingCount} رویداد`}`);
+      }
+    }
+    if (failed.length) throw new Error([...new Set(failed)].join(' · '));
+  }
+
+  /** Server backup always reads the canonical log; browser IndexedDB is not used. */
+  async readAllServerEvents(): Promise<Array<{ seq: number; event: LearnEvent }>> {
+    if (!this.token) throw new Error('برای گرفتن پشتیبان سرور، ابتدا با Google وارد شو.');
+    const events: Array<{ seq: number; event: LearnEvent }> = [];
+    let cursor = 0;
+    let through: number | undefined;
+    for (let page = 0; page < 2000; page++) {
+      const params = new URLSearchParams({ cursor: String(cursor), limit: String(PAGE_LIMIT) });
+      if (through !== undefined) params.set('through', String(through));
+      const response = await this.request(`/snapshot?${params}`, { method: 'GET' });
+      const body: SyncPage = await response.json();
+      if (!Array.isArray(body.events) || !Number.isSafeInteger(body.cursor) || !Number.isSafeInteger(body.snapshotCursor)) {
+        throw new Error('نسخهٔ رویدادهای سرور معتبر نیست.');
+      }
+      through ??= body.snapshotCursor;
+      events.push(...body.events);
+      cursor = body.cursor;
+      if (!body.hasMore) return events;
+    }
+    throw new Error('تعداد صفحات پشتیبان سرور از حد ایمن فراتر رفت.');
   }
 
   async syncNow(): Promise<void> {

@@ -142,6 +142,46 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect(corsAuthFailure.headers.get('Access-Control-Allow-Origin')).toBe(ALLOWED_ORIGIN);
   });
 
+  it('persists the editor snapshot on the server with owner authentication and conflict protection', async () => {
+    const app = createApp(validVerifier);
+    const key = 'math-scratchpad-session-v3';
+    expect((await call(app, '/state')).status).toBe(401);
+    const empty = await call(app, '/state', { token: 'valid-test-token' });
+    expect(await empty.json()).toMatchObject({ records: [], revision: 0 });
+    const created = await call(app, '/state', {
+      token: 'valid-test-token', body: { key, value: '{"draft":1}', revision: 0 },
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toMatchObject({ key, revision: 1 });
+    const conflict = await call(app, '/state', {
+      token: 'valid-test-token', body: { key, value: '{"draft":0}', revision: 0 },
+    });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ error: 'state_conflict', revision: 1 });
+    const fetched = await call(app, '/state', { token: 'valid-test-token' });
+    expect(await fetched.json()).toMatchObject({ records: [{ key, value: '{"draft":1}', revision: 1 }] });
+    const updated = await call(app, '/state', {
+      token: 'valid-test-token', body: { key, value: '{"draft":2}', revision: 1 },
+    });
+    expect(updated.status).toBe(200);
+  });
+
+  it('deletes only the explicitly requested server state key and rejects unrelated names', async () => {
+    const app = createApp(validVerifier);
+    const key = 'math-scratchpad-session-v3';
+    await call(app, '/state', { token: 'valid-test-token', body: { key, value: 'temporary', revision: 0 } });
+    const deleted = await call(app, '/state', {
+      token: 'valid-test-token', body: { key, value: null, revision: 1 },
+    });
+    expect(deleted.status).toBe(200);
+    const afterDelete = await call(app, '/state', { token: 'valid-test-token' });
+    expect(await afterDelete.json()).toMatchObject({ records: [{ key, value: null, revision: 2 }], revision: 2 });
+    const invalid = await call(app, '/state', {
+      token: 'valid-test-token', body: { key: 'another-app-secret', value: 'x', revision: 0 },
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it('validates the event schema before writing', async () => {
     const app = createApp(validVerifier);
     const response = await call(app, '/events', { token: 'valid-test-token', body: { events: [{ id: 'bad' }] } });

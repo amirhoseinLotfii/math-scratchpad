@@ -105,6 +105,8 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   };
 
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
+  app.get('/state', authorize, c => proxy(c, '/state', 'GET'));
+  app.post('/state', authorize, c => proxy(c, '/state', 'POST'));
   app.get('/sync', authorize, c => proxy(c, '/sync', 'GET'));
   app.get('/snapshot', authorize, c => proxy(c, '/snapshot', 'GET'));
   app.get('/drive/status', authorize, c => proxy(c, '/drive/status', 'GET'));
@@ -118,6 +120,12 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
 }
 
 const app = createApp();
+
+export async function requestMirrorSync(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>): Promise<void> {
+  const id = env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase());
+  const response = await env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
+  if (!response.ok) throw new Error('scheduled_mirror_sync_failed');
+}
 
 export async function requestWeeklyDriveBackup(
   env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>,
@@ -134,7 +142,8 @@ export async function requestWeeklyDriveBackup(
 export default {
   fetch: (request: Request, env: WorkerEnv, execution: ExecutionContext) => app.fetch(request, env, execution),
   scheduled: (controller: ScheduledController, env: WorkerEnv, execution: ExecutionContext) => {
-    execution.waitUntil(requestWeeklyDriveBackup(env, controller.scheduledTime));
+    if (controller.cron === '*/5 * * * *') execution.waitUntil(requestMirrorSync(env));
+    else execution.waitUntil(requestWeeklyDriveBackup(env, controller.scheduledTime));
   },
 };
 export { LearningEventStore } from './event-store';

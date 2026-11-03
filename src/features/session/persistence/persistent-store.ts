@@ -5,7 +5,7 @@ import { isoLocal } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
 import type { PersistOptions } from 'zustand/middleware';
-import { flushLearningStorage, getLearningStorage, subscribeLearningStorage } from '../../../sync/browser-db';
+import { flushLearningStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from '../../../sync/browser-db';
 export const SESSION_KEY = 'math-scratchpad-session-v3';
 const envelopeSchema = z.object({
  version: z.literal(3),
@@ -27,6 +27,8 @@ const workSignature = (session: PersistedSession['session']) => JSON.stringify({
 export const STORAGE_PREFIX = 'math-scratchpad';
 /** Remove every localStorage key owned by this app (all schema versions). */
 export function clearAppStorage() {
+ // The obsolete local-storage reset must never delete authoritative server records.
+ if (isServerStorageActive()) return false;
  try {
   const storage = getLearningStorage();
   for (let index = storage.length - 1; index >= 0; index--) {
@@ -132,6 +134,10 @@ export function createPersistentStore() {
   }
  };
  store.clearStorage = () => {
+  if (isServerStorageActive()) {
+   quietState({ kind: 'error', message: 'Server-only mode: local-storage reset is unavailable. Server records are protected.' });
+   return;
+  }
   // Stop all writes first so a pending autosave cannot resurrect cleared data.
   protectedDraft = true; pending = null; clearTimeout(timeout);
   clearAppStorage();

@@ -7,7 +7,7 @@ export interface WorkerEnv {
   GOOGLE_CLIENT_ID: string;
   /** Confidential Google OAuth client secret; add with `wrangler secret put`. */
   GOOGLE_DRIVE_CLIENT_SECRET?: string;
-  /** Owner-only refresh token with drive.file and userinfo.email authorization. */
+  /** Owner-only refresh token with the drive.file authorization; identity checked via Drive about.get. */
   GOOGLE_DRIVE_REFRESH_TOKEN?: string;
   /** Internal Notion integration key; set with wrangler secret put NOTION_API_KEY. */
   NOTION_API_KEY?: string;

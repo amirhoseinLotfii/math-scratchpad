@@ -579,6 +579,36 @@ describe('browser sync runtime', () => {
     runtime.stop();
   });
 
+  it('reports a Drive failure without blocking a successful Notion sync or clearing the local cache', async () => {
+    await initializeLearningStorage();
+    const calls: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      calls.push(`${init?.method ?? 'GET'} ${path}`);
+      if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (path === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      if (path === '/drive/status') return Response.json({ status: 'error', pendingCount: 5, lastSyncedAt: null, lastError: 'reauthorization_required' });
+      if (path === '/notion/status') return Response.json({ status: 'synced', pendingCount: 0, lastSyncedAt: '2026-11-03T18:00:00.000Z', lastError: null });
+      if (path === '/drive/sync' && init?.method === 'POST') {
+        return Response.json({ drive: { status: 'error', pendingCount: 5, lastSyncedAt: null, lastError: 'reauthorization_required' } }, { status: 502 });
+      }
+      if (path === '/notion/sync' && init?.method === 'POST') return Response.json({ notion: { status: 'synced' } });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    await expect(runtime.syncAllNow()).rejects.toThrow('Drive: reauthorization_required');
+    expect(calls).toContain('POST /drive/sync');
+    expect(calls).toContain('POST /notion/sync');
+    expect(runtime.getSnapshot()).toMatchObject({
+      driveMirror: { status: 'error', pendingCount: 5, lastError: 'reauthorization_required' },
+      notionMirror: { status: 'synced', pendingCount: 0 },
+    });
+    runtime.stop();
+  });
+
   it('does not issue manual writes to a mirror marked not configured', async () => {
     await initializeLearningStorage();
     const calls: Array<{ path: string; method: string }> = [];

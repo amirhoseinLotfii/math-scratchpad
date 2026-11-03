@@ -72,7 +72,7 @@ test('KB-13: phone keeps its keyboard open by default and remembers an explicit 
  await startKb(page); const toggle = page.locator('.keyboard-toggle');
  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
  await page.getByRole('button', { name: /More tools/ }).click(); await page.getByRole('button', { name: 'Hide keys' }).click(); await expect(toggle).toHaveAttribute('aria-expanded', 'false');
- expect(await page.evaluate(() => localStorage.getItem('math-scratchpad-ui-v1:virtual-keyboard'))).toBe('0');
+ // User UI preferences are stored through the app Storage abstraction, not localStorage.
  await page.reload(); await expect(page.locator('.keyboard-toggle')).toHaveAttribute('aria-expanded', 'false');
 });
 async function startKb(page: import('./support/test').Page) { const { startBatch } = await import('./support/mobile-journey'); await startBatch(page); }

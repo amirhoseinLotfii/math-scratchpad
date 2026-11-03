@@ -3,7 +3,7 @@ import type { WorkerEnv } from './env';
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
 const GOOGLE_TOKEN_API = 'https://oauth2.googleapis.com/token';
-const GOOGLE_USERINFO_API = 'https://www.googleapis.com/oauth2/v3/userinfo';
+const GOOGLE_DRIVE_ABOUT_API = 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,me)';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const MAX_ETAG_RETRIES = 3;
 const SIMPLE_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
@@ -313,12 +313,15 @@ export class GoogleDriveClient {
 
     let identityResponse: Response;
     try {
-      identityResponse = await this.fetcher(GOOGLE_USERINFO_API, { headers: { Authorization: `Bearer ${token.access_token}` } });
+      // Drive about.get works with drive.file; userinfo would incorrectly require
+      // an additional Google profile scope and block a valid Drive-only token.
+      identityResponse = await this.fetcher(GOOGLE_DRIVE_ABOUT_API, { headers: { Authorization: `Bearer ${token.access_token}` } });
     } catch { throw new DriveMirrorError('network_error'); }
     if (!identityResponse.ok) throw new DriveMirrorError(identityResponse.status === 401 ? 'reauthorization_required' : errorForStatus(identityResponse.status).code);
-    const identity = await readJson<{ email?: unknown; email_verified?: unknown }>(identityResponse);
-    if (typeof identity.email !== 'string' || identity.email.trim().toLowerCase() !== this.env.OWNER_EMAIL.trim().toLowerCase()
-      || identity.email_verified !== true) {
+    const identity = await readJson<{ user?: { emailAddress?: unknown; me?: unknown } }>(identityResponse);
+    if (typeof identity.user?.emailAddress !== 'string'
+      || identity.user.emailAddress.trim().toLowerCase() !== this.env.OWNER_EMAIL.trim().toLowerCase()
+      || identity.user.me !== true) {
       throw new DriveMirrorError('account_mismatch');
     }
     this.accessToken = token.access_token;

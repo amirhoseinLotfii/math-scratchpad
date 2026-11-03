@@ -16,6 +16,7 @@ import { MAX_SESSION_EXERCISES, stepIsBlank, stepLatex, type Step } from '../../
 import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
 import { ActivityTracker } from '../../sync/activity-tracker';
+import { getLearningStorage } from '../../sync/browser-db';
 import { emitLearnEvent, type LearnEventContext, type LearnEventDraft } from '../../sync/events';
 
 function subscribeSplit(change: () => void) {
@@ -25,8 +26,8 @@ function subscribeSplit(change: () => void) {
   return () => list.removeEventListener?.('change', change);
 }
 function splitSnapshot() { return typeof window.matchMedia === 'function' && window.matchMedia(SPLIT_MEDIA_QUERY).matches; }
-function readSplitRatio() { try { return clampSplitRatio(window.localStorage.getItem(SPLIT_RATIO_STORAGE_KEY) ?? undefined); } catch { return clampSplitRatio(undefined); } }
-function writeSplitRatio(value: number) { try { window.localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(value)); } catch { /* preference only */ } }
+function readSplitRatio() { try { return clampSplitRatio(getLearningStorage().getItem(SPLIT_RATIO_STORAGE_KEY) ?? undefined); } catch { return clampSplitRatio(undefined); } }
+function writeSplitRatio(value: number) { try { getLearningStorage().setItem(SPLIT_RATIO_STORAGE_KEY, String(value)); } catch { /* preference only */ } }
 
 type Props = {
   bank: DriveBank | null;
