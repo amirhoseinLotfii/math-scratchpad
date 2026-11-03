@@ -24,6 +24,7 @@ type DriveMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
   lastSeq: number;
   pendingCount: number;
+  quarantinedCount?: number;
   lastSyncedAt?: string;
   lastError?: DriveMirrorErrorCode;
   folders?: { rootId: string; syncId: string; eventsId: string; stateId: string };
@@ -34,6 +35,7 @@ export type DriveMirrorStatus = {
   status: 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
   lastSyncedAt: string | null;
   pendingCount: number;
+  quarantinedCount: number | null;
   lastError: DriveMirrorErrorCode | null;
 };
 
@@ -219,7 +221,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async readDriveState(): Promise<DriveMirrorState> {
     const stored = await this.ctx.storage.get<DriveMirrorState>(DRIVE_STATE_KEY);
-    return stored ?? { status: 'pending', lastSeq: 0, pendingCount: 0, files: {}, fileHashes: {} };
+    return stored ?? { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined, files: {}, fileHashes: {} };
   }
 
   private async saveDriveState(state: DriveMirrorState): Promise<void> {
@@ -235,13 +237,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private async getDriveStatus(): Promise<DriveMirrorStatus> {
     const maxSeq = await this.maxSequence();
     if (!this.driveConfigured()) {
-      return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, lastError: null };
+      return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null };
     }
     const state = await this.readDriveState();
     return {
       status: state.status,
       lastSyncedAt: state.lastSyncedAt ?? null,
       pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      quarantinedCount: state.quarantinedCount ?? null,
       lastError: state.lastError ?? null,
     };
   }
@@ -277,7 +280,9 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       this.driveClient ??= new GoogleDriveClient(this.env);
       const client = this.driveClient;
       const events = this.readEventsThrough(through);
-      const newEvents = events.filter(item => item.seq > state.lastSeq);
+      const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
+      const quarantinedCount = events.length - mirrorableEvents.length;
+      const newEvents = mirrorableEvents.filter(item => item.seq > state.lastSeq);
       let folders = state.folders;
       if (!folders) {
         const rootId = await client.ensureRootFolder('Math_Project');
@@ -293,7 +298,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       for (const [month, monthEvents] of months) {
         const name = `events_${month}.jsonl`;
         const path = `events/${name}`;
-        const content = serializeJsonlEvents(events.filter(item => {
+        const content = serializeJsonlEvents(mirrorableEvents.filter(item => {
           const date = new Date(item.event.ts);
           return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}` === month;
         }));
@@ -332,6 +337,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         lastEventId: latest?.event.id ?? null,
         lastSuccessAtUtc: now.toISOString(),
         lastSuccessAtTehran: tehranTime,
+        quarantinedEventCount: quarantinedCount,
         files: Object.entries(state.fileHashes).sort(([a], [b]) => a.localeCompare(b)).map(([path, sha256]) => ({ path, sha256 })),
       };
       const manifestFile = await client.upsertTextFile({
@@ -351,6 +357,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         status: pendingCount === 0 ? 'synced' : 'pending',
         lastSeq: through,
         pendingCount,
+        quarantinedCount,
         lastSyncedAt: now.toISOString(),
         lastError: undefined,
       };
@@ -360,6 +367,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         status: finalState.status,
         lastSyncedAt: finalState.lastSyncedAt ?? null,
         pendingCount: finalState.pendingCount,
+        quarantinedCount: finalState.quarantinedCount ?? 0,
         lastError: null,
       };
     } catch (error) {
