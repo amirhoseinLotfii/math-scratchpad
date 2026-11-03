@@ -171,3 +171,9 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 - In the authenticated `math-scratchpad` Google Cloud project, `https://www.googleapis.com/auth/userinfo.email` was added and saved. A reload confirmed both `userinfo.email` and `drive.file` are present. No credential value was read or generated. Consent remains Testing; public privacy/terms links and Worker Secrets remain unresolved.
 - CI run `41546783299` on documentation head `6d64c3aeea22ad548fc6862a442330379882fb4d` completed successfully, including gate and build.
+
+
+## Notion integration setup — 2026-11-03
+
+- With the owner's delegated authority, the single-workspace API-token connection `Math Scratchpad Sync` was created in Notion Developer; creating it accepted the displayed Developer Terms. Content access was saved for the five selected sources: Math Attempts, Sessions, Mistakes, Concepts, and Daily Reports. The access view showed five shared pages with those names. No Events database was selected.
+- The integration credential was not displayed or retrieved. Cloudflare MCP secret-name listing remains empty; `NOTION_API_KEY` is not configured. No live Notion sync, Worker deployment, or Drive write/read-back occurred. OAuth Production and Google secrets remain outstanding.
