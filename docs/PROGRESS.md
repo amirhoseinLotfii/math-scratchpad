@@ -177,3 +177,17 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 - With the owner's delegated authority, the single-workspace API-token connection `Math Scratchpad Sync` was created in Notion Developer; creating it accepted the displayed Developer Terms. Content access was saved for the five selected sources: Math Attempts, Sessions, Mistakes, Concepts, and Daily Reports. The access view showed five shared pages with those names. No Events database was selected.
 - The integration credential was not displayed or retrieved. Cloudflare MCP secret-name listing remains empty; `NOTION_API_KEY` is not configured. No live Notion sync, Worker deployment, or Drive write/read-back occurred. OAuth Production and Google secrets remain outstanding.
+
+
+## Fresh handoff audit — 2026-11-03 14:00 Asia/Tehran
+
+- The connected Cloudflare identity is the personal owner account `amirhoseinlotfalizadeprogramer@gmail.com`, matching `OWNER_EMAIL`.
+- Production Worker `math-scratchpad-sync` still routes 100% traffic to version `9d5c41bd-b338-45bb-b0bc-70c8129be568`. Its live bundle does not contain `/drive/status`, `/notion/status`, a scheduled handler, or `NOTION_DATA_SOURCE_ATTEMPTS`; it is still the P0-2 Worker, not the P0-3–P0-7 implementation.
+- Production secret-name listing now shows `GOOGLE_DRIVE_CLIENT_SECRET` and `NOTION_API_KEY` (values were not read). `GOOGLE_DRIVE_REFRESH_TOKEN` is still absent.
+- Production Worker settings still have only the base variables `ALLOWED_ORIGIN`, `EVENT_RATE_LIMIT`, `GOOGLE_CLIENT_ID`, and `OWNER_EMAIL`, plus the existing `EVENT_STORE` Durable Object binding. All five `NOTION_DATA_SOURCE_*` variables are absent.
+- Production Cron schedule list is empty. The feature branch declares `0 2 * * 0`, but it was not installed because the currently active Worker does not contain the scheduled backup handler.
+- The Worker subdomain is `math-scratchpad-redux`; the health endpoint could not be fetched through the available web retrieval path in this audit. No deploy or live data write/read-back was performed.
+- The Drive project folder `Math_Project` contains `06_Backups`; no new `sync_backup_*.json` file has been verified. The Drive folder listing does not establish a live OAuth mirror.
+- Notion workspace search can find Math Attempts and related project pages, but this is not evidence that the Worker integration token can write to the five configured data sources. No test row was created.
+- Latest PR heads: #33 `60958b2728a79ac71660f53c97849ba30c9b0d1f` (CI run `41600838653` success); #37 `4b547d2ba768ef6dc637a78812e17018194d0971` (CI run `41609197095` success). PRs #34 and #36 currently report merge conflicts (`mergeable=false`) and no workflow run for their current heads. All five PRs remain open and draft; none has been merged.
+- No Cloudflare Production configuration was changed in this audit. Do not enable Cron before deploying the code that implements its scheduled handler. Do not deploy the sync code until the missing Google refresh token and all required Notion/Drive bindings are configured and verified.
