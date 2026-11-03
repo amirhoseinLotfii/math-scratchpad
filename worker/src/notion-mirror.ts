@@ -29,6 +29,7 @@ export type NotionMirrorStatus = {
   status: 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
   lastSyncedAt: string | null;
   pendingCount: number;
+  quarantinedCount: number | null;
   lastError: NotionErrorCode | null;
 };
 
@@ -110,6 +111,7 @@ export async function syncNotionEvent(context: NotionEventContext, input: {
   concept?: ConceptProjection;
 }): Promise<void> {
   const { event, session, daily, concept } = input;
+  if (typeof event.isTest !== 'boolean') return;
   const sessionPageId = await upsertByExternalKey(context, {
     kind: 'session',
     key: event.session,
