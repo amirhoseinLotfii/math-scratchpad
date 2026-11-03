@@ -224,6 +224,20 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  useEffect(() => { if (needWellbeing) { setEditingScales(false); setAskingFor(sessionId); } }, [needWellbeing, sessionId]);
  const lessons = loadedBank?.bank.lessons ?? [];
  const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
+ useEffect(() => {
+  if (!menu && !modalOpen) return;
+  const policyFooter = document.querySelector('body > footer');
+  if (!(policyFooter instanceof HTMLElement)) return;
+  const focusable = Array.from(policyFooter.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]'));
+  const previousTabIndexes = focusable.map(element => ({ element, tabIndex: element.getAttribute('tabindex') }));
+  for (const { element } of previousTabIndexes) element.setAttribute('tabindex', '-1');
+  return () => {
+   for (const { element, tabIndex } of previousTabIndexes) {
+    if (tabIndex === null) element.removeAttribute('tabindex');
+    else element.setAttribute('tabindex', tabIndex);
+   }
+  };
+ }, [menu, modalOpen]);
  useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); setGuidanceOpen(false); }, [ex.id]);
  useEffect(() => { setChoice(0); }, [wide]);
  useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
