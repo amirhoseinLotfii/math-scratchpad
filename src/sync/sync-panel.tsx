@@ -6,7 +6,8 @@ import { mountGoogleIdButton } from './google-id-token';
 import { permittedAccount } from '../features/drive-bank/identity';
 import { backupAndFinishLegacyMigration, finishLegacyMigration, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
 import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
-import { readLegacyMigration, type LegacyMigration } from './browser-db';
+import { queueLearnEvent, readLegacyMigration, type LegacyMigration } from './browser-db';
+import { emitTestLearnEvent } from './events';
 import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, type FullLearningBackup, type LearningBackupPreview } from './learning-backup';
 
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
@@ -142,6 +143,46 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     finally { setBusy(false); }
   }, [runtime]);
 
+  const sendSafeIntegrationTest = useCallback(async () => {
+    if (!runtime || status.phase !== 'synced'
+      || status.driveMirror?.status !== 'synced' || status.notionMirror?.status !== 'synced'
+      || status.driveMirror.pendingCount > 0 || status.notionMirror.pendingCount > 0) {
+      setError('برای ساخت رویداد آزمایشی، ابتدا ورود گوگل و همگام‌سازی هر دو آینه باید آماده و بدون صف باشد.');
+      return;
+    }
+    setError(''); setMessage(''); setBusy(true);
+    try {
+      const session = `sync-test-${crypto.randomUUID()}`;
+      const event = emitTestLearnEvent({
+        bankVersion: 'sync-test-v1',
+        session,
+        chapter: 0,
+        lesson: 'sync-verification',
+        section: 'sync-verification',
+        concept: 'sync-verification',
+      }, {
+        type: 'check_answer',
+        itemId: 'sync-verification',
+        itemType: 'typed',
+        questionText: 'Math Scratchpad integration verification (test only)',
+        userAnswer: 'SYNC_TEST_ONLY',
+        verdict: 'submitted',
+        verdictSource: 'none',
+        note: 'Synthetic owner-approved integration check; not a learner result.',
+      });
+      await queueLearnEvent(event);
+      await runtime.syncAllNow();
+      const latest = runtime.getSnapshot();
+      if (latest.driveMirror?.status === 'synced' && latest.notionMirror?.status === 'synced'
+        && latest.driveMirror.pendingCount === 0 && latest.notionMirror.pendingCount === 0) {
+        setMessage(`رویداد آزمایشی ${event.id} با isTest=true ارسال شد؛ در Notion باید Data Mode = Test باشد. این رویداد در پیشرفت واقعی محاسبه نمی‌شود.`);
+      } else {
+        setMessage(`رویداد آزمایشی ${event.id} با isTest=true در صف قرار گرفت؛ آینه‌ها هنوز کامل نشده‌اند. از وضعیت بالا پیگیری کن و فعلاً رویداد دیگری نساز.`);
+      }
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'ساخت یا ارسال رویداد آزمایشی ناموفق بود.'); }
+    finally { setBusy(false); }
+  }, [runtime, status]);
+
   const syncLegacy = useCallback(async () => {
     if (!runtime) return;
     setError(''); setMessage(''); setBusy(true);
@@ -260,6 +301,15 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
       <div ref={googleButton} role="group" aria-label="ورود امن به حساب Google" />
       <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy || status.phase === 'syncing'} onClick={() => void syncNow()}>
         همگام‌سازی الان
+      </button>
+      <button
+        type="button"
+        className="rounded-lg border border-emerald-300/40 px-3 py-2 text-sm disabled:opacity-50"
+        disabled={busy || status.phase !== 'synced' || status.driveMirror?.status !== 'synced'
+          || status.notionMirror?.status !== 'synced' || status.driveMirror.pendingCount > 0 || status.notionMirror.pendingCount > 0}
+        onClick={() => void sendSafeIntegrationTest()}
+      >
+        تست امن اتصال Drive و Notion
       </button>
     </div>
     {migration && migration.status !== 'complete' && <div className="mt-4 rounded-lg border border-white/15 p-3">
