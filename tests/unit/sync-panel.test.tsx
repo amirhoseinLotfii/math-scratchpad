@@ -108,8 +108,8 @@ describe('sync and migration panel', () => {
     await initializeLearningStorage();
     installGooglePicker();
     const paths: Array<{ path: string; method: string }> = [];
-    let drive = { status: 'pending', pendingCount: 3, lastSyncedAt: '2026-11-02T01:00:00.000Z', lastError: null };
-    const notion = { status: 'not_configured', pendingCount: 4, lastSyncedAt: null, lastError: null };
+    let drive = { status: 'pending', pendingCount: 3, quarantinedCount: 2, lastSyncedAt: '2026-11-02T01:00:00.000Z', lastError: null };
+    const notion = { status: 'not_configured', pendingCount: 4, quarantinedCount: 0, lastSyncedAt: null, lastError: null };
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input)), method = init?.method ?? 'GET';
       paths.push({ path: url.pathname, method });
@@ -118,7 +118,7 @@ describe('sync and migration panel', () => {
       if (url.pathname === '/drive/status') return Response.json(drive);
       if (url.pathname === '/notion/status') return Response.json(notion);
       if (url.pathname === '/drive/sync' && method === 'POST') {
-        drive = { status: 'synced', pendingCount: 0, lastSyncedAt: '2026-11-02T01:15:00.000Z', lastError: null };
+        drive = { status: 'synced', pendingCount: 0, quarantinedCount: 2, lastSyncedAt: '2026-11-02T01:15:00.000Z', lastError: null };
         return Response.json({ drive });
       }
       return Response.json({ error: 'not_found' }, { status: 404 });
@@ -135,8 +135,10 @@ describe('sync and migration panel', () => {
     expect(within(screen.getByRole('group', { name: 'وضعیت سرور' })).getByText('همگام‌شده با سرور')).toBeTruthy();
     expect(await within(driveStatus).findByText('در صف ارسال')).toBeTruthy();
     expect(await within(driveStatus).findByText('3 رویداد در صف')).toBeTruthy();
+    expect(await within(driveStatus).findByText('2 رویداد بدون برچسب قرنطینه شد و ارسال نشد.')).toBeTruthy();
     expect(await within(notionStatus).findByText('راه‌اندازی نشده')).toBeTruthy();
     expect(await within(notionStatus).findByText('4 رویداد در صف')).toBeTruthy();
+    expect(await within(notionStatus).findByText('رویداد بدون برچسبی برای قرنطینه وجود ندارد.')).toBeTruthy();
 
     await userEvent.click(screen.getByText('جزئیات آخرین همگام‌سازی و خطاها'));
     expect(screen.getAllByText('هنوز همگام نشده').length).toBeGreaterThan(0);
