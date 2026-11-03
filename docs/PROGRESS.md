@@ -62,3 +62,15 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 - Local `npm run test:gate`: typechecks passed, all 800 unit/integration tests passed, 16 Workers integration tests passed, and all 444 Playwright tests passed with zero skipped, failed, or flaky tests.
 - `npm run build` passed for the app, standalone bundle, and Wrangler Worker dry-run. Authenticated deployment succeeded at `https://math-scratchpad-sync.math-scratchpad-redux.workers.dev`; `/health` returned `{"ok":true,"service":"math-scratchpad-sync"}` over HTTPS (confirmed by the owner) and HTTP (checked here). Live API boundary checks returned 204 for the allowed Pages preflight, 403 for a foreign origin, and 401 for `/sync` without a bearer token. The task environment proxy returned a TLS 503 for direct HTTPS calls to `workers.dev`, so those API boundary checks were exercised over HTTP; the same routes are covered by the green Worker integration suite. PR #32 is ready to merge.
+
+
+## Browser continuation — 2026-11-03
+
+- Published public policy documents from `public/privacy.html` and `public/terms.html`; homepage footer links both. PR #38 added the pages and homepage links; PR #39 corrected their location so Vite copies them into `dist`. Both are merged. GitHub Pages deployment for commit `d71fd4081bb5e2c72032e764c3a2555f6ce45125` completed successfully. Public URLs return the expected standalone documents:
+  - https://amirhoseinlotfii.github.io/math-scratchpad/privacy.html
+  - https://amirhoseinlotfii.github.io/math-scratchpad/terms.html
+- Saved those URLs in Google Auth Platform → Branding. Added the personal owner account as a test user.
+- User explicitly requested publishing; confirmed “Push to production”. Google Audience now offers “Back to testing”, and shows the unverified-app warning. This is production publishing, not Google OAuth verification; the warning remains and Google verification is not complete.
+- Notion developer browser profile currently renders “Add account” rather than the authenticated workspace. The existing Notion connection is configured with Read content, Update content, and Insert content permissions, but the five data sources have not been verified as shared to that integration via the UI.
+- No Google Drive refresh token has been created. No real Drive or Notion mirror read/write test has been run.
+- Do not enable Cron or deploy the P0-3–P0-7 Worker branch until the sequential PR chain is reconciled, required bindings are installed, the refresh token is present, and a safe live test passes. PR #33–#37 remain unmerged; #33 currently reports mergeable=false. Current Production Worker is still the earlier P0-2 deployment.
