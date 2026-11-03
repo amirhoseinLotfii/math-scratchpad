@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readLearningCache } from '../support/indexeddb';
 
 test('Learn progress restores in the connected app and its lesson status survives Practice reload', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
@@ -25,7 +26,8 @@ test('Learn progress restores in the connected app and its lesson status survive
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
 
   const progressKey = 'math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview';
-  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), progressKey);
+  await expect.poll(async () => !!(await readLearningCache(page, progressKey))).toBe(true);
+  const saved = JSON.parse((await readLearningCache(page, progressKey))!);
   expect(saved.lessons['SAMPLE-1.1']).toMatchObject({ status: 'learning', currentConceptIndex: 1, answeredCheckIds: ['SAMPLE-1.1-L01', 'SAMPLE-1.1-L02'] });
   await page.reload();
   const restartedSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
@@ -46,7 +48,7 @@ test('Learn progress restores in the connected app and its lesson status survive
   await page.getByRole('button', { name: 'Next section →' }).click();
   await page.getByRole('button', { name: 'Start practice' }).click();
   await expect(page.getByText('Sample practice 1.')).toBeVisible();
-  const archive = await page.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-drive-session-archive-v1') ?? '[]'));
+  const archive = JSON.parse((await readLearningCache(page, 'math-scratchpad-drive-session-archive-v1')) ?? '[]');
   expect(archive).toHaveLength(1);
 
   await page.reload();
@@ -59,7 +61,11 @@ test('Learn progress restores in the connected app and its lesson status survive
   const confidence = page.getByRole('dialog', { name: /confidence/i });
   await confidence.getByRole('radio', { name: 'Medium' }).click();
   await confidence.getByRole('button', { name: /continue/i }).click();
-  const completedProgress = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), progressKey);
+  await expect.poll(async () => {
+    const raw = await readLearningCache(page, progressKey);
+    return raw ? JSON.parse(raw).lessons['SAMPLE-1.1']?.status : undefined;
+  }).toBe('done');
+  const completedProgress = JSON.parse((await readLearningCache(page, progressKey))!);
   expect(completedProgress.lessons['SAMPLE-1.1'].status).toBe('done');
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-drive-session-archive-v1') ?? '[]').length)).toBe(1);
+  expect(JSON.parse((await readLearningCache(page, 'math-scratchpad-drive-session-archive-v1')) ?? '[]').length).toBe(1);
 });

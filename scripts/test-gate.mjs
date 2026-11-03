@@ -5,6 +5,7 @@ const commands = [
  ['worker-integration', 'npm', ['run','test:worker']],
  ['unit-dom-coverage', 'npm', ['run','test:coverage','--','--reporter=json','--outputFile=test-results/vitest.json']],
  ['browser', 'npx', ['playwright','test','--max-failures=1',`--workers=${process.env.CI ? 1 : 2}`,...(process.env.CI ? ['--retries=1'] : [])]],
+ ['sync-cross-browser', 'npm', ['run','test:e2e:p0-3-cross-browser']],
 ];
 const results = [];
 mkdirSync('test-results', { recursive: true });

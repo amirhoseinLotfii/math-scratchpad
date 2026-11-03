@@ -32,6 +32,21 @@ describe('production persistent runtime', () => {
   expect(Object.keys(saved.state).sort()).toEqual(['session', 'sync']);
   expect(saved.state.session.past).toBeUndefined(); expect(saved.state.session.structureClipboard).toBeUndefined();
  });
+ it('starts a pending durable write immediately when the page is hidden or being unloaded', () => {
+  const runtime = mount(); runtime.store.dispatch(actions.command({ type: 'digit', value: '8' }));
+  expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+  window.dispatchEvent(new Event('pagehide'));
+  const onUnload = JSON.parse(localStorage.getItem(SESSION_KEY)!);
+  expect(onUnload.state.session.doc).toEqual(runtime.store.getState().doc);
+
+  localStorage.removeItem(SESSION_KEY);
+  const hiddenRuntime = mount(); hiddenRuntime.store.dispatch(actions.command({ type: 'digit', value: '9' }));
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  document.dispatchEvent(new Event('visibilitychange'));
+  const onHidden = JSON.parse(localStorage.getItem(SESSION_KEY)!);
+  expect(onHidden.state.session.doc).toEqual(hiddenRuntime.store.getState().doc);
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+ });
  it('hydrates a validated draft without rewriting it on startup', () => {
   const saved = seed(); const raw = localStorage.getItem(SESSION_KEY); const runtime = mount();
   expect(runtime.store.getState().doc).toEqual(saved.state.session.doc);

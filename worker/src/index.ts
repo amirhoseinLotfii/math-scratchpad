@@ -84,9 +84,9 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     }
   };
 
-  const proxy = async (c: AppContext, path: string, method: 'GET' | 'POST') => {
+  const proxy = async (c: AppContext, path: string, method: 'GET' | 'POST', expectsBody = method === 'POST') => {
     let body: ArrayBuffer | undefined;
-    if (method === 'POST') {
+    if (expectsBody) {
       const declaredLength = Number(c.req.header('Content-Length') ?? 0);
       if (declaredLength > MAX_BODY_BYTES) return finalizeResponse(jsonError('payload_too_large', 413), c);
       body = await readBoundedBody(c.req.raw, MAX_BODY_BYTES) ?? undefined;
@@ -107,6 +107,10 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
   app.get('/sync', authorize, c => proxy(c, '/sync', 'GET'));
   app.get('/snapshot', authorize, c => proxy(c, '/snapshot', 'GET'));
+  app.get('/drive/status', authorize, c => proxy(c, '/drive/status', 'GET'));
+  app.post('/drive/sync', authorize, c => proxy(c, '/drive/sync', 'POST', false));
+  app.get('/notion/status', authorize, c => proxy(c, '/notion/status', 'GET'));
+  app.post('/notion/sync', authorize, c => proxy(c, '/notion/sync', 'POST', false));
 
   app.notFound(c => finalizeResponse(jsonError('not_found', 404), c));
   app.onError((_error, c) => finalizeResponse(jsonError('internal_error', 500), c));
@@ -114,5 +118,23 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
 }
 
 const app = createApp();
-export default app;
+
+export async function requestWeeklyDriveBackup(
+  env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>,
+  scheduledTime: number,
+): Promise<void> {
+  const owner = env.OWNER_EMAIL.trim().toLowerCase();
+  if (!owner || !Number.isSafeInteger(scheduledTime) || scheduledTime <= 0) throw new Error('weekly_backup_request_invalid');
+  const id = env.EVENT_STORE.idFromName(owner);
+  const stub = env.EVENT_STORE.get(id);
+  const response = await stub.fetch(new Request(`https://event-store.internal/internal/weekly-backup?scheduledTime=${scheduledTime}`, { method: 'POST' }));
+  if (!response.ok) throw new Error('weekly_backup_request_failed');
+}
+
+export default {
+  fetch: (request: Request, env: WorkerEnv, execution: ExecutionContext) => app.fetch(request, env, execution),
+  scheduled: (controller: ScheduledController, env: WorkerEnv, execution: ExecutionContext) => {
+    execution.waitUntil(requestWeeklyDriveBackup(env, controller.scheduledTime));
+  },
+};
 export { LearningEventStore } from './event-store';

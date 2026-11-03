@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readLearningCache } from '../support/indexeddb';
 
 test('lesson answers and the active page synchronize between desktop tabs', async ({ page, context }) => {
   const otherTab = await context.newPage();
@@ -26,8 +27,9 @@ test('lesson answers and the active page synchronize between desktop tabs', asyn
   await firstLesson.getByRole('radio', { name: 'Confidence 4' }).check();
   await firstLesson.getByRole('button', { name: 'Next section →' }).click();
   await expect(secondLesson.getByRole('heading', { name: 'Another sample concept' })).toBeVisible();
-  await expect.poll(() => otherTab.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview') ?? '{}').lessons?.['SAMPLE-1.1']?.currentSectionIndex)).toBe(1);
-  const saved = await otherTab.evaluate(() => JSON.parse(localStorage.getItem('math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview') ?? '{}').lessons?.['SAMPLE-1.1']);
+  const progressKey = 'math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview';
+  await expect.poll(async () => JSON.parse((await readLearningCache(otherTab, progressKey)) ?? '{}').lessons?.['SAMPLE-1.1']?.currentSectionIndex).toBe(1);
+  const saved = JSON.parse((await readLearningCache(otherTab, progressKey)) ?? '{}').lessons?.['SAMPLE-1.1'];
   expect(saved).toMatchObject({ currentSectionIndex: 1, answeredCheckIds: ['SAMPLE-1.1-L01'], checkAnswers: { 'SAMPLE-1.1-L01': { type: 'choice', value: 'Option A' } }, confidenceByCheckId: { 'SAMPLE-1.1-L01': 4 } });
 
   // Verify the same saved location and answer after a fresh app load.

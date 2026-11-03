@@ -4,6 +4,7 @@ import { serialize } from '../../src/persistence';
 import { parse } from '../../src/parser';
 import { stepLatex } from '../../src/model';
 import { legacyStorageKey, storageKey } from '../support/mobile-journey';
+import { readLearningCache, writeLearningCacheFromOtherTab } from '../support/indexeddb';
 async function seedLegacy(page: Page) {
  const s = makeStore(initialState()); s.dispatch(actions.startFractionRound());
  await page.addInitScript(({ key, raw }) => {
@@ -11,7 +12,7 @@ async function seedLegacy(page: Page) {
  }, { key: legacyStorageKey, raw: serialize(s.getState()) });
 }
 async function readSaved(page: Page) {
- const raw = await page.evaluate(key => localStorage.getItem(key), storageKey);
+ const raw = await readLearningCache(page, storageKey);
  return raw ? JSON.parse(raw) : null;
 }
 async function expectSaved(page: Page) {
@@ -74,7 +75,7 @@ test('SYNC-05: an unsaved local edit is preserved when a conflicting remote revi
  remote.state.session.doc.cursor.sequenceId = null;
  remote.state.session.doc.cursor.offset = 3;
  remote.state.sync.revision += 1; remote.state.sync.writerId = 'remote-test-tab';
- await other.evaluate(({ key, raw }) => localStorage.setItem(key, raw), { key: storageKey, raw: JSON.stringify(remote) });
+ await writeLearningCacheFromOtherTab(other, storageKey, JSON.stringify(remote));
  const conflict = page.getByRole('dialog', { name: /draft conflict/i }); await expect(conflict).toBeVisible();
  await conflict.getByRole('button', { name: /Keep this tab/i }).click();
  await expect.poll(() => mathValue(first)).toContain('111');
@@ -84,12 +85,12 @@ test('SYNC-06: malformed saved data is not silently overwritten on application b
  await page.goto('/'); await expect(page.getByRole('alert').filter({ hasText: /draft|recover|storage/i })).toBeVisible();
  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBe(bad);
 });
-test('SYNC-07: localStorage write failure keeps editing usable and exposes export recovery', async ({ page }) => {
+test('SYNC-07: IndexedDB write failure keeps editing usable and exposes export recovery', async ({ page }) => {
  await page.addInitScript(() => {
-  const original = Storage.prototype.setItem;
-  Storage.prototype.setItem = function (key, value) {
-   if (key.startsWith('math-scratchpad')) throw new DOMException('Quota full', 'QuotaExceededError');
-   return original.call(this, key, value);
+  const original = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (value, key) {
+   if (this.name === 'cache') throw new DOMException('Quota full', 'QuotaExceededError');
+   return original.call(this, value, key);
   };
  });
  await page.goto('/'); const first = mathField(page); await clickMathKeys(page, '987');

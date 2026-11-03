@@ -2,7 +2,7 @@
 
 Version 1 events are validated with Zod in `src/sync/events.ts`, frozen before publication, and sent to registered in-process sinks. `emitLearnEvent` fills event ID, timestamp, device ID, and unknown-safe context. Event corrections are new events; an emitted event is never changed.
 
-P0-1 is the event-model card only. Events are currently volatile in this branch. They are **not yet durable**; P0-3 will add the IndexedDB outbox. Do not show a synced or saved-to-cloud status for these events before the server acknowledges them.
+Events are written to the IndexedDB outbox before network delivery. They remain there across offline use and are removed only after every event ID in a batch is acknowledged by the server. A successful HTTP response without a complete acknowledgement does not clear the batch. The app pulls a snapshot on first sign-in, then sync pages from the saved cursor.
 
 ## Common fields
 
@@ -31,6 +31,7 @@ Every event has `id` (UUID v4), `schema` (1), `ts` (ISO 8601), `deviceId`, `bank
 | `concept_complete`, `lesson_complete` | Finish the checks for a concept or the final lesson section. |
 | `session_start`, `session_end`, `session_reset` | Begin, finish, or explicitly reset a practice session. |
 | `mistake_logged`, `review_due_done`, `reverse_attempt`, `timed_round`, `error_tagged`, `mastery_changed`, `mood_logged`, `gate_attempt`, `gate_passed`, `gate_failed`, `goal_status`, `backup_created`, `backup_restored`, `report_generated` | Versioned event types for their respective feature cards. They are validated now; events are emitted when those UI actions are implemented. |
+| `legacy_state_migration` | A bounded UTF-8/base64 chunk of a prior learning-storage value, with a stable migration ID, original key, chunk index/count, and SHA-256. Repeated upload uses the same event IDs. Old browser keys are retained until server read-back matches the bytes and a private Drive backup is read back byte-for-byte. |
 | `tab_hidden`, `tab_visible`, `window_blur`, `window_focus`, `idle_start`, `idle_end` | Browser interruption and resume events while at least one learning scope is active. Idle is 120 seconds without keyboard, pointer, touch, wheel, or input activity. |
 | `practice_started`, `lesson_skip`, `scope_paused`, `scope_resumed` | App extensions used for practice entry, explicitly skipping lesson checks, and timer pause/resume. |
 
@@ -38,7 +39,7 @@ Every event has `id` (UUID v4), `schema` (1), `ts` (ISO 8601), `deviceId`, `bank
 
 `ActivityTracker` accounts nested session, question, step, lesson, section, and focused work scopes from a single browser lifecycle monitor. Hidden, blurred, and idle time increments `distractedMs`; an explicit timer pause increments `pausedMs`; only foreground, focused, non-idle time increments `activeMs`. The sums may be lower than `durationMs` when time is intentionally paused. The 2-minute idle threshold is shared across all open scopes.
 
-The event sink is append-only and failures from a sink are isolated from the learner's action. P0-3 will persist queued events; P0-2 will define server acknowledgements and sync status.
+The in-process event sink is append-only and failures from a sink are isolated from the learner's action. IndexedDB persists queued learning events and a wipeable cache; it is not the cloud source of truth. The UI shows a server-synced state only after acknowledgement and a zero pending count.
 
 ## UI action audit
 

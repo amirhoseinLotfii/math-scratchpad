@@ -3,6 +3,7 @@ import { Provider } from '../../src/app/store-provider';
 import { App } from '../../src/App';
 import { bankDocument, type DriveBank } from '../../src/features/drive-bank/drive-bank';
 import { actions, initialState, makeStore } from '../../src/store';
+import { initializeLearningStorage } from '../../src/sync/browser-db';
 import sample from '../../examples/MATH_QUESTION_BANK.sample.json';
 import '../../src/fonts.css';
 import '../../src/styles/tokens.css';
@@ -56,6 +57,14 @@ store.dispatch(actions.load({ doc: bankDocument(bank, version) }));
 if (new URLSearchParams(location.search).has('no-wellbeing')) store.dispatch(actions.setSessionMeta({ anxiety: 3, energy: 3 }));
 store.dispatch(actions.keyboard(true));
 
-createRoot(document.getElementById('math-scratchpad-redux')!).render(
-  <Provider store={store}><App initialBank={{ bank, version }} /></Provider>,
-);
+const root = document.getElementById('math-scratchpad-redux')!;
+root.setAttribute('role', 'status');
+root.textContent = 'Preparing lesson preview…';
+void initializeLearningStorage().then(() => {
+  root.removeAttribute('role');
+  root.textContent = '';
+  createRoot(root).render(<Provider store={store}><App initialBank={{ bank, version }} /></Provider>);
+}).catch(() => {
+  root.setAttribute('role', 'alert');
+  root.textContent = 'Lesson preview storage could not be initialized.';
+});

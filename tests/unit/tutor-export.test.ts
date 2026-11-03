@@ -85,11 +85,11 @@ describe('tutor export schema', () => {
 describe('local storage save / restore / reset / migration', () => {
  beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false })); });
  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
- it('autosaves new metadata and restores it after reload, with a saved indicator', () => {
+ it('autosaves new metadata and restores it after reload, with a saved indicator', async () => {
   const a = createPersistentStore();
   a.store.dispatch(actions.startFractionRound()); a.store.dispatch(actions.setSessionMeta({ anxiety: 3 }));
   a.store.dispatch(actions.command({ type: 'digit', value: '4' })); a.store.dispatch(actions.command({ type: 'final' })); a.store.dispatch(actions.setHint({ used: true }));
-  vi.advanceTimersByTime(200);
+  await vi.advanceTimersByTimeAsync(200);
   expect(a.store.getState().savedAt).toMatch(ISO);
   a.dispose();
   const b = createPersistentStore(); const doc = b.store.getState().doc;
@@ -109,10 +109,10 @@ describe('local storage save / restore / reset / migration', () => {
   expect(s.getState().doc.exercises).toHaveLength(1); expect(s.getState().doc.session?.id).toBeTruthy(); expect(s.getState().past).toEqual([]);
   expect(s.getState().doc.session!.id === old || s.getState().doc.session!.id.length > 0).toBe(true);
  });
- it('clearStorage removes every app key and blocks later autosaves', () => {
-  const r = createPersistentStore(); r.store.dispatch(actions.command({ type: 'digit', value: '1' })); vi.advanceTimersByTime(200);
+ it('clearStorage removes every app key and blocks later autosaves', async () => {
+  const r = createPersistentStore(); r.store.dispatch(actions.command({ type: 'digit', value: '1' })); await vi.advanceTimersByTimeAsync(200);
   localStorage.setItem('math-scratchpad-redux-v2', '{}'); localStorage.setItem('other-app', 'keep');
-  r.store.clearStorage!(); r.store.dispatch(actions.command({ type: 'digit', value: '2' })); vi.advanceTimersByTime(500); r.dispose();
+  r.store.clearStorage!(); r.store.dispatch(actions.command({ type: 'digit', value: '2' })); await vi.advanceTimersByTimeAsync(500); r.dispose();
   expect(localStorage.getItem(SESSION_KEY)).toBeNull(); expect(localStorage.getItem('math-scratchpad-redux-v2')).toBeNull(); expect(localStorage.getItem('other-app')).toBe('keep');
   expect(clearAppStorage()).toBe(true);
  });
