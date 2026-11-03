@@ -64,6 +64,7 @@ test('server-first editor requires owner sign-in, writes snapshots to Worker, an
         body: JSON.stringify({ events: events.map((x, i) => ({ id: x.id, seq: i + 1, duplicate: false })), cursor: events.length }) });
     }
     if (pathname === '/drive/status' || pathname === '/notion/status') {
+      if (pathname === '/drive/status' && !stateReachable) return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' });
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ status: 'synced', pendingCount: 0, lastSyncedAt: new Date().toISOString(), lastError: null }) });
     }
