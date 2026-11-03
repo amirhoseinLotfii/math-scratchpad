@@ -454,7 +454,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       ...state,
       status: 'pending',
       pendingCount: Math.max(0, maxSeq - state.lastSeq),
-      lastError: undefined,
+      // Keep the last failure visible until a mirror run actually succeeds.
+      lastError: state.lastError,
     });
     await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
   }
@@ -639,7 +640,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       ...state,
       status: 'pending',
       pendingCount: Math.max(0, maxSeq - state.lastSeq),
-      lastError: undefined,
+      // A newly queued event does not mean the previous Drive failure was fixed.
+      lastError: state.lastError,
     });
     await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
   }
