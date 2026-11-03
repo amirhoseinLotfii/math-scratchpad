@@ -98,6 +98,21 @@ export function ServerConnectionGate({ children, tokenProvider }: {
   }, [state.kind, check]);
 
   useEffect(() => {
+    if (state.kind === 'online') return;
+    // A few lesson-navigation shortcuts are attached to window rather than
+    // the editor. Stop them in capture phase even when the editor is inert.
+    const blockShortcut = (event: KeyboardEvent) => {
+      if (event.altKey && (event.ctrlKey || event.metaKey)
+        && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener('keydown', blockShortcut, true);
+    return () => window.removeEventListener('keydown', blockShortcut, true);
+  }, [state.kind]);
+
+  useEffect(() => {
     if (state.kind !== 'online') {
       // Remove focus from any editor control before making it inert.
       const active = document.activeElement;
