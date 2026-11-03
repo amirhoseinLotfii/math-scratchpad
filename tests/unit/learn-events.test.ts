@@ -3,6 +3,7 @@ import {
   LEARN_EVENT_TYPES,
   emit,
   emitLearnEvent,
+  emitTestLearnEvent,
   getDeviceId,
   learnEventSchema,
   resetLearnEventRuntimeForTests,
@@ -47,6 +48,13 @@ describe('learning event schema and emitter', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenLastCalledWith(event);
     unsubscribe();
+  });
+
+  it('marks new events as explicitly live and provides an explicit test-event factory', () => {
+    const live = emitLearnEvent(context, { type: 'lesson_open' });
+    const testEvent = emitTestLearnEvent(context, { type: 'check_answer', verdict: 'submitted', verdictSource: 'none' });
+    expect(live.isTest).toBe(false);
+    expect(testEvent.isTest).toBe(true);
   });
 
   it('rejects malformed IDs, unknown fields, and unsupported correctness claims', () => {
