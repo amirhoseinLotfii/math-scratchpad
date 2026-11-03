@@ -173,3 +173,12 @@
 
 - با اختیار مالک، connection خصوصی `Math Scratchpad Sync` ساخته شد و شرایط نمایش‌داده‌شدهٔ Developer Terms هنگام ساخت پذیرفته شد. دسترسی پنج منبع Math Attempts، Sessions، Mistakes، Concepts و Daily Reports ثبت و در فهرست دسترسی دیده شد.
 - مقدار کلید مشاهده یا دریافت نشد و فهرست Secretهای Worker همچنان خالی بود؛ deploy و تست زنده انجام نشدند.
+
+
+## بررسی تازهٔ Cloudflare Workers Build و CI — 2026-11-03
+
+- اجرای CI شمارهٔ [41661473401](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/41661473401) روی commit کد `02e7d463` سبز شد؛ `npm run test:gate` و `npm run build` هر دو موفق بودند. این CI پیش از commit مستنداتی این پیگیری اجرا شد.
+- Build اول Cloudflare با شناسهٔ `e2ba99a7-daca-499c-9256-b5da2a699e77` هنگام آماده‌سازی محیط timeout شد؛ logها به مرحلهٔ clone یا اجرای کد نرسیدند. Retry رسمی موفق شد و نسخهٔ `195696c7-356b-4d8c-a883-2ecee6cd4eb7` را با وضعیت Ready بارگذاری کرد. این نسخه به Production ارتقا نیافت؛ نسخهٔ قبلی با پیشوند `ff550cc7` همچنان ۱۰۰٪ ترافیک را داشت.
+- `GET /health` نسخهٔ فعال قبلی HTTP 200 و `{"ok":true,"service":"math-scratchpad-sync"}` برگرداند؛ این پاسخ سلامت نسخهٔ تازه را اثبات نمی‌کند.
+- ارتقای Production، تغییر Cron، متغیر یا Secret، و نوشتن/خواندن زندهٔ Drive و Notion انجام نشد. اتصال Browser دسترسی به Chrome مبدأ را لازم دارد و در این نشست آن خطا را برمی‌گرداند؛ Cloudflare MCP نیز در `whoami` خطای داخلی دارد. علت timeout اولیه قطعی نشد.
+- PR #37 باز و Draft باقی ماند؛ P0-7 در حال انجام است و تا استقرار و read-backهای زنده کامل اعلام نمی‌شود.
