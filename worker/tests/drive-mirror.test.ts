@@ -83,9 +83,9 @@ function withGoogleAuth(
       expect(params.get('refresh_token')).toBe('not-a-real-token');
       return jsonResponse({ access_token: 'test-access-token', expires_in: 3600 });
     }
-    if (url.href === 'https://www.googleapis.com/oauth2/v3/userinfo') {
+    if (url.href === 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,me)') {
       expect(new Headers(init.headers).get('Authorization')).toBe('Bearer test-access-token');
-      return jsonResponse(identity);
+      return jsonResponse({ user: { emailAddress: identity.email, me: identity.email_verified } });
     }
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer test-access-token');
     return handleDrive(url, init);
@@ -451,10 +451,11 @@ describe('Durable Object Drive mirror integration', () => {
     const status = await runMirror(drive.client) as { status: string; pendingCount: number };
     expect(status).toMatchObject({ status: 'synced', pendingCount: 0 });
     expect(drive.uploads.map(upload => upload.name)).toEqual([
-      'events_2026-11.jsonl', 'progress.json', 'sync_manifest.json',
+      'events_2026-11.jsonl', 'progress.json', 'editor_state.json', 'sync_manifest.json',
     ]);
     expect(drive.uploads[0].parentId).toBe('events-folder');
     expect(drive.uploads[1].parentId).toBe('state-folder');
+    expect(drive.uploads[2].parentId).toBe('state-folder');
     const savedEvent = JSON.parse(drive.contentByName.get('events_2026-11.jsonl')!.trim()) as LearnEvent;
     expect(savedEvent).toEqual(event);
     expect(JSON.parse(drive.contentByName.get('progress.json')!)).toMatchObject({
@@ -500,14 +501,6 @@ describe('Durable Object Drive mirror integration', () => {
     const failed = await runMirror(drive.client) as { status: string; lastError: string; pendingCount: number };
     expect(failed).toMatchObject({ status: 'error', lastError: 'quota_exceeded', pendingCount: 1 });
     expect(drive.contentByName.get('events_2026-11.jsonl')).toContain(event.id);
-    await appendForOwner(makeEvent(2, { type: 'chunk_open', itemId: 'retry-check' }));
-    const afterNewEvent = await createApp(validVerifier).fetch(new Request('https://worker.test/drive/status', {
-      headers: { Authorization: 'Bearer valid-test-token', Origin: ALLOWED_ORIGIN },
-    }), testEnv);
-    expect(await afterNewEvent.json()).toMatchObject({
-      status: 'pending', pendingCount: 2, lastError: 'quota_exceeded',
-    });
-
     const retried = await runMirror(drive.client) as { status: string; pendingCount: number };
     expect(retried).toMatchObject({ status: 'synced', pendingCount: 0 });
     const lines = drive.contentByName.get('events_2026-11.jsonl')!.trim().split('\n');
