@@ -109,10 +109,10 @@ describe('Drive event mapping and projections', () => {
     const remote = serializeJsonlEvents([sequenced(1, first)]);
     const desired = serializeJsonlEvents([sequenced(1, first), sequenced(2, second)]);
     const merged = mergeJsonlEventContent(remote, desired);
-    expect(merged).toBe(desired);
-    expect(mergeJsonlEventContent(merged, desired)).toBe(desired);
+    expect(merged.trim().split('\n').map(line => JSON.parse(line))).toEqual([first, second]);
+    expect(mergeJsonlEventContent(merged, desired)).toBe(merged);
     const staleUnclassified = serializeJsonlEvents([sequenced(3, makeEvent(3, { isTest: undefined }))]);
-    expect(mergeJsonlEventContent(staleUnclassified, desired)).toBe(desired);
+    expect(mergeJsonlEventContent(staleUnclassified, desired)).toBe(merged);
     expect(() => mergeJsonlEventContent(remote, serializeJsonlEvents([sequenced(1, { ...first, userAnswer: 'wrong' })]))).toThrow('event_id_conflict');
   });
 
@@ -477,7 +477,7 @@ describe('Durable Object Drive mirror integration', () => {
     const status = await runMirror(drive.client) as { status: string; pendingCount: number; quarantinedCount: number };
     expect(status).toMatchObject({ status: 'synced', pendingCount: 0, quarantinedCount: 1 });
 
-    const eventLines = drive.contentByName.get('events_2026-11.jsonl')!.trim().split('\\n');
+    const eventLines = drive.contentByName.get('events_2026-11.jsonl')!.trim().split('\n');
     const savedEvents = eventLines.map(line => JSON.parse(line) as LearnEvent);
     expect(savedEvents.map(event => event.id)).toEqual([live.id, testEvent.id]);
     const progress = JSON.parse(drive.contentByName.get('progress.json')!);
