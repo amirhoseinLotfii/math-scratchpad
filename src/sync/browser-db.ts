@@ -1,5 +1,6 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
+import { ServerBackedStorage, readServerSnapshot } from './server-storage';
 
 export const LEARNING_DB_NAME = 'math-scratchpad-sync-v1';
 export const LEARNING_DB_VERSION = 1;
@@ -70,6 +71,68 @@ let pendingWrites = new Set<Promise<unknown>>();
 let bootstrapPromise: Promise<LearningStorageBootstrap> | undefined;
 let channel: BroadcastChannel | undefined;
 const storageListeners = new Set<(change: { key: string; newValue: string | null }) => void>();
+let serverStorage: ServerBackedStorage | undefined;
+const memoryOutbox = new Map<string, OutboxRecord>();
+const memoryServerEvents = new Map<number, ServerEventRecord>();
+const memoryMeta = new Map<string, unknown>();
+
+export function isServerStorageActive(): boolean { return !!serverStorage; }
+
+/** Login is the only path into the production editor. No browser database is opened. */
+export async function initializeAuthenticatedServerStorage(token: string): Promise<void> {
+  const snapshot = await readServerSnapshot(token);
+  serverStorage = new ServerBackedStorage(snapshot.records, token, (key, value) => {
+    for (const listener of storageListeners) listener({ key, newValue: value });
+  });
+  activeStorage = serverStorage;
+  storageWritable = true;
+}
+
+export function updateAuthenticatedServerToken(token: string) { serverStorage?.setToken(token); }
+
+export async function refreshAuthenticatedServerStorage(token: string): Promise<void> {
+  if (!serverStorage) return;
+  const snapshot = await readServerSnapshot(token);
+  serverStorage.applyRemote(snapshot.records);
+}
+
+export function memoryOutboxRecords(): OutboxRecord[] {
+  return [...memoryOutbox.values()];
+}
+export function memoryServerEventRecords(): ServerEventRecord[] {
+  return [...memoryServerEvents.values()].sort((a, b) => a.seq - b.seq);
+}
+export function serverLearningStateRecords(): CacheRecord[] {
+  return serverStorage?.exportRecords().map(row => ({ key: row.key, value: row.value, updatedAt: new Date().toISOString() })) ?? [];
+}
+
+/** Explicit owner-authorized transition: remove older local copies on this device. */
+export async function clearLegacyBrowserLearningData(): Promise<void> {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('math-scratchpad')) localStorage.removeItem(key);
+    }
+  } catch { /* May be disabled by browser privacy settings. */ }
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith('math-scratchpad')) sessionStorage.removeItem(key);
+    }
+  } catch { /* May be disabled by browser privacy settings. */ }
+  // Never open or create an IndexedDB database during production initialization.
+  try {
+    if ('indexedDB' in globalThis) {
+      await new Promise<void>(resolve => {
+        const request = indexedDB.deleteDatabase(LEARNING_DB_NAME);
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+        request.onblocked = () => resolve(); // Another tab is still using the old DB.
+      });
+    }
+  } catch { /* No local storage is required for the server-first editor. */ }
+}
+
 
 function database(): Promise<IDBPDatabase<LearningDb>> {
   if (!dbPromise) {
@@ -297,7 +360,7 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
 
 /** Uses IndexedDB after app bootstrap; direct unit renders retain their Storage mock behavior. */
 export function getLearningStorage(): Storage {
-  return activeStorage ?? localStorageIfAvailable() ?? new IndexedDbStorage();
+  return serverStorage ?? activeStorage ?? localStorageIfAvailable() ?? new IndexedDbStorage();
 }
 
 export function subscribeLearningStorage(listener: (change: { key: string; newValue: string | null }) => void): () => void {
@@ -312,6 +375,7 @@ export function refreshLearningStorageValues(records: CacheRecord[]): void {
 }
 
 export async function flushLearningStorage(): Promise<void> {
+  if (serverStorage) return serverStorage.flush();
   while (pendingWrites.size) await Promise.all([...pendingWrites]);
 }
 
@@ -321,6 +385,7 @@ export async function writeLearningItem(key: string, value: string): Promise<voi
 }
 
 export async function readLegacyMigration(): Promise<LegacyMigration | null> {
+  if (serverStorage) return null;
   const db = await database();
   const record = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
   return (record?.value as LegacyMigration | undefined) ?? null;
@@ -378,6 +443,12 @@ export function learningDbWriteError(): string {
 }
 
 export async function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
+  if (serverStorage) {
+    const previous = memoryOutbox.get(event.id);
+    if (previous && JSON.stringify(previous.event) !== JSON.stringify(event)) throw new Error('An event ID was reused.');
+    if (!previous) memoryOutbox.set(event.id, { id: event.id, event, queuedAt: event.ts, ...(migrationId ? { migrationId } : {}) });
+    return;
+  }
   const db = await database();
   const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
   const serialized = JSON.stringify(event);
@@ -386,15 +457,18 @@ export async function queueLearnEvent(event: LearnEvent, migrationId?: string): 
 }
 
 export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {
+  if (serverStorage) return [...memoryOutbox.values()].sort((a,b)=>a.queuedAt.localeCompare(b.queuedAt)).slice(0, Math.max(1, Math.min(50, maxItems)));
   const db = await database();
   return db.getAllFromIndex(LEARNING_OUTBOX_STORE, 'by-queued-at', undefined, Math.max(1, Math.min(50, maxItems)));
 }
 
 export async function readOutboxCount(): Promise<number> {
+  if (serverStorage) return memoryOutbox.size;
   return (await database()).count(LEARNING_OUTBOX_STORE);
 }
 
 export async function acknowledgeOutbox(ids: string[]): Promise<void> {
+  if (serverStorage) { for (const id of ids) memoryOutbox.delete(id); return; }
   if (!ids.length) return;
   const db = await database();
   const tx = db.transaction(LEARNING_OUTBOX_STORE, 'readwrite');
@@ -403,6 +477,7 @@ export async function acknowledgeOutbox(ids: string[]): Promise<void> {
 }
 
 export async function storeServerEvents(events: ServerEventRecord[]): Promise<void> {
+  if (serverStorage) { for (const event of events) memoryServerEvents.set(event.seq, event); return; }
   if (!events.length) return;
   const db = await database();
   const tx = db.transaction(LEARNING_SERVER_EVENTS_STORE, 'readwrite');
@@ -411,15 +486,18 @@ export async function storeServerEvents(events: ServerEventRecord[]): Promise<vo
 }
 
 export async function readServerEventsByMigration(migrationId: string): Promise<ServerEventRecord[]> {
+  if (serverStorage) return [...memoryServerEvents.values()].filter(item => item.event.migrationChunk?.id === migrationId);
   const db = await database();
   return db.getAllFromIndex(LEARNING_SERVER_EVENTS_STORE, 'by-migration-id', migrationId);
 }
 
 export async function getSyncMeta<T>(key: string): Promise<T | undefined> {
+  if (serverStorage) return memoryMeta.get(key) as T | undefined;
   const value = await (await database()).get(LEARNING_META_STORE, key) as MetaRecord | undefined;
   return value?.value as T | undefined;
 }
 
 export async function setSyncMeta(key: string, value: unknown): Promise<void> {
+  if (serverStorage) { memoryMeta.set(key, value); return; }
   await (await database()).put(LEARNING_META_STORE, { key, value });
 }
