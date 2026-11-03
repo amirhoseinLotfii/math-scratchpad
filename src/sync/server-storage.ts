@@ -5,7 +5,7 @@
  * an authenticated owner-scoped Worker endpoint using optimistic revisions.
  * No IndexedDB, localStorage or sessionStorage is used here.
  */
-import { SYNC_API_ORIGIN } from './runtime';
+import { SYNC_API_ORIGIN } from './sync-config';
 
 export type ServerStateRecord = { key: string; value: string | null; revision: number };
 type ServerSnapshot = { records: ServerStateRecord[]; revision: number };
@@ -18,10 +18,11 @@ function isSnapshot(value: unknown): value is ServerSnapshot {
       && (typeof x.value === 'string' || x.value === null) && Number.isSafeInteger(x.revision));
 }
 
-export async function readServerSnapshot(token: string): Promise<ServerSnapshot> {
+export async function readServerSnapshot(token: string, signal?: AbortSignal): Promise<ServerSnapshot> {
   const response = await fetch(`${SYNC_API_ORIGIN}/state`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new Error(response.status === 401
     ? 'برای خواندن اطلاعات از سرور باید دوباره با Google وارد شوی.'
@@ -112,6 +113,9 @@ export class ServerBackedStorage implements Storage {
     }).catch(error => {
       this.failedWrites.set(key, value);
       this.error = error instanceof Error ? error : new Error('Server storage write failed.');
+      if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new CustomEvent('math-scratchpad:storage-error', {
+        detail: this.error.message,
+      }));
     }).finally(() => { this.queued = Math.max(0, this.queued - 1); });
     this.tail = operation;
   }
