@@ -77,6 +77,7 @@ const memoryServerEvents = new Map<number, ServerEventRecord>();
 const memoryMeta = new Map<string, unknown>();
 
 export function isServerStorageActive(): boolean { return !!serverStorage; }
+export function getAuthenticatedServerStorage(): ServerBackedStorage | undefined { return serverStorage; }
 
 /** Login is the only path into the production editor. No browser database is opened. */
 export async function initializeAuthenticatedServerStorage(token: string): Promise<void> {
