@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from '../../src/sync/runtime';
 import { SyncPanel } from '../../src/sync/sync-panel';
@@ -155,7 +155,7 @@ describe('sync and migration panel', () => {
     installGooglePicker();
     render(<SyncPanel onClose={onClose} />);
     expect(await screen.findByRole('heading', { name: 'همگام‌سازی و حفظ داده‌ها' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('آمادهٔ همگام‌سازی');
+    expect(screen.getByText('آمادهٔ همگام‌سازی').getAttribute('role')).toBe('status');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
     await userEvent.click(screen.getByRole('button', { name: 'بستن تنظیم همگام‌سازی' }));
     expect(onClose).toHaveBeenCalledTimes(1);

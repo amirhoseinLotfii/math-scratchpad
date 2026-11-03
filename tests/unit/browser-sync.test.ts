@@ -19,6 +19,7 @@ import {
   withLegacyMigrationLock,
   writeLearningItem,
   writeLegacyMigration,
+  type LegacyMigration,
 } from '../../src/sync/browser-db';
 import {
   backupAndFinishLegacyMigration,
@@ -267,7 +268,7 @@ describe('IndexedDB learning cache and legacy migration', () => {
     const queued = await queueLegacyMigration();
     const verified = { ...queued!, status: 'server-verified' as const, serverVerifiedAt: '2026-11-03T06:00:00.000Z' };
     await writeLegacyMigration(verified);
-    const createBackup = vi.fn(async (_migration: typeof verified, contents: string) => {
+    const createBackup = vi.fn(async (_migration: LegacyMigration, contents: string) => {
       expect(JSON.parse(contents)).toMatchObject({ migrationId: verified.id });
       await new Promise(resolve => setTimeout(resolve, 30));
       return { id: 'single-backup', name: 'backup.json' };
