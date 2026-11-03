@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage, updateAuthenticatedServerToken } from './browser-db';
 import { mountGoogleIdButton } from './google-id-token';
-import { readServerSnapshot } from './server-storage';
+import { verifyOwnerServerConnection } from './server-storage';
 import { getDefaultSyncRuntime } from './runtime';
 
 type GateState = { kind: 'checking' | 'online' | 'blocked'; message: string };
@@ -38,7 +38,7 @@ export function ServerConnectionGate({ children, tokenProvider }: {
     try {
       // Never unlock while an earlier unsaved change remains unacknowledged.
       await getAuthenticatedServerStorage()?.flush();
-      await readServerSnapshot(token, controller.signal);
+      await verifyOwnerServerConnection(token, controller.signal);
       if (id === epoch.current) {
         setState({ kind: 'online', message: '' });
       }
