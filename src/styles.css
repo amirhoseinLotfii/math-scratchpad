@@ -1047,9 +1047,12 @@ body:has(> #math-scratchpad-redux) {
   width: 100%;
 }
 #math-scratchpad-redux .scratchpad {
+  display: flex;
+  flex-direction: column;
   flex: 1 0 auto;
   min-height: 0;
 }
 #math-scratchpad-redux .app-content {
+  flex: 1 0 auto;
   min-height: 0;
 }
