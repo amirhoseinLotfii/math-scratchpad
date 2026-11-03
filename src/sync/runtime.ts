@@ -143,8 +143,16 @@ export class BrowserSyncRuntime {
       { path: '/drive/sync', status: this.current.driveMirror },
       { path: '/notion/sync', status: this.current.notionMirror },
     ].filter(item => item.status?.status !== 'not_configured');
-    await Promise.allSettled(configured.map(item => this.request(item.path, { method: 'POST' })));
+    const results = await Promise.allSettled(configured.map(item => this.request(item.path, { method: 'POST' })));
     await this.refreshMirrorStatuses();
+    const failed = results.flatMap((result, index) => {
+      if (result.status !== 'rejected') return [];
+      const mirror = configured[index];
+      const name = mirror.path.startsWith('/drive/') ? 'Drive' : 'Notion';
+      const currentStatus = name === 'Drive' ? this.current.driveMirror : this.current.notionMirror;
+      return [`${name}: ${currentStatus?.lastError || (result.reason instanceof Error ? result.reason.message : 'ارسال ناموفق بود')}`];
+    });
+    if (failed.length) throw new Error(failed.join(' · '));
   }
 
   async syncNow(): Promise<void> {
