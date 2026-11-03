@@ -36,6 +36,7 @@ function makeEvent(index: number, overrides: Partial<LearnEvent> = {}): LearnEve
   return {
     id: uuid(index),
     schema: 1,
+    isTest: false,
     ts: new Date(Date.UTC(2026, 10, 2, 0, 0, index % 60)).toISOString(),
     deviceId: uuid(99_999),
     bankVersion: 'v21',
@@ -147,17 +148,22 @@ describe('Drive event mapping and projections', () => {
     });
   });
 
-  it('stores tagged live-check events but excludes them from learner progress', () => {
+  it('stores tagged test events but excludes test and unclassified events from learner progress', () => {
     const realEvent = makeEvent(1, { type: 'chunk_open', itemId: 'concept-1' });
     const testEvent = learnEventSchema.parse(makeEvent(2, {
       isTest: true, type: 'section_complete', section: '99.99', lesson: '99.99', itemId: 'live-check',
     }));
-    const projection = buildProgressProjection([sequenced(1, realEvent), sequenced(2, testEvent)]);
+    const unclassifiedEvent = learnEventSchema.parse(makeEvent(3, {
+      isTest: undefined, type: 'chunk_open', itemId: 'unclassified-preview',
+    }));
+    const projection = buildProgressProjection([
+      sequenced(1, realEvent), sequenced(2, testEvent), sequenced(3, unclassifiedEvent),
+    ]);
     expect(projection).toMatchObject({
       currentPosition: { chapter: 1, lesson: '1.1', section: '1.1', chunkId: 'concept-1' },
       completedSections: [],
-      lastEventId: testEvent.id,
-      lastSeq: 2,
+      lastEventId: realEvent.id,
+      lastSeq: 1,
     });
     expect(serializeJsonlEvents([sequenced(1, realEvent), sequenced(2, testEvent)])).toContain('"isTest":true');
   });
@@ -461,6 +467,29 @@ describe('Durable Object Drive mirror integration', () => {
     expect(drive.uploads.every(upload => !upload.name.includes('DriveSyncFiles'))).toBe(true);
   });
 
+  it('quarantines unclassified events from Drive JSONL and progress while recording the skipped count', async () => {
+    const live = makeEvent(41, { type: 'chunk_open', itemId: 'live-position' });
+    const testEvent = makeEvent(42, { isTest: true, type: 'chunk_open', itemId: 'test-position' });
+    const unclassified = makeEvent(43, { isTest: undefined, type: 'chunk_open', itemId: 'preview-unclassified' });
+    await appendForOwner(live);
+    await appendForOwner(testEvent);
+    await appendForOwner(unclassified);
+
+    const drive = makeMemoryDrive();
+    const status = await runMirror(drive.client) as { status: string; pendingCount: number; quarantinedCount: number };
+    expect(status).toMatchObject({ status: 'synced', pendingCount: 0, quarantinedCount: 1 });
+
+    const eventLines = drive.contentByName.get('events_2026-11.jsonl')!.trim().split('\\n');
+    const savedEvents = eventLines.map(line => JSON.parse(line) as LearnEvent);
+    expect(savedEvents.map(event => event.id)).toEqual([live.id, testEvent.id]);
+    const progress = JSON.parse(drive.contentByName.get('progress.json')!);
+    expect(progress).toMatchObject({ lastEventId: live.id, lastSeq: 1 });
+    expect(progress.currentPosition.chunkId).toBe('live-position');
+    expect(JSON.parse(drive.contentByName.get('sync_manifest.json')!)).toMatchObject({
+      lastSeq: 3, lastEventId: unclassified.id, quarantinedEventCount: 1,
+    });
+  });
+
   it('recovers from a partial Drive failure without duplicating the event on retry', async () => {
     const event = makeEvent(1, { type: 'exercise_attempt', itemId: 'PC-1.1-L01', userAnswer: 'x=2', verdict: 'submitted', verdictSource: 'none' });
     await appendForOwner(event);
@@ -523,17 +552,19 @@ describe('Durable Object Drive mirror integration', () => {
 
   it('creates a private, checksummed weekly snapshot in Math_Project/06_Backups and is idempotent for its date', async () => {
     const event = makeEvent(31, { type: 'check_answer', questionText: 'Domain?', userAnswer: '{1,2}', verdict: 'submitted', verdictSource: 'none' });
+    const unclassified = makeEvent(32, { isTest: undefined, type: 'check_answer', questionText: 'Preview?', userAnswer: 'unknown', verdict: 'submitted', verdictSource: 'none' });
     await appendForOwner(event);
+    await appendForOwner(unclassified);
     const drive = makeMemoryDrive();
     const date = new Date('2026-11-08T02:00:00.000Z');
     const first = await runWeeklyBackup(drive.client, date) as { status: string; lastCreatedAt: string | null; lastError: string | null };
     expect(first).toMatchObject({ status: 'created', lastCreatedAt: date.toISOString(), lastError: null });
     expect(drive.uploads.at(-1)).toMatchObject({ name: 'sync_backup_2026-11-08.json', parentId: 'backups-folder' });
     const backup = JSON.parse(drive.contentByName.get('sync_backup_2026-11-08.json')!) as {
-      format: string; snapshot: { lastSeq: number; eventCount: number; progress: { lastEventId: string | null } };
+      format: string; snapshot: { lastSeq: number; eventCount: number; quarantinedEventCount: number; progress: { lastEventId: string | null } };
       events: Array<{ seq: number; event: LearnEvent }>; sha256: string;
     };
-    expect(backup).toMatchObject({ format: 'math-scratchpad-weekly-backup/v1', snapshot: { lastSeq: 1, eventCount: 1, progress: { lastEventId: event.id } }, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(backup).toMatchObject({ format: 'math-scratchpad-weekly-backup/v1', snapshot: { lastSeq: 2, eventCount: 1, quarantinedEventCount: 1, progress: { lastEventId: event.id } }, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(backup.events).toEqual([{ seq: 1, event }]);
     const { sha256, ...unsigned } = backup;
     const canonical = (value: unknown): string => {
