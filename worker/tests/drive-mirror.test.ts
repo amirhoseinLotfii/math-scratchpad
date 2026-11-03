@@ -111,6 +111,8 @@ describe('Drive event mapping and projections', () => {
     const merged = mergeJsonlEventContent(remote, desired);
     expect(merged).toBe(desired);
     expect(mergeJsonlEventContent(merged, desired)).toBe(desired);
+    const staleUnclassified = serializeJsonlEvents([sequenced(3, makeEvent(3, { isTest: undefined }))]);
+    expect(mergeJsonlEventContent(staleUnclassified, desired)).toBe(desired);
     expect(() => mergeJsonlEventContent(remote, serializeJsonlEvents([sequenced(1, { ...first, userAnswer: 'wrong' })]))).toThrow('event_id_conflict');
   });
 
