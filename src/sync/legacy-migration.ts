@@ -4,6 +4,7 @@ import {
   readLegacyMigration,
   readServerEventsByMigration,
   queueLearnEvent,
+  withLegacyMigrationLock,
   writeLegacyMigration,
   type LegacyMigration,
 } from './browser-db';
@@ -78,6 +79,7 @@ function migrationEvents(migration: LegacyMigration): LearnEvent[] {
 
 /** Materialize the durable migration manifest before queueing events, so retries keep stable IDs. */
 export async function queueLegacyMigration(): Promise<LegacyMigration | null> {
+  return withLegacyMigrationLock(async () => {
   const existing = await readLegacyMigration();
   if (!existing || existing.status !== 'pending' || !existing.entries.length) return existing;
   const entries = await Promise.all(existing.entries.map(async entry => ({
@@ -94,11 +96,13 @@ export async function queueLegacyMigration(): Promise<LegacyMigration | null> {
   }
   const events = migrationEvents(migration);
   for (const event of events) await queueLearnEvent(event, migration.id);
-  return migration;
+    return migration;
+  });
 }
 
 /** Confirm every submitted byte by reading the acknowledged events back from the server cache. */
 export async function verifyLegacyMigrationOnServer(): Promise<LegacyMigration> {
+  return withLegacyMigrationLock(async () => {
   const migration = await readLegacyMigration();
   if (!migration || !migration.entries.length) throw new Error('There is no legacy learning data to migrate.');
   if (migration.status === 'complete' || migration.status === 'drive-backed-up' || migration.status === 'server-verified') return migration;
@@ -123,7 +127,8 @@ export async function verifyLegacyMigrationOnServer(): Promise<LegacyMigration> 
   }
   const verified: LegacyMigration = { ...migration, status: 'server-verified', serverVerifiedAt: new Date().toISOString() };
   await writeLegacyMigration(verified);
-  return verified;
+    return verified;
+  });
 }
 
 export function legacyMigrationBackupContents(migration: LegacyMigration): string {
@@ -139,10 +144,35 @@ export function legacyMigrationBackupContents(migration: LegacyMigration): strin
   }, null, 2);
 }
 
-export async function markLegacyMigrationDriveVerified(migration: LegacyMigration, file: { id: string; name: string }): Promise<LegacyMigration> {
-  if (migration.status !== 'server-verified') throw new Error('The server copy must be verified before the Drive backup.');
+export type LegacyMigrationDriveFile = { id: string; name: string };
+export type LegacyMigrationBackupResult = {
+  migration: LegacyMigration;
+  file: LegacyMigrationDriveFile;
+  cleared: string[];
+  reused: boolean;
+};
+
+async function markLegacyMigrationDriveVerifiedUnlocked(
+  migration: LegacyMigration,
+  file: LegacyMigrationDriveFile,
+): Promise<LegacyMigration> {
+  const current = await readLegacyMigration();
+  if (!current || current.id !== migration.id) {
+    throw new Error('The legacy migration changed in another tab; reload before creating a backup.');
+  }
+  if (current.status === 'drive-backed-up' || current.status === 'complete') {
+    if (current.backupFileId === file.id && current.backupFileName === file.name) return current;
+    throw new Error('Another tab already recorded a different Drive backup; legacy browser data was not cleared.');
+  }
+  if (current.status !== 'server-verified') {
+    throw new Error('The server copy must still be verified before recording the Drive backup.');
+  }
+  if (JSON.stringify(current.entries) !== JSON.stringify(migration.entries)
+      || JSON.stringify(current.eventIds) !== JSON.stringify(migration.eventIds)) {
+    throw new Error('The migration snapshot changed before the Drive backup was recorded; legacy browser data was not cleared.');
+  }
   const updated: LegacyMigration = {
-    ...migration,
+    ...current,
     status: 'drive-backed-up',
     backupFileId: file.id,
     backupFileName: file.name,
@@ -152,14 +182,64 @@ export async function markLegacyMigrationDriveVerified(migration: LegacyMigratio
   return updated;
 }
 
-export async function finishLegacyMigration(): Promise<{ migration: LegacyMigration; cleared: string[] }> {
+async function finishLegacyMigrationUnlocked(): Promise<{ migration: LegacyMigration; cleared: string[] }> {
   const migration = await readLegacyMigration();
-  if (!migration || migration.status !== 'drive-backed-up' || !migration.backupVerifiedAt) {
+  if (!migration) throw new Error('There is no legacy migration to finish.');
+  if (migration.status === 'complete') return { migration, cleared: [] };
+  if (migration.status !== 'drive-backed-up' || !migration.backupVerifiedAt || !migration.backupFileId || !migration.backupFileName) {
     throw new Error('Both the server upload and the Drive backup must be verified before clearing old browser keys.');
   }
   const result = await clearVerifiedLegacyKeys(migration);
-  if (result.changed.length) throw new Error(`Legacy data changed during migration (${result.changed.join(', ')}); none of those keys were removed.`);
+  if (result.changed.length) {
+    throw new Error(`Legacy data changed during migration (${result.changed.join(', ')}); none of those keys were removed.`);
+  }
   const complete: LegacyMigration = { ...migration, status: 'complete' };
   await writeLegacyMigration(complete);
   return { migration: complete, cleared: result.cleared };
+}
+
+export async function markLegacyMigrationDriveVerified(
+  migration: LegacyMigration,
+  file: LegacyMigrationDriveFile,
+): Promise<LegacyMigration> {
+  return withLegacyMigrationLock(() => markLegacyMigrationDriveVerifiedUnlocked(migration, file));
+}
+
+export async function finishLegacyMigration(): Promise<{ migration: LegacyMigration; cleared: string[] }> {
+  return withLegacyMigrationLock(() => finishLegacyMigrationUnlocked());
+}
+
+/** Re-read the current migration and hold the cross-tab lock through Drive read-back and cleanup. */
+export async function backupAndFinishLegacyMigration(
+  migrationId: string,
+  createBackup: (migration: LegacyMigration, contents: string) => Promise<LegacyMigrationDriveFile>,
+): Promise<LegacyMigrationBackupResult> {
+  return withLegacyMigrationLock(async () => {
+    const current = await readLegacyMigration();
+    if (!current || current.id !== migrationId) {
+      throw new Error('The migration changed in another tab; reload its current status before creating a backup.');
+    }
+    if (current.status === 'complete' || current.status === 'drive-backed-up') {
+      if (!current.backupFileId || !current.backupFileName || !current.backupVerifiedAt) {
+        throw new Error('The saved Drive backup metadata is incomplete; no second backup was created.');
+      }
+      const result = current.status === 'complete'
+        ? { migration: current, cleared: [] as string[] }
+        : await finishLegacyMigrationUnlocked();
+      return {
+        migration: result.migration,
+        file: { id: current.backupFileId, name: current.backupFileName },
+        cleared: result.cleared,
+        reused: true,
+      };
+    }
+    if (current.status !== 'server-verified') {
+      throw new Error('Verify the server copy before creating the Drive backup.');
+    }
+    const contents = legacyMigrationBackupContents(current);
+    const file = await createBackup(current, contents);
+    await markLegacyMigrationDriveVerifiedUnlocked(current, file);
+    const result = await finishLegacyMigrationUnlocked();
+    return { migration: result.migration, file, cleared: result.cleared, reused: false };
+  });
 }
