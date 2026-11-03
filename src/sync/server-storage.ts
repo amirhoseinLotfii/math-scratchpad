@@ -32,6 +32,16 @@ export async function readServerSnapshot(token: string, signal?: AbortSignal): P
   return value;
 }
 
+/** Tiny owner-authenticated heartbeat. Never downloads a large learning snapshot every five seconds. */
+export async function verifyOwnerServerConnection(token: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${SYNC_API_ORIGIN}/drive/status`, {
+    headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new Error(response.status === 401
+    ? 'ورود Google منقضی شده است؛ برای ادامه دوباره وارد شو.'
+    : `دسترسی احراز هویت‌شده به سرور تأیید نشد (HTTP ${response.status}).`);
+}
+
 export class ServerBackedStorage implements Storage {
   private readonly values = new Map<string, string>();
   private readonly revisions = new Map<string, number>();
