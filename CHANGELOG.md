@@ -161,3 +161,9 @@
 - `npm run test:typecheck -- --pretty false` و `XDG_CONFIG_HOME=/tmp/math-scratchpad-xdg npm run build` موفق شدند؛ build شامل standalone bundle و Wrangler dry-run بود.
 - CI run `41513230008`، شامل `npm run test:gate` و build، سبز شد. هشدارهای bundle و `use client` غیرمسدودکننده بودند.
 - هیچ deploy یا نوشتن زنده‌ای در Drive/Notion انجام نشد.
+
+
+## تنظیم OAuth گوگل — 2026-11-03
+
+- scope `userinfo.email` اضافه و ذخیره شد؛ پس از بارگذاری مجدد هر دو scope موردنیاز، همراه با `drive.file`، دیده شدند. هیچ credentialی خوانده یا ساخته نشد.
+- CI اجرای `41546783299` با gate و build سبز شد؛ OAuth Production، Secretها و آزمون زنده همچنان باقی‌اند.
