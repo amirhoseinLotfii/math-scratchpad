@@ -94,6 +94,12 @@ test('server-first editor requires owner sign-in, writes snapshots to Worker, an
   await expect(warning).toBeVisible();
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('inert', '');
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'blocked');
+  const shortcutPrevented = await page.evaluate(() => {
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true, altKey: true, bubbles: true, cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(shortcutPrevented).toBe(true);
   await page.context().setOffline(false);
   await expect(warning).toBeHidden({ timeout: 15000 });
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
