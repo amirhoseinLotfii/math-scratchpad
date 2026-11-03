@@ -3,9 +3,15 @@ import { ARCHIVE_KEY, BANK_CACHE_PREFIX, snapshotVersion, validateBank } from '.
 import { LESSON_PROGRESS_PREFIX, readLessonProgress } from '../features/lessons/lesson-progress-store';
 import { validateSession } from '../persistence';
 import { learnEventSchema } from './events';
+import { getDefaultSyncRuntime } from './runtime';
 import {
   flushLearningStorage,
   getLearningDb,
+  getLearningStorage,
+  isServerStorageActive,
+  memoryOutboxRecords,
+  serverLearningStateRecords,
+  queueLearnEvent,
   isLearningStorageKey,
   refreshLearningStorageValues,
   LEARNING_CACHE_STORE,
@@ -216,6 +222,17 @@ async function validatedBackup(value: unknown): Promise<FullLearningBackup> {
 
 async function readStores(): Promise<LearningStores> {
   await flushLearningStorage();
+  if (isServerStorageActive()) {
+    const runtime = getDefaultSyncRuntime();
+    if (!runtime) throw new Error('نسخهٔ امن سرور در دسترس نیست.');
+    const serverEvents = await runtime.readAllServerEvents();
+    return {
+      cache: serverLearningStateRecords().sort((a, b) => a.key.localeCompare(b.key)),
+      outbox: memoryOutboxRecords().sort((a, b) => a.id.localeCompare(b.id)),
+      serverEvents: serverEvents.sort((a, b) => a.seq - b.seq),
+      meta: [],
+    };
+  }
   const db = await getLearningDb();
   const tx = db.transaction([LEARNING_CACHE_STORE, LEARNING_OUTBOX_STORE, LEARNING_SERVER_EVENTS_STORE, LEARNING_META_STORE], 'readonly');
   const [cache, outbox, serverEvents, meta] = await Promise.all([
@@ -327,6 +344,22 @@ export async function previewFullLearningBackup(backupInput: FullLearningBackup)
 
 export async function importFullLearningBackup(backupInput: FullLearningBackup): Promise<LearningBackupImportResult> {
   const backup = await validatedBackup(backupInput);
+  if (isServerStorageActive()) {
+    const plan = planMerge(await readStores(), backup.stores);
+    if (!plan.preview.canImport) throw new Error(`پشتیبان با نسخهٔ سرور ناسازگار است: ${plan.preview.blockingConflicts.join('؛ ')}`);
+    // Server values always win on conflict. Add missing keys without overwriting current work.
+    const storage = getLearningStorage();
+    for (const item of plan.cache) storage.setItem(item.key, item.value);
+    await flushLearningStorage();
+    // Event IDs are idempotent in the owner's Durable Object SQLite log.
+    for (const item of [...plan.outbox, ...plan.serverEvents]) await queueLearnEvent(item.event);
+    await getDefaultSyncRuntime()?.syncNow();
+    return {
+      ...plan.preview,
+      addedCacheKeys: plan.cache.map(item => item.key),
+      removedQueuedIds: [],
+    };
+  }
   // Settle writes already queued by the synchronous Storage facade before taking the merge snapshot.
   await flushLearningStorage();
   const db = await getLearningDb();
