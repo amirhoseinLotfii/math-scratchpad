@@ -29,6 +29,13 @@ function mirrorStatusLabel(status: MirrorSyncStatus | null): string {
   return 'ارسال ناموفق';
 }
 
+function quarantinedEventsLabel(status: MirrorSyncStatus | null): string | null {
+  if (typeof status?.quarantinedCount !== 'number') return null;
+  return status.quarantinedCount > 0
+    ? `${status.quarantinedCount} رویداد بدون برچسب قرنطینه شد و ارسال نشد.`
+    : 'رویداد بدون برچسبی برای قرنطینه وجود ندارد.';
+}
+
 function mirrorErrorLabel(kind: 'drive' | 'notion', error: string | null): string {
   if (!error) return 'بدون خطا';
   const errors: Record<string, string> = kind === 'drive' ? {
@@ -180,11 +187,13 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
         <p className="text-sm font-semibold">Google Drive</p>
         <p className="mt-1 text-sm opacity-85" role="status">{mirrorStatusLabel(status.driveMirror)}</p>
         <p className="mt-1 text-xs opacity-75">{status.driveMirror?.pendingCount ?? '—'} رویداد در صف</p>
+        {quarantinedEventsLabel(status.driveMirror) && <p className="mt-1 text-xs opacity-75">{quarantinedEventsLabel(status.driveMirror)}</p>}
       </div>
       <div role="group" aria-label="وضعیت Notion" className="rounded-lg border border-white/15 p-3">
         <p className="text-sm font-semibold">Notion</p>
         <p className="mt-1 text-sm opacity-85" role="status">{mirrorStatusLabel(status.notionMirror)}</p>
         <p className="mt-1 text-xs opacity-75">{status.notionMirror?.pendingCount ?? '—'} رویداد در صف</p>
+        {quarantinedEventsLabel(status.notionMirror) && <p className="mt-1 text-xs opacity-75">{quarantinedEventsLabel(status.notionMirror)}</p>}
       </div>
     </div>
     <details className="mt-3 rounded-lg border border-white/15 px-3 py-2">
