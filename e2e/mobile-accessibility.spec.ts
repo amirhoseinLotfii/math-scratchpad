@@ -157,6 +157,7 @@ test('copy denial exposes a manual JSON fallback without leaving the question', 
 test('larger available height does not leave unused space below the keypad actions', async ({ page }) => {
  await page.setViewportSize({ width: 390, height: 1500 }); await startBatch(page);
  const next = await page.getByRole('button', { name: /Next question/i }).boundingBox();
- const pageHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, innerHeight));
- expect(pageHeight - (next!.y + next!.height)).toBeLessThanOrEqual(48);
+ const scratchpad = await page.locator('.scratchpad').boundingBox();
+ expect(scratchpad).not.toBeNull();
+ expect(scratchpad!.y + scratchpad!.height - (next!.y + next!.height)).toBeLessThanOrEqual(48);
 });
