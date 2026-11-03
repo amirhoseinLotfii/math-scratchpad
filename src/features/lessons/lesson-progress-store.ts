@@ -3,6 +3,7 @@ import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
 import type { Lesson, LessonCheckAnswer, LessonProgress, LessonStatus } from './types';
 import { buildLessonSections } from './lesson-sections';
+import { getLearningStorage } from '../../sync/browser-db';
 
 export const LESSON_PROGRESS_PREFIX = 'math-scratchpad-lesson-progress-v1';
 export const LESSON_PROGRESS_SCHEMA = 1;
@@ -178,7 +179,7 @@ function validActivePanel(value: unknown, bank: DriveBank): value is ActiveLesso
 }
 
 function availableStorage(storage?: Storage): Storage | null {
-  try { return storage ?? globalThis.localStorage; } catch { return null; }
+  try { return storage ?? getLearningStorage(); } catch { return null; }
 }
 
 export function readLessonProgress(bank: DriveBank, bankVersion: string, storage?: Storage, now = nowTimestamp()): LessonProgressState {

@@ -131,28 +131,32 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
       if (r.token) afterToken(r.token); else { setBusy(false); setMessage(r.error ?? 'Connection failed.'); }
     });
   }
-  function startBank() {
+  async function startBank() {
     if (!available || !available.bank.questions.length) return;
+    setBusy(true);
     try {
       const doc = bankDocument(available.bank, available.version);
-      archiveSession(store.getState());
+      await archiveSession(store.getState());
       dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(false))); onBankReady?.(available.bank, available.version);
       setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous session was saved in this browser.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`); }
+    finally { setBusy(false); }
   }
-  function restore(saved: ArchivedSession) {
-    try { const parsed = validateSession(JSON.parse(saved.data)); archiveSession(store.getState()); dispatch(actions.load(parsed)); setArchives(readArchive()); setMessage('The saved session was restored.'); }
+  async function restore(saved: ArchivedSession) {
+    setBusy(true);
+    try { const parsed = validateSession(JSON.parse(saved.data)); await archiveSession(store.getState()); dispatch(actions.load(parsed)); setArchives(readArchive()); setMessage('The saved session was restored.'); }
     catch (e) { setMessage(e instanceof Error ? e.message : 'The saved session could not be restored.'); }
+    finally { setBusy(false); }
   }
   function requestConfirmation(kind: 'batch' | 'restore', trigger: HTMLElement, saved?: ArchivedSession) {
     confirmationTrigger.current = trigger;
     setConfirmation(kind === 'batch' ? { kind } : saved ? { kind, saved } : null);
   }
-  function confirmRequestedAction() {
+  async function confirmRequestedAction() {
     const action = confirmation;
     setConfirmation(null);
-    if (action?.kind === 'batch') startBank();
-    else if (action?.kind === 'restore') restore(action.saved);
+    if (action?.kind === 'batch') await startBank();
+    else if (action?.kind === 'restore') await restore(action.saved);
   }
   const current = store.getState().doc.session;
   const same = available && current?.bankId === available.bank.bank_id && current.bankVersion === available.version;

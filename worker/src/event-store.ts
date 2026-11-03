@@ -2,6 +2,38 @@ import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
 import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
+import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode } from './google-drive';
+import {
+  applyConceptEvent,
+  applyDailyEvent,
+  applySessionEvent,
+  isAttemptLikeEvent,
+  tehranDayKey,
+  type ConceptProjection,
+  type DailyProjection,
+  type SessionProjection,
+} from './notion-projection';
+import {
+  createNotionClient,
+  notionDataSourcesFromEnv,
+  notionErrorCode,
+  NotionRequestQueue,
+  syncNotionEvent,
+  type MistakeReviewState,
+  type NotionClientPort,
+  type NotionEventContext,
+  type NotionErrorCode,
+  type NotionMirrorStatus,
+} from './notion-mirror';
+import {
+  buildProgressProjection,
+  groupEventsByUtcMonth,
+  formatTehran,
+  mergeJsonlEventContent,
+  serializeJsonlEvents,
+  sha256Hex,
+  type SequencedLearnEvent,
+} from './drive-projection';
 
 const MAX_BODY_BYTES = 250_000;
 const MAX_BATCH_SIZE = 50;
@@ -10,6 +42,56 @@ const RATE_WINDOW_MS = 60_000;
 
 type StoredEvent = { seq: number; event: LearnEvent };
 type AppendResult = { id: string; seq: number; duplicate: boolean };
+type DriveMirrorState = {
+  status: 'pending' | 'syncing' | 'synced' | 'error';
+  lastSeq: number;
+  pendingCount: number;
+  quarantinedCount?: number;
+  lastSyncedAt?: string;
+  lastError?: DriveMirrorErrorCode;
+  folders?: { rootId: string; syncId: string; eventsId: string; stateId: string; backupsId?: string };
+  weeklyBackup?: {
+    status: 'scheduled' | 'created' | 'error';
+    date?: string;
+    lastCreatedAt?: string;
+    lastSeq?: number;
+    lastError?: DriveMirrorErrorCode;
+  };
+  files: Record<string, DriveFileRef>;
+  fileHashes: Record<string, string>;
+};
+export type DriveMirrorStatus = {
+  status: 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
+  lastSyncedAt: string | null;
+  pendingCount: number;
+  quarantinedCount: number | null;
+  lastError: DriveMirrorErrorCode | null;
+  weeklyBackup: {
+    status: 'not_configured' | 'scheduled' | 'created' | 'error';
+    lastCreatedAt: string | null;
+    lastError: DriveMirrorErrorCode | null;
+  };
+};
+
+const DRIVE_STATE_KEY = 'drive-mirror-state-v1';
+const DRIVE_DEBOUNCE_MS = 5_000;
+const DRIVE_RETRY_MS = 60_000;
+const WEEKLY_BACKUP_RETRY_MS = 60_000;
+const DRIVE_MIRROR_PAGE_SIZE = 500;
+const NOTION_PROJECTION_PAGE_SIZE = 1_000;
+const NOTION_EVENTS_PER_RUN = 5;
+const NOTION_DEBOUNCE_MS = 5_000;
+const NOTION_RETRY_MS = 60_000;
+const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
+
+type StoredNotionMirrorState = {
+  status: 'pending' | 'syncing' | 'synced' | 'error';
+  lastSeq: number;
+  pendingCount: number;
+  quarantinedCount?: number;
+  lastSyncedAt?: string;
+  lastError?: NotionErrorCode;
+};
 
 function json(data: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers);
@@ -26,6 +108,29 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+export function mergeWeeklyBackupContent(remote: string, desired: string): string {
+  let current: unknown, next: unknown;
+  try { current = JSON.parse(remote); next = JSON.parse(desired); }
+  catch { throw new Error('event_id_conflict'); }
+  if (!current || typeof current !== 'object' || !next || typeof next !== 'object'
+    || (current as { format?: unknown }).format !== 'math-scratchpad-weekly-backup/v1'
+    || (next as { format?: unknown }).format !== 'math-scratchpad-weekly-backup/v1'
+    || !Array.isArray((current as { events?: unknown }).events) || !Array.isArray((next as { events?: unknown }).events)) {
+    throw new Error('event_id_conflict');
+  }
+  const latestEvents = (next as { events: Array<{ seq: number; event: LearnEvent }> }).events
+    .filter(item => typeof item.event?.isTest === 'boolean');
+  const previousMirrorableEvents = (current as { events: Array<{ seq: number; event: LearnEvent }> }).events
+    .filter(item => typeof item.event?.isTest === 'boolean');
+  const latest = new Map(latestEvents.map(item => [item.event.id, canonicalJson(item)]));
+  for (const item of previousMirrorableEvents) {
+    if (!latest.has(item.event.id) || latest.get(item.event.id) !== canonicalJson(item)) {
+      throw new Error('event_id_conflict');
+    }
+  }
+  return desired;
+}
+
 function integerQuery(url: URL, name: string, fallback: number): number | null {
   const raw = url.searchParams.get(name);
   if (raw === null) return fallback;
@@ -37,10 +142,23 @@ function integerQuery(url: URL, name: string, fallback: number): number | null {
 /** One owner-scoped, append-only SQLite event log. */
 export class LearningEventStore extends DurableObject<WorkerEnv> {
   private readonly rateLimit: number;
+  private driveClient: GoogleDriveClient | undefined;
+  private driveSyncPromise: Promise<DriveMirrorStatus> | undefined;
+  private weeklyBackupPromise: Promise<DriveMirrorStatus['weeklyBackup']> | undefined;
+  private driveOperationQueue: Promise<void> = Promise.resolve();
+  private notionClient: NotionClientPort | undefined;
+  private notionSyncPromise: Promise<NotionMirrorStatus> | undefined;
+  private readonly notionRequests = new NotionRequestQueue();
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env);
     this.rateLimit = this.parseRateLimit(env.EVENT_RATE_LIMIT);
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projections (projection_type TEXT NOT NULL, projection_key TEXT NOT NULL, projection_json TEXT NOT NULL, PRIMARY KEY (projection_type, projection_key))');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projection_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), last_seq INTEGER NOT NULL)');
+    ctx.storage.sql.exec('INSERT OR IGNORE INTO notion_projection_meta (singleton, last_seq) VALUES (1, 0)');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_page_refs (kind TEXT NOT NULL, external_key TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (kind, external_key))');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_mistake_reviews (item_key TEXT PRIMARY KEY, event_id TEXT NOT NULL, review_successes INTEGER NOT NULL, last_review_event_id TEXT)');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_session_mistakes (session_id TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (session_id, page_id))');
     ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS learning_events (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,14 +178,41 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const supported = (request.method === 'POST' && url.pathname === '/events')
-      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot'));
+      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status'))
+      || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup'));
     if (!supported) return json({ error: 'not_found' }, 404);
+
+    if (url.pathname === '/internal/weekly-backup') {
+      const scheduledTime = Number(url.searchParams.get('scheduledTime'));
+      const now = Number.isSafeInteger(scheduledTime) && scheduledTime > 0 ? new Date(scheduledTime) : new Date();
+      return json({ weeklyBackup: await this.syncWeeklyBackup(now) });
+    }
 
     const rate = this.consumeRateLimit();
     if (rate) return rate;
 
     if (url.pathname === '/events') return this.append(request);
+    if (url.pathname === '/drive/status') return json(await this.getDriveStatus());
+    if (url.pathname === '/notion/status') return json(await this.getNotionStatus());
+    if (url.pathname === '/drive/sync') {
+      const status = await this.syncDrive();
+      const ok = status.status === 'synced' || (status.status === 'pending' && status.pendingCount === 0);
+      return json({ drive: status }, ok ? 200 : status.status === 'not_configured' ? 503 : 502);
+    }
+    if (url.pathname === '/notion/sync') {
+      const status = await this.syncNotion();
+      return json({ notion: status }, status.status === 'synced' ? 200 : status.status === 'not_configured' ? 503 : status.status === 'pending' ? 202 : 502);
+    }
     return this.readPage(url, url.pathname === '/snapshot');
+  }
+
+  /** Durable Object alarm retries configured private mirrors after transient failures. */
+  async alarm(): Promise<void> {
+    if (this.driveConfigured()) {
+      await this.syncDrive();
+      if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
+    }
+    if (notionDataSourcesFromEnv(this.env)) await this.syncNotion();
   }
 
   private parseRateLimit(raw: string | undefined): number {
@@ -147,6 +292,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           );
           const seq = Number(this.ctx.storage.sql.exec<{ seq: number }>('SELECT last_insert_rowid() AS seq').one().seq);
           rows.set(id, { id, seq, duplicate: false });
+          const projectedThrough = this.projectionSequence();
+          if (projectedThrough === seq - 1) {
+            this.applyNotionProjection(event);
+            this.setProjectionSequence(seq);
+          }
         }
         return rows;
       });
@@ -163,7 +313,584 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return result;
     });
     const cursor = Math.max(0, ...ordered.map(item => item.seq));
+    await this.queueDriveMirror(cursor);
+    await this.queueNotionMirror(cursor);
     return json({ events: ordered, cursor }, 200);
+  }
+
+  private driveConfigured(): boolean {
+    return Boolean(this.env.GOOGLE_CLIENT_ID && this.env.GOOGLE_DRIVE_CLIENT_SECRET && this.env.GOOGLE_DRIVE_REFRESH_TOKEN);
+  }
+
+  private async readDriveState(): Promise<DriveMirrorState> {
+    const stored = await this.ctx.storage.get<DriveMirrorState>(DRIVE_STATE_KEY);
+    return stored ?? { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined, files: {}, fileHashes: {} };
+  }
+
+  private async saveDriveState(state: DriveMirrorState): Promise<void> {
+    await this.ctx.storage.put(DRIVE_STATE_KEY, state);
+  }
+
+  private async maxSequence(): Promise<number> {
+    return Number(this.ctx.storage.sql.exec<{ seq: number }>(
+      'SELECT COALESCE(MAX(seq), 0) AS seq FROM learning_events',
+    ).one().seq);
+  }
+
+  private projectionSequence(): number {
+    return Number(this.ctx.storage.sql.exec<{ last_seq: number }>(
+      'SELECT last_seq FROM notion_projection_meta WHERE singleton = 1',
+    ).one().last_seq);
+  }
+
+  private setProjectionSequence(sequence: number): void {
+    this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = ? WHERE singleton = 1', sequence);
+  }
+
+  private readNotionProjection<T>(kind: string, key: string): T | undefined {
+    const row = this.ctx.storage.sql.exec<{ projection_json: string }>(
+      'SELECT projection_json FROM notion_projections WHERE projection_type = ? AND projection_key = ?',
+      kind, key,
+    ).toArray()[0];
+    return row ? JSON.parse(row.projection_json) as T : undefined;
+  }
+
+  private saveNotionProjection(kind: string, key: string, value: unknown): void {
+    this.ctx.storage.sql.exec(
+      'INSERT INTO notion_projections (projection_type, projection_key, projection_json) VALUES (?, ?, ?) ON CONFLICT(projection_type, projection_key) DO UPDATE SET projection_json = excluded.projection_json',
+      kind, key, JSON.stringify(value),
+    );
+  }
+
+  private applyNotionProjection(event: LearnEvent): void {
+    if (typeof event.isTest !== 'boolean') return;
+    const priorSession = this.readNotionProjection<SessionProjection>('session', event.session);
+    this.saveNotionProjection('session', event.session, applySessionEvent(priorSession, event));
+    if (event.isTest) return;
+
+    const dayKey = tehranDayKey(event.ts);
+    const priorDaily = this.readNotionProjection<DailyProjection>('daily', dayKey);
+    const daily = applyDailyEvent(priorDaily, event);
+    if (daily) this.saveNotionProjection('daily', dayKey, daily);
+
+    const conceptKey = [event.chapter, event.lesson, event.concept].join(':');
+    const priorConcept = this.readNotionProjection<ConceptProjection>('concept', conceptKey);
+    const concept = applyConceptEvent(priorConcept, event);
+    if (concept) this.saveNotionProjection('concept', conceptKey, concept);
+  }
+
+  private async repairNotionProjections(through: number): Promise<boolean> {
+    const projectedThrough = this.projectionSequence();
+    if (projectedThrough >= through) return true;
+    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+      projectedThrough, through, NOTION_PROJECTION_PAGE_SIZE,
+    ).toArray();
+    if (rows.length === 0) return this.projectionSequence() >= through;
+    this.ctx.storage.transactionSync(() => {
+      for (const row of rows) {
+        const sequence = Number(row.seq);
+        if (sequence !== this.projectionSequence() + 1) break;
+        this.applyNotionProjection(JSON.parse(row.event_json) as LearnEvent);
+        this.setProjectionSequence(sequence);
+      }
+    });
+    return this.projectionSequence() >= through;
+  }
+
+  private async getDriveStatus(): Promise<DriveMirrorStatus> {
+    const maxSeq = await this.maxSequence();
+    if (!this.driveConfigured()) {
+      return {
+        status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null,
+        weeklyBackup: { status: 'not_configured', lastCreatedAt: null, lastError: null },
+      };
+    }
+    const state = await this.readDriveState();
+    return {
+      status: state.status,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      quarantinedCount: state.quarantinedCount ?? null,
+      lastError: state.lastError ?? null,
+      weeklyBackup: {
+        status: state.weeklyBackup?.status ?? 'scheduled',
+        lastCreatedAt: state.weeklyBackup?.lastCreatedAt ?? null,
+        lastError: state.weeklyBackup?.lastError ?? null,
+      },
+    };
+  }
+
+  private async readNotionState(): Promise<StoredNotionMirrorState> {
+    return await this.ctx.storage.get<StoredNotionMirrorState>(NOTION_MIRROR_STATE_KEY)
+      ?? { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined };
+  }
+
+  private async saveNotionState(state: StoredNotionMirrorState): Promise<void> {
+    await this.ctx.storage.put(NOTION_MIRROR_STATE_KEY, state);
+  }
+
+  private async getNotionStatus(): Promise<NotionMirrorStatus> {
+    const maxSeq = await this.maxSequence();
+    if (!notionDataSourcesFromEnv(this.env)) {
+      return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null };
+    }
+    const state = await this.readNotionState();
+    return {
+      status: state.status,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      quarantinedCount: state.quarantinedCount ?? null,
+      lastError: state.lastError ?? null,
+    };
+  }
+
+  private async queueNotionMirror(cursor: number): Promise<void> {
+    if (!notionDataSourcesFromEnv(this.env)) return;
+    const state = await this.readNotionState();
+    if (cursor <= state.lastSeq) return;
+    const maxSeq = await this.maxSequence();
+    await this.saveNotionState({
+      ...state,
+      status: 'pending',
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      lastError: undefined,
+    });
+    await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
+  }
+
+  private async scheduleAlarmIn(delayMs: number): Promise<void> {
+    const requested = Date.now() + delayMs;
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing === null || requested < existing) await this.ctx.storage.setAlarm(requested);
+  }
+
+  private async syncNotion(): Promise<NotionMirrorStatus> {
+    if (!notionDataSourcesFromEnv(this.env)) return this.getNotionStatus();
+    if (this.notionSyncPromise) return this.notionSyncPromise;
+    this.notionSyncPromise = this.performNotionSync().finally(() => { this.notionSyncPromise = undefined; });
+    return this.notionSyncPromise;
+  }
+
+  private async performNotionSync(): Promise<NotionMirrorStatus> {
+    const dataSources = notionDataSourcesFromEnv(this.env);
+    if (!dataSources || !this.env.NOTION_API_KEY) return this.getNotionStatus();
+    const state = await this.readNotionState();
+    const through = await this.maxSequence();
+    if (through === state.lastSeq && state.status === 'synced') return this.getNotionStatus();
+    await this.saveNotionState({
+      ...state,
+      status: 'syncing',
+      pendingCount: Math.max(0, through - state.lastSeq),
+      lastError: undefined,
+    });
+
+    try {
+      const projectionsReady = await this.repairNotionProjections(through);
+      if (!projectionsReady) {
+        const rebuilding: StoredNotionMirrorState = {
+          ...state,
+          status: 'pending',
+          pendingCount: Math.max(0, through - state.lastSeq),
+          lastError: undefined,
+        };
+        await this.saveNotionState(rebuilding);
+        await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
+        return this.toNotionStatus(rebuilding, through);
+      }
+
+      this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY);
+      const events = this.readEventsAfter(state.lastSeq, through, NOTION_EVENTS_PER_RUN);
+      let lastSeq = state.lastSeq;
+      let lastSyncedAt = state.lastSyncedAt;
+      let quarantinedCount = state.quarantinedCount ?? 0;
+      for (const stored of events) {
+        const event = stored.event;
+        if (typeof event.isTest !== 'boolean') {
+          quarantinedCount += 1;
+          lastSeq = stored.seq;
+          await this.saveNotionState({
+            status: 'pending',
+            lastSeq,
+            pendingCount: Math.max(0, through - lastSeq),
+            quarantinedCount,
+            ...(lastSyncedAt ? { lastSyncedAt } : {}),
+          });
+          continue;
+        }
+        const session = this.readNotionProjection<SessionProjection>('session', event.session)
+          ?? applySessionEvent(undefined, event);
+        const daily = event.isTest ? undefined : this.readNotionProjection<DailyProjection>('daily', tehranDayKey(event.ts));
+        const conceptKey = [event.chapter, event.lesson, event.concept].join(':');
+        const hasConceptUpdate = isAttemptLikeEvent(event) || event.type === 'mastery_changed' || event.type === 'gate_passed';
+        const concept = event.isTest || !hasConceptUpdate ? undefined : this.readNotionProjection<ConceptProjection>('concept', conceptKey);
+        const context = this.createNotionContext(dataSources, new Date().toISOString());
+        await syncNotionEvent(context, { event, session, daily, concept });
+        lastSeq = stored.seq;
+        lastSyncedAt = new Date().toISOString();
+        await this.saveNotionState({
+          status: 'pending',
+          lastSeq,
+          pendingCount: Math.max(0, through - lastSeq),
+          quarantinedCount,
+          lastSyncedAt,
+        });
+      }
+
+      const currentMax = await this.maxSequence();
+      const pendingCount = Math.max(0, currentMax - lastSeq);
+      const completed: StoredNotionMirrorState = {
+        status: pendingCount === 0 ? 'synced' : 'pending',
+        lastSeq,
+        pendingCount,
+        quarantinedCount,
+        lastSyncedAt: lastSyncedAt ?? new Date().toISOString(),
+      };
+      await this.saveNotionState(completed);
+      if (pendingCount > 0) await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
+      return this.toNotionStatus(completed, currentMax);
+    } catch (error) {
+      const currentMax = await this.maxSequence();
+      const currentState = await this.readNotionState();
+      const failed: StoredNotionMirrorState = {
+        ...currentState,
+        status: 'error',
+        pendingCount: Math.max(0, currentMax - currentState.lastSeq),
+        lastError: notionErrorCode(error),
+      };
+      await this.saveNotionState(failed);
+      await this.scheduleAlarmIn(NOTION_RETRY_MS);
+      return this.toNotionStatus(failed, currentMax);
+    }
+  }
+
+  private toNotionStatus(state: StoredNotionMirrorState, maxSeq: number): NotionMirrorStatus {
+    return {
+      status: state.status,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      quarantinedCount: state.quarantinedCount ?? null,
+      lastError: state.lastError ?? null,
+    };
+  }
+
+  private createNotionContext(dataSources: NonNullable<ReturnType<typeof notionDataSourcesFromEnv>>, now: string): NotionEventContext {
+    return {
+      client: this.notionClient!,
+      dataSources,
+      now,
+      call: operation => this.notionRequests.run(operation),
+      getPageRef: async (kind, key) => {
+        const row = this.ctx.storage.sql.exec<{ page_id: string }>(
+          'SELECT page_id FROM notion_page_refs WHERE kind = ? AND external_key = ?', kind, key,
+        ).toArray()[0];
+        return row?.page_id;
+      },
+      setPageRef: async (kind, key, pageId) => {
+        this.ctx.storage.sql.exec(
+          'INSERT INTO notion_page_refs (kind, external_key, page_id) VALUES (?, ?, ?) ON CONFLICT(kind, external_key) DO UPDATE SET page_id = excluded.page_id',
+          kind, key, pageId,
+        );
+      },
+      getMistakeState: async key => {
+        const row = this.ctx.storage.sql.exec<{
+          event_id: string;
+          review_successes: number;
+          last_review_event_id: string | null;
+        }>(
+          'SELECT event_id, review_successes, last_review_event_id FROM notion_mistake_reviews WHERE item_key = ?', key,
+        ).toArray()[0];
+        return row ? {
+          eventId: row.event_id,
+          reviewSuccesses: Number(row.review_successes),
+          ...(row.last_review_event_id ? { lastReviewEventId: row.last_review_event_id } : {}),
+        } : undefined;
+      },
+      setMistakeState: async (key, value: MistakeReviewState) => {
+        this.ctx.storage.sql.exec(
+          'INSERT INTO notion_mistake_reviews (item_key, event_id, review_successes, last_review_event_id) VALUES (?, ?, ?, ?) ON CONFLICT(item_key) DO UPDATE SET event_id = excluded.event_id, review_successes = excluded.review_successes, last_review_event_id = excluded.last_review_event_id',
+          key, value.eventId, value.reviewSuccesses, value.lastReviewEventId ?? null,
+        );
+      },
+      getSessionMistakePageIds: async sessionId => this.ctx.storage.sql.exec<{ page_id: string }>(
+        'SELECT page_id FROM notion_session_mistakes WHERE session_id = ? ORDER BY page_id', sessionId,
+      ).toArray().map(row => row.page_id),
+      addSessionMistakePageId: async (sessionId, pageId) => {
+        this.ctx.storage.sql.exec(
+          'INSERT OR IGNORE INTO notion_session_mistakes (session_id, page_id) VALUES (?, ?)',
+          sessionId, pageId,
+        );
+      },
+      getSessionPageIds: async sessionIds => sessionIds.flatMap(sessionId => {
+        const row = this.ctx.storage.sql.exec<{ page_id: string }>(
+          'SELECT page_id FROM notion_page_refs WHERE kind = ? AND external_key = ?', 'session', sessionId,
+        ).toArray()[0];
+        return row ? [row.page_id] : [];
+      }),
+    };
+  }
+
+  private async queueDriveMirror(cursor: number): Promise<void> {
+    if (!this.driveConfigured()) return;
+    const state = await this.readDriveState();
+    if (cursor <= state.lastSeq) return;
+    const maxSeq = await this.maxSequence();
+    await this.saveDriveState({
+      ...state,
+      status: 'pending',
+      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      lastError: undefined,
+    });
+    await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
+  }
+
+  private syncWeeklyBackup(now = new Date()): Promise<DriveMirrorStatus['weeklyBackup']> {
+    if (!this.driveConfigured()) {
+      return Promise.resolve({ status: 'not_configured', lastCreatedAt: null, lastError: null });
+    }
+    if (this.weeklyBackupPromise) return this.weeklyBackupPromise;
+    this.weeklyBackupPromise = this.withDriveOperation(() => this.performWeeklyBackup(now)).finally(() => { this.weeklyBackupPromise = undefined; });
+    return this.weeklyBackupPromise;
+  }
+
+  /** Drive sync and scheduled backups share one persisted file manifest, so serialize their writes. */
+  private withDriveOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.driveOperationQueue.then(operation, operation);
+    this.driveOperationQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  private async performWeeklyBackup(now = new Date()): Promise<DriveMirrorStatus['weeklyBackup']> {
+    if (!this.driveConfigured()) return { status: 'not_configured', lastCreatedAt: null, lastError: null };
+    const state = await this.readDriveState();
+    const date = formatTehran(now).slice(0, 10);
+    if (state.weeklyBackup?.status === 'created' && state.weeklyBackup.date === date) {
+      return { status: 'created', lastCreatedAt: state.weeklyBackup.lastCreatedAt ?? null, lastError: null };
+    }
+
+    try {
+      this.driveClient ??= new GoogleDriveClient(this.env);
+      const client = this.driveClient;
+      let folders = state.folders;
+      if (!folders) {
+        const rootId = await client.ensureRootFolder('Math_Project');
+        const syncId = await client.ensureFolder('03_Sync', rootId);
+        const eventsId = await client.ensureFolder('events', syncId);
+        const stateId = await client.ensureFolder('state', syncId);
+        folders = { rootId, syncId, eventsId, stateId };
+      }
+      const backupsId = folders.backupsId ?? await client.ensureFolder('06_Backups', folders.rootId);
+      folders = { ...folders, backupsId };
+      state.folders = folders;
+      await this.saveDriveState({ ...state, status: state.status, folders });
+
+      const through = await this.maxSequence();
+      const events = this.readEventsThrough(through);
+      const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
+      const quarantinedCount = events.length - mirrorableEvents.length;
+      const unsigned = {
+        format: 'math-scratchpad-weekly-backup/v1',
+        schemaVersion: 1,
+        backupDateTehran: date,
+        createdAtUtc: now.toISOString(),
+        createdAtTehran: formatTehran(now),
+        snapshot: {
+          lastSeq: through,
+          eventCount: mirrorableEvents.length,
+          quarantinedEventCount: quarantinedCount,
+          progress: buildProgressProjection(mirrorableEvents, now),
+        },
+        events: mirrorableEvents,
+      };
+      const contents = `${JSON.stringify({ ...unsigned, sha256: await sha256Hex(canonicalJson(unsigned)) }, null, 2)}\n`;
+      const name = `sync_backup_${date}.json`;
+      const path = `backups/${name}`;
+      const saved = await client.upsertTextFile({
+        name,
+        parentId: backupsId,
+        mimeType: 'application/json',
+        desiredContent: contents,
+        knownFile: state.files[path],
+        mergeContent: mergeWeeklyBackupContent,
+      });
+      state.files[path] = { id: saved.id, etag: saved.etag };
+      state.weeklyBackup = { status: 'created', date, lastCreatedAt: now.toISOString(), lastSeq: through };
+      await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
+      return { status: 'created', lastCreatedAt: now.toISOString(), lastError: null };
+    } catch (error) {
+      const code = error instanceof DriveMirrorError ? error.code
+        : error instanceof Error && error.message === 'event_id_conflict' ? 'etag_conflict' : 'network_error';
+      state.weeklyBackup = { ...state.weeklyBackup, status: 'error', date, lastError: code };
+      await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
+      await this.scheduleAlarmIn(WEEKLY_BACKUP_RETRY_MS);
+      return { status: 'error', lastCreatedAt: state.weeklyBackup.lastCreatedAt ?? null, lastError: code };
+    }
+  }
+
+  private async syncDrive(): Promise<DriveMirrorStatus> {
+    if (!this.driveConfigured()) return this.getDriveStatus();
+    if (this.driveSyncPromise) return this.driveSyncPromise;
+    this.driveSyncPromise = this.withDriveOperation(() => this.performDriveSync()).finally(() => { this.driveSyncPromise = undefined; });
+    return this.driveSyncPromise;
+  }
+
+  private async performDriveSync(): Promise<DriveMirrorStatus> {
+    const state = await this.readDriveState();
+    const through = await this.maxSequence();
+    if (through === state.lastSeq && state.status === 'synced') return this.getDriveStatus();
+    await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq), lastError: undefined });
+
+    try {
+      this.driveClient ??= new GoogleDriveClient(this.env);
+      const client = this.driveClient;
+      const events = this.readEventsThrough(through);
+      const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
+      const quarantinedCount = events.length - mirrorableEvents.length;
+      const newEvents = mirrorableEvents.filter(item => item.seq > state.lastSeq);
+      let folders = state.folders;
+      if (!folders) {
+        const rootId = await client.ensureRootFolder('Math_Project');
+        const syncId = await client.ensureFolder('03_Sync', rootId);
+        const eventsId = await client.ensureFolder('events', syncId);
+        const stateId = await client.ensureFolder('state', syncId);
+        folders = { rootId, syncId, eventsId, stateId };
+        state.folders = folders;
+        await this.saveDriveState({ ...state, status: 'syncing', folders, pendingCount: Math.max(0, through - state.lastSeq) });
+      }
+
+      const months = groupEventsByUtcMonth(newEvents);
+      for (const [month, monthEvents] of months) {
+        const name = `events_${month}.jsonl`;
+        const path = `events/${name}`;
+        const content = serializeJsonlEvents(mirrorableEvents.filter(item => {
+          const date = new Date(item.event.ts);
+          return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}` === month;
+        }));
+        const saved = await client.upsertTextFile({
+          name,
+          parentId: folders.eventsId,
+          mimeType: 'application/x-ndjson',
+          desiredContent: content,
+          knownFile: state.files[path],
+          mergeContent: mergeJsonlEventContent,
+        });
+        state.files[path] = { id: saved.id, etag: saved.etag };
+        state.fileHashes[path] = await sha256Hex(saved.content);
+        await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq) });
+      }
+
+      const progress = buildProgressProjection(events);
+      const desiredProgress = `${JSON.stringify(progress, null, 2)}\n`;
+      const progressFile = await client.upsertTextFile({
+        name: 'progress.json',
+        parentId: folders.stateId,
+        mimeType: 'application/json',
+        desiredContent: desiredProgress,
+        knownFile: state.files['state/progress.json'],
+        mergeContent: mergeProgressContent,
+      });
+      state.files['state/progress.json'] = { id: progressFile.id, etag: progressFile.etag };
+      state.fileHashes['state/progress.json'] = await sha256Hex(progressFile.content);
+
+      const latest = events.at(-1);
+      const now = new Date();
+      const tehranTime = formatTehran(now);
+      const manifest = {
+        schemaVersion: 1,
+        lastSeq: latest?.seq ?? 0,
+        lastEventId: latest?.event.id ?? null,
+        lastSuccessAtUtc: now.toISOString(),
+        lastSuccessAtTehran: tehranTime,
+        quarantinedEventCount: quarantinedCount,
+        files: Object.entries(state.fileHashes).sort(([a], [b]) => a.localeCompare(b)).map(([path, sha256]) => ({ path, sha256 })),
+      };
+      const manifestFile = await client.upsertTextFile({
+        name: 'sync_manifest.json',
+        parentId: folders.syncId,
+        mimeType: 'application/json',
+        desiredContent: `${JSON.stringify(manifest, null, 2)}\n`,
+        knownFile: state.files['sync_manifest.json'],
+        mergeContent: mergeManifestContent,
+      });
+      state.files['sync_manifest.json'] = { id: manifestFile.id, etag: manifestFile.etag };
+
+      const currentMax = await this.maxSequence();
+      const pendingCount = Math.max(0, currentMax - through);
+      const finalState: DriveMirrorState = {
+        ...state,
+        status: pendingCount === 0 ? 'synced' : 'pending',
+        lastSeq: through,
+        pendingCount,
+        quarantinedCount,
+        lastSyncedAt: now.toISOString(),
+        lastError: undefined,
+      };
+      await this.saveDriveState(finalState);
+      if (pendingCount > 0) await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
+      return {
+        status: finalState.status,
+        lastSyncedAt: finalState.lastSyncedAt ?? null,
+        pendingCount: finalState.pendingCount,
+        quarantinedCount: finalState.quarantinedCount ?? 0,
+        lastError: null,
+        weeklyBackup: {
+          status: finalState.weeklyBackup?.status ?? 'scheduled',
+          lastCreatedAt: finalState.weeklyBackup?.lastCreatedAt ?? null,
+          lastError: finalState.weeklyBackup?.lastError ?? null,
+        },
+      };
+    } catch (error) {
+      const code = error instanceof DriveMirrorError ? error.code : error instanceof Error && error.message === 'event_id_conflict'
+        ? 'etag_conflict' : 'network_error';
+      const currentMax = await this.maxSequence();
+      const failed: DriveMirrorState = {
+        ...state,
+        status: 'error',
+        pendingCount: Math.max(0, currentMax - state.lastSeq),
+        lastError: code,
+      };
+      await this.saveDriveState(failed);
+      await this.scheduleAlarmIn(DRIVE_RETRY_MS);
+      return {
+        status: failed.status,
+        lastSyncedAt: failed.lastSyncedAt ?? null,
+        pendingCount: failed.pendingCount,
+        quarantinedCount: failed.quarantinedCount ?? null,
+        lastError: failed.lastError ?? null,
+        weeklyBackup: {
+          status: failed.weeklyBackup?.status ?? 'scheduled',
+          lastCreatedAt: failed.weeklyBackup?.lastCreatedAt ?? null,
+          lastError: failed.weeklyBackup?.lastError ?? null,
+        },
+      };
+    }
+  }
+
+  private readEventsAfter(cursor: number, through: number, limit: number): SequencedLearnEvent[] {
+    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+      cursor, through, limit,
+    ).toArray();
+    return rows.map(row => ({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent }));
+  }
+
+  private readEventsThrough(through: number): SequencedLearnEvent[] {
+    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+      'SELECT seq, event_json FROM learning_events WHERE seq <= ? ORDER BY seq ASC LIMIT ?',
+      through, DRIVE_MIRROR_PAGE_SIZE,
+    ).toArray();
+    const events: SequencedLearnEvent[] = rows.map(row => ({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent }));
+    let cursor = events.at(-1)?.seq ?? 0;
+    while (cursor < through) {
+      const page = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+        'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+        cursor, through, DRIVE_MIRROR_PAGE_SIZE,
+      ).toArray();
+      if (page.length === 0) break;
+      for (const row of page) events.push({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent });
+      cursor = events.at(-1)!.seq;
+    }
+    return events;
   }
 
   private readPage(url: URL, isSnapshot: boolean): Response {
@@ -198,3 +925,27 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 }
 
 class EventConflictError extends Error {}
+
+function mergeProgressContent(remote: string, desired: string): string {
+  const previous = parseJsonContent(remote);
+  const current = parseJsonContent(desired);
+  if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
+  return desired;
+}
+
+function mergeManifestContent(remote: string, desired: string): string {
+  const previous = parseJsonContent(remote);
+  const current = parseJsonContent(desired);
+  if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
+  return desired;
+}
+
+function parseJsonContent(content: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(content);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    return value as Record<string, unknown>;
+  } catch {
+    throw new DriveMirrorError('invalid_response');
+  }
+}

@@ -33,11 +33,11 @@ describe('Drive question bank', () => {
     expect(sanitized.questions[0]).not.toHaveProperty('expected');
     expect(sanitized.parseWarnings?.join(' ')).toContain('expected');
   });
-  it('keeps earlier snapshots of the same session, and surfaces storage failures before switching', () => {
-    const state = initialState(); archiveSession(state); state.doc.exercises[0].source = '1+2'; archiveSession(state);
+  it('keeps earlier snapshots of the same session, and surfaces storage failures before switching', async () => {
+    const state = initialState(); await archiveSession(state); state.doc.exercises[0].source = '1+2'; await archiveSession(state);
     expect(readArchive()).toHaveLength(2);
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw Error('quota'); });
-    expect(() => archiveSession(state)).toThrow('quota');
+    await expect(archiveSession(state)).rejects.toThrow('quota');
     expect(readArchive()).toHaveLength(2);
   });
   it('reads only the selected Drive file through an Authorization header', async () => {
@@ -61,8 +61,8 @@ describe('Drive question bank', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
     await expect(readDriveMeta('privateFileId123', 'tok')).rejects.toThrow('Choose it again.');
   });
-  it('does not archive a session while storage is conflicted', () => {
+  it('does not archive a session while storage is conflicted', async () => {
     const state = initialState(); state.storageState = { kind: 'conflict', message: 'conflict' };
-    expect(() => archiveSession(state)).toThrow(); expect(readArchive()).toEqual([]);
+    await expect(archiveSession(state)).rejects.toThrow(); expect(readArchive()).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import { isoLocal } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
 import type { PersistOptions } from 'zustand/middleware';
+import { flushLearningStorage, getLearningStorage, subscribeLearningStorage } from '../../../sync/browser-db';
 export const SESSION_KEY = 'math-scratchpad-session-v3';
 const envelopeSchema = z.object({
  version: z.literal(3),
@@ -26,17 +27,26 @@ const workSignature = (session: PersistedSession['session']) => JSON.stringify({
 export const STORAGE_PREFIX = 'math-scratchpad';
 /** Remove every localStorage key owned by this app (all schema versions). */
 export function clearAppStorage() {
- try { Object.keys(localStorage).filter(key => key.startsWith(STORAGE_PREFIX)).forEach(key => localStorage.removeItem(key)); return true; } catch { return false; }
+ try {
+  const storage = getLearningStorage();
+  for (let index = storage.length - 1; index >= 0; index--) {
+   const key = storage.key(index);
+   if (key?.startsWith(STORAGE_PREFIX)) storage.removeItem(key);
+  }
+  Object.keys(localStorage).filter(key => key.startsWith(STORAGE_PREFIX)).forEach(key => localStorage.removeItem(key));
+  return true;
+ } catch { return false; }
 }
 export function createPersistentStore() {
  const writerId = uid();
+ const storage = getLearningStorage();
  let saved: Envelope | null = null, protectedDraft = false, bootError = '';
  let initial: ScratchState;
  try {
-  const raw = localStorage.getItem(SESSION_KEY);
+  const raw = storage.getItem(SESSION_KEY);
   if (raw) { saved = decode(raw); initial = { ...initialState(), ...saved.state.session }; }
   else {
-   const hasLegacy = !!(localStorage.getItem('math-scratchpad-redux-v2') ?? localStorage.getItem('math-scratchpad-flow-v1'));
+   const hasLegacy = !!(storage.getItem('math-scratchpad-redux-v2') ?? storage.getItem('math-scratchpad-flow-v1'));
    initial = restoreState();
    if (!hasLegacy) initial.keyboardOpen = false;
    if (initial.notice) { protectedDraft = true; bootError = initial.notice; }
@@ -54,12 +64,13 @@ export function createPersistentStore() {
  const quietState = (storageState: ScratchState['storageState']) => {
   suppress = true; store.setState({ storageState }); suppress = false;
  };
- function flush() {
-  if (!pending || protectedDraft || remote) return;
+ async function flush() {
+  if (!pending || protectedDraft || remote) { await flushLearningStorage().catch(() => undefined); return; }
   clearTimeout(timeout); const session = pending; pending = null;
   const next: Envelope = { version: 3, state: { session, sync: { revision: revision + 1, writerId } } };
   try {
-   localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+   storage.setItem(SESSION_KEY, JSON.stringify(next));
+   await flushLearningStorage();
    revision = next.state.sync.revision; lastWriter = writerId; author = true;
    lastSignature = fullSignature(session); lastWork = workSignature(session); failedSignature = '';
    suppress = true; store.setState(store.getState().storageState?.kind === 'error' ? { storageState: undefined, savedAt: isoLocal() } : { savedAt: isoLocal() }); suppress = false;
@@ -99,7 +110,7 @@ export function createPersistentStore() {
   store.setState({ ...value.state.session, past: [], future: [], copies: {}, storageState: undefined });
   suppress = false;
  }
- function storageEvent(event: StorageEvent) {
+ function storageEvent(event: { key: string | null; newValue: string | null }) {
   if (event.key !== SESSION_KEY || !event.newValue || protectedDraft) return;
   try {
    const value = decode(event.newValue);
@@ -125,8 +136,12 @@ export function createPersistentStore() {
   protectedDraft = true; pending = null; clearTimeout(timeout);
   clearAppStorage();
  };
- const pagehide = () => queueMicrotask(flush);
- window.addEventListener('storage', storageEvent); window.addEventListener('pagehide', pagehide);
+ // Start the IndexedDB transaction before the browser suspends or tears down this page.
+ const pagehide = () => { void flush(); };
+ const visibilitychange = () => { if (document.visibilityState === 'hidden') void flush(); };
+ const unsubscribeLearningStorage = subscribeLearningStorage(storageEvent);
+ const nativeStorageEvent = (event: StorageEvent) => storageEvent(event);
+ window.addEventListener('storage', nativeStorageEvent); window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibilitychange);
  if (!saved && !protectedDraft) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
- return { store, flush, dispose: () => { flush(); clearTimeout(timeout); window.removeEventListener('storage', storageEvent); window.removeEventListener('pagehide', pagehide); } };
+ return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
 }

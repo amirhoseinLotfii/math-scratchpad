@@ -4,6 +4,7 @@ import { parse } from '../../parser';
 import { serialize, validateSession } from '../../persistence';
 import { parseDifficulty, parseLessons } from '../lessons/parse';
 import type { Lesson, QuestionLessonFields } from '../lessons/types';
+import { flushLearningStorage, getLearningStorage } from '../../sync/browser-db';
 
 export const BANK_SCHEMA = 'math-scratchpad.bank/1.0';
 /** A chapter bank may span many lessons; each launched practice session stays within MAX_SESSION_EXERCISES. */
@@ -212,7 +213,7 @@ export function bankCacheStorageKey(fileId: string): string {
   return `${BANK_CACHE_PREFIX}:${encodeURIComponent(fileId)}`;
 }
 export async function readBankCache(fileId: string, storage?: Storage): Promise<CachedBank | null> {
-  const target = storage ?? globalThis.localStorage;
+  const target = storage ?? getLearningStorage();
   const raw = target.getItem(bankCacheStorageKey(fileId));
   if (!raw || raw.length > MAX_BANK_CACHE_LENGTH) return null;
   const value: unknown = JSON.parse(raw);
@@ -224,7 +225,7 @@ export async function readBankCache(fileId: string, storage?: Storage): Promise<
   return { fileId, bank, version: record.version, fingerprint: record.fingerprint, savedAt: record.savedAt };
 }
 export async function saveBankCache(fileId: string, bank: DriveBank, version: string, fingerprint: string, storage?: Storage): Promise<{ saved: boolean; message: string }> {
-  const target = storage ?? globalThis.localStorage;
+  const target = storage ?? getLearningStorage();
   try {
     const cleanBank = validateBank(bank);
     if (await snapshotVersion(cleanBank) !== version) return { saved: false, message: 'The bank cache version did not match the downloaded content.' };
@@ -232,6 +233,7 @@ export async function saveBankCache(fileId: string, bank: DriveBank, version: st
     if (payload.length > MAX_BANK_CACHE_LENGTH) return { saved: false, message: 'The bank is too large to cache in this browser.' };
     const key = bankCacheStorageKey(fileId);
     target.setItem(key, payload);
+    await flushLearningStorage();
     const verified = await readBankCache(fileId, target);
     if (!verified || verified.version !== version || verified.fingerprint !== fingerprint) throw Error('Local cache read-back did not match.');
     return { saved: true, message: '' };
@@ -248,20 +250,21 @@ export function bankDocument(bank: DriveBank, version: string, includedQuestions
 }
 export type ArchivedSession = { id: string; savedAt: string; data: string };
 export function readArchive(): ArchivedSession[] {
-  const raw = localStorage.getItem(ARCHIVE_KEY);
+  const raw = getLearningStorage().getItem(ARCHIVE_KEY);
   if (!raw) return [];
   const value: unknown = JSON.parse(raw);
   if (!Array.isArray(value) || value.some(x => !x || typeof x.id !== 'string' || typeof x.savedAt !== 'string' || typeof x.data !== 'string')) throw Error('Saved sessions could not be read. The current session was preserved.');
   return value as ArchivedSession[];
 }
 /** Never switch away until the current session is safely saved and read back. */
-export function archiveSession(state: ScratchState): void {
+export async function archiveSession(state: ScratchState): Promise<void> {
   if (state.storageState) throw Error('Resolve the current session storage warning or conflict first.');
   const id = state.doc.session?.id ?? uid(), data = serialize(state);
   validateSession(JSON.parse(data));
   const all = readArchive();
   const next = all.some(x => x.id === id && x.data === data) ? all : [...all, { id, savedAt: new Date().toISOString(), data }];
-  localStorage.setItem(ARCHIVE_KEY, JSON.stringify(next));
+  getLearningStorage().setItem(ARCHIVE_KEY, JSON.stringify(next));
+  await flushLearningStorage();
   if (!readArchive().some(x => x.id === id && x.data === data)) throw Error('The saved session could not be verified.');
 }
 
