@@ -162,7 +162,7 @@ test('WIDE-KB-13: virtual keyboard is closed by default on desktop and an explic
  await startBatch(page);const toggle=page.locator('.keyboard-toggle');
  await expect(toggle).toHaveText(/Show Keyboard/);await expect(toggle).toHaveAttribute('aria-expanded','false');
  await toggle.click();await expect(toggle).toHaveText(/Hide Keyboard/);
- expect(await page.evaluate(()=>localStorage.getItem('math-scratchpad-ui-v1:virtual-keyboard'))).toBe('1');
+ // Verify persisted choice by reload instead of requiring obsolete localStorage writes.
  await page.reload();await expect(page.locator('.keyboard-toggle')).toHaveText(/Hide Keyboard/);
  await page.locator('.keyboard-toggle').click();await page.reload();await expect(page.locator('.keyboard-toggle')).toHaveText(/Show Keyboard/);
 });
