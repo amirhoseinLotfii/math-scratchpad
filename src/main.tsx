@@ -2,8 +2,9 @@ import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
 import { App } from './App';
 import { createPersistentStore } from './features/session/persistence/persistent-store';
-import { initializeLearningStorage, initializeAuthenticatedServerStorage, clearLegacyBrowserLearningData, refreshAuthenticatedServerStorage, updateAuthenticatedServerToken } from './sync/browser-db';
+import { initializeLearningStorage, initializeAuthenticatedServerStorage, clearLegacyBrowserLearningData, updateAuthenticatedServerToken } from './sync/browser-db';
 import { mountGoogleIdButton } from './sync/google-id-token';
+import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
 import './fonts.css';
 import './styles/tokens.css';
@@ -18,13 +19,15 @@ let appRuntime: ReturnType<typeof createPersistentStore> | undefined;
 let syncRuntime: BrowserSyncRuntime | undefined;
 const isLocalTestOrDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
   && !new URLSearchParams(location.search).has('serverMode');
-let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let currentAuthToken: string | undefined;
 
-function launchApp() {
+function launchApp(serverOnly = false) {
   root!.removeAttribute('role');
   root!.textContent = '';
-  createRoot(root!).render(<Provider store={appRuntime!.store}><App /></Provider>);
+  const app = <Provider store={appRuntime!.store}><App /></Provider>;
+  createRoot(root!).render(serverOnly
+    ? <ServerConnectionGate tokenProvider={() => currentAuthToken}>{app}</ServerConnectionGate>
+    : app);
 }
 
 if (isLocalTestOrDevelopment) {
@@ -82,13 +85,12 @@ if (isLocalTestOrDevelopment) {
       await syncRuntime.start();
       syncRuntime.setIdToken(token);
       appRuntime = createPersistentStore();
-      launchApp();
+      launchApp(true);
       // The owner explicitly chose server-only storage. No legacy browser
       // data will be read or migrated back into the new server-first editor.
       void clearLegacyBrowserLearningData();
-      refreshTimer = setInterval(() => {
-        if (currentAuthToken) void refreshAuthenticatedServerStorage(currentAuthToken).catch(() => undefined);
-      }, 15_000);
+      // The connection gate checks server reachability. Other-device state is rehydrated on reload
+      // instead of overwriting a local editor draft that has not reached its 180 ms debounce.
     })().catch(error => {
       status.textContent = error instanceof Error ? error.message : 'اتصال امن به سرور برقرار نشد.';
       booting = false;
@@ -97,4 +99,4 @@ if (isLocalTestOrDevelopment) {
     status.textContent = error instanceof Error ? error.message : 'ورود Google بارگیری نشد. اتصال اینترنت را بررسی کن.';
   });
 }
-if (import.meta.hot) import.meta.hot.dispose(() => { appRuntime?.dispose(); syncRuntime?.stop(); if (refreshTimer) clearInterval(refreshTimer); });
+if (import.meta.hot) import.meta.hot.dispose(() => { appRuntime?.dispose(); syncRuntime?.stop(); });
