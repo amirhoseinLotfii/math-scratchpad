@@ -87,6 +87,10 @@ test('server-first editor requires owner sign-in, writes snapshots to Worker, an
   await expect(page.getByText('Step 1', { exact: true }).first()).toBeVisible();
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
   expect(await page.evaluate(() => (window as unknown as { __dbOpens?: number }).__dbOpens ?? 0)).toBe(0);
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Reset all local storage' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   // A network disconnection must make every underlying edit control inert.
   await page.context().setOffline(true);
