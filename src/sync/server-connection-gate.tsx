@@ -10,9 +10,10 @@ const TIMEOUT_MS = 7_000;
 const PING_INTERVAL_MS = 5_000;
 
 /** No authenticated server acknowledgment means no editing. No browser fallback. */
-export function ServerConnectionGate({ children, tokenProvider }: {
+export function ServerConnectionGate({ children, tokenProvider, flushPendingDraft }: {
   children: ReactNode;
   tokenProvider: () => string | undefined;
+  flushPendingDraft: () => Promise<void>;
 }) {
   const [state, setState] = useState<GateState>(INITIAL);
   const checking = useRef(false);
@@ -36,7 +37,9 @@ export function ServerConnectionGate({ children, tokenProvider }: {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      // Never unlock while an earlier unsaved change remains unacknowledged.
+      // Flush the editor's debounce timer first, then await the server acknowledgment.
+      // Otherwise reconnecting within the 180 ms autosave delay could unlock too early.
+      await flushPendingDraft();
       await getAuthenticatedServerStorage()?.flush();
       await verifyOwnerServerConnection(token, controller.signal);
       if (id === epoch.current) {
@@ -53,7 +56,7 @@ export function ServerConnectionGate({ children, tokenProvider }: {
       checking.current = false;
       window.clearTimeout(timeout);
     }
-  }, [tokenProvider]);
+  }, [tokenProvider, flushPendingDraft]);
 
   useEffect(() => {
     const handleOffline = () => {
