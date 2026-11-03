@@ -215,10 +215,9 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
       values = new Map(cached.map(item => [item.key, item.value]));
 
       const legacyStorage = localStorageIfAvailable();
-      let migration: LegacyMigration | null = null;
-      await withLegacyMigrationLock(async () => {
+      const migration = await withLegacyMigrationLock(async (): Promise<LegacyMigration | null> => {
         const migrationRecord = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
-        migration = (migrationRecord?.value as LegacyMigration | undefined) ?? null;
+        let migration = (migrationRecord?.value as LegacyMigration | undefined) ?? null;
         if (!migration && legacyStorage) {
           const entries: LegacyLearningEntry[] = [];
           const copiedCaches: Array<{ key: string; value: string }> = [];
@@ -245,6 +244,7 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
             if (saved?.value === cache.value && legacyStorage.getItem(cache.key) === cache.value) legacyStorage.removeItem(cache.key);
           }
         }
+        return migration;
       });
       // Refresh after acquiring the lock so a second tab sees the first tab's durable copy.
       const cachedAfterMigration = await db.getAll(LEARNING_CACHE_STORE);

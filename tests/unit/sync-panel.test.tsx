@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from '../../src/sync/runtime';
 import { SyncPanel } from '../../src/sync/sync-panel';
@@ -140,8 +140,10 @@ describe('sync and migration panel', () => {
     expect(await within(notionStatus).findByText('4 رویداد در صف')).toBeTruthy();
     expect(await within(notionStatus).findByText('رویداد بدون برچسبی برای قرنطینه وجود ندارد.')).toBeTruthy();
 
-    await userEvent.click(screen.getByText('جزئیات آخرین همگام‌سازی و خطاها'));
-    expect(screen.getByText('هنوز همگام نشده')).toBeTruthy();
+    const syncDetails = screen.getByText('جزئیات آخرین همگام‌سازی و خطاها').closest('details');
+    expect(syncDetails).not.toBeNull();
+    await userEvent.click(syncDetails!.querySelector('summary')!);
+    expect(within(syncDetails!).getAllByText('هنوز همگام نشده').length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole('button', { name: 'همگام‌سازی الان' }));
     await vi.waitFor(() => expect(within(driveStatus).getByText('همگام‌شده')).toBeTruthy());
     expect(paths).toContainEqual({ path: '/drive/sync', method: 'POST' });
@@ -155,7 +157,7 @@ describe('sync and migration panel', () => {
     installGooglePicker();
     render(<SyncPanel onClose={onClose} />);
     expect(await screen.findByRole('heading', { name: 'همگام‌سازی و حفظ داده‌ها' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('آمادهٔ همگام‌سازی');
+    expect(screen.getByText('آمادهٔ همگام‌سازی').getAttribute('role')).toBe('status');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
     await userEvent.click(screen.getByRole('button', { name: 'بستن تنظیم همگام‌سازی' }));
     expect(onClose).toHaveBeenCalledTimes(1);
