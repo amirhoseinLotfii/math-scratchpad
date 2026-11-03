@@ -21,6 +21,7 @@ export type MirrorPhase = 'not_configured' | 'pending' | 'syncing' | 'synced' | 
 export type MirrorSyncStatus = {
   status: MirrorPhase;
   pendingCount: number;
+  quarantinedCount?: number | null;
   lastSyncedAt: string | null;
   lastError: string | null;
 };
@@ -313,6 +314,8 @@ function isMirrorSyncStatus(value: unknown): value is MirrorSyncStatus {
   if (!isRecord(value)) return false;
   return (value.status === 'not_configured' || value.status === 'pending' || value.status === 'syncing' || value.status === 'synced' || value.status === 'error')
     && typeof value.pendingCount === 'number' && Number.isFinite(value.pendingCount) && value.pendingCount >= 0
+    && (value.quarantinedCount === undefined || value.quarantinedCount === null
+      || (typeof value.quarantinedCount === 'number' && Number.isFinite(value.quarantinedCount) && value.quarantinedCount >= 0))
     && (value.lastSyncedAt === null || typeof value.lastSyncedAt === 'string')
     && (value.lastError === null || typeof value.lastError === 'string');
 }
