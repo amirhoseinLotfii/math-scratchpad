@@ -36,6 +36,7 @@ function makeEvent(index: number, overrides: Partial<LearnEvent> = {}): LearnEve
   return {
     id: uuid(index),
     schema: 1,
+    isTest: false,
     ts: new Date(Date.UTC(2026, 10, 2, 0, 0, index % 60)).toISOString(),
     deviceId: uuid(99_999),
     bankVersion: 'v21',
@@ -147,17 +148,22 @@ describe('Drive event mapping and projections', () => {
     });
   });
 
-  it('stores tagged live-check events but excludes them from learner progress', () => {
+  it('stores tagged test events but excludes test and unclassified events from learner progress', () => {
     const realEvent = makeEvent(1, { type: 'chunk_open', itemId: 'concept-1' });
     const testEvent = learnEventSchema.parse(makeEvent(2, {
       isTest: true, type: 'section_complete', section: '99.99', lesson: '99.99', itemId: 'live-check',
     }));
-    const projection = buildProgressProjection([sequenced(1, realEvent), sequenced(2, testEvent)]);
+    const unclassifiedEvent = learnEventSchema.parse(makeEvent(3, {
+      isTest: undefined, type: 'chunk_open', itemId: 'unclassified-preview',
+    }));
+    const projection = buildProgressProjection([
+      sequenced(1, realEvent), sequenced(2, testEvent), sequenced(3, unclassifiedEvent),
+    ]);
     expect(projection).toMatchObject({
       currentPosition: { chapter: 1, lesson: '1.1', section: '1.1', chunkId: 'concept-1' },
       completedSections: [],
-      lastEventId: testEvent.id,
-      lastSeq: 2,
+      lastEventId: realEvent.id,
+      lastSeq: 1,
     });
     expect(serializeJsonlEvents([sequenced(1, realEvent), sequenced(2, testEvent)])).toContain('"isTest":true');
   });
@@ -366,7 +372,7 @@ describe('authenticated Drive status endpoints', () => {
     const app = createApp(validVerifier);
     const status = await request(app, '/drive/status');
     expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ status: 'not_configured', lastSyncedAt: null, pendingCount: 0, lastError: null });
+    expect(await status.json()).toEqual({ status: 'not_configured', lastSyncedAt: null, pendingCount: 0, quarantinedCount: null, lastError: null });
     const sync = await request(app, '/drive/sync', 'POST');
     expect(sync.status).toBe(503);
     expect(await sync.json()).toMatchObject({ drive: { status: 'not_configured' } });
@@ -455,6 +461,29 @@ describe('Durable Object Drive mirror integration', () => {
       ]),
     });
     expect(drive.uploads.every(upload => !upload.name.includes('DriveSyncFiles'))).toBe(true);
+  });
+
+  it('quarantines unclassified events from Drive JSONL and progress while recording the skipped count', async () => {
+    const live = makeEvent(1, { type: 'chunk_open', itemId: 'live-position' });
+    const testEvent = makeEvent(2, { isTest: true, type: 'chunk_open', itemId: 'test-position' });
+    const unclassified = makeEvent(3, { isTest: undefined, type: 'chunk_open', itemId: 'preview-unclassified' });
+    await appendForOwner(live);
+    await appendForOwner(testEvent);
+    await appendForOwner(unclassified);
+
+    const drive = makeMemoryDrive();
+    const status = await runMirror(drive.client) as { status: string; pendingCount: number; quarantinedCount: number };
+    expect(status).toMatchObject({ status: 'synced', pendingCount: 0, quarantinedCount: 1 });
+
+    const eventLines = drive.contentByName.get('events_2026-11.jsonl')!.trim().split('\\n');
+    const savedEvents = eventLines.map(line => JSON.parse(line) as LearnEvent);
+    expect(savedEvents.map(event => event.id)).toEqual([live.id, testEvent.id]);
+    const progress = JSON.parse(drive.contentByName.get('progress.json')!);
+    expect(progress).toMatchObject({ lastEventId: live.id, lastSeq: 1 });
+    expect(progress.currentPosition.chunkId).toBe('live-position');
+    expect(JSON.parse(drive.contentByName.get('sync_manifest.json')!)).toMatchObject({
+      lastSeq: 3, lastEventId: unclassified.id, quarantinedEventCount: 1,
+    });
   });
 
   it('recovers from a partial Drive failure without duplicating the event on retry', async () => {
