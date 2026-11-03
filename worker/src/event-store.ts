@@ -108,7 +108,7 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function mergeWeeklyBackupContent(remote: string, desired: string): string {
+export function mergeWeeklyBackupContent(remote: string, desired: string): string {
   let current: unknown, next: unknown;
   try { current = JSON.parse(remote); next = JSON.parse(desired); }
   catch { throw new Error('event_id_conflict'); }
