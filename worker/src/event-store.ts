@@ -118,9 +118,12 @@ function mergeWeeklyBackupContent(remote: string, desired: string): string {
     || !Array.isArray((current as { events?: unknown }).events) || !Array.isArray((next as { events?: unknown }).events)) {
     throw new Error('event_id_conflict');
   }
-  const latestEvents = (next as { events: Array<{ seq: number; event: LearnEvent }> }).events;
+  const latestEvents = (next as { events: Array<{ seq: number; event: LearnEvent }> }).events
+    .filter(item => typeof item.event?.isTest === 'boolean');
+  const previousMirrorableEvents = (current as { events: Array<{ seq: number; event: LearnEvent }> }).events
+    .filter(item => typeof item.event?.isTest === 'boolean');
   const latest = new Map(latestEvents.map(item => [item.event.id, canonicalJson(item)]));
-  for (const item of (current as { events: Array<{ seq: number; event: LearnEvent }> }).events) {
+  for (const item of previousMirrorableEvents) {
     if (!latest.has(item.event.id) || latest.get(item.event.id) !== canonicalJson(item)) {
       throw new Error('event_id_conflict');
     }
