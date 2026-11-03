@@ -24,6 +24,7 @@ export type DriveSyncManifest = {
   lastSuccessAtUtc: string;
   lastSuccessAtTehran: string;
   files: Array<{ path: string; sha256: string }>;
+  quarantinedEventCount: number;
 };
 
 const POSITION_EVENTS = new Set<LearnEvent['type']>([
@@ -90,7 +91,7 @@ export function mergeUniqueEvents(...collections: ReadonlyArray<ReadonlyArray<Le
 
 export function buildProgressProjection(events: readonly SequencedLearnEvent[], now = new Date()): DriveProgressProjection {
   const ordered = [...events].sort((a, b) => a.seq - b.seq);
-  const learningEvents = ordered.filter(({ event }) => event.isTest !== true);
+  const learningEvents = ordered.filter(({ event }) => event.isTest === false);
   let currentPosition: DrivePosition | null = null;
   const gateStatusBySection: DriveProgressProjection['gateStatusBySection'] = {};
   const completedSections = new Set<string>();
@@ -112,7 +113,7 @@ export function buildProgressProjection(events: readonly SequencedLearnEvent[], 
     if (event.type === 'lesson_complete') completedLessons.add(`${event.chapter}:${event.lesson}`);
   }
 
-  const latest = ordered.at(-1);
+  const latest = learningEvents.at(-1);
   const unlockedSections = new Set<string>(completedSections);
   for (const [key, status] of Object.entries(gateStatusBySection)) if (status === 'passed') unlockedSections.add(key);
   const updatedAtUtc = now.toISOString();
@@ -156,6 +157,7 @@ export async function buildSyncManifest(input: {
     lastSuccessAtUtc: now.toISOString(),
     lastSuccessAtTehran: formatTehran(now),
     files: files.sort((a, b) => a.path.localeCompare(b.path)),
+    quarantinedEventCount: input.events.filter(({ event }) => typeof event.isTest !== 'boolean').length,
   };
 }
 
