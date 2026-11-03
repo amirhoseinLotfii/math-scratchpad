@@ -154,8 +154,15 @@ export function emitLearnEvent(context: LearnEventContext, draft: LearnEventDraf
     section: draft.section ?? context.section ?? 'unknown', concept: draft.concept ?? context.concept ?? 'unknown',
     ...(context.skill ? { skill: context.skill } : {}), ...(context.pdfPage ? { pdfPage: context.pdfPage } : {}), ...(context.bookPage ? { bookPage: context.bookPage } : {}),
     ...draft,
+    // New app events must be explicitly classified before reaching external mirrors.
+    isTest: draft.isTest ?? false,
   };
   return emit(event as LearnEvent);
+}
+
+/** Emit an explicitly isolated event for owner-approved live integration checks. */
+export function emitTestLearnEvent(context: LearnEventContext, draft: LearnEventDraft): LearnEvent {
+  return emitLearnEvent(context, { ...draft, isTest: true });
 }
 
 export function subscribeToLearnEvents(listener: LearnEventListener): () => void {
