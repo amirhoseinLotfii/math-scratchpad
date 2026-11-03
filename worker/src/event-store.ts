@@ -386,6 +386,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         status: failed.status,
         lastSyncedAt: failed.lastSyncedAt ?? null,
         pendingCount: failed.pendingCount,
+        quarantinedCount: failed.quarantinedCount ?? null,
         lastError: failed.lastError ?? null,
       };
     }
