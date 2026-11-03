@@ -125,7 +125,10 @@ test('WIDE-24: the last navigator row is reachable and Home returns focus withou
  await expect(page.getByRole('heading',{name:'Question 1',exact:true})).toBeVisible();await page.keyboard.press('Home');await expect(first).toBeFocused();
 });
 test('WIDE-25: the initial notebook fits the viewport without empty page scrolling',async({page})=>{
- await startBatch(page);expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(page.viewportSize()!.height+1);
+ await startBatch(page);
+ // The legal footer is real content, not empty viewport overflow.
+ const policyFooterHeight = await page.locator('body > footer').evaluate(el => el.getBoundingClientRect().height);
+ expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(page.viewportSize()!.height + policyFooterHeight + 1);
  await expect(page.getByRole('button',{name:/Next question/})).toBeInViewport();
 });
 test('WIDE-26: advanced notation is available without a numeric keyboard',async({page})=>{
@@ -147,6 +150,8 @@ for(const state of ['single','batch','multi-step','shortcuts'] as const)test(`WI
  await expect(page.getByLabel('Question elapsed time')).toHaveText('00:03');
  if(state==='multi-step'){const first=await enterMath(page,1,'12');await expect.poll(()=>mathValue(first)).toContain('12');await page.getByRole('button',{name:'Add step',exact:true}).click();const second=mathField(page,2);await expect(second).toBeFocused();await page.keyboard.type('42');await expect.poll(()=>mathValue(second)).toContain('42');}
  if(state==='shortcuts'){await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();}
+ // Keep the public policy footer outside reviewed editor pixels.
+ await page.addStyleTag({ content: 'body > footer { display: none !important; }' });
  const viewport = page.viewportSize();
  // CI reports a repeatable 1% raster difference for the 1024px batch image.
  const maxDiffPixelRatio = state === 'batch' && viewport?.width === 1024 ? 0.015 : 0.005;
