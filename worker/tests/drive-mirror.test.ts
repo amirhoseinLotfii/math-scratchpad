@@ -500,6 +500,13 @@ describe('Durable Object Drive mirror integration', () => {
     const failed = await runMirror(drive.client) as { status: string; lastError: string; pendingCount: number };
     expect(failed).toMatchObject({ status: 'error', lastError: 'quota_exceeded', pendingCount: 1 });
     expect(drive.contentByName.get('events_2026-11.jsonl')).toContain(event.id);
+    await appendForOwner(makeEvent(2, { type: 'chunk_open', itemId: 'retry-check' }));
+    const afterNewEvent = await createApp(validVerifier).fetch(new Request('https://worker.test/drive/status', {
+      headers: { Authorization: 'Bearer valid-test-token', Origin: ALLOWED_ORIGIN },
+    }), testEnv);
+    expect(await afterNewEvent.json()).toMatchObject({
+      status: 'pending', pendingCount: 2, lastError: 'quota_exceeded',
+    });
 
     const retried = await runMirror(drive.client) as { status: string; pendingCount: number };
     expect(retried).toMatchObject({ status: 'synced', pendingCount: 0 });
