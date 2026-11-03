@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 test('server-first editor requires owner sign-in, writes snapshots to Worker, and never opens IndexedDB', async ({ page }) => {
   const records = new Map<string, { value: string | null; revision: number }>();
   const calls: string[] = [];
+  let stateReachable = true;
   let databaseOpens = 0;
   await page.addInitScript(() => {
     // Emulate only the public Google Identity Services API, not Google account authentication.
@@ -40,6 +41,7 @@ test('server-first editor requires owner sign-in, writes snapshots to Worker, an
     const request = route.request(), pathname = new URL(request.url()).pathname;
     calls.push(request.method() + ' ' + pathname);
     if (pathname === '/state' && request.method() === 'GET') {
+      if (!stateReachable) return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' });
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ records: [...records].map(([key, value]) => ({ key, ...value })), revision: records.size }) });
     }
@@ -82,5 +84,24 @@ test('server-first editor requires owner sign-in, writes snapshots to Worker, an
   await page.reload();
   await page.getByRole('button', { name: 'Test owner login' }).click();
   await expect(page.getByText('Step 1', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
   expect(await page.evaluate(() => (window as unknown as { __dbOpens?: number }).__dbOpens ?? 0)).toBe(0);
+
+  // A network disconnection must make every underlying edit control inert.
+  await page.context().setOffline(true);
+  const warning = page.getByRole('alertdialog', { name: 'ویرایش به‌دلیل قطع ارتباط با سرور متوقف شده' });
+  await expect(warning).toBeVisible();
+  await expect(page.locator('[data-server-editor]')).toHaveAttribute('inert', '');
+  await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'blocked');
+  await page.context().setOffline(false);
+  await expect(warning).toBeHidden({ timeout: 15000 });
+  await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
+  // Browser online alone is insufficient; a failing authenticated Worker must block edits too.
+  stateReachable = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(warning).toBeVisible();
+  await expect(page.locator('[data-server-editor]')).toHaveAttribute('inert', '');
+  stateReachable = true;
+  await warning.getByRole('button', { name: 'بررسی دوباره اتصال' }).click();
+  await expect(warning).toBeHidden({ timeout: 15000 });
 });
