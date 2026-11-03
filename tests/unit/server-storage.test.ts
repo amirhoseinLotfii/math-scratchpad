@@ -5,7 +5,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('server-only editor persistence', () => {
   it('authenticates the snapshot read and accepts revision-preserving tombstones', async () => {
-    const fetcher = vi.fn(async () => Response.json({
+    const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({
       revision: 4,
       records: [
         { key: 'math-scratchpad-session-v3', value: '{"a":1}', revision: 3 },
