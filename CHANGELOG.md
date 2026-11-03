@@ -167,3 +167,9 @@
 
 - scope `userinfo.email` اضافه و ذخیره شد؛ پس از بارگذاری مجدد هر دو scope موردنیاز، همراه با `drive.file`، دیده شدند. هیچ credentialی خوانده یا ساخته نشد.
 - CI اجرای `41546783299` با gate و build سبز شد؛ OAuth Production، Secretها و آزمون زنده همچنان باقی‌اند.
+
+
+## اتصال Notion — 2026-11-03
+
+- با اختیار مالک، connection خصوصی `Math Scratchpad Sync` ساخته شد و شرایط نمایش‌داده‌شدهٔ Developer Terms هنگام ساخت پذیرفته شد. دسترسی پنج منبع Math Attempts، Sessions، Mistakes، Concepts و Daily Reports ثبت و در فهرست دسترسی دیده شد.
+- مقدار کلید مشاهده یا دریافت نشد و فهرست Secretهای Worker همچنان خالی بود؛ deploy و تست زنده انجام نشدند.
