@@ -53,8 +53,9 @@ export function serializeJsonlEvents(events: readonly SequencedLearnEvent[]): st
 }
 
 export function mergeJsonlEventContent(remote: string, desired: string): string {
-  const remoteEvents = parseJsonlEvents(remote);
-  const desiredEvents = parseJsonlEvents(desired);
+  // Older unclassified records are quarantined, even if a stale remote file contains them.
+  const remoteEvents = parseJsonlEvents(remote).filter(event => typeof event.isTest === 'boolean');
+  const desiredEvents = parseJsonlEvents(desired).filter(event => typeof event.isTest === 'boolean');
   const byId = new Map<string, LearnEvent>();
   const order: string[] = [];
   for (const event of remoteEvents) {
