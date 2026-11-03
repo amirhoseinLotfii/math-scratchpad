@@ -50,6 +50,7 @@ function makeEvent(index: number, overrides: Partial<LearnEvent> = {}): LearnEve
   return {
     id: uuid(index),
     schema: 1,
+    isTest: false,
     ts: '2026-11-02T00:00:00.000Z',
     deviceId: uuid(999),
     bankVersion: 'v21',
@@ -333,6 +334,21 @@ describe('Notion API mirroring', () => {
     expect([...fake.pages.values()].some(page => page.dataSourceId === sources.mistakes)).toBe(false);
   });
 
+  it('does not write unclassified events to any Notion database', async () => {
+    const fake = makeFakeNotion();
+    const context = makeContext(fake.client);
+    const event = makeEvent(13, { isTest: undefined });
+    const { applyConceptEvent, applyDailyEvent, applySessionEvent } = await import('../src/notion-projection');
+    await syncNotionEvent(context, {
+      event,
+      session: applySessionEvent(undefined, event),
+      daily: applyDailyEvent(undefined, event),
+      concept: applyConceptEvent(undefined, event),
+    });
+    expect(fake.operations).toEqual([]);
+    expect(fake.pages.size).toBe(0);
+  });
+
   it('finds existing Notion pages by external key after the local page-reference cache is empty', async () => {
     const fake = makeFakeNotion();
     const event = makeEvent(12, { verdict: 'correct', verdictSource: 'checker', confidence: 'high' });
@@ -409,7 +425,7 @@ describe('Durable Object Notion sync checkpoints', () => {
     }), testEnv);
     expect(status.status).toBe(200);
     expect(await status.json()).toMatchObject({
-      status: 'not_configured', lastSyncedAt: null, pendingCount: 0, lastError: null,
+      status: 'not_configured', lastSyncedAt: null, pendingCount: 0, quarantinedCount: null, lastError: null,
     });
     const manual = await app.fetch(new Request('https://worker.test/notion/sync', {
       method: 'POST',
@@ -455,6 +471,39 @@ describe('Durable Object Notion sync checkpoints', () => {
     expect([...fake.pages.values()].filter(page => page.dataSourceId === sources.sessions)).toHaveLength(1);
     expect([...fake.pages.values()].filter(page => page.dataSourceId === sources.mistakes)).toHaveLength(1);
     expect(fake.operations.filter(operation => operation.kind === 'create')).toHaveLength(5);
+  });
+
+  it('quarantines unclassified events, advances the cursor, and writes only explicitly classified events', async () => {
+    const fake = makeFakeNotion();
+    const live = makeEvent(31);
+    const unclassified = makeEvent(32, { isTest: undefined });
+    const app = createApp(validVerifier);
+    const response = await app.fetch(new Request('https://worker.test/events', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid-test-token', Origin: ALLOWED_ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: [live, unclassified] }),
+    }), testEnv);
+    expect(response.status).toBe(200);
+
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    const status = await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        env: WorkerEnv;
+        notionClient: NotionClientPort | undefined;
+        notionRequests: NotionRequestQueue;
+        performNotionSync: () => Promise<NotionMirrorStatus>;
+      };
+      Object.assign(target.env, { NOTION_API_KEY: 'test-only-not-a-secret' });
+      target.notionClient = fake.client;
+      target.notionRequests = new NotionRequestQueue(0, async () => undefined);
+      return target.performNotionSync();
+    });
+
+    expect(status).toMatchObject({ status: 'synced', pendingCount: 0, quarantinedCount: 1 });
+    expect([...fake.pages.values()].filter(page => page.dataSourceId === sources.attempts)).toHaveLength(1);
+    expect([...fake.pages.values()].filter(page => page.dataSourceId === sources.sessions)).toHaveLength(1);
+    expect([...fake.pages.values()].some(page => textValue(page.properties['Event ID']) === unclassified.id)).toBe(false);
   });
 
   it('keeps the successful cursor checkpoint when Notion fails partway, then resumes without duplicate rows', async () => {
