@@ -683,6 +683,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
       const through = await this.maxSequence();
       const events = this.readEventsThrough(through);
+      const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
+      const quarantinedCount = events.length - mirrorableEvents.length;
       const unsigned = {
         format: 'math-scratchpad-weekly-backup/v1',
         schemaVersion: 1,
@@ -691,10 +693,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         createdAtTehran: formatTehran(now),
         snapshot: {
           lastSeq: through,
-          eventCount: events.length,
-          progress: buildProgressProjection(events, now),
+          eventCount: mirrorableEvents.length,
+          quarantinedEventCount: quarantinedCount,
+          progress: buildProgressProjection(mirrorableEvents, now),
         },
-        events,
+        events: mirrorableEvents,
       };
       const contents = `${JSON.stringify({ ...unsigned, sha256: await sha256Hex(canonicalJson(unsigned)) }, null, 2)}\n`;
       const name = `sync_backup_${date}.json`;
