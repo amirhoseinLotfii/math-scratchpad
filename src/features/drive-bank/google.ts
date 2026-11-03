@@ -1,18 +1,19 @@
 /* Browser-only Google sign-in (GIS token model) and Google Picker. No client secret, no refresh token, nothing stored server-side. */
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from './drive-config';
+import { getLearningStorage } from '../../sync/browser-db';
 export const SCOPES = `openid email ${DRIVE_SCOPE}`;
 export const DRIVE_CONFIG_KEY = 'math-scratchpad-drive-config-v1';
 /** Built-in public identifiers (see drive-config.ts) plus the picked file, which stays in this browser. */
 export type DriveConfig = { clientId: string; apiKey: string; appId: string; fileId: string; fileName: string };
 export function getConfig(): DriveConfig {
   let v: Record<string, unknown> = {};
-  try { v = JSON.parse(localStorage.getItem(DRIVE_CONFIG_KEY) ?? '{}') ?? {}; } catch { /* ignore */ }
+  try { v = JSON.parse(getLearningStorage().getItem(DRIVE_CONFIG_KEY) ?? '{}') ?? {}; } catch { /* ignore */ }
   const s = (k: string) => typeof v[k] === 'string' ? v[k] as string : '';
   // Only the picked file is read from storage; any old saved clientId/apiKey/appId is ignored.
   return { clientId: GOOGLE_CLIENT_ID, apiKey: GOOGLE_API_KEY, appId: GOOGLE_APP_ID, fileId: s('fileId'), fileName: s('fileName') };
 }
-export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) { localStorage.setItem(DRIVE_CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName })); }
+export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) { getLearningStorage().setItem(DRIVE_CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName })); }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type G = any;
