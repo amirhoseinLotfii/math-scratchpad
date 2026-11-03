@@ -165,3 +165,9 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 - `XDG_CONFIG_HOME=/tmp/math-scratchpad-xdg npm run build` موفق شد؛ app، standalone bundle و Wrangler dry-run ساخته شدند. هشدارهای اندازهٔ bundle و دستورهای `use client` وابستگی‌ها غیرمسدودکننده بودند.
 - CI run `41513230008` روی head مستنداتی `082559193c62cd532c7dd23bfb0208bbd31814bf`، شامل `test:gate` و build، با موفقیت کامل شد. PR #37 همچنان باز و draft است.
 - این آزمون‌ها deploy یا تغییر Production را انجام ندادند؛ live read-back مربوط به Drive/Notion و Cron همچنان انجام‌نشده است.
+
+
+## Google OAuth scope update — 2026-11-03
+
+- In the authenticated `math-scratchpad` Google Cloud project, `https://www.googleapis.com/auth/userinfo.email` was added and saved. A reload confirmed both `userinfo.email` and `drive.file` are present. No credential value was read or generated. Consent remains Testing; public privacy/terms links and Worker Secrets remain unresolved.
+- CI run `41546783299` on documentation head `6d64c3aeea22ad548fc6862a442330379882fb4d` completed successfully, including gate and build.
