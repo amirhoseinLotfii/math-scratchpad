@@ -13,6 +13,7 @@ import {
   sha256Hex,
   type SequencedLearnEvent,
 } from '../src/drive-projection';
+import { mergeWeeklyBackupContent } from '../src/event-store';
 import { DriveMirrorError, GoogleDriveClient } from '../src/google-drive';
 import { createApp, requestWeeklyDriveBackup, type IdTokenVerifier } from '../src/index';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
@@ -581,6 +582,20 @@ describe('Durable Object Drive mirror integration', () => {
     const uploadCount = drive.uploads.length;
     await runWeeklyBackup(drive.client, date);
     expect(drive.uploads).toHaveLength(uploadCount);
+  });
+
+  it('does not reintroduce unclassified events from a stale weekly backup file', () => {
+    const live = makeEvent(51);
+    const unclassified = makeEvent(52, { isTest: undefined });
+    const remote = JSON.stringify({
+      format: 'math-scratchpad-weekly-backup/v1',
+      events: [{ seq: 1, event: unclassified }],
+    });
+    const desired = JSON.stringify({
+      format: 'math-scratchpad-weekly-backup/v1',
+      events: [{ seq: 2, event: live }],
+    });
+    expect(mergeWeeklyBackupContent(remote, desired)).toBe(desired);
   });
 
   it('serializes weekly backup and event mirroring that share the Drive manifest', async () => {
