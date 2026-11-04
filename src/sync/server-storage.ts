@@ -118,10 +118,14 @@ export class ServerBackedStorage implements Storage {
       if (!result || typeof result !== 'object' || !Number.isSafeInteger((result as { revision?: unknown }).revision))
         throw new Error('تأیید ذخیرهٔ سروری معتبر نبود.');
       this.revisions.set(key, Number((result as { revision: number }).revision));
-      if (this.failedWrites.get(key) === value) this.failedWrites.delete(key);
+      const latestValue = this.values.has(key) ? this.values.get(key)! : null;
+      if (latestValue === value) this.failedWrites.delete(key);
+      else this.failedWrites.set(key, latestValue);
       if (this.failedWrites.size === 0) this.error = null;
     }).catch(error => {
-      this.failedWrites.set(key, value);
+      // A later edit may already be queued; keep only the latest desired value.
+      const latestValue = this.values.has(key) ? this.values.get(key)! : null;
+      this.failedWrites.set(key, latestValue);
       this.error = error instanceof Error ? error : new Error('Server storage write failed.');
       if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new CustomEvent('math-scratchpad:storage-error', {
         detail: this.error.message,
