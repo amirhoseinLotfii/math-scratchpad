@@ -205,17 +205,17 @@ describe('Drive event mapping and projections', () => {
 });
 
 describe('Google Drive REST client', () => {
-  it.each(['oauth_refresh', 'drive_owner_verification', 'drive_lookup'] as const)(
+  it.each(['oauth_refresh_fetch_rejected', 'drive_owner_verification_fetch_rejected', 'drive_lookup_fetch_rejected'] as const)(
     'identifies the failed Google request stage without exposing credentials (%s)',
     async failingStage => {
       const fetcher = (async (input: RequestInfo | URL) => {
         const url = new URL(String(input));
         if (url.pathname === '/token') {
-          if (failingStage === 'oauth_refresh') throw new TypeError('connection interrupted');
+          if (failingStage === 'oauth_refresh_fetch_rejected') throw new TypeError('connection interrupted');
           return jsonResponse({ access_token: 'fake-access-token', expires_in: 3600 });
         }
         if (url.pathname === '/drive/v3/about') {
-          if (failingStage === 'drive_owner_verification') throw new TypeError('connection interrupted');
+          if (failingStage === 'drive_owner_verification_fetch_rejected') throw new TypeError('connection interrupted');
           return jsonResponse({ user: { emailAddress: OWNER_EMAIL, me: true } });
         }
         throw new TypeError('connection interrupted');
