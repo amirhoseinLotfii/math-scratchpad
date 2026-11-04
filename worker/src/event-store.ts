@@ -157,6 +157,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     // Queryable operational mirror status: unlike internal Durable Object KV,
     // this can be inspected through the authenticated Cloudflare SQL console.
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sync_health (destination TEXT PRIMARY KEY, status TEXT NOT NULL, pending_count INTEGER NOT NULL, last_error TEXT, last_synced_at TEXT, updated_at TEXT NOT NULL)');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror_diagnostics (destination TEXT PRIMARY KEY, failure_stage TEXT NOT NULL, error_code TEXT NOT NULL, updated_at TEXT NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT, revision INTEGER NOT NULL, updated_at TEXT NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER NOT NULL)');
     ctx.storage.sql.exec('INSERT OR IGNORE INTO app_state_meta (singleton, revision) VALUES (1, 0)');
@@ -220,11 +221,16 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   /** Durable Object alarm retries configured private mirrors after transient failures. */
   async alarm(): Promise<void> {
+    // Notion may not be blocked by a failed Google Drive request.
+    const work: Promise<unknown>[] = [];
+    if (notionDataSourcesFromEnv(this.env)) work.push(this.syncNotion());
     if (this.driveConfigured()) {
-      await this.syncDrive();
-      if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
+      work.push((async () => {
+        await this.syncDrive();
+        if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
+      })());
     }
-    if (notionDataSourcesFromEnv(this.env)) await this.syncNotion();
+    await Promise.allSettled(work);
   }
 
   private appStateRevision(): number {
@@ -269,9 +275,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return { conflict: false, revision };
     });
     if (result.conflict) return json({ error: 'state_conflict', revision: result.revision }, 409);
-    await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
-    const state = await this.readDriveState();
-    if (this.driveConfigured()) await this.saveDriveState({ ...state, status: 'pending' });
+    if (this.driveConfigured()) {
+      const state = await this.readDriveState();
+      await this.saveDriveState({
+        ...state, status: 'pending',
+        pendingCount: Math.max(0, (await this.maxSequence()) - state.lastSeq) + 1,
+      });
+      await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
+    }
     return json({ key: item.key, revision: result.revision });
   }
 
@@ -387,6 +398,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return stored ?? { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined, files: {}, fileHashes: {} };
   }
 
+  private recordDiagnostic(destination: 'drive' | 'notion', stage: string, code: string): void {
+    this.ctx.storage.sql.exec(
+      'INSERT INTO mirror_diagnostics(destination,failure_stage,error_code,updated_at) VALUES(?,?,?,?) ON CONFLICT(destination) DO UPDATE SET failure_stage=excluded.failure_stage,error_code=excluded.error_code,updated_at=excluded.updated_at',
+      destination, stage.slice(0, 64), code.slice(0, 64), new Date().toISOString(),
+    );
+  }
+
   private async saveDriveState(state: DriveMirrorState): Promise<void> {
     await this.ctx.storage.put(DRIVE_STATE_KEY, state);
     this.ctx.storage.sql.exec(
@@ -474,7 +492,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return {
       status: state.status,
       lastSyncedAt: state.lastSyncedAt ?? null,
-      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      pendingCount: Math.max(0, maxSeq - state.lastSeq)
+        + (state.appStateRevision === this.appStateRevision() ? 0 : 1),
       quarantinedCount: state.quarantinedCount ?? null,
       lastError: state.lastError ?? null,
       weeklyBackup: {
@@ -628,6 +647,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         lastError: notionErrorCode(error),
       };
       await this.saveNotionState(failed);
+      this.recordDiagnostic('notion', 'notion_event_sync', failed.lastError ?? 'unknown');
       await this.scheduleAlarmIn(NOTION_RETRY_MS);
       return this.toNotionStatus(failed, currentMax);
     }
@@ -905,7 +925,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       state.files['sync_manifest.json'] = { id: manifestFile.id, etag: manifestFile.etag };
 
       const currentMax = await this.maxSequence();
-      const pendingCount = Math.max(0, currentMax - through);
+      const pendingCount = Math.max(0, currentMax - through)
+        + (this.appStateRevision() === stateRevision ? 0 : 1);
       const finalState: DriveMirrorState = {
         ...state,
         status: pendingCount === 0 ? 'synced' : 'pending',
@@ -941,6 +962,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         lastError: code,
       };
       await this.saveDriveState(failed);
+      this.recordDiagnostic('drive', this.driveClient?.diagnosticStage ?? 'worker_internal', code);
       await this.scheduleAlarmIn(DRIVE_RETRY_MS);
       return {
         status: failed.status,
