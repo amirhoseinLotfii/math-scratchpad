@@ -205,6 +205,29 @@ describe('Drive event mapping and projections', () => {
 });
 
 describe('Google Drive REST client', () => {
+  it('binds native Cloudflare fetch to globalThis instead of the client receiver', async () => {
+    const runtimeFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async function (
+      this: unknown, input: RequestInfo | URL, _init?: RequestInit,
+    ) {
+      // workerd raises Illegal invocation when fetch is called as client.fetcher(...)
+      // without first binding the original global receiver.
+      expect(this).toBe(globalThis);
+      const path = new URL(String(input)).pathname;
+      if (path === '/token') return jsonResponse({ access_token: 'fake-access-token', expires_in: 3600 });
+      if (path === '/drive/v3/about') return jsonResponse({ user: { emailAddress: OWNER_EMAIL, me: true } });
+      return jsonResponse({ files: [{ id: 'root-folder', name: 'Math_Project',
+        mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }] });
+    });
+    const client = new GoogleDriveClient({
+      GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
+      GOOGLE_DRIVE_CLIENT_SECRET: 'dummy',
+      GOOGLE_DRIVE_REFRESH_TOKEN: 'dummy',
+      OWNER_EMAIL,
+    } as WorkerEnv);
+    expect(await client.ensureRootFolder('Math_Project')).toBe('root-folder');
+    expect(runtimeFetch).toHaveBeenCalledTimes(3);
+  });
+
   it.each(['oauth_refresh_fetch_rejected', 'drive_owner_verification_fetch_rejected', 'drive_lookup_fetch_rejected'] as const)(
     'identifies the failed Google request stage without exposing credentials (%s)',
     async failingStage => {
