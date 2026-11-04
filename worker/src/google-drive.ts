@@ -48,7 +48,8 @@ export class GoogleDriveClient {
 
   constructor(
     private readonly env: WorkerEnv,
-    private readonly fetcher: typeof fetch = fetch,
+    // workerd requires the native fetch receiver to be globalThis.
+    private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
     private readonly now: () => number = Date.now,
   ) {}
 
