@@ -129,10 +129,14 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     const element = googleButton.current;
     if (!element) return;
     let active = true;
-    void mountGoogleIdButton(element, token => runtime?.setIdToken(token)).catch(problem => {
+    let unsubscribe: (() => void) | undefined;
+    void mountGoogleIdButton(element, token => runtime?.setIdToken(token)).then(removeListener => {
+      if (!active) removeListener();
+      else unsubscribe = removeListener;
+    }).catch(problem => {
       if (active) setError(problem instanceof Error ? problem.message : 'ورود گوگل بارگیری نشد.');
     });
-    return () => { active = false; element.replaceChildren(); };
+    return () => { active = false; unsubscribe?.(); element.replaceChildren(); };
   }, [runtime]);
 
   const syncNow = useCallback(async () => {

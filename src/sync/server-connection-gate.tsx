@@ -86,6 +86,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     if (state.kind === 'online' || !retryButton.current) return;
     let active = true;
     const element = retryButton.current;
+    let unsubscribe: (() => void) | undefined;
     void mountGoogleIdButton(element, token => {
       if (!active) return;
       void onAuthenticated(token).then(check).catch(problem => {
@@ -95,8 +96,11 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
           message: `اتصال Google تأیید نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. داده‌های این دستگاه محفوظ‌اند.`,
         });
       });
+    }).then(removeListener => {
+      if (!active) removeListener();
+      else unsubscribe = removeListener;
     }).catch(() => { /* The explicit retry action remains available. */ });
-    return () => { active = false; element.replaceChildren(); };
+    return () => { active = false; unsubscribe?.(); element.replaceChildren(); };
   }, [state.kind, onAuthenticated, check]);
 
   return (

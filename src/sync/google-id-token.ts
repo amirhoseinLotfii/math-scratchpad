@@ -8,7 +8,7 @@ type GoogleIdApi = {
 };
 
 let initializedFor = '';
-let tokenListener: ((token: string, expiresAt: number) => void) | undefined;
+const tokenListeners = new Set<(token: string, expiresAt: number) => void>();
 let cached: { token: string; expiresAt: number } | undefined;
 const SESSION_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
 
@@ -46,11 +46,10 @@ function tokenExpiry(token: string): number {
   } catch { return 0; }
 }
 
-export async function mountGoogleIdButton(element: HTMLElement, listener: (token: string, expiresAt: number) => void): Promise<void> {
+export async function mountGoogleIdButton(element: HTMLElement, listener: (token: string, expiresAt: number) => void): Promise<() => void> {
   await loadIdentity();
   const api = (window as Window & { google?: { accounts?: { id?: GoogleIdApi } } }).google?.accounts?.id;
   if (!api) throw new Error('ورود امن گوگل در این مرورگر بارگیری نشد.');
-  tokenListener = listener;
   if (initializedFor !== GOOGLE_CLIENT_ID) {
     api.initialize({
       client_id: GOOGLE_CLIENT_ID,
@@ -63,14 +62,16 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
         if (!expiresAt || expiresAt <= Date.now()) return;
         cached = { token, expiresAt };
         persistSessionToken(cached);
-        tokenListener?.(token, expiresAt);
+        for (const tokenListener of [...tokenListeners]) tokenListener(token, expiresAt);
       },
     });
     initializedFor = GOOGLE_CLIENT_ID;
   }
   api.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
+  tokenListeners.add(listener);
   const saved = getGoogleIdTokenRecord();
   if (saved) listener(saved.token, saved.expiresAt);
+  return () => { tokenListeners.delete(listener); };
 }
 
 function getGoogleIdTokenRecord(): { token: string; expiresAt: number } | undefined {
