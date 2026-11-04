@@ -88,6 +88,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [, setDriveBankAvailable] = useState(false);
  const [loadedBank, setLoadedBank] = useState<{ bank: DriveBank; version: string } | null>(initialBank ?? null);
  const loadedBankRef = useRef(loadedBank); loadedBankRef.current = loadedBank;
+ const bankTransitionRef = useRef<string | null>(null);
  const [lessonPickerOpen, setLessonPickerOpen] = useState(false), [lessonScreen, setLessonScreen] = useState<Lesson | null>(null);
  const [referenceLesson, setReferenceLesson] = useState<Lesson | null>(null), [referenceWasRunning, setReferenceWasRunning] = useState(false);
  const [lessonProgressState, setLessonProgressState] = useState<LessonProgressState>(() => initialBank ? readLessonProgress(initialBank.bank, initialBank.version) : emptyLessonProgressState('', ''));
