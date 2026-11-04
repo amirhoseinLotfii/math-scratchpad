@@ -205,6 +205,21 @@ describe('Drive event mapping and projections', () => {
 });
 
 describe('Google Drive REST client', () => {
+  it.each([
+    [401, 'invalid_client'],
+    [400, 'invalid_grant'],
+    [400, 'unexpected_nonpublic_error'],
+  ] as const)('records only an allowlisted OAuth error after HTTP %i (%s)', async (status, code) => {
+    const client = makeClient((async () => jsonResponse({
+      error: code, error_description: 'sensitive service response detail',
+    }, status)) as typeof fetch);
+    await expect(client.ensureRootFolder('Math_Project')).rejects.toMatchObject({ code: 'reauthorization_required' });
+    expect(client.diagnosticStage).toBe(`oauth_refresh_http_${status}_${
+      code === 'unexpected_nonpublic_error' ? 'unknown' : code}`);
+    expect(client.diagnosticStage).not.toContain('sensitive');
+  });
+
+
   it('binds native Cloudflare fetch to globalThis instead of the client receiver', async () => {
     const runtimeFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async function (
       this: unknown, input: RequestInfo | URL, _init?: RequestInit,
