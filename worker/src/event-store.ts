@@ -158,6 +158,18 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     // this can be inspected through the authenticated Cloudflare SQL console.
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sync_health (destination TEXT PRIMARY KEY, status TEXT NOT NULL, pending_count INTEGER NOT NULL, last_error TEXT, last_synced_at TEXT, updated_at TEXT NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror_diagnostics (destination TEXT PRIMARY KEY, failure_stage TEXT NOT NULL, error_code TEXT NOT NULL, updated_at TEXT NOT NULL)');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror_configuration (destination TEXT PRIMARY KEY, configured INTEGER NOT NULL, updated_at TEXT NOT NULL)');
+    const configuration = [
+      ['drive', Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_REFRESH_TOKEN)],
+      ['notion', Boolean(notionDataSourcesFromEnv(env))],
+    ] as const;
+    for (const [destination, configured] of configuration) {
+      ctx.storage.sql.exec(
+        'INSERT INTO mirror_configuration(destination,configured,updated_at) VALUES(?,?,?) ON CONFLICT(destination) DO UPDATE SET configured=excluded.configured,updated_at=excluded.updated_at',
+        destination, configured ? 1 : 0, new Date().toISOString(),
+      );
+    }
+
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT, revision INTEGER NOT NULL, updated_at TEXT NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER NOT NULL)');
     ctx.storage.sql.exec('INSERT OR IGNORE INTO app_state_meta (singleton, revision) VALUES (1, 0)');
