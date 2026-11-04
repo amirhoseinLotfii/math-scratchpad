@@ -323,7 +323,18 @@ export class GoogleDriveClient {
       throw new DriveMirrorError('network_error');
     }
     if (!response.ok) {
-      this.stage = `oauth_refresh_http_${response.status}`;
+      // Google's OAuth error *code* is a fixed public protocol value. Never
+      // persist the response body, error_description, token or client secret.
+      let reason = 'unknown';
+      try {
+        const payload: unknown = await response.json();
+        const candidate = payload && typeof payload === 'object' ? (payload as { error?: unknown }).error : undefined;
+        if (typeof candidate === 'string' && [
+          'invalid_client', 'invalid_grant', 'unauthorized_client',
+          'invalid_request', 'access_denied', 'temporarily_unavailable',
+        ].includes(candidate)) reason = candidate;
+      } catch { /* Ignore and retain the HTTP status. */ }
+      this.stage = `oauth_refresh_http_${response.status}_${reason}`;
       throw new DriveMirrorError(response.status === 400 || response.status === 401 ? 'reauthorization_required' : errorForStatus(response.status).code);
     }
     const token = await readJson<{ access_token?: unknown; expires_in?: unknown }>(response);
