@@ -10,7 +10,7 @@ import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, load
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
-export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void }) {
+export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBeforeBankLoad }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void; onBeforeBankLoad?: (bank: DriveBank, version: string) => Promise<void> }) {
   const store = useAppStore(), dispatch = useAppDispatch();
   const [config, setConfig] = useState<DriveConfig>(getConfig), [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Connect Google Drive to begin.'), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
@@ -138,8 +138,9 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
     try {
       const doc = bankDocument(available.bank, available.version);
       await archiveSession(store.getState());
+      await onBeforeBankLoad?.(available.bank, available.version);
       dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(false))); onBankReady?.(available.bank, available.version);
-      setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous session was saved in this browser.');
+      setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous work was safely archived first.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`); }
     finally { setBusy(false); }
   }

@@ -2,6 +2,8 @@ import { Client } from '@notionhq/client';
 import type { LearnEvent } from '../../src/sync/events';
 import {
   buildAttemptProperties,
+  buildAppStateMirrorProperties,
+  buildChapterSnapshotProperties,
   buildConceptProperties,
   buildDailyReportProperties,
   buildMistakeProperties,
@@ -43,6 +45,7 @@ export type NotionDataSources = {
 
 export type NotionPage = { id: string };
 export type NotionQueryResult = { results: NotionPage[] };
+export type NotionPageRef = { key: string; pageId: string };
 
 /** Small structural API surface keeps the sync Worker tests independent from Notion. */
 export interface NotionClientPort {
@@ -68,6 +71,8 @@ export type NotionEventContext = {
   call<T>(operation: () => Promise<T>): Promise<T>;
   getPageRef(kind: string, key: string): Promise<string | undefined>;
   setPageRef(kind: string, key: string, pageId: string): Promise<void>;
+  getPageRefs?(kind: string, prefix: string): Promise<NotionPageRef[]>;
+  deletePageRef?(kind: string, key: string): Promise<void>;
   getMistakeState(key: string): Promise<MistakeReviewState | undefined>;
   setMistakeState(key: string, value: MistakeReviewState): Promise<void>;
   getSessionMistakePageIds(sessionId: string): Promise<string[]>;
@@ -112,6 +117,12 @@ export async function syncNotionEvent(context: NotionEventContext, input: {
 }): Promise<void> {
   const { event, session, daily, concept } = input;
   if (typeof event.isTest !== 'boolean') return;
+  if (event.type === 'chapter_snapshot') {
+    await syncChapterSnapshot(context, event);
+    return;
+  }
+  const editableStateEvent = event.type === 'answer_edited' || event.type === 'step_edited'
+    || event.type === 'step_added' || event.type === 'confidence_set';
   const sessionPageId = await upsertByExternalKey(context, {
     kind: 'session',
     key: event.session,
@@ -125,7 +136,7 @@ export async function syncNotionEvent(context: NotionEventContext, input: {
   });
 
   let attemptPageId: string | undefined;
-  if (isAttemptLikeEvent(event)) {
+  if (isAttemptLikeEvent(event) || editableStateEvent) {
     attemptPageId = await upsertByExternalKey(context, {
       kind: 'attempt',
       key: event.id,
@@ -171,6 +182,74 @@ export async function syncNotionEvent(context: NotionEventContext, input: {
       properties: { Mistakes: { relation: mistakeIds.map(id => ({ id })) } },
     }));
   }
+}
+
+export async function syncNotionAppState(context: NotionEventContext, input: {
+  key: string;
+  value: string | null;
+  revision: number;
+  updatedAt: string;
+}): Promise<void> {
+  const prefix = `state:${encodeURIComponent(input.key)}:`;
+  const previousRefs = await context.getPageRefs?.('app-state', prefix) ?? [];
+  const chunks = input.value === null ? [] : splitCodePoints(input.value, 40_000);
+  const syncedAt = new Date().toISOString();
+  for (let part = 0; part < chunks.length; part += 1) {
+    const externalKey = `${prefix}${part}`;
+    await upsertByExternalKey(context, {
+      kind: 'app-state',
+      key: externalKey,
+      dataSourceId: context.dataSources.attempts,
+      property: 'Event ID',
+      filter: { property: 'Event ID', rich_text: { equals: externalKey } },
+      properties: buildAppStateMirrorProperties({
+        externalKey, key: input.key, value: chunks[part]!, revision: input.revision,
+        part, parts: chunks.length, updatedAt: input.updatedAt, syncedAt,
+      }),
+    });
+  }
+  for (const ref of previousRefs) {
+    const part = Number(ref.key.slice(prefix.length));
+    if (Number.isInteger(part) && part >= 0 && part < chunks.length) continue;
+    await context.call(() => context.client.pages.update({ page_id: ref.pageId, archived: true }));
+    await context.deletePageRef?.('app-state', ref.key);
+  }
+}
+
+async function syncChapterSnapshot(context: NotionEventContext, event: LearnEvent): Promise<void> {
+  if (event.type !== 'chapter_snapshot' || !event.snapshotId || !event.snapshotBankId || event.snapshotPart === undefined
+    || event.snapshotParts === undefined || !event.snapshotSha256 || event.snapshotData === undefined) {
+    throw new Error('invalid_chapter_snapshot');
+  }
+  const externalKey = `chapter-snapshot:${event.snapshotId}:${event.snapshotPart}`;
+  await upsertByExternalKey(context, {
+    kind: 'chapter-snapshot',
+    key: externalKey,
+    dataSourceId: context.dataSources.attempts,
+    property: 'Event ID',
+    filter: { property: 'Event ID', rich_text: { equals: externalKey } },
+    properties: buildChapterSnapshotProperties({
+      externalKey,
+      bankId: event.snapshotBankId,
+      bankVersion: event.bankVersion,
+      chapter: event.chapter,
+      snapshotId: event.snapshotId,
+      sha256: event.snapshotSha256,
+      part: event.snapshotPart,
+      parts: event.snapshotParts,
+      data: event.snapshotData,
+      createdAt: event.ts,
+      syncedAt: context.now,
+    }),
+  });
+}
+
+function splitCodePoints(value: string, maxLength: number): string[] {
+  if (value.length === 0) return [''];
+  const chars = Array.from(value);
+  const chunks: string[] = [];
+  for (let index = 0; index < chars.length; index += maxLength) chunks.push(chars.slice(index, index + maxLength).join(''));
+  return chunks;
 }
 
 async function upsertMistake(context: NotionEventContext, event: LearnEvent, sessionPageId: string, attemptPageId: string): Promise<void> {

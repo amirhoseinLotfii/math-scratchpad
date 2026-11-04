@@ -13,7 +13,7 @@ export const LEARN_EVENT_TYPES = [
   'tab_hidden', 'tab_visible', 'window_blur', 'window_focus', 'idle_start',
   'idle_end', 'mood_logged', 'gate_attempt', 'gate_passed', 'gate_failed',
   'goal_status', 'backup_created', 'backup_restored', 'report_generated', 'legacy_state_migration',
-  'section_complete', 'practice_started', 'lesson_skip', 'scope_paused', 'scope_resumed',
+  'section_complete', 'practice_started', 'lesson_skip', 'scope_paused', 'scope_resumed', 'chapter_snapshot',
 ] as const;
 
 export const LEARN_EVENT_ITEM_TYPES = ['typed', 'mcq', 'true_false_why', 'find_mistake', 'step_by_step', 'explain', 'reverse'] as const;
@@ -71,12 +71,29 @@ export const learnEventSchema = z.object({
   pausedMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
   mood: z.enum(['tired', 'neutral', 'energized']).optional(),
   migrationChunk: legacyMigrationChunkSchema.optional(),
+  snapshotId: uuidV4.optional(),
+  snapshotBankId: z.string().min(1).max(100).optional(),
+  snapshotPart: z.number().int().min(0).max(100_000).optional(),
+  snapshotParts: z.number().int().min(1).max(100_001).optional(),
+  snapshotSha256: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+  snapshotData: boundedText(8_000).optional(),
 }).strict().superRefine((event, ctx) => {
   if (event.type === 'legacy_state_migration' && !event.migrationChunk) {
     ctx.addIssue({ code: 'custom', path: ['migrationChunk'], message: 'Legacy migration events require a chunk payload.' });
   }
   if (event.type !== 'legacy_state_migration' && event.migrationChunk) {
     ctx.addIssue({ code: 'custom', path: ['migrationChunk'], message: 'Migration chunks are only allowed on migration events.' });
+  }
+  const snapshotFields = [event.snapshotId, event.snapshotBankId, event.snapshotPart, event.snapshotParts, event.snapshotSha256, event.snapshotData];
+  if (event.type === 'chapter_snapshot') {
+    if (snapshotFields.some(value => value === undefined)) {
+      ctx.addIssue({ code: 'custom', path: ['snapshotData'], message: 'Chapter snapshots require complete chunk metadata.' });
+    }
+    if (event.snapshotPart !== undefined && event.snapshotParts !== undefined && event.snapshotPart >= event.snapshotParts) {
+      ctx.addIssue({ code: 'custom', path: ['snapshotPart'], message: 'Snapshot part must be below the total part count.' });
+    }
+  } else if (snapshotFields.some(value => value !== undefined)) {
+    ctx.addIssue({ code: 'custom', path: ['snapshotData'], message: 'Snapshot fields are only allowed on chapter snapshot events.' });
   }
   if (event.endTs && Date.parse(event.endTs) < Date.parse(event.ts)) {
     ctx.addIssue({ code: 'custom', path: ['endTs'], message: 'endTs cannot be earlier than ts.' });

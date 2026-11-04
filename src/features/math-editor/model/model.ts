@@ -11,7 +11,7 @@ export type MathNode = Leaf | Structure;
 /** Optional lossless LaTeX snapshot for compatibility with newer math editor data. */
 export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean; mathLatex?: string };
 export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; answerType?: 'math' | 'text' | 'choice'; choices?: string[]; answerText?: string; diagnosticId?: number; bankQuestionId?: string; /** Optional bank lesson metadata. Older session JSON remains valid without it. */ stage?: 'learn' | 'practice'; conceptId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
-export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string };
+export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string; chapter?: number };
 export type Cursor = { stepId: string; nodeId: string | null; sequenceId: string | null; index: number; offset: number; selected: string | null };
 export type Document = { exercises: Exercise[]; exerciseId: string; cursor: Cursor; session?: SessionMeta };
 /** ISO-8601 timestamp carrying the local UTC offset, e.g. 2026-10-27T16:20:00.000+03:30. */

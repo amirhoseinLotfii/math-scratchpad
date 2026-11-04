@@ -246,7 +246,7 @@ export function bankDocument(bank: DriveBank, version: string, includedQuestions
   if (includedQuestions.length > MAX_SESSION_EXERCISES) throw Error(`A practice session can include at most ${MAX_SESSION_EXERCISES} questions. Continue with the next batch after finishing this one.`);
   const exercises: Exercise[] = includedQuestions.map(q => ({ id: uid(), bankQuestionId: q.id, mode: q.mode, source: q.source, answerType: q.answerType ?? (q.mode === 'text' ? 'text' : 'math'), ...(q.answerType === 'choice' && q.choices ? { choices: [...q.choices] } : {}), ...(q.prompt ? { prompt: q.prompt } : {}), ...(q.guidance ? { guidance: q.guidance } : {}), stage: q.stage ?? 'practice', ...(q.conceptId ? { conceptId: q.conceptId } : {}), steps: [blankStep()] }));
   const first = exercises[0], step = first.steps[0];
-  return { session: { ...newSessionMeta(), bankId: bank.bank_id, bankVersion: version }, exercises, exerciseId: first.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
+  return { session: { ...newSessionMeta(), bankId: bank.bank_id, bankVersion: version, ...(bank.chapter ? { chapter: bank.chapter.number } : {}) }, exercises, exerciseId: first.id, cursor: { stepId: step.id, nodeId: leaves(step.expression)[0].node.id, sequenceId: null, index: 0, offset: 0, selected: null } };
 }
 export type ArchivedSession = { id: string; savedAt: string; data: string };
 export function readArchive(): ArchivedSession[] {

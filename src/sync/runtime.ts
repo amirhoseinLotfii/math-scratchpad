@@ -2,6 +2,8 @@ import type { LearnEvent } from './events';
 import { subscribeToLearnEvents } from './events';
 import {
   acknowledgeOutbox,
+  flushLearningStorage,
+  getAuthenticatedServerStorage,
   getSyncMeta,
   queueLearnEvent,
   readOutboxBatch,
@@ -161,6 +163,41 @@ export class BrowserSyncRuntime {
       }
     }
     if (failed.length) throw new Error([...new Set(failed)].join(' · '));
+  }
+
+  /** Wait until both configured mirrors acknowledge all queued state and events. */
+  async syncAllUntilComplete(timeoutMs = 120_000): Promise<void> {
+    if (!this.started) throw new Error('همگام‌سازی هنوز راه‌اندازی نشده است.');
+    if (!this.token) throw new Error('برای حفظ امن اطلاعات فصل، اتصال Google لازم است.');
+    const deadline = Date.now() + Math.max(1_000, timeoutMs);
+    let lastError = '';
+    let retryDelayMs = 500;
+    await flushLearningStorage();
+    await getAuthenticatedServerStorage()?.flush();
+
+    while (Date.now() < deadline) {
+      try {
+        await this.syncAllNow();
+        await this.refreshMirrorStatuses();
+        const { driveMirror, notionMirror, pending } = this.current;
+        if (driveMirror?.status === 'not_configured' || notionMirror?.status === 'not_configured') {
+          throw new Error('برای تغییر فصل، هر دو مقصد Google Drive و Notion باید پیکربندی شده باشند.');
+        }
+        if (pending === 0
+          && driveMirror?.status === 'synced' && driveMirror.pendingCount === 0
+          && notionMirror?.status === 'synced' && notionMirror.pendingCount === 0) return;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'تأیید مقصدهای همگام‌سازی ناموفق بود.';
+        if (!this.token) throw new Error(lastError);
+        if (lastError.includes('هر دو مقصد')) throw error;
+        const permanentError = [this.current.driveMirror?.lastError, this.current.notionMirror?.lastError]
+          .find(code => code === 'token_invalid' || code === 'database_not_shared' || code === 'schema_mismatch');
+        if (permanentError) throw new Error(`پیکربندی همگام‌سازی نیاز به اصلاح دارد: ${permanentError}`);
+        retryDelayMs = Math.min(5_000, retryDelayMs * 2);
+      }
+      await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+    }
+    throw new Error(`ذخیرهٔ فصل در Drive و Notion تا پایان زمان انتظار تأیید نشد${lastError ? `: ${lastError}` : '.'}`);
   }
 
   /** Server backup always reads the canonical log; browser IndexedDB is not used. */
