@@ -577,7 +577,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (!dataSources || !this.env.NOTION_API_KEY) return this.getNotionStatus();
     const state = await this.readNotionState();
     const through = await this.maxSequence();
-    if (through === state.lastSeq && state.status === 'synced') return this.getNotionStatus();
+    if (through === state.lastSeq && state.status === 'synced') {
+      // Backfill the SQL health dashboard for mirrors synced before the table existed.
+      await this.saveNotionState({ ...state, pendingCount: 0 });
+      return this.getNotionStatus();
+    }
     await this.saveNotionState({
       ...state,
       status: 'syncing',
