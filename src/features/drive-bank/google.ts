@@ -40,6 +40,36 @@ const GIS_ERRORS: Record<string, string> = {
   unknown: 'Google connection failed.',
 };
 export type Token = { accessToken: string; expiresAt: number };
+
+const DRIVE_TOKEN_SESSION_KEY = 'math-scratchpad-drive-token-v1';
+
+/** Short-lived Drive credential for this tab only; it survives refresh but not a new browser session. */
+export function readDriveSessionToken(): Token | undefined {
+  try {
+    const raw = sessionStorage.getItem(DRIVE_TOKEN_SESSION_KEY);
+    if (!raw) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object') throw new Error('Invalid Drive token cache.');
+    const record = value as { accessToken?: unknown; expiresAt?: unknown };
+    if (typeof record.accessToken !== 'string' || !record.accessToken
+      || typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt)
+      || record.expiresAt <= Date.now()) throw new Error('Expired Drive token cache.');
+    return { accessToken: record.accessToken, expiresAt: record.expiresAt };
+  } catch {
+    try { sessionStorage.removeItem(DRIVE_TOKEN_SESSION_KEY); } catch { /* Storage may be blocked. */ }
+    return undefined;
+  }
+}
+
+export function saveDriveSessionToken(token: Token): void {
+  if (!token.accessToken || token.expiresAt <= Date.now()) return;
+  try { sessionStorage.setItem(DRIVE_TOKEN_SESSION_KEY, JSON.stringify(token)); }
+  catch { /* The active in-memory token can still be used until it expires. */ }
+}
+
+export function clearDriveSessionToken(): void {
+  try { sessionStorage.removeItem(DRIVE_TOKEN_SESSION_KEY); } catch { /* Storage may be blocked. */ }
+}
 /** Must be called directly inside a tap handler, otherwise Android Chrome blocks the popup. */
 export function requestToken(clientId: string, opts: { prompt?: '' | 'consent' | 'select_account'; hint?: string }, done: (r: { token?: Token; error?: string }) => void) {
   const oauth2 = window.google?.accounts?.oauth2;
