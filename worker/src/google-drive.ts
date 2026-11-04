@@ -267,7 +267,10 @@ export class GoogleDriveClient {
     const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?alt=media`, { method: 'GET' });
     if (!response.ok) throw errorForStatus(response.status);
     const etag = response.headers.get('ETag');
-    if (!etag) throw new DriveMirrorError('invalid_response');
+    if (!etag) {
+      this.stage = 'drive_read_missing_etag';
+      throw new DriveMirrorError('invalid_response');
+    }
     return { id, etag, content: await response.text() };
   }
 
