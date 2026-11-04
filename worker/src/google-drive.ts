@@ -268,7 +268,24 @@ export class GoogleDriveClient {
     if (!response.ok) throw errorForStatus(response.status);
     const etag = response.headers.get('ETag');
     if (!etag) {
-      this.stage = 'drive_read_missing_etag';
+      // Probe metadata only. Do not persist the ETag, file ID or response body.
+      // Media and metadata validators may not be interchangeable; keep the
+      // write blocked until conditional-update semantics are verified.
+      let stage = 'drive_read_missing_etag_metadata_unavailable';
+      try {
+        const metadata = await this.apiFetch(
+          `https://www.googleapis.com/drive/v2/files/${encodeURIComponent(id)}?fields=etag`,
+          { method: 'GET' },
+        );
+        if (metadata.ok) {
+          const body: unknown = await metadata.json();
+          const candidate = body && typeof body === 'object' ? (body as { etag?: unknown }).etag : undefined;
+          stage = typeof candidate === 'string' && candidate.length > 0
+            ? 'drive_read_missing_etag_metadata_present'
+            : 'drive_read_missing_etag_metadata_absent';
+        }
+      } catch { /* Keep the original safe failure; metadata is diagnostic only. */ }
+      this.stage = stage;
       throw new DriveMirrorError('invalid_response');
     }
     return { id, etag, content: await response.text() };
