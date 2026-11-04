@@ -177,14 +177,14 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
       token: 'valid-test-token', body: { key, value: '{"draft":1}', revision: 0 },
     });
     expect(created.status).toBe(200);
-    expect(await created.json()).toMatchObject({ key, revision: 1 });
+    expect(await created.json()).toMatchObject({ key, revision: 1, updatedAt: expect.any(String) });
     const conflict = await call(app, '/state', {
       token: 'valid-test-token', body: { key, value: '{"draft":0}', revision: 0 },
     });
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ error: 'state_conflict', revision: 1 });
     const fetched = await call(app, '/state', { token: 'valid-test-token' });
-    expect(await fetched.json()).toMatchObject({ records: [{ key, value: '{"draft":1}', revision: 1 }] });
+    expect(await fetched.json()).toMatchObject({ records: [{ key, value: '{"draft":1}', revision: 1, updatedAt: expect.any(String) }] });
     const updated = await call(app, '/state', {
       token: 'valid-test-token', body: { key, value: '{"draft":2}', revision: 1 },
     });

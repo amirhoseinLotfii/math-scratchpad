@@ -252,9 +252,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }
 
   private readAppState(): Response {
-    const records = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
-      'SELECT key, value, revision FROM app_state ORDER BY key',
+    const rows = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number; updated_at: string }>(
+      'SELECT key, value, revision, updated_at FROM app_state ORDER BY key',
     ).toArray();
+    const records = rows.map(({ updated_at, ...record }) => ({ ...record, updatedAt: updated_at }));
     return json({ records, revision: this.appStateRevision() });
   }
 
@@ -279,12 +280,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const current = existing?.revision ?? 0;
       if (current !== item.revision) return { conflict: true, revision: current };
       const revision = current + 1;
+      const updatedAt = new Date().toISOString();
       this.ctx.storage.sql.exec(
         'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, updated_at=excluded.updated_at',
-        item.key!, item.value as string | null, revision, new Date().toISOString(),
+        item.key!, item.value as string | null, revision, updatedAt,
       );
       this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = revision + 1 WHERE singleton = 1');
-      return { conflict: false, revision };
+      return { conflict: false, revision, updatedAt };
     });
     if (result.conflict) return json({ error: 'state_conflict', revision: result.revision }, 409);
     if (this.driveConfigured()) {
@@ -295,7 +297,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       });
       await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
     }
-    return json({ key: item.key, revision: result.revision });
+    return json({ key: item.key, revision: result.revision, updatedAt: result.updatedAt });
   }
 
   private parseRateLimit(raw: string | undefined): number {

@@ -253,16 +253,44 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   // Keep pointer clicks and click-only assistive/test activations working.
   setMenu(value => !value);
  }
- function bankReady(bank: DriveBank | null, version: string) {
+ async function bankReady(bank: DriveBank | null, version: string) {
   if (!bank) {
    setLoadedBank(null);
    const empty = emptyLessonProgressState('', ''); lessonProgressRef.current = empty; setLessonProgressState(empty); setLessonPersistenceMessage('');
    return;
   }
-  const current = loadedBank;
+  const current = loadedBankRef.current;
   if (current?.bank.bank_id === bank.bank_id && current.version === version) { setLoadedBank({ bank, version }); return; }
+
+  const previousChapter = current?.bank.chapter?.number;
+  const nextChapter = bank.chapter?.number;
+  const chapterChanged = !!current && (previousChapter !== undefined && nextChapter !== undefined
+   ? previousChapter !== nextChapter
+   : current.bank.bank_id !== bank.bank_id);
+  const transitionKey = bank.bank_id + ':' + version;
+  if (chapterChanged) {
+   if (bankTransitionRef.current === transitionKey) return;
+   bankTransitionRef.current = transitionKey;
+   try {
+    const previous = store.getState();
+    const hasWork = previous.doc.exercises.some(item =>
+     !!item.bankQuestionId || !!item.source.trim() || !!item.answerText?.trim() || item.steps.some(step => !stepIsBlank(step)),
+    );
+    if (hasWork) await archiveSession(previous);
+    dispatch(actions.resetSession());
+   } catch (error) {
+    setLessonPersistenceMessage(error instanceof Error
+     ? 'فصل جدید بارگیری نشد؛ ذخیرهٔ امن کار فصل قبلی ناموفق بود: ' + error.message
+     : 'فصل جدید بارگیری نشد؛ کار فصل قبلی حفظ شد.');
+    bankTransitionRef.current = null;
+    return;
+   }
+  }
+
   const restored = readLessonProgress(bank, version);
+  loadedBankRef.current = { bank, version };
   setLoadedBank({ bank, version }); lessonProgressRef.current = restored; setLessonProgressState(restored); setLessonPersistenceMessage(restored.warning);
+  if (chapterChanged) bankTransitionRef.current = null;
  }
  const updateLessonProgressState = useCallback((next: LessonProgressState) => {
   lessonProgressRef.current = next; setLessonProgressState(next);

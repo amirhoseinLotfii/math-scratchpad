@@ -79,22 +79,60 @@ const memoryMeta = new Map<string, unknown>();
 export function isServerStorageActive(): boolean { return !!serverStorage; }
 export function getAuthenticatedServerStorage(): ServerBackedStorage | undefined { return serverStorage; }
 
-/** Login is the only path into the production editor. No browser database is opened. */
+/** Connect an optional server mirror without replacing the durable browser store. */
 export async function initializeAuthenticatedServerStorage(token: string): Promise<void> {
+  const bootstrap = await initializeLearningStorage();
+  const localStorageFacade = activeStorage;
+  if (!bootstrap.dbAvailable || !localStorageFacade) {
+    throw new Error('ذخیره‌سازی پایدار این مرورگر آماده نیست؛ اتصال سرور به‌تنهایی برای ویرایش کافی نیست.');
+  }
+
   const snapshot = await readServerSnapshot(token);
-  serverStorage = new ServerBackedStorage(snapshot.records, token, (key, value) => {
+  const remoteRecords = snapshot.records.filter(record => isLearningStorageKey(record.key));
+  const db = await database();
+  const localRecords = await db.getAll(LEARNING_CACHE_STORE);
+  const localByKey = new Map(localRecords.filter(record => isLearningStorageKey(record.key)).map(record => [record.key, record]));
+  const remoteByKey = new Map(remoteRecords.map(record => [record.key, record]));
+
+  const mirror = new ServerBackedStorage(remoteRecords, token, (key, value) => {
+    if (isLearningStorageKey(key)) {
+      if (value === null) localStorageFacade.removeItem(key);
+      else localStorageFacade.setItem(key, value);
+    }
     for (const listener of storageListeners) listener({ key, newValue: value });
   });
-  activeStorage = serverStorage;
-  storageWritable = true;
+  serverStorage = mirror;
+
+  const keys = new Set([...localByKey.keys(), ...remoteByKey.keys()]);
+  for (const key of keys) {
+    const local = localByKey.get(key);
+    const remote = remoteByKey.get(key);
+    if (!local) {
+      if (remote?.value !== null && remote?.value !== undefined) localStorageFacade.setItem(key, remote.value);
+      continue;
+    }
+    if (!remote) {
+      mirror.setItem(key, local.value);
+      continue;
+    }
+    if (local.value === remote.value) continue;
+    const localTime = Date.parse(local.updatedAt) || 0;
+    const remoteTime = typeof remote.updatedAt === 'string' ? Date.parse(remote.updatedAt) || 0 : 0;
+    if (remoteTime > localTime) {
+      if (remote.value === null) localStorageFacade.removeItem(key);
+      else localStorageFacade.setItem(key, remote.value);
+    } else {
+      // Local data wins ties and records from older Workers without timestamps.
+      mirror.setItem(key, local.value);
+    }
+  }
+  await flushLearningStorage();
 }
 
 export function updateAuthenticatedServerToken(token: string) { serverStorage?.setToken(token); }
 
 export async function refreshAuthenticatedServerStorage(token: string): Promise<void> {
-  if (!serverStorage) return;
-  const snapshot = await readServerSnapshot(token);
-  serverStorage.applyRemote(snapshot.records);
+  await initializeAuthenticatedServerStorage(token);
 }
 
 export function memoryOutboxRecords(): OutboxRecord[] {
@@ -232,6 +270,7 @@ function trackWrite<T>(promise: Promise<T>): Promise<T> {
 
 function notifyTabs(key: string, value: string | null) {
   try { channel?.postMessage({ key, value, updatedAt: new Date().toISOString() }); } catch { /* Optional cross-tab hint. */ }
+  for (const listener of storageListeners) listener({ key, newValue: value });
 }
 
 class IndexedDbStorage implements Storage {
@@ -251,6 +290,7 @@ class IndexedDbStorage implements Storage {
     values.delete(normalized);
     trackWrite(dbInstance.delete(LEARNING_CACHE_STORE, normalized));
     notifyTabs(normalized, null);
+    if (serverStorage && isLearningStorageKey(normalized)) serverStorage.removeItem(normalized);
   }
   setItem(key: string, value: string): void {
     const normalized = String(key), text = String(value);
@@ -258,6 +298,9 @@ class IndexedDbStorage implements Storage {
     values.set(normalized, text);
     trackWrite(dbInstance.put(LEARNING_CACHE_STORE, { key: normalized, value: text, updatedAt: new Date().toISOString() }));
     notifyTabs(normalized, text);
+    // Large question-bank caches remain in IndexedDB and never enter the server
+    // app-state endpoint, whose per-record payload limit is intentionally small.
+    if (serverStorage && isLearningStorageKey(normalized)) serverStorage.setItem(normalized, text);
   }
 }
 
@@ -361,7 +404,7 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
 
 /** Uses IndexedDB after app bootstrap; direct unit renders retain their Storage mock behavior. */
 export function getLearningStorage(): Storage {
-  return serverStorage ?? activeStorage ?? localStorageIfAvailable() ?? new IndexedDbStorage();
+  return activeStorage ?? localStorageIfAvailable() ?? new IndexedDbStorage();
 }
 
 export function subscribeLearningStorage(listener: (change: { key: string; newValue: string | null }) => void): () => void {
@@ -376,7 +419,6 @@ export function refreshLearningStorageValues(records: CacheRecord[]): void {
 }
 
 export async function flushLearningStorage(): Promise<void> {
-  if (serverStorage) return serverStorage.flush();
   while (pendingWrites.size) await Promise.all([...pendingWrites]);
 }
 
@@ -386,7 +428,6 @@ export async function writeLearningItem(key: string, value: string): Promise<voi
 }
 
 export async function readLegacyMigration(): Promise<LegacyMigration | null> {
-  if (serverStorage) return null;
   const db = await database();
   const record = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
   return (record?.value as LegacyMigration | undefined) ?? null;
@@ -434,7 +475,9 @@ export async function clearVerifiedLegacyKeys(migration: LegacyMigration): Promi
 export async function resetLearningDbForTests(): Promise<void> {
   dbInstance?.close();
   dbInstance = undefined; dbPromise = undefined; bootstrapPromise = undefined; activeStorage = undefined;
+  serverStorage = undefined;
   values = new Map(); pendingWrites = new Set(); channel?.close(); channel = undefined; storageListeners.clear();
+  memoryOutbox.clear(); memoryServerEvents.clear(); memoryMeta.clear();
   storageWritable = false;
   await deleteDB(LEARNING_DB_NAME);
 }
@@ -444,12 +487,6 @@ export function learningDbWriteError(): string {
 }
 
 export async function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
-  if (serverStorage) {
-    const previous = memoryOutbox.get(event.id);
-    if (previous && JSON.stringify(previous.event) !== JSON.stringify(event)) throw new Error('An event ID was reused.');
-    if (!previous) memoryOutbox.set(event.id, { id: event.id, event, queuedAt: event.ts, ...(migrationId ? { migrationId } : {}) });
-    return;
-  }
   const db = await database();
   const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
   const serialized = JSON.stringify(event);
@@ -458,18 +495,15 @@ export async function queueLearnEvent(event: LearnEvent, migrationId?: string): 
 }
 
 export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {
-  if (serverStorage) return [...memoryOutbox.values()].sort((a,b)=>a.queuedAt.localeCompare(b.queuedAt)).slice(0, Math.max(1, Math.min(50, maxItems)));
   const db = await database();
   return db.getAllFromIndex(LEARNING_OUTBOX_STORE, 'by-queued-at', undefined, Math.max(1, Math.min(50, maxItems)));
 }
 
 export async function readOutboxCount(): Promise<number> {
-  if (serverStorage) return memoryOutbox.size;
   return (await database()).count(LEARNING_OUTBOX_STORE);
 }
 
 export async function acknowledgeOutbox(ids: string[]): Promise<void> {
-  if (serverStorage) { for (const id of ids) memoryOutbox.delete(id); return; }
   if (!ids.length) return;
   const db = await database();
   const tx = db.transaction(LEARNING_OUTBOX_STORE, 'readwrite');
@@ -478,7 +512,6 @@ export async function acknowledgeOutbox(ids: string[]): Promise<void> {
 }
 
 export async function storeServerEvents(events: ServerEventRecord[]): Promise<void> {
-  if (serverStorage) { for (const event of events) memoryServerEvents.set(event.seq, event); return; }
   if (!events.length) return;
   const db = await database();
   const tx = db.transaction(LEARNING_SERVER_EVENTS_STORE, 'readwrite');
@@ -487,18 +520,15 @@ export async function storeServerEvents(events: ServerEventRecord[]): Promise<vo
 }
 
 export async function readServerEventsByMigration(migrationId: string): Promise<ServerEventRecord[]> {
-  if (serverStorage) return [...memoryServerEvents.values()].filter(item => item.event.migrationChunk?.id === migrationId);
   const db = await database();
   return db.getAllFromIndex(LEARNING_SERVER_EVENTS_STORE, 'by-migration-id', migrationId);
 }
 
 export async function getSyncMeta<T>(key: string): Promise<T | undefined> {
-  if (serverStorage) return memoryMeta.get(key) as T | undefined;
   const value = await (await database()).get(LEARNING_META_STORE, key) as MetaRecord | undefined;
   return value?.value as T | undefined;
 }
 
 export async function setSyncMeta(key: string, value: unknown): Promise<void> {
-  if (serverStorage) { memoryMeta.set(key, value); return; }
   await (await database()).put(LEARNING_META_STORE, { key, value });
 }

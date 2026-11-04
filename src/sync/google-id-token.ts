@@ -10,6 +10,32 @@ type GoogleIdApi = {
 let initializedFor = '';
 let tokenListener: ((token: string, expiresAt: number) => void) | undefined;
 let cached: { token: string; expiresAt: number } | undefined;
+const SESSION_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
+
+function restoreSessionToken(): { token: string; expiresAt: number } | undefined {
+  try {
+    const raw = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    if (!raw) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object') throw new Error('invalid session token');
+    const record = value as { token?: unknown; expiresAt?: unknown };
+    if (typeof record.token !== 'string' || typeof record.expiresAt !== 'number') throw new Error('invalid session token');
+    const expiresAt = Math.min(record.expiresAt, tokenExpiry(record.token));
+    if (!expiresAt || expiresAt <= Date.now() + 60_000) {
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      return undefined;
+    }
+    return { token: record.token, expiresAt };
+  } catch {
+    try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch { /* Storage may be blocked. */ }
+    return undefined;
+  }
+}
+
+function persistSessionToken(value: { token: string; expiresAt: number }): void {
+  try { sessionStorage.setItem(SESSION_TOKEN_KEY, JSON.stringify(value)); }
+  catch { /* The in-memory credential still works for this page. */ }
+}
 
 function tokenExpiry(token: string): number {
   try {
@@ -28,7 +54,7 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
   if (initializedFor !== GOOGLE_CLIENT_ID) {
     api.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      auto_select: false,
+      auto_select: true,
       cancel_on_tap_outside: true,
       callback: (response: GoogleCredential) => {
         const token = response.credential;
@@ -36,15 +62,30 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
         const expiresAt = tokenExpiry(token);
         if (!expiresAt || expiresAt <= Date.now()) return;
         cached = { token, expiresAt };
+        persistSessionToken(cached);
         tokenListener?.(token, expiresAt);
       },
     });
     initializedFor = GOOGLE_CLIENT_ID;
   }
   api.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
-  if (cached && cached.expiresAt > Date.now() + 60_000) listener(cached.token, cached.expiresAt);
+  const saved = getGoogleIdTokenRecord();
+  if (saved) listener(saved.token, saved.expiresAt);
 }
 
-export function clearGoogleIdToken(): void { cached = undefined; }
+function getGoogleIdTokenRecord(): { token: string; expiresAt: number } | undefined {
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached;
+  cached = restoreSessionToken();
+  return cached;
+}
 
-export function googleIdTokenReady(): boolean { return !!cached && cached.expiresAt > Date.now() + 60_000; }
+export function getGoogleIdToken(): string | undefined {
+  return getGoogleIdTokenRecord()?.token;
+}
+
+export function clearGoogleIdToken(): void {
+  cached = undefined;
+  try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch { /* Storage may be blocked. */ }
+}
+
+export function googleIdTokenReady(): boolean { return !!getGoogleIdTokenRecord(); }

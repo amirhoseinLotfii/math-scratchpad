@@ -7,9 +7,11 @@ import { serialize } from '../../src/persistence';
 import { emitLearnEvent, resetLearnEventRuntimeForTests, type LearnEvent } from '../../src/sync/events';
 import {
   clearVerifiedLegacyKeys,
+  getAuthenticatedServerStorage,
   getLearningDb,
   getLearningStorage,
   initializeLearningStorage,
+  initializeAuthenticatedServerStorage,
   flushLearningStorage,
   queueLearnEvent,
   readLegacyMigration,
@@ -113,6 +115,64 @@ describe('IndexedDB learning cache and legacy migration', () => {
     await db.get('cache', SESSION_KEY);
     expect((await db.get('cache', SESSION_KEY))?.value).toBe('{"new":"work"}');
     expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+
+  it('keeps large Drive bank caches local and mirrors only durable learner state', async () => {
+    const writes: Array<{ key: string; value: string | null; revision: number }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { key: string; value: string | null; revision: number };
+        writes.push(body);
+        return Response.json({ key: body.key, revision: body.revision + 1, updatedAt: new Date().toISOString() });
+      }
+      return Response.json({ records: [], revision: 0 });
+    }));
+    await initializeLearningStorage();
+    await initializeAuthenticatedServerStorage('owner-token');
+
+    const bankKey = 'math-scratchpad-drive-bank-cache-v1:large-bank';
+    const bankValue = 'q'.repeat(260_000);
+    getLearningStorage().setItem(bankKey, bankValue);
+    getLearningStorage().setItem(SESSION_KEY, '{"draft":"saved locally"}');
+    await flushLearningStorage();
+    await getAuthenticatedServerStorage()?.flush();
+
+    const db = await getLearningDb();
+    expect((await db.get('cache', bankKey))?.value).toBe(bankValue);
+    expect((await db.get('cache', SESSION_KEY))?.value).toBe('{"draft":"saved locally"}');
+    expect(writes.map(write => write.key)).toEqual([SESSION_KEY]);
+  });
+
+  it('uses a newer server learner record to restore the local copy after another device updated it', async () => {
+    const remoteValue = '{"draft":"newer server copy"}';
+    vi.stubGlobal('fetch', vi.fn(async (_url: string) => Response.json({
+      revision: 5,
+      records: [{ key: SESSION_KEY, value: remoteValue, revision: 4, updatedAt: '2099-01-01T00:00:00.000Z' }],
+    })));
+    await initializeLearningStorage();
+    getLearningStorage().setItem(SESSION_KEY, '{"draft":"older local copy"}');
+    await flushLearningStorage();
+
+    await initializeAuthenticatedServerStorage('owner-token');
+
+    const db = await getLearningDb();
+    expect((await db.get('cache', SESSION_KEY))?.value).toBe(remoteValue);
+  });
+
+  it('keeps local learner state durable when the server rejects its mirror write', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return Response.json({ error: 'payload_too_large' }, { status: 413 });
+      return Response.json({ records: [], revision: 0 });
+    }));
+    await initializeLearningStorage();
+    await initializeAuthenticatedServerStorage('owner-token');
+    getLearningStorage().setItem(SESSION_KEY, '{"draft":"local copy"}');
+
+    await expect(flushLearningStorage()).resolves.toBeUndefined();
+    const db = await getLearningDb();
+    expect((await db.get('cache', SESSION_KEY))?.value).toBe('{"draft":"local copy"}');
+    await expect(getAuthenticatedServerStorage()?.flush()).rejects.toThrow();
   });
 
   it('supports the Storage facade contract and awaits a durable write before returning', async () => {

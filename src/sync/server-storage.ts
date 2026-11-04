@@ -1,13 +1,12 @@
 /**
- * Authenticated, server-authoritative learning preferences and editor state.
+ * Authenticated server mirror for learner state.
  *
- * Only an in-memory mirror lives in the browser. Every mutation is sent through
- * an authenticated owner-scoped Worker endpoint using optimistic revisions.
- * No IndexedDB, localStorage or sessionStorage is used here.
+ * IndexedDB remains the durable local source. This adapter mirrors allowlisted
+ * learning records through the authenticated Worker endpoint.
  */
 import { SYNC_API_ORIGIN } from './sync-config';
 
-export type ServerStateRecord = { key: string; value: string | null; revision: number };
+export type ServerStateRecord = { key: string; value: string | null; revision: number; updatedAt?: string };
 type ServerSnapshot = { records: ServerStateRecord[]; revision: number };
 
 function isSnapshot(value: unknown): value is ServerSnapshot {
@@ -15,7 +14,8 @@ function isSnapshot(value: unknown): value is ServerSnapshot {
   const row = value as Record<string, unknown>;
   return Array.isArray(row.records) && Number.isSafeInteger(row.revision)
     && row.records.every(x => !!x && typeof x.key === 'string' && x.key.startsWith('math-scratchpad')
-      && (typeof x.value === 'string' || x.value === null) && Number.isSafeInteger(x.revision));
+      && (typeof x.value === 'string' || x.value === null) && Number.isSafeInteger(x.revision)
+      && (x.updatedAt === undefined || typeof x.updatedAt === 'string'));
 }
 
 export async function readServerSnapshot(token: string, signal?: AbortSignal): Promise<ServerSnapshot> {
@@ -32,7 +32,7 @@ export async function readServerSnapshot(token: string, signal?: AbortSignal): P
   return value;
 }
 
-/** Tiny owner-authenticated heartbeat. Never downloads a large learning snapshot every five seconds. */
+/** Tiny owner-authenticated heartbeat; it avoids downloading the learning snapshot. */
 export async function verifyOwnerServerConnection(token: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`${SYNC_API_ORIGIN}/drive/status`, {
     headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', ...(signal ? { signal } : {}),

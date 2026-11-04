@@ -1,7 +1,6 @@
 import { initialKeyboardOpen } from '../../../shared/lib/ui-prefs';
 import { z } from 'zod';
-import { uid } from '../../../model';
-import { isoLocal } from '../../../model';
+import { example, isoLocal, stepLatex, uid } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
 import type { PersistOptions } from 'zustand/middleware';
@@ -43,14 +42,14 @@ export function createPersistentStore() {
  const writerId = uid();
  const storage = getLearningStorage();
  let saved: Envelope | null = null, protectedDraft = false, bootError = '';
- let initial: ScratchState;
+ let initial: ScratchState, hasLegacyState = false;
  try {
   const raw = storage.getItem(SESSION_KEY);
   if (raw) { saved = decode(raw); initial = { ...initialState(), ...saved.state.session }; }
   else {
-   const hasLegacy = !!(storage.getItem('math-scratchpad-redux-v2') ?? storage.getItem('math-scratchpad-flow-v1'));
+   hasLegacyState = !!(storage.getItem('math-scratchpad-redux-v2') ?? storage.getItem('math-scratchpad-flow-v1'));
    initial = restoreState();
-   if (!hasLegacy) initial.keyboardOpen = false;
+   if (!hasLegacyState) initial.keyboardOpen = false;
    if (initial.notice) { protectedDraft = true; bootError = initial.notice; }
   }
  } catch {
@@ -148,6 +147,13 @@ export function createPersistentStore() {
  const unsubscribeLearningStorage = subscribeLearningStorage(storageEvent);
  const nativeStorageEvent = (event: StorageEvent) => storageEvent(event);
  window.addEventListener('storage', nativeStorageEvent); window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibilitychange);
- if (!saved && !protectedDraft) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
+ if (!saved && !protectedDraft) {
+  const onlyExercise = initial.doc.exercises.length === 1 ? initial.doc.exercises[0] : undefined;
+  const pristineDefault = !!onlyExercise && onlyExercise.source === example && !onlyExercise.bankQuestionId
+   && !onlyExercise.answerText && onlyExercise.steps.length === 1 && stepLatex(onlyExercise.steps[0]) === example
+   && !initial.doc.session?.bankId;
+  // Do not save the placeholder exercise before a saved server snapshot can hydrate a new browser.
+  if (!pristineDefault || hasLegacyState) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
+ }
  return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
 }
