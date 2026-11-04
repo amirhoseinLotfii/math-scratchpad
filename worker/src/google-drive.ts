@@ -41,6 +41,10 @@ export class GoogleDriveClient {
   private accessToken: string | undefined;
   private expiresAt = 0;
   private tokenPromise: Promise<string> | undefined;
+  // Non-sensitive operational stage only. Never record URLs, tokens, response bodies, IDs or user data.
+  private stage = 'idle';
+  get diagnosticStage(): string { return this.stage; }
+
 
   constructor(
     private readonly env: WorkerEnv,
@@ -269,6 +273,11 @@ export class GoogleDriveClient {
   private async apiFetch(input: string, init: RequestInit): Promise<Response> {
     const send = async () => {
       const token = await this.getAccessToken();
+      const target = new URL(input);
+      this.stage = target.pathname.startsWith('/upload/') ? 'drive_upload'
+        : target.pathname.endsWith('/files') && init.method === 'POST' ? 'drive_create'
+        : init.method === 'PATCH' ? 'drive_update'
+        : 'drive_lookup';
       const headers = new Headers(init.headers);
       headers.set('Authorization', `Bearer ${token}`);
       try { return await this.fetcher(input, { ...init, headers }); }
@@ -298,6 +307,7 @@ export class GoogleDriveClient {
       grant_type: 'refresh_token',
     });
     let response: Response;
+    this.stage = 'oauth_refresh';
     try {
       response = await this.fetcher(GOOGLE_TOKEN_API, {
         method: 'POST',
@@ -312,6 +322,7 @@ export class GoogleDriveClient {
     }
 
     let identityResponse: Response;
+    this.stage = 'drive_owner_verification';
     try {
       // Drive about.get works with drive.file; userinfo would incorrectly require
       // an additional Google profile scope and block a valid Drive-only token.
