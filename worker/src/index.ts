@@ -125,6 +125,10 @@ export async function requestMirrorSync(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OW
   const id = env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase());
   const response = await env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
   if (!response.ok) throw new Error('scheduled_mirror_sync_failed');
+  const state = await response.json() as { drive?: { status?: string }; notion?: { status?: string } };
+  if (state.drive?.status === 'error' || state.notion?.status === 'error') {
+    throw new Error('scheduled_mirror_retry_incomplete');
+  }
 }
 
 export async function requestWeeklyDriveBackup(
