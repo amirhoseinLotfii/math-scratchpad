@@ -269,8 +269,8 @@ function trackWrite<T>(promise: Promise<T>): Promise<T> {
 }
 
 function notifyTabs(key: string, value: string | null) {
+  // BroadcastChannel reaches other tabs; the writing tab already applied this change locally.
   try { channel?.postMessage({ key, value, updatedAt: new Date().toISOString() }); } catch { /* Optional cross-tab hint. */ }
-  for (const listener of storageListeners) listener({ key, newValue: value });
 }
 
 class IndexedDbStorage implements Storage {
