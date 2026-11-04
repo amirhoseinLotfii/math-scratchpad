@@ -52,4 +52,17 @@ describe('immutable Drive snapshots', () => {
     const store: SnapshotStore = { find: async () => ++reads === 1 ? [] : ['ours', 'other'], create: async () => 'ours', read: async () => 'expected' };
     await expect(writeImmutableSnapshot(store, 'state.json', 'expected')).rejects.toMatchObject({ code: 'duplicate_snapshot' });
   });
+  it('reuses the verified file after an upload response is lost', async () => {
+    const { store, files } = memoryStore();
+    let first = true;
+    const unstable: SnapshotStore = { ...store, create: async (name, content) => {
+      const id = await store.create(name, content);
+      if (first) { first = false; throw new Error('response lost'); }
+      return id;
+    } };
+    await expect(writeImmutableSnapshot(unstable, 'events.jsonl', 'safe\n')).rejects.toThrow('response lost');
+    const saved = await writeImmutableSnapshot(unstable, 'events.jsonl', 'safe\n');
+    expect(files.size).toBe(1);
+    expect(files.get(saved.id)?.content).toBe('safe\n');
+  });
 });
