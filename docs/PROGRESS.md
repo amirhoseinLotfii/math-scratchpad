@@ -1,5 +1,13 @@
 # Feature card progress
 
+## Live Drive investigation — 2026-11-04
+
+- PR #43 commit `27a5e93617da5a8b52a339b2746bace3c50df669`: CI [41795610368](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/41795610368) passed, including gate and build; 70 Worker tests passed locally in an isolated copy.
+- Cloudflare build `eebe4efe-afe0-4d53-b04e-5f6a661e18c5` succeeded for that commit. Production version `4241b28b-0525-4dd6-af25-36ac6da16094` serves 100% traffic. The existing Durable Object namespace and configured secret names were retained.
+- Live, read-only diagnostic: Drive v3 media response lacks an ETag; Drive v2 metadata returns an ETag. This does **not** establish that Drive v3 enforces a conditional media update using that validator. The mirror remains blocked rather than risk overwriting concurrent edits. Prior app observation: 93 Drive events pending; current count requires verification.
+- Notion previously reported synced; its synthetic write/read-back, Drive write/read-back, and verified conflict handling remain outstanding. The diagnostic version is not a Drive fix.
+
+
 Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complete only after its tests, CI, deploy, live check, Persian changelog entry, and merge. A green feature PR that depends on a later foundation stays open until that foundation is merged.
 
 | Card | Status | PR / evidence |
