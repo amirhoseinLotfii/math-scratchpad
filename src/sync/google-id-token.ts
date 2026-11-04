@@ -67,6 +67,9 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
     });
     initializedFor = GOOGLE_CLIENT_ID;
   }
+  // StrictMode and fast state changes can start overlapping mounts while GIS loads.
+  // Clear the target first so only one Google button remains in the connection card.
+  element.replaceChildren();
   api.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
   tokenListeners.add(listener);
   const saved = getGoogleIdTokenRecord();
