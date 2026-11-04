@@ -17,10 +17,18 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
 }) {
   const [state, setState] = useState<GateState>(INITIAL);
   const checking = useRef(false);
+  const rerunAfterCheck = useRef(false);
+  const mounted = useRef(false);
   const epoch = useRef(0);
   const retryButton = useRef<HTMLDivElement>(null);
 
   const check = useCallback(async () => {
+    if (checking.current) {
+      // StrictMode and visibility events can request another check while auth restores.
+      // Queue one follow-up so the in-flight request cannot leave the gate stuck checking.
+      rerunAfterCheck.current = true;
+      return;
+    }
     const id = ++epoch.current;
     if (navigator.onLine === false) {
       setState({ kind: 'blocked', message: 'اینترنت قطع است؛ تمرین‌ها همچنان روی این دستگاه ذخیره می‌شوند.' });
@@ -31,7 +39,6 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       setState({ kind: 'blocked', message: 'برای همگام‌سازی با سرور وارد Google شو. تمرین‌ها روی این دستگاه ذخیره می‌شوند.' });
       return;
     }
-    if (checking.current) return;
     checking.current = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -51,10 +58,15 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     } finally {
       checking.current = false;
       window.clearTimeout(timeout);
+      if (rerunAfterCheck.current) {
+        rerunAfterCheck.current = false;
+        if (mounted.current) void check();
+      }
     }
   }, [tokenProvider, onAuthenticated, flushPendingDraft]);
 
   useEffect(() => {
+    mounted.current = true;
     const handleOnline = () => { void check(); };
     const handleStorageError = (event: Event) => {
       epoch.current += 1;
@@ -72,6 +84,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     const interval = window.setInterval(() => { void check(); }, PING_INTERVAL_MS);
     void check();
     return () => {
+      mounted.current = false;
       epoch.current += 1;
       window.clearInterval(interval);
       window.removeEventListener('offline', handleOnline);
