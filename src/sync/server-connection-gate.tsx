@@ -115,6 +115,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
           background: 'rgba(32, 35, 38, .97)', color: '#F0F3F1',
           border: '1px solid #536259', boxShadow: '0 8px 30px rgba(0,0,0,.35)',
           fontFamily: 'system-ui, sans-serif', lineHeight: 1.8, textAlign: 'right',
+          pointerEvents: 'none',
         }}>
           <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
           <p style={{ margin: '4px 0 10px', fontSize: 14 }}>{state.message}</p>
@@ -124,8 +125,9 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
           <button type="button" onClick={() => { void check(); }} style={{
             background: '#86B99B', color: '#101A14', border: 0, borderRadius: 10,
             padding: '8px 14px', fontWeight: 600, fontSize: 15, cursor: 'pointer',
+            pointerEvents: 'auto',
           }}>بررسی دوباره اتصال</button>
-          <div ref={retryButton} style={{ marginTop: 12, display: 'flex', justifyContent: 'center', direction: 'ltr' }} />
+          <div ref={retryButton} style={{ marginTop: 12, display: 'flex', justifyContent: 'center', direction: 'ltr', pointerEvents: 'auto' }} />
         </aside>
       )}
     </>
