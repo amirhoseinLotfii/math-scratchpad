@@ -270,6 +270,41 @@ describe('Google Drive REST client', () => {
     await expect(client.ensureRootFolder('Math_Project')).rejects.toMatchObject({ code: 'account_mismatch' });
   });
 
+  it('reports a missing ETag when reading an existing Drive file without exposing its content', async () => {
+    const fetcher = withGoogleAuth((url) => {
+      if (url.pathname === '/drive/v3/files') return jsonResponse({ files: [{ id: 'file-1', name: 'events.jsonl', mimeType: 'application/x-ndjson' }] });
+      if (url.pathname === '/drive/v3/files/file-1') return new Response('private-content', { status: 200 });
+      if (url.pathname === '/drive/v2/files/file-1') return jsonResponse({ etag: '"private-validator"' });
+      throw new Error('Unexpected Drive request');
+    });
+    const client = makeClient(fetcher);
+    await expect(client.upsertTextFile({
+      name: 'events.jsonl', parentId: 'events-folder', mimeType: 'application/x-ndjson',
+      desiredContent: 'test', mergeContent: (remote, desired) => remote + desired,
+    })).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(client.diagnosticStage).toBe('drive_read_missing_etag_metadata_present');
+    expect(client.diagnosticStage).not.toContain('private-validator');
+    expect(client.diagnosticStage).not.toContain('private-content');
+  });
+
+  it.each([
+    [200, {}, 'drive_read_missing_etag_metadata_absent'],
+    [403, {}, 'drive_read_missing_etag_metadata_unavailable'],
+  ])('keeps writes blocked when metadata validator is unavailable (HTTP %i)', async (status, body, stage) => {
+    let writes = 0;
+    const fetcher = withGoogleAuth((url, init) => {
+      if (init.method === 'PATCH' || init.method === 'PUT') writes += 1;
+      if (url.pathname === '/drive/v3/files') return jsonResponse({ files: [{ id: 'file-1', name: 'events.jsonl', mimeType: 'application/x-ndjson' }] });
+      if (url.pathname === '/drive/v3/files/file-1') return new Response('private-content', { status: 200 });
+      if (url.pathname === '/drive/v2/files/file-1') return jsonResponse(body, status);
+      throw new Error('Unexpected Drive request');
+    });
+    const client = makeClient(fetcher);
+    await expect(client.upsertTextFile({ name: 'events.jsonl', parentId: 'events-folder', mimeType: 'application/x-ndjson', desiredContent: 'test', mergeContent: (remote, desired) => remote + desired })).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(client.diagnosticStage).toBe(stage);
+    expect(writes).toBe(0);
+  });
+
   it('creates files inside the requested private folder and never calls Drive sharing APIs', async () => {
     const requests: Array<{ path: string; method: string; body?: string }> = [];
     const fetcher = withGoogleAuth((url, init) => {
