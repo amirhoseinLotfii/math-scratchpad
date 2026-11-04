@@ -18,17 +18,30 @@ root.textContent = 'Math Scratchpad is restoring your work from this browser…'
 
 let appRuntime: ReturnType<typeof createPersistentStore> | undefined;
 let syncRuntime: BrowserSyncRuntime | undefined;
+let authenticatedStorageFlight: { token: string; promise: Promise<void> } | null = null;
+let authenticatedStorageToken: string | undefined;
 const isLocalTestOrDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
   && !new URLSearchParams(location.search).has('serverMode');
 
 async function connectAuthenticatedStorage(token: string): Promise<void> {
-  if (getAuthenticatedServerStorage()) {
-    updateAuthenticatedServerToken(token);
-    await refreshAuthenticatedServerStorage(token);
-  } else {
-    await initializeAuthenticatedServerStorage(token);
+  if (authenticatedStorageToken === token && getAuthenticatedServerStorage()) return;
+  if (authenticatedStorageFlight?.token === token) return authenticatedStorageFlight.promise;
+  const promise = (async () => {
+    if (getAuthenticatedServerStorage()) {
+      updateAuthenticatedServerToken(token);
+      await refreshAuthenticatedServerStorage(token);
+    } else {
+      await initializeAuthenticatedServerStorage(token);
+    }
+    syncRuntime?.setIdToken(token);
+  })();
+  authenticatedStorageFlight = { token, promise };
+  try {
+    await promise;
+    authenticatedStorageToken = token;
+  } finally {
+    if (authenticatedStorageFlight?.promise === promise) authenticatedStorageFlight = null;
   }
-  syncRuntime?.setIdToken(token);
 }
 
 function launchApp(showConnectionStatus = false) {
