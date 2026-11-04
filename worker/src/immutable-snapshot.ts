@@ -11,11 +11,18 @@ export class SnapshotError extends Error {
   }
 }
 
-export async function snapshotName(logicalName: string, content: string): Promise<string> {
+export async function snapshotHash(content: string): Promise<string> {
   const bytes = new TextEncoder().encode(content);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-  return `${logicalName}.sha256-${hash}`;
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function snapshotName(logicalName: string, content: string): Promise<string> {
+  if (!/^[A-Za-z0-9._-]{1,160}$/.test(logicalName)) throw new Error('invalid_snapshot_name');
+  const hash = await snapshotHash(content);
+  const extension = logicalName.match(/\.[A-Za-z0-9]{1,12}$/)?.[0] ?? '';
+  const stem = extension ? logicalName.slice(0, -extension.length) : logicalName;
+  return `${stem}.sha256-${hash}${extension}`;
 }
 
 /** Reuses a verified snapshot; conflicting names or contents fail closed. */

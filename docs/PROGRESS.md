@@ -1,5 +1,12 @@
 # Feature card progress
 
+## Drive immutable snapshot integration — 2026-11-04
+
+- PR #44 now wires content-addressed snapshots into the Drive mirror for monthly event JSONL, progress, editor state, manifest, and weekly backups. Each snapshot name includes the SHA-256 of its exact UTF-8 content; writes create a new Drive file and require a unique-name lookup plus exact read-back. Existing mutable logical-name files are read during migration and left untouched. Duplicate names or content/hash mismatches fail closed. The manifest records the latest snapshot ID, name, and hash per logical path.
+- Weekly-backup retries persist a stable creation timestamp before upload, so a lost upload response can find and reuse the verified snapshot instead of creating another copy. Canonicalized event JSONL keeps identical event sets idempotent.
+- Focused validation on the isolated PR #44 source: `worker/tests/immutable-snapshot.test.ts` and `worker/tests/drive-mirror.test.ts` — 48 passed; Worker TypeScript check passed; whitespace check passed. Existing full CI run [41812680632](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/41812680632) passed on the prior snapshot-foundation commit; CI for this integration commit is pending.
+- This is implementation and local verification only. No Worker deploy, live Drive/Notion write, or production read-back occurred. Keep the card in progress until the new CI and live checks pass.
+
 ## Live Drive investigation — 2026-11-04
 
 - Isolated live probe (Google OAuth Playground, personal account, `drive.file` scope): a uniquely named disposable JSON file was created and tagged as a probe. Its Drive v2 metadata ETag was read, content A was PATCHed to the v3 media-upload route with `If-Match`, then distinct content B was PATCHed with the same old ETag. Both requests returned HTTP 200; the second request was confirmed to include `If-Match`, the final ETag differed from the original, and read-back returned B with `isTest: true`. On this route and test, the stale precondition did not prevent overwrite. This is empirical evidence, not a documented universal guarantee or a test of resumable uploads. No learner file was modified. The standalone probe remains in Drive and is not part of the event mirror.
