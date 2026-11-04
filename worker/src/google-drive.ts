@@ -41,10 +41,15 @@ export class GoogleDriveClient {
   private accessToken: string | undefined;
   private expiresAt = 0;
   private tokenPromise: Promise<string> | undefined;
+  // Non-sensitive operational stage only. Never record URLs, tokens, response bodies, IDs or user data.
+  private stage = 'idle';
+  get diagnosticStage(): string { return this.stage; }
+
 
   constructor(
     private readonly env: WorkerEnv,
-    private readonly fetcher: typeof fetch = fetch,
+    // workerd requires the native fetch receiver to be globalThis.
+    private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -269,10 +274,18 @@ export class GoogleDriveClient {
   private async apiFetch(input: string, init: RequestInit): Promise<Response> {
     const send = async () => {
       const token = await this.getAccessToken();
+      const target = new URL(input);
+      this.stage = target.pathname.startsWith('/upload/') ? 'drive_upload'
+        : target.pathname.endsWith('/files') && init.method === 'POST' ? 'drive_create'
+        : init.method === 'PATCH' ? 'drive_update'
+        : 'drive_lookup';
       const headers = new Headers(init.headers);
       headers.set('Authorization', `Bearer ${token}`);
       try { return await this.fetcher(input, { ...init, headers }); }
-      catch { throw new DriveMirrorError('network_error'); }
+      catch {
+        this.stage += '_fetch_rejected';
+        throw new DriveMirrorError('network_error');
+      }
     };
     let response = await send();
     if (response.status !== 401) return response;
@@ -298,26 +311,51 @@ export class GoogleDriveClient {
       grant_type: 'refresh_token',
     });
     let response: Response;
+    this.stage = 'oauth_refresh';
     try {
       response = await this.fetcher(GOOGLE_TOKEN_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: body.toString(),
       });
-    } catch { throw new DriveMirrorError('network_error'); }
-    if (!response.ok) throw new DriveMirrorError(response.status === 400 || response.status === 401 ? 'reauthorization_required' : errorForStatus(response.status).code);
+    } catch {
+      this.stage = 'oauth_refresh_fetch_rejected';
+      throw new DriveMirrorError('network_error');
+    }
+    if (!response.ok) {
+      // Google's OAuth error *code* is a fixed public protocol value. Never
+      // persist the response body, error_description, token or client secret.
+      let reason = 'unknown';
+      try {
+        const payload: unknown = await response.json();
+        const candidate = payload && typeof payload === 'object' ? (payload as { error?: unknown }).error : undefined;
+        if (typeof candidate === 'string' && [
+          'invalid_client', 'invalid_grant', 'unauthorized_client',
+          'invalid_request', 'access_denied', 'temporarily_unavailable',
+        ].includes(candidate)) reason = candidate;
+      } catch { /* Ignore and retain the HTTP status. */ }
+      this.stage = `oauth_refresh_http_${response.status}_${reason}`;
+      throw new DriveMirrorError(response.status === 400 || response.status === 401 ? 'reauthorization_required' : errorForStatus(response.status).code);
+    }
     const token = await readJson<{ access_token?: unknown; expires_in?: unknown }>(response);
     if (typeof token.access_token !== 'string' || !token.access_token || typeof token.expires_in !== 'number') {
       throw new DriveMirrorError('invalid_response');
     }
 
     let identityResponse: Response;
+    this.stage = 'drive_owner_verification';
     try {
       // Drive about.get works with drive.file; userinfo would incorrectly require
       // an additional Google profile scope and block a valid Drive-only token.
       identityResponse = await this.fetcher(GOOGLE_DRIVE_ABOUT_API, { headers: { Authorization: `Bearer ${token.access_token}` } });
-    } catch { throw new DriveMirrorError('network_error'); }
-    if (!identityResponse.ok) throw new DriveMirrorError(identityResponse.status === 401 ? 'reauthorization_required' : errorForStatus(identityResponse.status).code);
+    } catch {
+      this.stage = 'drive_owner_verification_fetch_rejected';
+      throw new DriveMirrorError('network_error');
+    }
+    if (!identityResponse.ok) {
+      this.stage = `drive_owner_verification_http_${identityResponse.status}`;
+      throw new DriveMirrorError(identityResponse.status === 401 ? 'reauthorization_required' : errorForStatus(identityResponse.status).code);
+    }
     const identity = await readJson<{ user?: { emailAddress?: unknown; me?: unknown } }>(identityResponse);
     if (typeof identity.user?.emailAddress !== 'string'
       || identity.user.emailAddress.trim().toLowerCase() !== this.env.OWNER_EMAIL.trim().toLowerCase()

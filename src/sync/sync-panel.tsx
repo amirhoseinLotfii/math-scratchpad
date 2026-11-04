@@ -42,7 +42,7 @@ function mirrorErrorLabel(kind: 'drive' | 'notion', error: string | null): strin
   if (!error) return 'بدون خطا';
   const errors: Record<string, string> = kind === 'drive' ? {
     not_configured: 'اتصال Drive در Worker تنظیم نشده است.',
-    reauthorization_required: 'اتصال Google Drive نیاز به ورود دوباره دارد.',
+    reauthorization_required: 'اعتبار OAuth گوگل پذیرفته نشد. ابتدا Client Secret و Refresh Token سمت Worker را بررسی و در صورت لزوم بازصادر کن.',
     account_mismatch: 'حساب Drive با حساب مجاز پروژه هم‌خوان نیست.',
     permission_denied: 'دسترسی Drive اجازهٔ نوشتن نمی‌دهد.',
     quota_exceeded: 'سهمیهٔ Drive پر شده است.',

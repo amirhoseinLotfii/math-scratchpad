@@ -103,6 +103,31 @@ describe('Google ID token verification', () => {
 });
 
 describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
+  it('does not let a Drive timeout prevent Notion mirror work', async () => {
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    const { runInDurableObject } = await import('cloudflare:test');
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        env: WorkerEnv;
+        syncDrive: () => Promise<unknown>;
+        syncNotion: () => Promise<unknown>;
+        alarm: () => Promise<void>;
+      };
+      Object.assign(target.env, {
+        GOOGLE_DRIVE_CLIENT_SECRET: 'test-not-secret',
+        GOOGLE_DRIVE_REFRESH_TOKEN: 'test-not-token',
+        NOTION_API_KEY: 'test-not-secret',
+      });
+      const calls: string[] = [];
+      target.syncDrive = async () => { calls.push('drive'); throw new Error('timeout'); };
+      target.syncNotion = async () => { calls.push('notion'); return {}; };
+      await target.alarm();
+      expect(calls).toContain('notion');
+      expect(calls).toContain('drive');
+    });
+  });
+
   afterEach(async () => reset());
 
   it('serves health and exact-origin CORS preflight; rejects other origins', async () => {
