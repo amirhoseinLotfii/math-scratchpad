@@ -2,7 +2,8 @@ import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
 import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
-import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode } from './google-drive';
+import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode, type DriveSnapshotRef } from './google-drive';
+import { snapshotName } from './immutable-snapshot';
 import {
   applyConceptEvent,
   applyDailyEvent,
@@ -54,12 +55,14 @@ type DriveMirrorState = {
   weeklyBackup?: {
     status: 'scheduled' | 'created' | 'error';
     date?: string;
+    snapshotCreatedAtUtc?: string;
     lastCreatedAt?: string;
     lastSeq?: number;
     lastError?: DriveMirrorErrorCode;
   };
   files: Record<string, DriveFileRef>;
   fileHashes: Record<string, string>;
+  snapshots?: Record<string, DriveSnapshotRef>;
 };
 export type DriveMirrorStatus = {
   status: 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
@@ -407,7 +410,9 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async readDriveState(): Promise<DriveMirrorState> {
     const stored = await this.ctx.storage.get<DriveMirrorState>(DRIVE_STATE_KEY);
-    return stored ?? { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined, files: {}, fileHashes: {} };
+    return stored
+      ? { ...stored, files: stored.files ?? {}, fileHashes: stored.fileHashes ?? {}, snapshots: stored.snapshots ?? {} }
+      : { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined, files: {}, fileHashes: {}, snapshots: {} };
   }
 
   private recordDiagnostic(destination: 'drive' | 'notion', stage: string, code: string): void {
@@ -423,6 +428,56 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
       'drive', state.status, state.pendingCount, state.lastError ?? null, state.lastSyncedAt ?? null, new Date().toISOString(),
     );
+  }
+
+  private async readPriorDriveContent(input: {
+    client: GoogleDriveClient;
+    state: DriveMirrorState;
+    path: string;
+    logicalName: string;
+    parentId: string;
+    mimeType: string;
+  }): Promise<string | undefined> {
+    const snapshot = input.state.snapshots?.[input.path];
+    if (snapshot) {
+      const content = await input.client.readTextContent(snapshot.id);
+      if (await sha256Hex(content) !== snapshot.sha256) throw new DriveMirrorError('invalid_response');
+      const expectedName = await snapshotName(input.logicalName, content);
+      if (snapshot.name !== expectedName) throw new DriveMirrorError('invalid_response');
+      return content;
+    }
+
+    const id = input.state.files[input.path]?.id
+      ?? await input.client.findTextFileId(input.logicalName, input.parentId, input.mimeType);
+    if (!id) return undefined;
+    const content = await input.client.readTextContent(id);
+    const expectedHash = input.state.fileHashes[input.path];
+    if (expectedHash && await sha256Hex(content) !== expectedHash) throw new DriveMirrorError('invalid_response');
+    return content;
+  }
+
+  private async writeDriveSnapshot(input: {
+    client: GoogleDriveClient;
+    state: DriveMirrorState;
+    path: string;
+    logicalName: string;
+    parentId: string;
+    mimeType: string;
+    desiredContent: string;
+    mergeContent: (previous: string, desired: string) => string;
+    trackHash?: boolean;
+  }): Promise<DriveSnapshotRef> {
+    const previous = await this.readPriorDriveContent(input);
+    const content = previous === undefined ? input.desiredContent : input.mergeContent(previous, input.desiredContent);
+    const saved = await input.client.writeImmutableTextFile({
+      logicalName: input.logicalName,
+      parentId: input.parentId,
+      mimeType: input.mimeType,
+      content,
+    });
+    input.state.snapshots = { ...(input.state.snapshots ?? {}), [input.path]: saved };
+    if (input.trackHash !== false) input.state.fileHashes[input.path] = saved.sha256;
+    return saved;
   }
 
   private async maxSequence(): Promise<number> {
@@ -794,33 +849,37 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const events = this.readEventsThrough(through);
       const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
       const quarantinedCount = events.length - mirrorableEvents.length;
+      const snapshotCreatedAtUtc = state.weeklyBackup?.date === date && state.weeklyBackup.snapshotCreatedAtUtc
+        ? state.weeklyBackup.snapshotCreatedAtUtc : now.toISOString();
+      state.weeklyBackup = { ...state.weeklyBackup, status: 'scheduled', date, snapshotCreatedAtUtc };
+      await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
+      const snapshotCreatedAt = new Date(snapshotCreatedAtUtc);
       const unsigned = {
         format: 'math-scratchpad-weekly-backup/v1',
         schemaVersion: 1,
         backupDateTehran: date,
-        createdAtUtc: now.toISOString(),
-        createdAtTehran: formatTehran(now),
+        createdAtUtc: snapshotCreatedAt.toISOString(),
+        createdAtTehran: formatTehran(snapshotCreatedAt),
         snapshot: {
           lastSeq: through,
           eventCount: mirrorableEvents.length,
           quarantinedEventCount: quarantinedCount,
-          progress: buildProgressProjection(mirrorableEvents, now),
+          progress: buildProgressProjection(mirrorableEvents, snapshotCreatedAt),
         },
         events: mirrorableEvents,
       };
       const contents = `${JSON.stringify({ ...unsigned, sha256: await sha256Hex(canonicalJson(unsigned)) }, null, 2)}\n`;
       const name = `sync_backup_${date}.json`;
       const path = `backups/${name}`;
-      const saved = await client.upsertTextFile({
-        name,
+      await this.writeDriveSnapshot({
+        client, state, path, logicalName: name,
         parentId: backupsId,
         mimeType: 'application/json',
         desiredContent: contents,
-        knownFile: state.files[path],
         mergeContent: mergeWeeklyBackupContent,
+        trackHash: false,
       });
-      state.files[path] = { id: saved.id, etag: saved.etag };
-      state.weeklyBackup = { status: 'created', date, lastCreatedAt: now.toISOString(), lastSeq: through };
+      state.weeklyBackup = { ...state.weeklyBackup, status: 'created', date, snapshotCreatedAtUtc, lastCreatedAt: now.toISOString(), lastSeq: through };
       await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
       return { status: 'created', lastCreatedAt: now.toISOString(), lastError: null };
     } catch (error) {
@@ -868,35 +927,29 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       for (const [month, monthEvents] of months) {
         const name = `events_${month}.jsonl`;
         const path = `events/${name}`;
-        const content = serializeJsonlEvents(mirrorableEvents.filter(item => {
+        const content = mergeJsonlEventContent('', serializeJsonlEvents(mirrorableEvents.filter(item => {
           const date = new Date(item.event.ts);
           return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}` === month;
-        }));
-        const saved = await client.upsertTextFile({
-          name,
+        })));
+        await this.writeDriveSnapshot({
+          client, state, path, logicalName: name,
           parentId: folders.eventsId,
           mimeType: 'application/x-ndjson',
           desiredContent: content,
-          knownFile: state.files[path],
           mergeContent: mergeJsonlEventContent,
         });
-        state.files[path] = { id: saved.id, etag: saved.etag };
-        state.fileHashes[path] = await sha256Hex(saved.content);
         await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq) });
       }
 
       const progress = buildProgressProjection(events);
       const desiredProgress = `${JSON.stringify(progress, null, 2)}\n`;
-      const progressFile = await client.upsertTextFile({
-        name: 'progress.json',
+      await this.writeDriveSnapshot({
+        client, state, path: 'state/progress.json', logicalName: 'progress.json',
         parentId: folders.stateId,
         mimeType: 'application/json',
         desiredContent: desiredProgress,
-        knownFile: state.files['state/progress.json'],
         mergeContent: mergeProgressContent,
       });
-      state.files['state/progress.json'] = { id: progressFile.id, etag: progressFile.etag };
-      state.fileHashes['state/progress.json'] = await sha256Hex(progressFile.content);
       const stateRevision = this.appStateRevision();
       const persistedState = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
         'SELECT key, value, revision FROM app_state ORDER BY key',
@@ -906,16 +959,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         revision: stateRevision,
         records: persistedState,
       }, null, 2) + '\n';
-      const stateFile = await client.upsertTextFile({
-        name: 'editor_state.json',
+      await this.writeDriveSnapshot({
+        client, state, path: 'state/editor_state.json', logicalName: 'editor_state.json',
         parentId: folders.stateId,
         mimeType: 'application/json',
         desiredContent: stateContent,
-        knownFile: state.files['state/editor_state.json'],
-        mergeContent: (_previous, current) => current,
+        mergeContent: mergeEditorStateContent,
       });
-      state.files['state/editor_state.json'] = { id: stateFile.id, etag: stateFile.etag };
-      state.fileHashes['state/editor_state.json'] = await sha256Hex(stateFile.content);
 
 
       const latest = events.at(-1);
@@ -928,17 +978,18 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         lastSuccessAtUtc: now.toISOString(),
         lastSuccessAtTehran: tehranTime,
         quarantinedEventCount: quarantinedCount,
-        files: Object.entries(state.fileHashes).sort(([a], [b]) => a.localeCompare(b)).map(([path, sha256]) => ({ path, sha256 })),
+        files: Object.entries(state.snapshots ?? {})
+          .filter(([path]) => path !== 'sync_manifest.json' && !path.startsWith('backups/'))
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([path, snapshot]) => ({ path, sha256: snapshot.sha256, name: snapshot.name, id: snapshot.id })),
       };
-      const manifestFile = await client.upsertTextFile({
-        name: 'sync_manifest.json',
+      await this.writeDriveSnapshot({
+        client, state, path: 'sync_manifest.json', logicalName: 'sync_manifest.json',
         parentId: folders.syncId,
         mimeType: 'application/json',
         desiredContent: `${JSON.stringify(manifest, null, 2)}\n`,
-        knownFile: state.files['sync_manifest.json'],
         mergeContent: mergeManifestContent,
       });
-      state.files['sync_manifest.json'] = { id: manifestFile.id, etag: manifestFile.etag };
 
       const currentMax = await this.maxSequence();
       const pendingCount = Math.max(0, currentMax - through)
@@ -1066,6 +1117,18 @@ function mergeManifestContent(remote: string, desired: string): string {
   const previous = parseJsonContent(remote);
   const current = parseJsonContent(desired);
   if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
+  return desired;
+}
+
+function mergeEditorStateContent(remote: string, desired: string): string {
+  const previous = parseJsonContent(remote);
+  const current = parseJsonContent(desired);
+  if (previous.format !== 'math-scratchpad-server-state/v1' || current.format !== 'math-scratchpad-server-state/v1'
+    || !Number.isSafeInteger(previous.revision) || !Number.isSafeInteger(current.revision)
+    || !Array.isArray(previous.records) || !Array.isArray(current.records)) {
+    throw new DriveMirrorError('invalid_response');
+  }
+  if (Number(previous.revision) > Number(current.revision)) throw new DriveMirrorError('etag_conflict');
   return desired;
 }
 
