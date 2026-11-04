@@ -20,6 +20,10 @@ let appRuntime: ReturnType<typeof createPersistentStore> | undefined;
 let syncRuntime: BrowserSyncRuntime | undefined;
 let authenticatedStorageFlight: { token: string; promise: Promise<void> } | null = null;
 let authenticatedStorageToken: string | undefined;
+
+function flushAppDraft(): Promise<void> {
+  return appRuntime?.flush() ?? Promise.resolve();
+}
 const isLocalTestOrDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
   && !new URLSearchParams(location.search).has('serverMode');
 
@@ -52,7 +56,7 @@ function launchApp(showConnectionStatus = false) {
     ? <ServerConnectionGate
         tokenProvider={getGoogleIdToken}
         onAuthenticated={connectAuthenticatedStorage}
-        flushPendingDraft={() => appRuntime!.flush()}
+        flushPendingDraft={flushAppDraft}
       >{app}</ServerConnectionGate>
     : app);
 }
