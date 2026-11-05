@@ -1092,3 +1092,11 @@ body:has(> #math-scratchpad-redux) {
   }
   .lesson-picker-dialog > .dialog-actions { flex: none; padding-top: 8px; }
 }
+
+/* Keep the fixed sync inspector truly modal without moving the notebook. */
+#math-scratchpad-redux .sync-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: rgb(0 0 0 / 0.55);
+}
