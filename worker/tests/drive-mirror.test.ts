@@ -15,6 +15,7 @@ import {
 } from '../src/drive-projection';
 import { mergeWeeklyBackupContent } from '../src/event-store';
 import { DriveMirrorError, GoogleDriveClient } from '../src/google-drive';
+import { snapshotName } from '../src/immutable-snapshot';
 import { createApp, requestWeeklyDriveBackup, type IdTokenVerifier } from '../src/index';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
 
@@ -305,6 +306,38 @@ describe('Google Drive REST client', () => {
     expect(requests.at(-1)?.body).toContain('events-folder');
   });
 
+  it('writes and reads back a content-addressed snapshot without depending on ETag or PATCH', async () => {
+    const logicalName = 'events_2026-11.jsonl';
+    const content = '{"id":"event-1"}\n';
+    const physicalName = await snapshotName(logicalName, content);
+    const requests: Array<{ path: string; method: string; query: string }> = [];
+    let created = false;
+    let storedContent = '';
+    const fetcher = withGoogleAuth((url, init) => {
+      const method = init.method ?? 'GET';
+      requests.push({ path: url.pathname, method, query: url.search });
+      if (url.pathname === '/drive/v3/files' && method === 'GET') {
+        return jsonResponse({ files: created ? [{ id: 'snapshot-1', name: physicalName, mimeType: 'application/x-ndjson', parents: ['events-folder'] }] : [] });
+      }
+      if (url.pathname === '/upload/drive/v3/files' && method === 'POST') {
+        expect(String(init.body)).toContain(physicalName);
+        created = true;
+        storedContent = content;
+        return jsonResponse({ id: 'snapshot-1', name: physicalName, mimeType: 'application/x-ndjson', parents: ['events-folder'] });
+      }
+      if (url.pathname === '/drive/v3/files/snapshot-1' && url.searchParams.get('alt') === 'media') {
+        return new Response(storedContent, { status: 200 });
+      }
+      throw new Error(`Unexpected Drive request: ${method} ${url.pathname}`);
+    });
+    const saved = await makeClient(fetcher).writeImmutableTextFile({
+      logicalName, parentId: 'events-folder', mimeType: 'application/x-ndjson', content,
+    });
+    expect(saved).toMatchObject({ id: 'snapshot-1', name: physicalName, sha256: await sha256Hex(content) });
+    expect(requests.some(request => request.method === 'PATCH')).toBe(false);
+    expect(requests.filter(request => request.path === '/drive/v3/files/snapshot-1').map(request => request.query)).toContain('?alt=media');
+  });
+
   it('uses resumable uploads above 5 MB and verifies the created file metadata', async () => {
     const content = 'x'.repeat(5 * 1024 * 1024 + 1);
     const requests: Array<{ path: string; method: string; uploadLength?: string; ifMatch?: string; bodyLength: number }> = [];
@@ -461,9 +494,11 @@ describe('authenticated Drive status endpoints', () => {
 });
 
 describe('Durable Object Drive mirror integration', () => {
-  function makeMemoryDrive(options: { failProgressOnce?: boolean } = {}) {
+  function makeMemoryDrive(options: { failProgressOnce?: boolean; loseBackupResponseOnce?: boolean } = {}) {
     const contentByName = new Map<string, string>();
-    const uploads: Array<{ name: string; parentId: string; content: string; knownFile?: { id: string; etag: string } }> = [];
+    const filesById = new Map<string, { name: string; parentId: string; mimeType: string; content: string }>();
+    const uploads: Array<{ name: string; parentId: string; content: string; id: string }> = [];
+    let nextId = 0;
     const client = {
       diagnosticStage: 'drive_upload',
       ensureRootFolder: async (name: string) => {
@@ -476,22 +511,42 @@ describe('Durable Object Drive mirror integration', () => {
         if (name === '06_Backups') expect(parentId).toBe('root-folder');
         return name === '03_Sync' ? 'sync-folder' : name === 'events' ? 'events-folder' : name === '06_Backups' ? 'backups-folder' : 'state-folder';
       },
-      upsertTextFile: async (input: {
-        name: string; parentId: string; desiredContent: string; knownFile?: { id: string; etag: string };
-      }) => {
-        if (options.failProgressOnce && input.name === 'progress.json') {
+      findTextFileId: async (name: string, parentId: string, mimeType: string) => {
+        const matches = [...filesById.entries()].filter(([, file]) => file.name === name && file.parentId === parentId && file.mimeType === mimeType);
+        if (matches.length > 1) throw new DriveMirrorError('duplicate_file');
+        return matches[0]?.[0];
+      },
+      readTextContent: async (id: string) => {
+        const file = filesById.get(id);
+        if (!file) throw new DriveMirrorError('permission_denied');
+        return file.content;
+      },
+      writeImmutableTextFile: async (input: { logicalName: string; parentId: string; mimeType: string; content: string }) => {
+        if (options.failProgressOnce && input.logicalName === 'progress.json') {
           options.failProgressOnce = false;
           throw new DriveMirrorError('quota_exceeded');
         }
-        uploads.push({ name: input.name, parentId: input.parentId, content: input.desiredContent, knownFile: input.knownFile });
-        const content = input.name.startsWith('events_') && contentByName.has(input.name)
-          ? mergeJsonlEventContent(contentByName.get(input.name)!, input.desiredContent)
-          : input.desiredContent;
-        contentByName.set(input.name, content);
-        return { id: `file-${input.name}`, etag: `"etag-${uploads.length}"`, content };
+        const name = await snapshotName(input.logicalName, input.content);
+        const existing = [...filesById.entries()].filter(([, file]) => file.name === name && file.parentId === input.parentId && file.mimeType === input.mimeType);
+        if (existing.length > 1) throw new DriveMirrorError('duplicate_file');
+        let id = existing[0]?.[0];
+        if (id) {
+          if (existing[0][1].content !== input.content) throw new DriveMirrorError('invalid_response');
+        } else {
+          id = `snapshot-${++nextId}`;
+          filesById.set(id, { name, parentId: input.parentId, mimeType: input.mimeType, content: input.content });
+          uploads.push({ name, parentId: input.parentId, content: input.content, id });
+        }
+        contentByName.set(name, input.content);
+        contentByName.set(input.logicalName, input.content);
+        if (options.loseBackupResponseOnce && input.logicalName.startsWith('sync_backup_')) {
+          options.loseBackupResponseOnce = false;
+          throw new DriveMirrorError('network_error');
+        }
+        return { id, name, sha256: await sha256Hex(input.content) };
       },
     };
-    return { client, contentByName, uploads };
+    return { client, contentByName, filesById, uploads };
   }
 
   async function appendForOwner(event: LearnEvent): Promise<void> {
@@ -524,7 +579,10 @@ describe('Durable Object Drive mirror integration', () => {
     const status = await runMirror(drive.client) as { status: string; pendingCount: number };
     expect(status).toMatchObject({ status: 'synced', pendingCount: 0 });
     expect(drive.uploads.map(upload => upload.name)).toEqual([
-      'events_2026-11.jsonl', 'progress.json', 'editor_state.json', 'sync_manifest.json',
+      expect.stringMatching(/^events_2026-11\.sha256-[a-f0-9]{64}\.jsonl$/),
+      expect.stringMatching(/^progress\.sha256-[a-f0-9]{64}\.json$/),
+      expect.stringMatching(/^editor_state\.sha256-[a-f0-9]{64}\.json$/),
+      expect.stringMatching(/^sync_manifest\.sha256-[a-f0-9]{64}\.json$/),
     ]);
     expect(drive.uploads[0].parentId).toBe('events-folder');
     expect(drive.uploads[1].parentId).toBe('state-folder');
@@ -542,6 +600,62 @@ describe('Durable Object Drive mirror integration', () => {
       ]),
     });
     expect(drive.uploads.every(upload => !upload.name.includes('DriveSyncFiles'))).toBe(true);
+  });
+
+  it('keeps previous Drive snapshot bytes while publishing a new event snapshot', async () => {
+    const firstEvent = makeEvent(61, { type: 'lesson_open' });
+    const secondEvent = makeEvent(62, { type: 'lesson_open', ts: '2026-11-03T00:00:00.000Z' });
+    await appendForOwner(firstEvent);
+    const drive = makeMemoryDrive();
+    await runMirror(drive.client);
+    const first = drive.uploads.find(upload => upload.name.startsWith('events_2026-11.sha256-'))!;
+    const firstContent = drive.filesById.get(first.id)!.content;
+
+    await appendForOwner(secondEvent);
+    const status = await runMirror(drive.client) as { status: string };
+    const eventSnapshots = drive.uploads.filter(upload => upload.name.startsWith('events_2026-11.sha256-'));
+    const latest = eventSnapshots.at(-1)!;
+    const manifest = JSON.parse(drive.contentByName.get('sync_manifest.json')!) as { files: Array<{ path: string; id: string; name: string }> };
+
+    expect(status.status).toBe('synced');
+    expect(eventSnapshots).toHaveLength(2);
+    expect(first.id).not.toBe(latest.id);
+    expect(drive.filesById.get(first.id)!.content).toBe(firstContent);
+    expect(firstContent).toContain(firstEvent.id);
+    expect(firstContent).not.toContain(secondEvent.id);
+    expect(drive.filesById.get(latest.id)!.content).toContain(firstEvent.id);
+    expect(drive.filesById.get(latest.id)!.content).toContain(secondEvent.id);
+    expect(manifest.files).toContainEqual(expect.objectContaining({ path: 'events/events_2026-11.jsonl', id: latest.id, name: latest.name }));
+  });
+
+  it('migrates a legacy event file into a new snapshot without changing the legacy bytes', async () => {
+    const legacyEvent = makeEvent(64, { type: 'lesson_open', ts: '2026-11-01T00:00:00.000Z' });
+    const localEvent = makeEvent(65, { type: 'lesson_open', ts: '2026-11-02T00:00:00.000Z' });
+    const legacyContent = serializeJsonlEvents([sequenced(1, legacyEvent)]);
+    const drive = makeMemoryDrive();
+    drive.filesById.set('legacy-events', {
+      name: 'events_2026-11.jsonl', parentId: 'events-folder', mimeType: 'application/x-ndjson', content: legacyContent,
+    });
+    drive.contentByName.set('events_2026-11.jsonl', legacyContent);
+    await appendForOwner(localEvent);
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.put('drive-mirror-state-v1', {
+        status: 'pending', lastSeq: 0, pendingCount: 1,
+        files: { 'events/events_2026-11.jsonl': { id: 'legacy-events', etag: 'legacy-etag' } },
+        fileHashes: { 'events/events_2026-11.jsonl': await sha256Hex(legacyContent) }, snapshots: {},
+      });
+    });
+
+    const status = await runMirror(drive.client) as { status: string };
+    const latest = drive.uploads.find(upload => upload.name.startsWith('events_2026-11.sha256-'))!;
+    const events = drive.filesById.get(latest.id)!.content.trim().split('\n').map(line => JSON.parse(line) as LearnEvent);
+
+    expect(status.status).toBe('synced');
+    expect(drive.filesById.get('legacy-events')!.content).toBe(legacyContent);
+    expect(events.map(event => event.id)).toEqual([legacyEvent.id, localEvent.id]);
+    expect(latest.name).not.toBe('events_2026-11.jsonl');
   });
 
   it('quarantines unclassified events from Drive JSONL and progress while recording the skipped count', async () => {
@@ -579,7 +693,7 @@ describe('Durable Object Drive mirror integration', () => {
     const lines = drive.contentByName.get('events_2026-11.jsonl')!.trim().split('\n');
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0]).id).toBe(event.id);
-    expect(drive.uploads[1].knownFile).toMatchObject({ id: 'file-events_2026-11.jsonl' });
+    expect(drive.uploads.filter(upload => upload.name.startsWith('events_2026-11.sha256-'))).toHaveLength(1);
   });
 
   it('reads and syncs all 50,000 stored events across 500-row SQL pages', async () => {
@@ -635,7 +749,7 @@ describe('Durable Object Drive mirror integration', () => {
     const date = new Date('2026-11-08T02:00:00.000Z');
     const first = await runWeeklyBackup(drive.client, date) as { status: string; lastCreatedAt: string | null; lastError: string | null };
     expect(first).toMatchObject({ status: 'created', lastCreatedAt: date.toISOString(), lastError: null });
-    expect(drive.uploads.at(-1)).toMatchObject({ name: 'sync_backup_2026-11-08.json', parentId: 'backups-folder' });
+    expect(drive.uploads.at(-1)).toMatchObject({ name: expect.stringMatching(/^sync_backup_2026-11-08\.sha256-[a-f0-9]{64}\.json$/), parentId: 'backups-folder' });
     const backup = JSON.parse(drive.contentByName.get('sync_backup_2026-11-08.json')!) as {
       format: string; snapshot: { lastSeq: number; eventCount: number; quarantinedEventCount: number; progress: { lastEventId: string | null } };
       events: Array<{ seq: number; event: LearnEvent }>; sha256: string;
@@ -655,6 +769,22 @@ describe('Durable Object Drive mirror integration', () => {
     const uploadCount = drive.uploads.length;
     await runWeeklyBackup(drive.client, date);
     expect(drive.uploads).toHaveLength(uploadCount);
+  });
+
+  it('reuses a weekly snapshot after its upload response is lost', async () => {
+    await appendForOwner(makeEvent(63, { type: 'check_answer', verdict: 'submitted', verdictSource: 'none' }));
+    const drive = makeMemoryDrive({ loseBackupResponseOnce: true });
+    const date = new Date('2026-11-08T02:00:00.000Z');
+    const failed = await runWeeklyBackup(drive.client, date) as { status: string; lastError: string };
+    expect(failed).toMatchObject({ status: 'error', lastError: 'network_error' });
+    const firstUpload = drive.uploads.find(upload => upload.name.startsWith('sync_backup_2026-11-08.sha256-'))!;
+    const firstBytes = drive.filesById.get(firstUpload.id)!.content;
+
+    const retried = await runWeeklyBackup(drive.client, new Date(date.getTime() + 60_000)) as { status: string };
+    const backupUploads = drive.uploads.filter(upload => upload.name.startsWith('sync_backup_2026-11-08.sha256-'));
+    expect(retried.status).toBe('created');
+    expect(backupUploads).toHaveLength(1);
+    expect(drive.filesById.get(firstUpload.id)!.content).toBe(firstBytes);
   });
 
   it('does not reintroduce unclassified events from a stale weekly backup file', () => {
@@ -691,9 +821,9 @@ describe('Durable Object Drive mirror integration', () => {
     expect(weekly.status).toBe('created');
     expect(mirror.status).toBe('synced');
     expect(drive.uploads).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'sync_backup_2026-11-08.json', parentId: 'backups-folder' }),
-      expect.objectContaining({ name: 'events_2026-11.jsonl', parentId: 'events-folder' }),
-      expect.objectContaining({ name: 'sync_manifest.json', parentId: 'sync-folder' }),
+      expect.objectContaining({ name: expect.stringMatching(/^sync_backup_2026-11-08\.sha256-[a-f0-9]{64}\.json$/), parentId: 'backups-folder' }),
+      expect.objectContaining({ name: expect.stringMatching(/^events_2026-11\.sha256-[a-f0-9]{64}\.jsonl$/), parentId: 'events-folder' }),
+      expect.objectContaining({ name: expect.stringMatching(/^sync_manifest\.sha256-[a-f0-9]{64}\.json$/), parentId: 'sync-folder' }),
     ]));
   });
 
