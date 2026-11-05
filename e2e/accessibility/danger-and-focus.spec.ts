@@ -71,7 +71,7 @@ test('Skip to practice cancellation restores its trigger', { tag: '@only-mobile-
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
 
   const trigger = page.getByRole('button', { name: 'Skip to practice' });
   await trigger.click();
