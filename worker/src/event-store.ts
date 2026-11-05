@@ -258,8 +258,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const required = scope === 'section' ? ['bankVersion', 'lesson', 'section']
       : scope === 'lesson' ? ['bankVersion', 'lesson']
       : scope === 'session' ? ['session'] : [];
+    if (requested.some(name => values[name] !== null && !required.includes(name))) return json({ error: 'invalid_reset_scope' }, 400);
     if (required.some(name => !values[name as keyof typeof values])) return json({ error: 'missing_reset_filter' }, 400);
-    if (scope === 'all' && requested.some(name => values[name] !== null)) return json({ error: 'invalid_reset_scope' }, 400);
     const fields = scope === 'section' ? ['bankVersion', 'lesson', 'section'] as const
       : scope === 'lesson' ? ['bankVersion', 'lesson'] as const
       : scope === 'session' ? ['session'] as const : [] as const;
