@@ -1056,3 +1056,39 @@ body:has(> #math-scratchpad-redux) {
   flex: 1 0 auto;
   min-height: 0;
 }
+
+
+/* Cloud status is a floating, independently scrollable panel. Opening it must
+   not shift the notebook or the split lesson/work panes below it. */
+#math-scratchpad-redux .sync-panel-floating {
+  position: fixed;
+  z-index: 45;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline: 12px;
+  margin: 0 auto;
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  box-shadow: 0 20px 55px rgb(0 0 0 / 0.5);
+}
+#math-scratchpad-redux .lesson-next-hint {
+  margin: 4px 0 12px;
+  padding: 8px 12px;
+  border-inline-start: 3px solid var(--warning);
+  color: var(--muted-foreground);
+  background: var(--raised);
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 479px) {
+  .lesson-picker-dialog { display: flex; flex-direction: column; overflow: hidden; }
+  .lesson-picker-dialog .lesson-picker-groups {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .lesson-picker-dialog > .dialog-actions { flex: none; padding-top: 8px; }
+}
