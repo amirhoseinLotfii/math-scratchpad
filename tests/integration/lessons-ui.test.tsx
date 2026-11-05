@@ -53,6 +53,19 @@ describe('lesson learning screen', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeVisible();
   });
 
+  it('offers a resume shortcut for an unfinished lesson without changing completed lessons', async () => {
+    const lesson = sampleBank().lessons![0];
+    const choose = vi.fn();
+    const progress: LessonProgress = {
+      lessonId: lesson.id, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0,
+      completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], revealedSteps: {},
+      learnStartedAt: '2026-11-05T09:00:00.000Z',
+    };
+    render(<LessonPicker open lessons={[lesson]} progressByLesson={{ [lesson.id]: progress }} onOpenChange={() => undefined} onChoose={choose} />);
+    await userEvent.click(screen.getByRole('button', { name: /Resume unfinished lesson/ }));
+    expect(choose).toHaveBeenCalledWith(lesson);
+  });
+
   it('offers the image description when a lesson image fails', async () => {
     render(<LessonBlockView block={{ type: 'image', src: '/missing-lesson-image.png', alt: 'Diagram showing a triangle' }} blockKey="broken-image" revealed={0} onReveal={() => undefined} />);
     fireEvent.error(screen.getByRole('img', { name: 'Diagram showing a triangle' }));

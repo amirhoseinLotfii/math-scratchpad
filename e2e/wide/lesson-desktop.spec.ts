@@ -6,7 +6,7 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
 
   const lessonButton = page.getByRole('button', { name: 'Lesson' });
   await lessonButton.click();
-  const reference = page.getByRole('dialog', { name: /توابع و تابع‌نما/ });
+  const reference = page.getByRole('dialog', { name: /^توابع و تابع‌نما/ });
   await expect(reference.getByRole('heading', { name: 'تعریف تابع' })).toBeVisible();
   const illustration = reference.getByRole('img', { name: 'تصویر نمونهٔ درس برای آزمون نمایش شکل.' });
   await expect(illustration).toBeVisible();
@@ -22,7 +22,7 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
 
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'درس‌ها' }).getByRole('button', { name: /توابع و تابع‌نما/ }).click();
+  await page.getByRole('dialog', { name: 'درس‌ها' }).getByRole('button', { name: /^توابع و تابع‌نما/ }).click();
   const interactive = page.getByRole('region', { name: 'درس‌نامه' });
   await expect(interactive).toHaveAttribute('lang', 'fa');
   await expect(interactive).toHaveAttribute('dir', 'rtl');

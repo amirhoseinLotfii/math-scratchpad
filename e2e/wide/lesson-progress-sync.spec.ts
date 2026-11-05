@@ -14,7 +14,7 @@ test('lesson answers and the active page synchronize between desktop tabs', asyn
     if (await batchStart.isVisible().catch(() => false)) await batchStart.getByRole('button', { name: 'Skip for now' }).click();
     await target.getByRole('button', { name: 'Exercise menu' }).click();
     await target.getByRole('menuitem', { name: 'Lessons' }).click();
-    await target.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+    await target.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
     return target.getByRole('region', { name: 'Lesson notes' });
   };
 

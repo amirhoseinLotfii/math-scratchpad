@@ -15,7 +15,7 @@ async function capture(page: import('@playwright/test').Page, name: string, full
 async function openLesson(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
   await expect(page.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
 }
 

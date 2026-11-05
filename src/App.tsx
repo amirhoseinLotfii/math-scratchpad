@@ -439,9 +439,37 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const current = lessonProgressRef.current;
   updateLessonProgressState({ ...current, progressById: { ...current.progressById, [progress.lessonId]: progress } });
  }, [updateLessonProgressState]);
+ const lastOpenedLessonKey = (bankId: string, version: string) => `math-scratchpad-last-open-lesson-v1:${encodeURIComponent(bankId)}:${encodeURIComponent(version)}`;
+ function resumeBankLesson(bank: DriveBank, version: string) {
+  // Banks without lessons remain in the regular question workspace.
+  if (!bank.lessons?.length) return;
+  const restored = readLessonProgress(bank, version);
+  const active = bank.lessons ?? [];
+  let storedId: string | null = null;
+  try { storedId = getLearningStorage().getItem(lastOpenedLessonKey(bank.bank_id, version)); } catch { /* optional preference */ }
+  const unfinished = active.filter(lesson => {
+   const item = restored.progressById[lesson.id];
+   return item && item.status !== 'done';
+  });
+  const recent = unfinished.sort((a, b) => {
+   const date = (lesson: Lesson) => {
+    const item = restored.progressById[lesson.id];
+    return item?.practiceStartedAt ?? item?.learnDoneAt ?? item?.learnStartedAt ?? '';
+   };
+   return date(b).localeCompare(date(a));
+  });
+  const target = recent.find(lesson => lesson.id === storedId) ?? recent[0];
+  setDriveBankOpen(false);
+  if (target) { setLessonPickerOpen(false); setLessonScreen(target); }
+  else { setLessonScreen(null); setLessonPickerOpen(true); }
+ }
  function openLesson(lesson: Lesson) {
   const before = lessonProgressById[lesson.id];
   if (!before) rememberLessonProgress({ lessonId: lesson.id, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedSectionIds: [], completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() });
+  if (loadedBank) {
+   try { getLearningStorage().setItem(lastOpenedLessonKey(loadedBank.bank.bank_id, loadedBank.version), lesson.id); }
+   catch { /* optional preference; core progress still persists */ }
+  }
   setLessonPickerOpen(false);
   setLessonScreen(lesson);
  }
@@ -890,7 +918,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
      </DropdownMenuContent></DropdownMenu>
     </div></header>
 
-   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} />}
+   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} />}
    {syncPanelOpen && <SyncPanel onClose={() => setSyncPanelOpen(false)} />}
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 

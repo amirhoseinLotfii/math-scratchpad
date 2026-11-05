@@ -1010,7 +1010,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) { width: 100%; max-width: none; }
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) .lesson-screen { max-width: none; padding-inline: 16px; }
 #math-scratchpad-redux .lesson-split-wide { display: grid; grid-template-columns: minmax(0, var(--lesson-split, 50%)) 10px minmax(0, 1fr); align-items: start; gap: 0; }
-#math-scratchpad-redux .lesson-split-wide > .lesson-split-lesson { min-width: 0; padding-inline-end: 12px; }
+#math-scratchpad-redux .lesson-split-wide > .lesson-split-lesson { position: sticky; top: 0; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; min-width: 0; padding-inline-end: 12px; scroll-padding-block: 12px; }
 #math-scratchpad-redux .lesson-split-wide > .lesson-split-work { position: sticky; top: 0; max-height: 100vh; max-height: 100dvh; overflow: auto; overscroll-behavior: contain; min-width: 0; padding-inline-start: 12px; padding-block: 8px; }
 #math-scratchpad-redux .lesson-split-handle { align-self: stretch; cursor: col-resize; touch-action: none; position: relative; min-height: 100%; }
 #math-scratchpad-redux .lesson-split-handle::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 4px; width: 2px; border-radius: 2px; background: var(--border); }
@@ -1055,4 +1055,40 @@ body:has(> #math-scratchpad-redux) {
 #math-scratchpad-redux .app-content {
   flex: 1 0 auto;
   min-height: 0;
+}
+
+
+/* Cloud status is a floating, independently scrollable panel. Opening it must
+   not shift the notebook or the split lesson/work panes below it. */
+#math-scratchpad-redux .sync-panel-floating {
+  position: fixed;
+  z-index: 45;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline: 12px;
+  margin: 0 auto;
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  box-shadow: 0 20px 55px rgb(0 0 0 / 0.5);
+}
+#math-scratchpad-redux .lesson-next-hint {
+  margin: 4px 0 12px;
+  padding: 8px 12px;
+  border-inline-start: 3px solid var(--warning);
+  color: var(--muted-foreground);
+  background: var(--raised);
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 479px) {
+  .lesson-picker-dialog { display: flex; flex-direction: column; overflow: hidden; }
+  .lesson-picker-dialog .lesson-picker-groups {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .lesson-picker-dialog > .dialog-actions { flex: none; padding-top: 8px; }
 }

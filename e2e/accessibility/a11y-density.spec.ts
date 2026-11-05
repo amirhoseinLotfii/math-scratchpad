@@ -57,7 +57,7 @@ test('the full confidence labels remain touch-sized across narrow and wide viewp
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
 
   const sizes = [
     { width: 320, height: 740 },

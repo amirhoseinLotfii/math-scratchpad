@@ -103,8 +103,10 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const autoStartedLesson = useRef<string | null>(null);
   const paneMode = lessonPaneMode(useSyncExternalStore(subscribeSplit, splitSnapshot, () => false)), split = paneMode === 'split';
   const [splitRatio, setSplitRatio] = useState(readSplitRatio);
-  const [paneTab, setPaneTab] = useState<'lesson' | 'work'>('lesson');
-  const [selectedWorkKey, setSelectedWorkKey] = useState<string | undefined>();
+  const [paneTab, setPaneTab] = useState<'lesson' | 'work'>(() =>
+    Object.keys(initialProgress?.workAnswers ?? {}).length ? 'work' : 'lesson');
+  const [selectedWorkKey, setSelectedWorkKey] = useState<string | undefined>(() =>
+    Object.keys(initialProgress?.workAnswers ?? {}).at(-1));
   const workStores = useRef(new Map<string, ScratchStore>());
   const splitRef = useRef<HTMLDivElement>(null);
   const focusedCheckScope = useRef<string | null>(null);
@@ -655,6 +657,9 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
         <Button onClick={goPrevious} disabled={sectionIndex === 0}>{fa ? '→ بخش قبلی' : '← Previous section'}</Button>
         <Button className="lesson-primary-action" onClick={goNext} disabled={!conceptComplete}>{fa ? 'بخش بعدی ←' : 'Next section →'}</Button>
       </nav>
+      {!conceptComplete && <p className="lesson-next-hint" role="status">{fa
+        ? `برای فعال شدن «بخش بعدی»، ${localizeLessonDigits(checks.filter(question => !isCheckComplete(question.id)).length, uiLang)} تمرین کوتاه باقی‌مانده را پاسخ بده یا رد کن.`
+        : `Answer or skip the ${checks.filter(question => !isCheckComplete(question.id)).length} remaining quick check(s) to unlock the next section.`}</p>}
       {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>{fa ? 'رفتن به تمرین پایانی کل درس' : 'Skip to practice'}</Button>}
       </div>}
       {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
