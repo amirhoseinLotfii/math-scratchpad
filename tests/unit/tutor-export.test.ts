@@ -89,7 +89,7 @@ describe('local storage save / restore / reset / migration', () => {
   const a = createPersistentStore();
   a.store.dispatch(actions.startFractionRound()); a.store.dispatch(actions.setSessionMeta({ anxiety: 3 }));
   a.store.dispatch(actions.command({ type: 'digit', value: '4' })); a.store.dispatch(actions.command({ type: 'final' })); a.store.dispatch(actions.setHint({ used: true }));
-  await vi.advanceTimersByTimeAsync(200);
+  await vi.advanceTimersByTimeAsync(800);
   expect(a.store.getState().savedAt).toMatch(ISO);
   a.dispose();
   const b = createPersistentStore(); const doc = b.store.getState().doc;

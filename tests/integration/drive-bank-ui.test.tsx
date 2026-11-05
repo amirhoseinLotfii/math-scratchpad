@@ -6,15 +6,16 @@ import { readArchive } from '../../src/features/drive-bank/drive-bank';
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async () => true }));
 
 const bank = (source: string, version = 'v1') => ({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'practice', version, questions: [{ id: 'Q01', mode: 'math', source }, { id: 'Q02', mode: 'math', source: '2+2' }] });
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
+afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); requestAccessTokenSpy.mockClear(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
 
+const requestAccessTokenSpy = vi.fn();
 function mockGoogle() {
   const picker = { ViewId: { DOCS: 'docs' }, DocsViewMode: { LIST: 'list' }, Action: { PICKED: 'picked', CANCEL: 'cancel' },
     DocsView: class { setMimeTypes() { return this; } setMode() { return this; } setQuery() { return this; } },
     PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey() { return this; } setAppId() { return this; } setOrigin() { return this; } setLocale() { return this; } setTitle() { return this; }
       setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb({ action: 'picked', docs: [{ id: 'private-file-123', name: 'MATH_QUESTION_BANK.json' }] }) }; } } };
   window.gapi = {};
-  window.google = { picker, accounts: { oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (cfg: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => cfg.callback({ access_token: 'token', expires_in: 3600 }) }) } } };
+  window.google = { picker, accounts: { oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (cfg: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => { requestAccessTokenSpy(); cfg.callback({ access_token: 'token', expires_in: 3600 }); } }) } } };
 }
 function mockDrive(state: { content: string; rev: number }) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
@@ -70,6 +71,21 @@ describe('private Drive bank flow', () => {
     expect(store.getState().doc.session?.bankId).toBe('practice');
     expect(readArchive().some(s => JSON.parse(s.data).doc.session.id === previous.session?.id)).toBe(true);
     expect(JSON.parse(localStorage.getItem('math-scratchpad-drive-config-v1')!).fileId).toBe('private-file-123');
+  });
+  it('restores a verified Drive session after a page refresh without another OAuth prompt', async () => {
+    mockGoogle();
+    mockDrive({ content: JSON.stringify(bank('3+4')), rev: 1 });
+    const first = renderMobileApp();
+    await connect(first.user);
+    expect(await screen.findByText(/Bank practice \(version v1\) loaded/)).toBeTruthy();
+    expect(requestAccessTokenSpy).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    const second = renderMobileApp();
+    await second.user.click(screen.getByRole('button', { name: 'Exercise menu' }));
+    await second.user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
+    expect(await screen.findByText(/Bank practice \(version v1\) loaded/)).toBeTruthy();
+    expect(requestAccessTokenSpy).toHaveBeenCalledTimes(1);
   });
   it('shows an empty file as waiting, then picks up a content change on the next poll without touching the open session', async () => {
     mockGoogle();

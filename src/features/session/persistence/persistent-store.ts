@@ -1,7 +1,6 @@
 import { initialKeyboardOpen } from '../../../shared/lib/ui-prefs';
 import { z } from 'zod';
-import { uid } from '../../../model';
-import { isoLocal } from '../../../model';
+import { example, isoLocal, stepLatex, uid } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
 import type { PersistOptions } from 'zustand/middleware';
@@ -25,6 +24,9 @@ const workSignature = (session: PersistedSession['session']) => JSON.stringify({
  exercises: session.doc.exercises.map(({ elapsedMs, ...work }) => work), exerciseId: session.doc.exerciseId, prefs: session.prefs,
 });
 export const STORAGE_PREFIX = 'math-scratchpad';
+const PERSIST_DEBOUNCE_MS = 800;
+let activeSessionFlush: (() => Promise<void>) | undefined;
+export async function flushPersistedSession(): Promise<void> { await activeSessionFlush?.(); }
 /** Remove every localStorage key owned by this app (all schema versions). */
 export function clearAppStorage() {
  // The obsolete local-storage reset must never delete authoritative server records.
@@ -43,14 +45,14 @@ export function createPersistentStore() {
  const writerId = uid();
  const storage = getLearningStorage();
  let saved: Envelope | null = null, protectedDraft = false, bootError = '';
- let initial: ScratchState;
+ let initial: ScratchState, hasLegacyState = false;
  try {
   const raw = storage.getItem(SESSION_KEY);
   if (raw) { saved = decode(raw); initial = { ...initialState(), ...saved.state.session }; }
   else {
-   const hasLegacy = !!(storage.getItem('math-scratchpad-redux-v2') ?? storage.getItem('math-scratchpad-flow-v1'));
+   hasLegacyState = !!(storage.getItem('math-scratchpad-redux-v2') ?? storage.getItem('math-scratchpad-flow-v1'));
    initial = restoreState();
-   if (!hasLegacy) initial.keyboardOpen = false;
+   if (!hasLegacyState) initial.keyboardOpen = false;
    if (initial.notice) { protectedDraft = true; bootError = initial.notice; }
   }
  } catch {
@@ -68,7 +70,8 @@ export function createPersistentStore() {
  };
  async function flush() {
   if (!pending || protectedDraft || remote) { await flushLearningStorage().catch(() => undefined); return; }
-  clearTimeout(timeout); const session = pending; pending = null;
+  if (timeout !== undefined) { clearTimeout(timeout); timeout = undefined; }
+  const session = pending; pending = null;
   const next: Envelope = { version: 3, state: { session, sync: { revision: revision + 1, writerId } } };
   try {
    storage.setItem(SESSION_KEY, JSON.stringify(next));
@@ -88,7 +91,10 @@ export function createPersistentStore() {
   // A receiving clean tab must not echo timer-only changes back to its source.
   if (!force && !author && work === lastWork) return;
   if (work !== lastWork) author = true;
-  pending = session; clearTimeout(timeout); timeout = setTimeout(flush, 180);
+  pending = session;
+  // Flush the newest work on a fixed cadence. Resetting this timer on every
+  // keystroke let continuous typing postpone persistence indefinitely.
+  if (timeout === undefined) timeout = setTimeout(() => { timeout = undefined; void flush(); }, PERSIST_DEBOUNCE_MS);
  }
  const options: PersistOptions<ScratchState, PersistedSession> = {
   name: SESSION_KEY, version: 3,
@@ -142,12 +148,20 @@ export function createPersistentStore() {
   protectedDraft = true; pending = null; clearTimeout(timeout);
   clearAppStorage();
  };
+ activeSessionFlush = flush;
  // Start the IndexedDB transaction before the browser suspends or tears down this page.
  const pagehide = () => { void flush(); };
  const visibilitychange = () => { if (document.visibilityState === 'hidden') void flush(); };
  const unsubscribeLearningStorage = subscribeLearningStorage(storageEvent);
  const nativeStorageEvent = (event: StorageEvent) => storageEvent(event);
  window.addEventListener('storage', nativeStorageEvent); window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibilitychange);
- if (!saved && !protectedDraft) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
- return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
+ if (!saved && !protectedDraft) {
+  const onlyExercise = initial.doc.exercises.length === 1 ? initial.doc.exercises[0] : undefined;
+  const pristineDefault = !!onlyExercise && onlyExercise.source === example && !onlyExercise.bankQuestionId
+   && !onlyExercise.answerText && onlyExercise.steps.length === 1 && stepLatex(onlyExercise.steps[0]) === example
+   && !initial.doc.session?.bankId;
+  // Do not save the placeholder exercise before a saved server snapshot can hydrate a new browser.
+  if (!pristineDefault || hasLegacyState) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
+ }
+ return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); if (activeSessionFlush === flush) activeSessionFlush = undefined; unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
 }

@@ -29,6 +29,7 @@ describe('learning event schema and emitter', () => {
         deviceId: '38174652-a617-4de8-a216-1d80ad452120', bankVersion: 'v21', session: 'S001',
         chapter: 1, lesson: '1.1', section: '1.1-p1', concept: 'relations', type,
         ...(type === 'legacy_state_migration' ? { migrationChunk: { id: 'f118879f-3fd9-41e5-8a7b-e2440be294cc', key: 'math-scratchpad-session-v3', index: 0, count: 1, sha256: 'a'.repeat(64), data: 'e30=' } } : {}),
+        ...(type === 'chapter_snapshot' ? { snapshotId: 'a3677b84-678e-4c07-b8b7-4c325387c6f6', snapshotBankId: 'test-bank', snapshotPart: 0, snapshotParts: 1, snapshotSha256: 'b'.repeat(64), snapshotData: '{}' } : {}),
       });
       expect(result.success, `${type}: ${result.success ? '' : result.error.message}`).toBe(true);
     }

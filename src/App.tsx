@@ -30,10 +30,10 @@ import { questionStatus } from './features/workspace/model/workspace-layout';
 import { ShortcutHelp } from './features/workspace/components/shortcut-help';
 import { SessionScales } from './features/session/components/session-panel';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
-import { clearAppStorage } from './features/session/persistence/persistent-store';
+import { clearAppStorage, flushPersistedSession, SESSION_KEY } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
-import { archiveSession, bankDocument, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
+import { ARCHIVE_KEY, archiveSession, bankDocument, readArchive, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
 import { getLesson, getPracticeQuestions } from './features/lessons/selectors';
 import type { Lesson, LessonProgress } from './features/lessons/types';
@@ -42,13 +42,14 @@ import { LessonPicker } from './features/lessons/lesson-picker';
 import { LessonReferenceDialog } from './features/lessons/lesson-reference-dialog';
 import { buildLessonSections } from './features/lessons/lesson-sections';
 import { contentDirection, languageForText, LessonSourceAttribution, LessonText, QuestionChoice, QuestionSource } from './features/lessons/lesson-content';
-import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
+import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, LESSON_PROGRESS_PREFIX, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
 import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
 import { ActivityTracker } from './sync/activity-tracker';
 import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
 import { SyncPanel } from './sync/sync-panel';
-import { flushLearningStorage, isServerStorageActive, subscribeLearningStorage } from './sync/browser-db';
+import { flushLearningStorage, getAuthenticatedServerStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from './sync/browser-db';
 import { getDefaultSyncRuntime } from './sync/runtime';
+import { queueChapterSnapshot } from './sync/chapter-snapshot';
 
 const INSERT_OPTIONS = [
  { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
@@ -83,11 +84,13 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false), [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
+ const [chapterTransitioning, setChapterTransitioning] = useState(false);
  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [, setDriveBankAvailable] = useState(false);
  const [loadedBank, setLoadedBank] = useState<{ bank: DriveBank; version: string } | null>(initialBank ?? null);
  const loadedBankRef = useRef(loadedBank); loadedBankRef.current = loadedBank;
+ const bankTransitionRef = useRef<string | null>(null);
  const [lessonPickerOpen, setLessonPickerOpen] = useState(false), [lessonScreen, setLessonScreen] = useState<Lesson | null>(null);
  const [referenceLesson, setReferenceLesson] = useState<Lesson | null>(null), [referenceWasRunning, setReferenceWasRunning] = useState(false);
  const [lessonProgressState, setLessonProgressState] = useState<LessonProgressState>(() => initialBank ? readLessonProgress(initialBank.bank, initialBank.version) : emptyLessonProgressState('', ''));
@@ -259,10 +262,149 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    const empty = emptyLessonProgressState('', ''); lessonProgressRef.current = empty; setLessonProgressState(empty); setLessonPersistenceMessage('');
    return;
   }
-  const current = loadedBank;
+  const sessionMeta = store.getState().doc.session;
+  if (sessionMeta?.bankId && (sessionMeta.bankId !== bank.bank_id || sessionMeta.bankVersion !== version)) return;
+  const current = loadedBankRef.current;
   if (current?.bank.bank_id === bank.bank_id && current.version === version) { setLoadedBank({ bank, version }); return; }
   const restored = readLessonProgress(bank, version);
+  loadedBankRef.current = { bank, version };
   setLoadedBank({ bank, version }); lessonProgressRef.current = restored; setLessonProgressState(restored); setLessonPersistenceMessage(restored.warning);
+ }
+ async function prepareBankTransition(bank: DriveBank, version: string) {
+  const previous = store.getState();
+  const activeSession = previous.doc.session;
+  if (!activeSession?.bankId) return;
+  const activeBankId = activeSession.bankId;
+  const current = loadedBankRef.current;
+  const previousChapter = activeSession.chapter ?? (current?.bank.bank_id === activeBankId ? current.bank.chapter?.number : undefined);
+  const nextChapter = bank.chapter?.number;
+  const chapterChanged = previousChapter !== undefined && nextChapter !== undefined
+   ? previousChapter !== nextChapter
+   : activeBankId !== bank.bank_id;
+  if (!chapterChanged) return;
+
+  const transitionKey = `${activeBankId}:${activeSession.bankVersion ?? 'unknown'}->${bank.bank_id}:${version}`;
+  if (bankTransitionRef.current) throw new Error('یک انتقال فصل دیگر هنوز در حال انجام است.');
+  bankTransitionRef.current = transitionKey;
+  setChapterTransitioning(true);
+  setLessonPersistenceMessage('فصل قبلی در حال ذخیره و تأیید در Google Drive و Notion است…');
+  const storage = getLearningStorage();
+  const runtime = getDefaultSyncRuntime();
+  let cleanupBackup: { archiveRaw: string | null; progress: Array<{ key: string; value: string }> } | undefined;
+  let transitionState = previous;
+  const timerExercise = exerciseOf(previous.doc);
+  const resumeTimerAfterFailure = !timerExercise.timerPaused;
+  try {
+   if (previousChapter === undefined) throw new Error('شمارهٔ فصل فعال از بانک فعلی قابل تشخیص نیست؛ داده پاک نشد.');
+   if (!runtime) throw new Error('موتور همگام‌سازی آماده نیست.');
+   if (previous.storageState) throw new Error('وضعیت ذخیره‌سازی جلسه نیاز به رسیدگی دارد.');
+   if (resumeTimerAfterFailure) {
+    dispatch(actions.timerPause({ exerciseId: timerExercise.id, now: Date.now(), paused: true }));
+    manualTimerPause.current = true;
+    activityTracker.setPaused(true);
+   }
+   transitionState = store.getState();
+   await archiveSession(transitionState);
+   await flushPersistedSession();
+   if (store.getState().storageState) throw new Error('ذخیرهٔ محلی جلسه تأیید نشد؛ داده پاک نشد.');
+   await flushLearningStorage();
+   const serverStorage = getAuthenticatedServerStorage();
+   if (!serverStorage) throw new Error('برای آرشیو امن، اتصال سرور برقرار نیست.');
+   await serverStorage.flush();
+   await runtime.syncAllUntilComplete();
+
+   // The transition overlay blocks editing, but take the export from the latest
+   // durable state after remote sync instead of the stale entry-state snapshot.
+   await flushPersistedSession();
+   await flushLearningStorage();
+   await serverStorage.flush();
+   const snapshotState = store.getState();
+   if (snapshotState.storageState) throw new Error('ذخیرهٔ محلی جلسه تأیید نشد؛ داده پاک نشد.');
+
+   const archives = readArchive();
+   const currentSessionId = activeSession.id;
+   const belongsToBank = (entry: { id: string; data: string }) => {
+    if (entry.id === currentSessionId) return true;
+    try {
+     const parsed = JSON.parse(entry.data) as { doc?: { session?: { bankId?: string } } };
+     return parsed.doc?.session?.bankId === activeBankId;
+    } catch { return false; }
+   };
+   // The current session is captured below as the authoritative live document;
+   // an earlier archive copy with the same session ID would only duplicate it.
+   const chapterArchives = archives.filter(entry => entry.id !== currentSessionId && belongsToBank(entry));
+   const chapterSessionIds = new Set([currentSessionId, ...chapterArchives.map(entry => entry.id)]);
+   const progressPrefix = `${LESSON_PROGRESS_PREFIX}:${encodeURIComponent(activeBankId)}:`;
+   const progressRecords: Array<{ key: string; value: string }> = [];
+   for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key?.startsWith(progressPrefix)) continue;
+    const value = storage.getItem(key);
+    if (value !== null) progressRecords.push({ key, value });
+   }
+   const serverEvents = await runtime.readAllServerEvents();
+   const chapter = previousChapter;
+   const chapterEvents = serverEvents
+    .filter(record => record.event.type !== 'chapter_snapshot'
+     && chapterSessionIds.has(record.event.session) && record.event.chapter === chapter)
+    .map(record => ({ seq: record.seq, event: record.event }));
+   const rawSession = storage.getItem(SESSION_KEY);
+   const snapshot = {
+    format: 'math-scratchpad.chapter-snapshot/v1',
+    bank: { id: activeBankId, version: activeSession.bankVersion ?? current?.version ?? 'unknown', chapter, title: current?.bank.chapter?.title },
+    activeSession: { sessionId: currentSessionId, appStateRaw: rawSession, sessionExport: serialize(snapshotState) },
+    archivedSessions: chapterArchives,
+    lessonProgressRecords: progressRecords,
+    chapterEvents,
+   };
+   await queueChapterSnapshot({
+    bankId: activeBankId,
+    bankVersion: activeSession.bankVersion ?? current?.version ?? 'unknown',
+    chapter,
+    sessionId: currentSessionId,
+    payload: snapshot,
+   });
+   // The immutable snapshot must exist in both remote destinations before any
+   // chapter-specific browser data is removed.
+   await runtime.syncAllUntilComplete();
+
+   cleanupBackup = { archiveRaw: storage.getItem(ARCHIVE_KEY), progress: progressRecords };
+   const remainingArchives = archives.filter(entry => !belongsToBank(entry));
+   if (remainingArchives.length) storage.setItem(ARCHIVE_KEY, JSON.stringify(remainingArchives));
+   else storage.removeItem(ARCHIVE_KEY);
+   for (const record of progressRecords) storage.removeItem(record.key);
+   await flushLearningStorage();
+   await serverStorage.flush();
+   dispatch(actions.resetSession());
+   await flushPersistedSession();
+   await flushLearningStorage();
+   await serverStorage.flush();
+   await runtime.syncAllUntilComplete();
+   setLessonPersistenceMessage('آرشیو فصل قبلی در Drive و Notion تأیید شد؛ دادهٔ محلی آن پاک شد.');
+  } catch (error) {
+   if (cleanupBackup) {
+    try {
+     if (cleanupBackup.archiveRaw === null) storage.removeItem(ARCHIVE_KEY);
+     else storage.setItem(ARCHIVE_KEY, cleanupBackup.archiveRaw);
+     for (const record of cleanupBackup.progress) storage.setItem(record.key, record.value);
+     store.setState(transitionState);
+     await flushPersistedSession();
+     await flushLearningStorage();
+     await getAuthenticatedServerStorage()?.flush();
+    } catch { /* Keep the original failure visible; the snapshot is already remote-verified. */ }
+   }
+   if (resumeTimerAfterFailure && store.getState().doc.session?.id === activeSession.id) {
+    dispatch(actions.timerPause({ exerciseId: timerExercise.id, now: Date.now(), paused: false }));
+    manualTimerPause.current = false;
+    activityTracker.setPaused(false);
+   }
+   const message = error instanceof Error ? error.message : 'همگام‌سازی فصل قبلی ناموفق بود.';
+   setLessonPersistenceMessage(`فصل جدید بارگیری نشد؛ اطلاعات فصل قبلی حفظ شد. ${message}`);
+   throw error;
+  } finally {
+   setChapterTransitioning(false);
+   if (bankTransitionRef.current === transitionKey) bankTransitionRef.current = null;
+  }
  }
  const updateLessonProgressState = useCallback((next: LessonProgressState) => {
   lessonProgressRef.current = next; setLessonProgressState(next);
@@ -611,6 +753,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   catch (error) { jsonForm.setError('json', { message: error instanceof Error ? error.message : 'Invalid session JSON.' }, { shouldFocus: true }); }
  });
  function keyboard(event: KeyboardEvent<HTMLElement>) {
+  if (chapterTransitioning || bankTransitionRef.current) { event.preventDefault(); event.stopPropagation(); return; }
   const key = event.key, target = event.target as HTMLElement;
   if (event.defaultPrevented || event.nativeEvent.isComposing || modalOpen || setup || backup || confirmExam || confirmFractions) return;
   const mathfieldTarget = target.closest('math-field');
@@ -700,7 +843,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const canUndo = !!activeMathfield?.canUndo() || state.past.some(d => d.exerciseId === ex.id);
  const canRedo = !!activeMathfield?.canRedo() || state.future.some(d => d.exerciseId === ex.id);
  const mathTools = <MathTools wide={wide} canUndo={canUndo} canRedo={canRedo} onUndo={() => { if (!undoMathfield(state.doc.cursor.stepId)) dispatch(actions.undo()); focusEditor(); }} onRedo={() => { if (!redoMathfield(state.doc.cursor.stepId)) dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
- return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
+ return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-busy={chapterTransitioning} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
     {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Browser cache updated at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : syncStatus.pending > 0 ? `Queued ${syncStatus.pending}` : syncStatus.phase === 'syncing' ? 'Syncing…' : syncStatus.phase === 'synced' && (!state.savedAt || Date.parse(syncStatus.lastSyncedAt ?? '') >= Date.parse(state.savedAt)) ? 'Synced ✓' : state.savedAt ? 'Browser cache' : 'Waiting for sync'}</span>
@@ -747,7 +890,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
      </DropdownMenuContent></DropdownMenu>
     </div></header>
 
-   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} />}
+   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} />}
    {syncPanelOpen && <SyncPanel onClose={() => setSyncPanelOpen(false)} />}
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
@@ -818,5 +961,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'Show fewer' : `Show more (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
+  {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" style={{ position: 'fixed', inset: 0, zIndex: 20_000, display: 'grid', placeItems: 'center', padding: 24, background: 'rgba(12, 15, 13, .86)', color: '#F0F3F1', textAlign: 'center', pointerEvents: 'all' }}>
+   <div><strong style={{ fontSize: 18 }}>در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
+  </div>}
  </main>;
 }

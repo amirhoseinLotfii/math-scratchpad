@@ -18,6 +18,7 @@ import {
   notionDataSourcesFromEnv,
   notionErrorCode,
   NotionRequestQueue,
+  syncNotionAppState,
   syncNotionEvent,
   type MistakeReviewState,
   type NotionClientPort,
@@ -36,6 +37,8 @@ import {
 } from './drive-projection';
 
 const MAX_BODY_BYTES = 250_000;
+const MAX_STATE_BODY_BYTES = 2_100_000;
+const MAX_STATE_VALUE_BYTES = 1_000_000;
 const MAX_BATCH_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 const RATE_WINDOW_MS = 60_000;
@@ -81,6 +84,7 @@ const WEEKLY_BACKUP_RETRY_MS = 60_000;
 const DRIVE_MIRROR_PAGE_SIZE = 500;
 const NOTION_PROJECTION_PAGE_SIZE = 1_000;
 const NOTION_EVENTS_PER_RUN = 20;
+const NOTION_STATE_KEYS_PER_RUN = 10;
 const NOTION_DEBOUNCE_MS = 250;
 const NOTION_RETRY_MS = 60_000;
 const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
@@ -93,6 +97,7 @@ type StoredNotionMirrorState = {
   lastSyncedAt?: string;
   lastError?: NotionErrorCode;
 };
+type PendingNotionState = { key: string; revision: number };
 
 function json(data: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers);
@@ -177,6 +182,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projection_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), last_seq INTEGER NOT NULL)');
     ctx.storage.sql.exec('INSERT OR IGNORE INTO notion_projection_meta (singleton, last_seq) VALUES (1, 0)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_page_refs (kind TEXT NOT NULL, external_key TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (kind, external_key))');
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_state_queue (key TEXT PRIMARY KEY, revision INTEGER NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_mistake_reviews (item_key TEXT PRIMARY KEY, event_id TEXT NOT NULL, review_successes INTEGER NOT NULL, last_review_event_id TEXT)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_session_mistakes (session_id TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (session_id, page_id))');
     ctx.storage.sql.exec(`
@@ -252,14 +258,15 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }
 
   private readAppState(): Response {
-    const records = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
-      'SELECT key, value, revision FROM app_state ORDER BY key',
+    const rows = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number; updated_at: string }>(
+      'SELECT key, value, revision, updated_at FROM app_state ORDER BY key',
     ).toArray();
+    const records = rows.map(({ updated_at, ...record }) => ({ ...record, updatedAt: updated_at }));
     return json({ records, revision: this.appStateRevision() });
   }
 
   private async writeAppState(request: Request): Promise<Response> {
-    const body = await readBoundedBody(request, MAX_BODY_BYTES);
+    const body = await readBoundedBody(request, MAX_STATE_BODY_BYTES);
     if (!body) return json({ error: 'payload_too_large' }, 413);
     let value: unknown;
     try { value = JSON.parse(new TextDecoder().decode(body)); }
@@ -268,7 +275,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const item = value as { key?: unknown; value?: unknown; revision?: unknown };
     if (typeof item.key !== 'string' || !item.key.startsWith('math-scratchpad') || item.key.length > 200
       || !(typeof item.value === 'string' || item.value === null)
-      || (typeof item.value === 'string' && new TextEncoder().encode(item.value).byteLength > 200_000)
+      || (typeof item.value === 'string' && new TextEncoder().encode(item.value).byteLength > MAX_STATE_VALUE_BYTES)
       || !Number.isSafeInteger(item.revision) || Number(item.revision) < 0) {
       return json({ error: 'invalid_state' }, 400);
     }
@@ -279,12 +286,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const current = existing?.revision ?? 0;
       if (current !== item.revision) return { conflict: true, revision: current };
       const revision = current + 1;
+      const updatedAt = new Date().toISOString();
       this.ctx.storage.sql.exec(
         'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, updated_at=excluded.updated_at',
-        item.key!, item.value as string | null, revision, new Date().toISOString(),
+        item.key!, item.value as string | null, revision, updatedAt,
       );
       this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = revision + 1 WHERE singleton = 1');
-      return { conflict: false, revision };
+      return { conflict: false, revision, updatedAt };
     });
     if (result.conflict) return json({ error: 'state_conflict', revision: result.revision }, 409);
     if (this.driveConfigured()) {
@@ -295,7 +303,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       });
       await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
     }
-    return json({ key: item.key, revision: result.revision });
+    await this.queueNotionState(item.key!, result.revision);
+    return json({ key: item.key, revision: result.revision, updatedAt: result.updatedAt });
   }
 
   private parseRateLimit(raw: string | undefined): number {
@@ -458,6 +467,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private applyNotionProjection(event: LearnEvent): void {
     if (typeof event.isTest !== 'boolean') return;
+    if (event.type === 'chapter_snapshot') return;
     const priorSession = this.readNotionProjection<SessionProjection>('session', event.session);
     this.saveNotionProjection('session', event.session, applySessionEvent(priorSession, event));
     if (event.isTest) return;
@@ -538,10 +548,39 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return {
       status: state.status,
       lastSyncedAt: state.lastSyncedAt ?? null,
-      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
       quarantinedCount: state.quarantinedCount ?? null,
       lastError: state.lastError ?? null,
     };
+  }
+
+  private notionStateQueueCount(): number {
+    return Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM notion_state_queue',
+    ).one().count);
+  }
+
+  private notionPendingCount(maxSeq: number, lastSeq: number): number {
+    return Math.max(0, maxSeq - lastSeq) + this.notionStateQueueCount();
+  }
+
+  private async queueNotionState(key: string, revision: number): Promise<void> {
+    if (!notionDataSourcesFromEnv(this.env)) return;
+    // The archive is mirrored as a raw state record while it is live. Chapter
+    // snapshots remain append-only learning events before local cleanup.
+    this.ctx.storage.sql.exec(
+      'INSERT INTO notion_state_queue(key,revision) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET revision=MAX(revision,excluded.revision)',
+      key, revision,
+    );
+    const state = await this.readNotionState();
+    const maxSeq = await this.maxSequence();
+    await this.saveNotionState({
+      ...state,
+      status: 'pending',
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
+      lastError: state.lastError,
+    });
+    await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
   }
 
   private async queueNotionMirror(cursor: number): Promise<void> {
@@ -552,7 +591,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     await this.saveNotionState({
       ...state,
       status: 'pending',
-      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
       // Keep the last failure visible until a mirror run actually succeeds.
       lastError: state.lastError,
     });
@@ -577,7 +616,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (!dataSources || !this.env.NOTION_API_KEY) return this.getNotionStatus();
     const state = await this.readNotionState();
     const through = await this.maxSequence();
-    if (through === state.lastSeq && state.status === 'synced') {
+    if (through === state.lastSeq && this.notionStateQueueCount() === 0 && state.status === 'synced') {
       // Backfill the SQL health dashboard for mirrors synced before the table existed.
       await this.saveNotionState({ ...state, pendingCount: 0 });
       return this.getNotionStatus();
@@ -585,7 +624,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     await this.saveNotionState({
       ...state,
       status: 'syncing',
-      pendingCount: Math.max(0, through - state.lastSeq),
+      pendingCount: this.notionPendingCount(through, state.lastSeq),
       lastError: undefined,
     });
 
@@ -595,7 +634,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         const rebuilding: StoredNotionMirrorState = {
           ...state,
           status: 'pending',
-          pendingCount: Math.max(0, through - state.lastSeq),
+          pendingCount: this.notionPendingCount(through, state.lastSeq),
           lastError: undefined,
         };
         await this.saveNotionState(rebuilding);
@@ -616,7 +655,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           await this.saveNotionState({
             status: 'pending',
             lastSeq,
-            pendingCount: Math.max(0, through - lastSeq),
+            pendingCount: this.notionPendingCount(through, lastSeq),
             quarantinedCount,
             ...(lastSyncedAt ? { lastSyncedAt } : {}),
           });
@@ -635,14 +674,45 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         await this.saveNotionState({
           status: 'pending',
           lastSeq,
-          pendingCount: Math.max(0, through - lastSeq),
+          pendingCount: this.notionPendingCount(through, lastSeq),
+          quarantinedCount,
+          lastSyncedAt,
+        });
+      }
+
+      const queuedStateRows = this.ctx.storage.sql.exec<PendingNotionState>(
+        'SELECT key, revision FROM notion_state_queue ORDER BY key LIMIT ?', NOTION_STATE_KEYS_PER_RUN,
+      ).toArray();
+      for (const queued of queuedStateRows) {
+        const current = this.ctx.storage.sql.exec<{
+          value: string | null;
+          revision: number;
+          updated_at: string;
+        }>('SELECT value, revision, updated_at FROM app_state WHERE key = ?', queued.key).toArray()[0];
+        const revision = current ? Number(current.revision) : Number(queued.revision);
+        const context = this.createNotionContext(dataSources, new Date().toISOString());
+        await syncNotionAppState(context, {
+          key: queued.key,
+          value: current?.value ?? null,
+          revision,
+          updatedAt: current?.updated_at ?? new Date().toISOString(),
+        });
+        this.ctx.storage.sql.exec(
+          'DELETE FROM notion_state_queue WHERE key = ? AND revision <= ?', queued.key, revision,
+        );
+        lastSyncedAt = new Date().toISOString();
+        const currentMax = await this.maxSequence();
+        await this.saveNotionState({
+          status: 'pending',
+          lastSeq,
+          pendingCount: this.notionPendingCount(currentMax, lastSeq),
           quarantinedCount,
           lastSyncedAt,
         });
       }
 
       const currentMax = await this.maxSequence();
-      const pendingCount = Math.max(0, currentMax - lastSeq);
+      const pendingCount = this.notionPendingCount(currentMax, lastSeq);
       const completed: StoredNotionMirrorState = {
         status: pendingCount === 0 ? 'synced' : 'pending',
         lastSeq,
@@ -659,7 +729,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const failed: StoredNotionMirrorState = {
         ...currentState,
         status: 'error',
-        pendingCount: Math.max(0, currentMax - currentState.lastSeq),
+        pendingCount: this.notionPendingCount(currentMax, currentState.lastSeq),
         lastError: notionErrorCode(error),
       };
       await this.saveNotionState(failed);
@@ -673,7 +743,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return {
       status: state.status,
       lastSyncedAt: state.lastSyncedAt ?? null,
-      pendingCount: Math.max(0, maxSeq - state.lastSeq),
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
       quarantinedCount: state.quarantinedCount ?? null,
       lastError: state.lastError ?? null,
     };
@@ -696,6 +766,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           'INSERT INTO notion_page_refs (kind, external_key, page_id) VALUES (?, ?, ?) ON CONFLICT(kind, external_key) DO UPDATE SET page_id = excluded.page_id',
           kind, key, pageId,
         );
+      },
+      getPageRefs: async (kind, prefix) => this.ctx.storage.sql.exec<{ external_key: string; page_id: string }>(
+        'SELECT external_key, page_id FROM notion_page_refs WHERE kind = ? AND substr(external_key, 1, ?) = ? ORDER BY external_key',
+        kind, prefix.length, prefix,
+      ).toArray().map(row => ({ key: row.external_key, pageId: row.page_id })),
+      deletePageRef: async (kind, key) => {
+        this.ctx.storage.sql.exec('DELETE FROM notion_page_refs WHERE kind = ? AND external_key = ?', kind, key);
       },
       getMistakeState: async key => {
         const row = this.ctx.storage.sql.exec<{

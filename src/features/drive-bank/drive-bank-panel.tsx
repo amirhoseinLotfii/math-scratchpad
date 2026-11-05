@@ -6,11 +6,11 @@ import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
-import { DRIVE_CONFIG_KEY, getConfig, loadIdentity, loadPicker, pickFile, requestToken, saveConfig, type DriveConfig, type Token } from './google';
+import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, requestToken, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
-export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void }) {
+export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBeforeBankLoad }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void; onBeforeBankLoad?: (bank: DriveBank, version: string) => Promise<void> }) {
   const store = useAppStore(), dispatch = useAppDispatch();
   const [config, setConfig] = useState<DriveConfig>(getConfig), [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Connect Google Drive to begin.'), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
@@ -59,8 +59,8 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
     const frame = requestAnimationFrame(() => (ready ? connectButton.current : panel.current)?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [open, ready]);
-  useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (active.current) setReady(true); }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
-  function expire(text: string) { token.current = null; setConnected(false); setMessage(text); }
+  useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (!active.current) return; setReady(true); const savedToken = cfg.current.fileId ? readDriveSessionToken() : undefined; if (savedToken) { setBusy(true); afterToken(savedToken); } }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
+  function expire(text: string) { token.current = null; clearDriveSessionToken(); setConnected(false); setMessage(text); }
   const announce = (bank: DriveBank | null, version = '') => {
     const current = store.getState().doc.session;
     onAvailable(!!bank && bank.questions.length > 0 && !(current?.bankId === bank.bank_id && current.bankVersion === version));
@@ -106,10 +106,11 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
       try {
         const who = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${t.accessToken}` }, cache: 'no-store' });
         if (!await permittedAccount(who.ok ? await who.json() : null)) throw Error('This is not the personal project account. Reconnect and choose the correct Google account.');
+        saveDriveSessionToken(t);
         token.current = t; setConnected(true);
         if (!cfg.current.fileId) { choose(); return; }
         fingerprint.current = ''; await sync(true);
-      } catch (e) { token.current = null; if (active.current) setMessage(e instanceof Error ? e.message : 'Connection failed.'); }
+      } catch (e) { token.current = null; clearDriveSessionToken(); if (active.current) setMessage(e instanceof Error ? e.message : 'Connection failed.'); }
       finally { if (active.current) setBusy(false); }
     })();
   }
@@ -137,8 +138,9 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady }: { clos
     try {
       const doc = bankDocument(available.bank, available.version);
       await archiveSession(store.getState());
+      await onBeforeBankLoad?.(available.bank, available.version);
       dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(false))); onBankReady?.(available.bank, available.version);
-      setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous session was saved in this browser.');
+      setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous work was safely archived first.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`); }
     finally { setBusy(false); }
   }

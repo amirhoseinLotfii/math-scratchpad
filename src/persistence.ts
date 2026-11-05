@@ -9,7 +9,7 @@ const scale = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as
 function sessionMeta(v: Bag | undefined): SessionMeta | undefined {
   if (!v || typeof v.id !== 'string' || !/^[\w-]{1,80}$/.test(v.id) || !isoText(v.startedAt)) return undefined;
   const anxiety = scale(v.anxiety), energy = scale(v.energy);
-  return { id: v.id, startedAt: v.startedAt, ...(anxiety ? { anxiety } : {}), ...(energy ? { energy } : {}), ...(isoText(v.endedAt) ? { endedAt: v.endedAt } : {}), ...(typeof v.bankId === 'string' && /^[\w.-]{1,100}$/.test(v.bankId) ? { bankId: v.bankId } : {}), ...(typeof v.bankVersion === 'string' && /^[\w.-]{1,100}$/.test(v.bankVersion) ? { bankVersion: v.bankVersion } : {}) };
+  return { id: v.id, startedAt: v.startedAt, ...(anxiety ? { anxiety } : {}), ...(energy ? { energy } : {}), ...(isoText(v.endedAt) ? { endedAt: v.endedAt } : {}), ...(typeof v.bankId === 'string' && /^[\w.-]{1,100}$/.test(v.bankId) ? { bankId: v.bankId } : {}), ...(typeof v.bankVersion === 'string' && /^[\w.-]{1,100}$/.test(v.bankVersion) ? { bankVersion: v.bankVersion } : {}), ...(Number.isInteger(v.chapter) && Number(v.chapter) >= 0 && Number(v.chapter) <= 99 ? { chapter: Number(v.chapter) } : {}) };
 }
 /** Reconstruct a bounded allowlisted tree, discarding all unknown fields. */
 export function validateSession(input: unknown): { doc: Document; prefs?: Preferences } {

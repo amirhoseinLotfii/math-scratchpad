@@ -58,11 +58,11 @@ test('SYNC-04: storage events do not bounce forever between clean tabs', async (
 test('SYNC-05: an unsaved local edit is preserved when a conflicting remote revision arrives', async ({ page, context }) => {
  await page.clock.install(); await seedLegacy(page); await page.goto('/'); await page.clock.runFor(1000);
  await expectSaved(page); const other = await context.newPage(); await other.goto('/');
- // Freeze this tab before editing so the 180 ms autosave cannot race the remote write.
+ // Freeze this tab before editing so the fixed-cadence autosave cannot race the remote write.
  await page.clock.pauseAt(new Date(Date.now() + 2000));
  const first = mathField(page);
  // Dispatch one MathLive input synchronously so the test can deliver a remote
- // storage event before the 180 ms persistence debounce flushes this local edit.
+ // storage event before the 800 ms persistence cadence flushes this local edit.
  await first.evaluate(element => {
   const field = element as HTMLElement & { value: string };
   field.focus(); field.value = '111'; field.dispatchEvent(new Event('input', { bubbles: true }));

@@ -312,6 +312,64 @@ export function buildAttemptProperties(event: LearnEvent, sessionPageId: string,
   return props;
 }
 
+export function buildAppStateMirrorProperties(input: {
+  externalKey: string;
+  key: string;
+  value: string;
+  revision: number;
+  part: number;
+  parts: number;
+  updatedAt: string;
+  syncedAt: string;
+}): Record<string, unknown> {
+  return {
+    Name: { title: richText(`App state · ${input.key} · ${input.part + 1}/${input.parts}`) },
+    'Event ID': { rich_text: richText(input.externalKey) },
+    'Data Mode': { select: { name: 'Live' } },
+    isTest: { checkbox: false },
+    Chapter: { number: 0 },
+    Question: { rich_text: richText(input.key) },
+    Answer: { rich_text: richText(input.value) },
+    'Steps Raw': { rich_text: richText(JSON.stringify({
+      format: 'math-scratchpad.app-state-mirror/v1', key: input.key, revision: input.revision,
+      part: input.part, parts: input.parts, updatedAt: input.updatedAt,
+    })) },
+    'Attempted At': { date: { start: tehranDateTime(input.updatedAt) } },
+    'Synced at': { date: { start: tehranDateTime(input.syncedAt) } },
+  };
+}
+
+export function buildChapterSnapshotProperties(input: {
+  externalKey: string;
+  bankId: string;
+  bankVersion: string;
+  chapter: number;
+  snapshotId: string;
+  sha256: string;
+  part: number;
+  parts: number;
+  data: string;
+  createdAt: string;
+  syncedAt: string;
+}): Record<string, unknown> {
+  return {
+    Name: { title: richText(`Chapter ${input.chapter} archive · ${input.part + 1}/${input.parts}`) },
+    'Event ID': { rich_text: richText(input.externalKey) },
+    'Data Mode': { select: { name: 'Live' } },
+    isTest: { checkbox: false },
+    Chapter: { number: input.chapter },
+    Question: { rich_text: richText(`Complete learner archive for ${input.bankId} (${input.bankVersion})`) },
+    Answer: { rich_text: richText(input.data) },
+    'Steps Raw': { rich_text: richText(JSON.stringify({
+      format: 'math-scratchpad.chapter-snapshot/v1', bankId: input.bankId,
+      bankVersion: input.bankVersion, chapter: input.chapter, snapshotId: input.snapshotId,
+      sha256: input.sha256, part: input.part, parts: input.parts, createdAt: input.createdAt,
+    })) },
+    'Attempted At': { date: { start: tehranDateTime(input.createdAt) } },
+    'Synced at': { date: { start: tehranDateTime(input.syncedAt) } },
+  };
+}
+
 export function buildSessionProperties(stats: SessionProjection): Record<string, unknown> {
   const props: Record<string, unknown> = {
     Name: { title: richText(stats.sessionId) },

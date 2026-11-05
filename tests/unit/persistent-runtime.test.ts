@@ -17,16 +17,18 @@ beforeEach(() => {
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('production persistent runtime', () => {
  it('can start a remote HTTP preview where randomUUID is unavailable', () => {
-  vi.stubGlobal('crypto', {}); const runtime = mount(); runtime.flush();
+  vi.stubGlobal('crypto', {}); const runtime = mount();
+  runtime.store.dispatch(actions.command({ type: 'digit', value: '7' }));
+  runtime.flush();
   const saved = JSON.parse(localStorage.getItem(SESSION_KEY)!);
   expect(saved.state.sync.writerId).toEqual(expect.any(String));
   expect(saved.state.sync.writerId.length).toBeGreaterThan(1);
   expect(runtime.store.getState().storageState).toBeUndefined();
  });
- it('debounces fresh writes and stores only the portable session and revision metadata', () => {
+ it('persists fresh writes on a fixed cadence and stores only the portable session and revision metadata', () => {
   const runtime = mount(); expect(localStorage.getItem(SESSION_KEY)).toBeNull();
   runtime.store.dispatch(actions.command({ type: 'digit', value: '7' }));
-  vi.advanceTimersByTime(179); expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+  vi.advanceTimersByTime(799); expect(localStorage.getItem(SESSION_KEY)).toBeNull();
   vi.advanceTimersByTime(1); const saved = JSON.parse(localStorage.getItem(SESSION_KEY)!);
   expect(saved.version).toBe(3); expect(saved.state.session.doc).toEqual(runtime.store.getState().doc);
   expect(Object.keys(saved.state).sort()).toEqual(['session', 'sync']);
@@ -60,7 +62,7 @@ describe('production persistent runtime', () => {
  });
  it('migrates legacy data without removing the original backup', () => {
   const original = serialize(initialState()); localStorage.setItem('math-scratchpad-redux-v2', original);
-  mount(); vi.advanceTimersByTime(180);
+  mount(); vi.advanceTimersByTime(800);
   expect(JSON.parse(localStorage.getItem(SESSION_KEY)!).version).toBe(3);
   expect(localStorage.getItem('math-scratchpad-redux-v2')).toBe(original);
  });

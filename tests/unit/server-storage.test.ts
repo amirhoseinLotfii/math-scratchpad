@@ -57,4 +57,28 @@ describe('server-only editor persistence', () => {
     storage.setItem('math-scratchpad-session-v3', '{"step":2}');
     await expect(storage.flush()).rejects.toThrow(/دستگاه دیگری/);
   });
+
+  it('retries only the latest queued value after an earlier write fails', async () => {
+    const writes: Array<{ key: string; value: string | null; revision: number }> = [];
+    let serverValue: string | null = null;
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { key: string; value: string | null; revision: number };
+      writes.push(body);
+      calls += 1;
+      if (calls === 1) return Response.json({ error: 'payload_too_large' }, { status: 413 });
+      serverValue = body.value;
+      return Response.json({ key: body.key, revision: body.revision + 1 });
+    }));
+    const storage = new ServerBackedStorage([], 'owner-token');
+    storage.setItem('math-scratchpad-session-v3', '{"step":1}');
+    storage.setItem('math-scratchpad-session-v3', '{"step":2}');
+
+    await storage.flush();
+
+    expect(writes.map(write => write.value)).toEqual(['{"step":1}', '{"step":2}']);
+    expect(serverValue).toBe('{"step":2}');
+    expect(storage.getItem('math-scratchpad-session-v3')).toBe('{"step":2}');
+  });
+
 });

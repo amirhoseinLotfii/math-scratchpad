@@ -6,7 +6,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 | --- | --- | --- |
 | P0-1 Event model | complete | PR #27 and zero-skip follow-up PR #31 merged; CI green and Pages live |
 | P0-2 Durable Object + Worker | complete | [PR #32](https://github.com/amirhoseinLotfii/math-scratchpad/pull/32) merged as `08b8b56`; CI green; Worker deployed and live health/CORS/auth-boundary checks passed |
-| P0-3 Browser outbox + migration | in progress | [draft PR #33](https://github.com/amirhoseinLotfii/math-scratchpad/pull/33); CI run `41405734437` green; live browser/OAuth and Drive read-back verification remains |
+| P0-3 Browser outbox + migration | in progress | [draft PR #33](https://github.com/amirhoseinLotfii/math-scratchpad/pull/33); follow-up [draft PR #45](https://github.com/amirhoseinLotfii/math-scratchpad/pull/45) adds refresh-safe local persistence and a Drive/Notion-verified chapter archive barrier; live browser/OAuth and remote read-back verification remains |
 | P0-4 Drive mirror | in progress | PR #34 (`feat/p0-4-drive-mirror`); CI run `41412052462` green. Live Drive write/read-back remains blocked by the missing Google OAuth Worker Secrets. |
 | P0-5 Notion mirror | in progress | PR #35 (`feat/p0-5-notion-mirror`); CI run `41415634995` green. Live Notion write/read-back remains blocked by the missing `NOTION_API_KEY`. |
 | P0-6 Sync status UI | in progress | PR #36 (`feat/p0-6-sync-status-ui`); CI run `41417365846` green. Authenticated live status checks remain pending while mirror credentials are absent. |
