@@ -82,3 +82,26 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   await expect(drive.getByRole('status')).toContainText('The saved session was restored.');
   expect(nativeDialogs).toEqual([]);
 });
+
+test('Drive bank inspector traps keyboard focus and Escape restores workspace access', { tag: '@only-mobile-390' }, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const menu = page.getByRole('button', { name: 'Exercise menu' });
+  await menu.click();
+  await page.getByRole('menuitem', { name: /Google Drive/ }).click();
+  const panel = page.getByRole('dialog', { name: 'Google Drive question bank' });
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveAttribute('aria-modal', 'true');
+  const close = panel.getByRole('button', { name: 'Close' });
+  await close.focus();
+  await page.keyboard.press('Tab');
+  await expect(panel).toContainText('Google Drive question bank');
+  await expect.poll(async () => panel.evaluate(node => node.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(menu).toBeVisible();
+  await menu.focus();
+  await expect(menu).toBeFocused();
+});
