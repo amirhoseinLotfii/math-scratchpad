@@ -10,7 +10,7 @@ import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, load
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
-export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBeforeBankLoad }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void; onBeforeBankLoad?: (bank: DriveBank, version: string) => Promise<void> }) {
+export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBeforeBankLoad, onResumeBank }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void; onBeforeBankLoad?: (bank: DriveBank, version: string) => Promise<void>; onResumeBank?: (bank: DriveBank, version: string) => void }) {
   const store = useAppStore(), dispatch = useAppDispatch();
   const [config, setConfig] = useState<DriveConfig>(getConfig), [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Connect Google Drive to begin.'), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
@@ -18,7 +18,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
   const [checkedAt, setCheckedAt] = useState('');
   const [archives, setArchives] = useState<ArchivedSession[]>([]);
   const [confirmation, setConfirmation] = useState<{ kind: 'batch' } | { kind: 'restore'; saved: ArchivedSession } | null>(null);
-  const token = useRef<Token | null>(null), fingerprint = useRef(''), active = useRef(true), syncing = useRef(false);
+  const token = useRef<Token | null>(null), fingerprint = useRef(''), active = useRef(true), syncing = useRef(false), selectedFileByUser = useRef(false);
   const onBankReadyRef = useRef(onBankReady), onAvailableRef = useRef(onAvailable);
   onBankReadyRef.current = onBankReady; onAvailableRef.current = onAvailable;
   const panel = useRef<HTMLElement>(null), connectButton = useRef<HTMLButtonElement>(null);
@@ -84,6 +84,13 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
       const cache = await saveBankCache(fileId, parsed, version, fp);
       setAvailable({ bank: parsed, version }); announce(parsed, version);
       onBankReady?.(parsed, version);
+      // Opening an existing bank is safe only when it matches the active session.
+      // Other bank versions still require an explicit "Open received batch" confirmation.
+      if (selectedFileByUser.current) {
+        selectedFileByUser.current = false;
+        const session = store.getState().doc.session;
+        if (session?.bankId === parsed.bank_id && session.bankVersion === version) onResumeBank?.(parsed, version);
+      }
       const readyMessage = parsed.questions.length ? `Bank ${parsed.bank_id} (version ${parsed.version}) loaded; ${parsed.questions.length} questions ready.` : 'Connected. The bank has no questions yet.';
       const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
       const current = store.getState().doc.session;
@@ -121,6 +128,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
       if (!active.current) return;
       if (!r.id) { setMessage(r.error ?? 'No file was selected.'); return; }
       const c = { ...cfg.current, fileId: r.id, fileName: r.name ?? '' }; saveConfig(c); setConfig(c); cfg.current = c;
+      selectedFileByUser.current = true;
       fingerprint.current = ''; void sync(true);
     });
   }
@@ -140,6 +148,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
       await archiveSession(store.getState());
       await onBeforeBankLoad?.(available.bank, available.version);
       dispatch(actions.load({ doc })); dispatch(actions.keyboard(initialKeyboardOpen(false))); onBankReady?.(available.bank, available.version);
+      onResumeBank?.(available.bank, available.version);
       setArchives(readArchive()); onAvailable(false); setMessage('The new batch is ready. The previous work was safely archived first.');
     } catch (e) { setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`); }
     finally { setBusy(false); }
