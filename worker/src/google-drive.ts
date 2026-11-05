@@ -31,6 +31,14 @@ export type DriveFileRef = { id: string; etag: string };
 export type DriveFileContent = DriveFileRef & { content: string };
 type DriveFileMetadata = { id?: unknown; name?: unknown; mimeType?: unknown; parents?: unknown };
 type MergeContent = (remote: string, desired: string) => string;
+type DriveRequestStage =
+  | 'drive_folder_lookup'
+  | 'drive_file_lookup'
+  | 'drive_file_read'
+  | 'drive_lookup'
+  | 'drive_create'
+  | 'drive_update'
+  | 'drive_upload';
 
 /**
  * Minimal Drive v3 client for the owner-only mirror. It never calls the
@@ -64,7 +72,7 @@ export class GoogleDriveClient {
       pageSize: '1000',
       fields: 'nextPageToken,files(id,name,mimeType,parents)',
     });
-    const matches = await this.listFiles(query, file => file.name === name && file.mimeType === FOLDER_MIME_TYPE);
+    const matches = await this.listFiles(query, file => file.name === name && file.mimeType === FOLDER_MIME_TYPE, 'drive_folder_lookup');
     if (matches.length > 1) throw new DriveMirrorError('duplicate_file');
     if (matches.length === 1 && typeof matches[0].id === 'string') return matches[0].id;
 
@@ -139,20 +147,24 @@ export class GoogleDriveClient {
       pageSize: '1000',
       fields: 'nextPageToken,files(id,name,mimeType,parents)',
     });
-    const matches = await this.listFiles(query, file => file.name === name && file.mimeType === mimeType);
+    const matches = await this.listFiles(query, file => file.name === name && file.mimeType === mimeType, 'drive_file_lookup');
     if (matches.length > 1) throw new DriveMirrorError('duplicate_file');
     const id = matches[0]?.id;
     if (typeof id !== 'string') return undefined;
     return id;
   }
 
-  private async listFiles(query: URLSearchParams, matches: (file: DriveFileMetadata) => boolean): Promise<DriveFileMetadata[]> {
+  private async listFiles(
+    query: URLSearchParams,
+    matches: (file: DriveFileMetadata) => boolean,
+    stage: DriveRequestStage,
+  ): Promise<DriveFileMetadata[]> {
     const found: DriveFileMetadata[] = [];
     const seenTokens = new Set<string>();
     let pageToken: string | undefined;
     do {
       if (pageToken) query.set('pageToken', pageToken);
-      const response = await this.apiFetch(`${DRIVE_FILES_API}?${query.toString()}`, { method: 'GET' });
+      const response = await this.apiFetch(`${DRIVE_FILES_API}?${query.toString()}`, { method: 'GET' }, stage);
       if (!response.ok) throw errorForStatus(response.status);
       const data = await readJson<{ files?: DriveFileMetadata[]; nextPageToken?: unknown }>(response);
       found.push(...(data.files?.filter(matches) ?? []));
@@ -264,26 +276,31 @@ export class GoogleDriveClient {
   }
 
   private async readTextFile(id: string): Promise<DriveFileContent> {
-    const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?alt=media`, { method: 'GET' });
+    const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?alt=media`, { method: 'GET' }, 'drive_file_read');
     if (!response.ok) throw errorForStatus(response.status);
     const etag = response.headers.get('ETag');
     if (!etag) throw new DriveMirrorError('invalid_response');
     return { id, etag, content: await response.text() };
   }
 
-  private async apiFetch(input: string, init: RequestInit): Promise<Response> {
+  private async apiFetch(input: string, init: RequestInit, requestedStage?: DriveRequestStage): Promise<Response> {
     const send = async () => {
       const token = await this.getAccessToken();
       const target = new URL(input);
-      this.stage = target.pathname.startsWith('/upload/') ? 'drive_upload'
+      const requestStage = requestedStage ?? (target.pathname.startsWith('/upload/') ? 'drive_upload'
         : target.pathname.endsWith('/files') && init.method === 'POST' ? 'drive_create'
         : init.method === 'PATCH' ? 'drive_update'
-        : 'drive_lookup';
+        : 'drive_lookup');
+      this.stage = requestStage;
       const headers = new Headers(init.headers);
       headers.set('Authorization', `Bearer ${token}`);
-      try { return await this.fetcher(input, { ...init, headers }); }
+      try {
+        const response = await this.fetcher(input, { ...init, headers });
+        this.stage = `${requestStage}_http_${response.status}`;
+        return response;
+      }
       catch {
-        this.stage += '_fetch_rejected';
+        this.stage = `${requestStage}_fetch_rejected`;
         throw new DriveMirrorError('network_error');
       }
     };
