@@ -514,6 +514,13 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .state-answered { background: var(--success); color: var(--primary-foreground); }
 #math-scratchpad-redux .diagnostic-report { background: var(--card); border-color: var(--border); }
 #math-scratchpad-redux .setup-panel, #math-scratchpad-redux .manual-copy, #math-scratchpad-redux .symbols-panel { background: var(--card); border-color: var(--border); border-radius: 10px; }
+/* Backdrop blocks pointer access to notebook controls behind the fixed bank dialog. */
+#math-scratchpad-redux .drive-bank-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  background: rgb(0 0 0 / 0.55);
+}
 /* Drive bank selection is another inspector: it must not reflow the notebook. */
 #math-scratchpad-redux .setup-panel[aria-label="Google Drive question bank"] {
   position: fixed;
