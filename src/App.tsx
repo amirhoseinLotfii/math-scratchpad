@@ -441,6 +441,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  }, [updateLessonProgressState]);
  const lastOpenedLessonKey = (bankId: string, version: string) => `math-scratchpad-last-open-lesson-v1:${encodeURIComponent(bankId)}:${encodeURIComponent(version)}`;
  function resumeBankLesson(bank: DriveBank, version: string) {
+  // Banks without lessons remain in the regular question workspace.
+  if (!bank.lessons?.length) { setDriveBankOpen(false); return; }
   const restored = readLessonProgress(bank, version);
   const active = bank.lessons ?? [];
   let storedId: string | null = null;
