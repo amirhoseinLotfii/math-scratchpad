@@ -243,7 +243,7 @@ describe('Google Drive REST client', () => {
     expect(runtimeFetch).toHaveBeenCalledTimes(3);
   });
 
-  it.each(['oauth_refresh_fetch_rejected', 'drive_owner_verification_fetch_rejected', 'drive_lookup_fetch_rejected'] as const)(
+  it.each(['oauth_refresh_fetch_rejected', 'drive_owner_verification_fetch_rejected', 'drive_folder_lookup_fetch_rejected'] as const)(
     'identifies the failed Google request stage without exposing credentials (%s)',
     async failingStage => {
       const fetcher = (async (input: RequestInfo | URL) => {
@@ -263,6 +263,18 @@ describe('Google Drive REST client', () => {
       expect(client.diagnosticStage).toBe(failingStage);
     },
   );
+
+  it.each([
+    { status: 400, body: JSON.stringify({ error: { message: 'invalid query' } }), expected: 'drive_folder_lookup_http_400' },
+    { status: 200, body: 'not-json', expected: 'drive_folder_lookup_http_200' },
+  ])('reports a sanitized Drive lookup operation and HTTP status ($expected)', async ({ status, body, expected }) => {
+    const fetcher = withGoogleAuth(() => new Response(body, { status }));
+    const client = makeClient(fetcher);
+    await expect(client.ensureRootFolder('Math_Project')).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(client.diagnosticStage).toBe(expected);
+    expect(client.diagnosticStage).not.toContain('Math_Project');
+    expect(client.diagnosticStage).not.toContain('invalid query');
+  });
 
   it('refreshes the app token, verifies the exact owner, and refuses another account before Drive access', async () => {
     const fetcher = withGoogleAuth(() => { throw new Error('Drive must not be called'); }, { email: 'other@example.com', email_verified: true });
