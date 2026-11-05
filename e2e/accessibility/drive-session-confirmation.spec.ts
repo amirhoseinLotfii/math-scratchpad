@@ -55,7 +55,7 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: /Google Drive/ }).click();
   await page.getByRole('button', { name: 'Connect Google Drive' }).click();
-  const drive = page.getByRole('region', { name: 'Google Drive question bank' });
+  const drive = page.getByRole('dialog', { name: 'Google Drive question bank' });
   const openBatch = drive.getByRole('button', { name: 'Open received batch' });
   await expect(openBatch).toBeVisible();
 
