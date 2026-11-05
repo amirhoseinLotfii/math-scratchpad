@@ -49,6 +49,7 @@ import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnE
 import { SyncPanel } from './sync/sync-panel';
 import { flushLearningStorage, getAuthenticatedServerStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from './sync/browser-db';
 import { getDefaultSyncRuntime } from './sync/runtime';
+import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
 import { queueChapterSnapshot } from './sync/chapter-snapshot';
 
 const INSERT_OPTIONS = [
@@ -75,6 +76,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [guidanceOpen, setGuidanceOpen] = useState(false);
  const [wellbeingDismissed, setWellbeingDismissed] = useState<string | null>(null);
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
+ const [cloudPreviewOpen, setCloudPreviewOpen] = useState(false);
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
  const menuKeyboardActivation = useRef(false);
@@ -226,7 +228,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [askingFor, setAskingFor] = useState<string | null>(null), [editingScales, setEditingScales] = useState(false), askWellbeing = !!askingFor && askingFor === sessionId && wellbeingDismissed !== sessionId;
  useEffect(() => { if (needWellbeing) { setEditingScales(false); setAskingFor(sessionId); } }, [needWellbeing, sessionId]);
  const lessons = loadedBank?.bank.lessons ?? [];
- const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
+ const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
  useEffect(() => {
   if (!menu && !modalOpen) return;
   const policyFooter = document.querySelector('body > footer');
@@ -913,13 +915,14 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>
 
        <DropdownMenuLabel className="menu-section-heading danger-heading">Danger zone</DropdownMenuLabel>
-       {isServerStorageActive() ? <DropdownMenuItem disabled className="menu-danger"><Trash2 aria-hidden="true" /><span>Full cloud reset unavailable<span className="small menu-description">Cloud sync is active. Local-only deletion could restore data on refresh. A verified cross-device reset is required.</span></span></DropdownMenuItem> : <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>}
+       {isServerStorageActive() ? <DropdownMenuItem className="menu-danger" onSelect={() => setCloudPreviewOpen(true)}><Trash2 aria-hidden="true" /><span>Preview cloud reset impact<span className="small menu-description">Read-only verification; no data is deleted and the question bank is protected.</span></span></DropdownMenuItem> : <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>}
       </div>}
      </DropdownMenuContent></DropdownMenu>
     </div></header>
 
    {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} />}
    {syncPanelOpen && <SyncPanel onClose={() => { setSyncPanelOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} />}
+   <CloudResetPreviewDialog open={cloudPreviewOpen} onOpenChange={setCloudPreviewOpen} runtime={syncRuntime} />
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
    {(confirmExam || confirmFractions) && <section className="setup-panel" aria-label={confirmFractions ? 'Confirm fraction round start' : 'Confirm diagnostic start'}><h2>Start {confirmFractions ? 'Round 1 · 20 fraction questions' : 'diagnostic'}?</h2><p>Export Session JSON first to keep your current work.</p><div className="toolbar"><Button variant="default" onClick={() => { dispatch(confirmFractions ? actions.startFractionRound() : actions.startDiagnostic()); if (!wide) dispatch(actions.keyboard(true)); setConfirmExam(false); setConfirmFractions(false); setShowResults(false); }}>{confirmFractions ? 'Start 20 Questions' : 'Start 30 Questions'}</Button><Button onClick={() => { setConfirmExam(false); setConfirmFractions(false); }}>Cancel</Button></div></section>}

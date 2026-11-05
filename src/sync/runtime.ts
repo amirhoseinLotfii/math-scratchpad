@@ -43,6 +43,14 @@ export type SyncStatus = {
   notionMirror: MirrorSyncStatus | null;
 };
 
+export type ResetPreview = {
+  readOnly: true; canExecute: false; scope: 'all';
+  matchingEvents: number; totalEvents: number; lastSeq: number; appStateRevision: number;
+  protectedBankAndIdentityStateKeys: number; sharedStateKeysRequiringSelectiveMerge: number;
+  notionPageReferencesRequiringReconciliation: number | null;
+  requiresCloudReconciliation: true; warning: string;
+};
+
 type SyncPage = { events: Array<{ seq: number; event: LearnEvent }>; cursor: number; through: number; hasMore: boolean; snapshotCursor?: number };
 type AckResponse = { events: Array<{ id: string; seq: number; duplicate: boolean }>; cursor: number };
 type RuntimeOptions = { apiOrigin?: string; fetcher?: typeof fetch; random?: () => number; now?: () => number };
@@ -124,6 +132,24 @@ export class BrowserSyncRuntime {
     }
     this.retryAttempt = 0;
     void this.syncNow();
+  }
+
+  /** Owner-authenticated read-only preflight; it cannot execute deletion. */
+  async previewAllReset(): Promise<ResetPreview> {
+    const response = await this.request('/reset/preview?scope=all', { method: 'GET' });
+    const value: unknown = await response.json();
+    if (!isRecord(value) || value.readOnly !== true || value.canExecute !== false
+      || value.scope !== 'all' || value.requiresCloudReconciliation !== true
+      || typeof value.warning !== 'string'
+      || !['matchingEvents', 'totalEvents', 'lastSeq', 'appStateRevision',
+        'protectedBankAndIdentityStateKeys', 'sharedStateKeysRequiringSelectiveMerge']
+        .every(key => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0)
+      || !(value.notionPageReferencesRequiringReconciliation === null
+        || (Number.isSafeInteger(value.notionPageReferencesRequiringReconciliation)
+          && Number(value.notionPageReferencesRequiringReconciliation) >= 0))) {
+      throw new Error('پاسخ پیش‌نمایش ریست معتبر نبود؛ هیچ داده‌ای حذف نشده است.');
+    }
+    return value as ResetPreview;
   }
 
   observeMirrorStatuses(): () => void {
