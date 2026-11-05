@@ -10,7 +10,7 @@ test('lesson tables stay readable and scroll locally at practical viewport sizes
     if (await start.isVisible().catch(() => false)) await start.getByRole('button', { name: 'Skip for now' }).click();
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();
-    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
     const table = page.getByRole('region', { name: 'Lesson table' });
     await expect(table.getByRole('columnheader', { name: 'Input' })).toBeVisible();
     await expect(table.getByRole('cell', { name: '24', exact: true })).toHaveCount(1);
@@ -35,7 +35,7 @@ test('read-only lesson notation displays sets, unruled arrays and indexed roots'
   if (await start.isVisible().catch(() => false)) await start.getByRole('button', { name: 'Skip for now' }).click();
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson/ }).click();
+  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
   const lesson = page.locator('.lesson-screen');
   const setFormula = lesson.locator('math-div').filter({ hasText: 'odd' });
   await expect(setFormula).toHaveCount(1);
