@@ -70,6 +70,8 @@ export type DriveMirrorStatus = {
   pendingCount: number;
   quarantinedCount: number | null;
   lastError: DriveMirrorErrorCode | null;
+  /** Sanitized Drive client stage, only reported while the mirror is in error. */
+  failureStage?: string | null;
   weeklyBackup: {
     status: 'not_configured' | 'scheduled' | 'created' | 'error';
     lastCreatedAt: string | null;
@@ -426,6 +428,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     );
   }
 
+  private readDiagnosticStage(destination: 'drive' | 'notion'): string | null {
+    const row = this.ctx.storage.sql.exec<{ failure_stage: string }>(
+      'SELECT failure_stage FROM mirror_diagnostics WHERE destination = ?', destination,
+    ).toArray()[0];
+    return row?.failure_stage ?? null;
+  }
+
   private async saveDriveState(state: DriveMirrorState): Promise<void> {
     await this.ctx.storage.put(DRIVE_STATE_KEY, state);
     this.ctx.storage.sql.exec(
@@ -507,6 +516,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (!this.driveConfigured()) {
       return {
         status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null,
+        failureStage: null,
         weeklyBackup: { status: 'not_configured', lastCreatedAt: null, lastError: null },
       };
     }
@@ -518,6 +528,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         + (state.appStateRevision === this.appStateRevision() ? 0 : 1),
       quarantinedCount: state.quarantinedCount ?? null,
       lastError: state.lastError ?? null,
+      failureStage: state.status === 'error' ? this.readDiagnosticStage('drive') : null,
       weeklyBackup: {
         status: state.weeklyBackup?.status ?? 'scheduled',
         lastCreatedAt: state.weeklyBackup?.lastCreatedAt ?? null,
@@ -1038,6 +1049,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         pendingCount: finalState.pendingCount,
         quarantinedCount: finalState.quarantinedCount ?? 0,
         lastError: null,
+        failureStage: null,
         weeklyBackup: {
           status: finalState.weeklyBackup?.status ?? 'scheduled',
           lastCreatedAt: finalState.weeklyBackup?.lastCreatedAt ?? null,
@@ -1063,6 +1075,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         pendingCount: failed.pendingCount,
         quarantinedCount: failed.quarantinedCount ?? null,
         lastError: failed.lastError ?? null,
+        failureStage: this.readDiagnosticStage('drive'),
         weeklyBackup: {
           status: failed.weeklyBackup?.status ?? 'scheduled',
           lastCreatedAt: failed.weeklyBackup?.lastCreatedAt ?? null,

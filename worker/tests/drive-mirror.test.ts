@@ -436,6 +436,7 @@ describe('authenticated Drive status endpoints', () => {
     expect(status.status).toBe(200);
     expect(await status.json()).toEqual({
       status: 'not_configured', lastSyncedAt: null, pendingCount: 0, quarantinedCount: null, lastError: null,
+      failureStage: null,
       weeklyBackup: { status: 'not_configured', lastCreatedAt: null, lastError: null },
     });
     const sync = await request(app, '/drive/sync', 'POST');
@@ -452,6 +453,7 @@ describe('Durable Object Drive mirror integration', () => {
     const contentByName = new Map<string, string>();
     const uploads: Array<{ name: string; parentId: string; content: string; knownFile?: { id: string; etag: string } }> = [];
     const client = {
+      diagnosticStage: 'drive_upload',
       ensureRootFolder: async (name: string) => {
         expect(name).toBe('Math_Project');
         return 'root-folder';
@@ -557,8 +559,8 @@ describe('Durable Object Drive mirror integration', () => {
     const event = makeEvent(1, { type: 'exercise_attempt', itemId: 'PC-1.1-L01', userAnswer: 'x=2', verdict: 'submitted', verdictSource: 'none' });
     await appendForOwner(event);
     const drive = makeMemoryDrive({ failProgressOnce: true });
-    const failed = await runMirror(drive.client) as { status: string; lastError: string; pendingCount: number };
-    expect(failed).toMatchObject({ status: 'error', lastError: 'quota_exceeded', pendingCount: 1 });
+    const failed = await runMirror(drive.client) as { status: string; lastError: string; pendingCount: number; failureStage: string };
+    expect(failed).toMatchObject({ status: 'error', lastError: 'quota_exceeded', pendingCount: 1, failureStage: 'drive_upload' });
     expect(drive.contentByName.get('events_2026-11.jsonl')).toContain(event.id);
     const retried = await runMirror(drive.client) as { status: string; pendingCount: number };
     expect(retried).toMatchObject({ status: 'synced', pendingCount: 0 });
