@@ -14,6 +14,8 @@ Production site: https://amirhoseinlotfii.github.io/math-scratchpad/
 | UI-AUDIT-003 | P2 | Open Insert Math Element and press Escape | Delayed Radix close focus restoration leaves BODY briefly focused | Restore focus to still-connected opener in onCloseAutoFocus, retain existing MathLive retry/fallback | Mobile and desktop Playwright Escape + Cancel tests |
 | UI-AUDIT-004 | P2 | Open Privacy Policy and Terms at 320px | Email address exceeds viewport; unbreakable anchor | Add overflow-wrap/word-break fallback to long links | Playwright both pages at 320 and 390 |
 
+| UI-AUDIT-005 | P3 | Open Import session JSON, then Start diagnostic or New Problem | Independent inline panel booleans leave multiple setup cards stacked | Make inline workflows mutually exclusive; preserve form state until explicit submit/cancel | UI-AUDIT-07, 3 mobile browser cases |
+
 ## Event-state matrix
 
 The following cases ran against a disposable local build, not against personal Google/Notion accounts.
@@ -57,3 +59,32 @@ The sync banner is **no longer a fixed overlay**. It appears in document flow af
 ## Quality policy
 
 A passed automated test only confirms the tested assertion under its named environment, not universal behavior. New test failures caused by a wrongly broad selector or MathLive shadow text aggregation were corrected, then all 22 browser tests were rerun to a clean pass. No work is published to `main` by this change.
+
+
+## Expanded state/event execution (additional evidence)
+
+The following tests were executed on the same isolated patched project checkout:
+
+- `e2e/mobile-accessibility.spec.ts` plus `e2e/accessibility/keyboard-and-adaptations.spec.ts`: **89/89 PASS** (three phone sizes; touch/click cancellation, tab focus, keyboard shortcuts, 200% font, rotated layout, scroll, long formulas, clipboard, undo and redo).
+- `e2e/accessibility/axe-states.spec.ts`: **27/27 mobile PASS** + **36/36 laptop/desktop PASS**. Nine accessibility states each: single edit, batch edit, menu, symbols, confidence, invalid confidence, completion, New Problem, malformed JSON. Axe automated checks do not establish complete manual WCAG compliance.
+- `e2e/persistence`: **71/71 PASS** — multiple browser tabs, IndexedDB, migration, persistence after reload, offline-outbox, backups, mock authenticated flow. **This does not test real Google authorization.**
+- `e2e/lessons`: **21/21 PASS** — lesson navigation, RTL/Bidi, lesson math, image fallback, keyboard, and progress persistence.
+- `e2e/mathlive.spec.ts`: **3/3 PASS**, including editing complex math fields and saved step identity.
+- `npm run test:wide`: **42/42 PASS**; `npm run test:property`: **3/3 PASS**; `npm run test:architecture`: **5/5 PASS**.
+- Other `e2e/practice-answer-types.spec.ts`, `e2e/learning-events.spec.ts`, `e2e/mobile.spec.ts`, `e2e/visual`: **36 passed, 4 visual snapshot failures**.
+- Adding `UI-AUDIT-07`: three more responsive UI regression checks PASS. New audit regression suite now has **25 tests** across seven device projects (including the 6-case viewport sequence repeated on mobile projects).
+- Across these suites: **602 successful individual test executions** when including Vitest group runs; some tests are repeated across overlapping suite selection patterns. This is a *run count*, not 602 unique features.
+
+### Visual baseline investigation: no hidden threshold increase
+
+At 390 and 430 pixels, four patched-version screenshot comparisons (`batch-edit` and `confidence` in each size) exceeded their existing pixel-diff thresholds. The **unchanged original baseline code** at commit `f849cea5`, run on a second local Vite port with the same Chromium environment and unchanged screenshot expectations, failed **all six** screenshot comparisons at 390 and 430 (including `single-edit`).
+
+Thus these mismatches are **not solely introduced by this PR**; screenshot baseline/environment drift is strongly indicated, though the four failures remain an open visual-review task. No screenshots were silently regenerated, and no pixel thresholds were loosened.
+
+### Additional UX behavior
+
+Previously, separately opening Session backup and then Start diagnostic left both panels visible. The `openInlinePanel` handler now selects one of new exercise, JSON backup, fraction confirmation, or diagnostic confirmation at a time. A regression test switches through all four states via menu click/keyboard and checks that the prior setup panel is absent.
+
+### Release gate
+
+The PR targets main but is **not merged**. CI status must be inspected again after the latest commit, and live publication requires the existing GitHub Pages deployment workflow. Browser tests are backed by controlled fixture data; do not infer verified owner sync/real device results from the successful test count.
