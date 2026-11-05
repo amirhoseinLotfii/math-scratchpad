@@ -913,7 +913,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>
 
        <DropdownMenuLabel className="menu-section-heading danger-heading">Danger zone</DropdownMenuLabel>
-       {!isServerStorageActive() && <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>}
+       {isServerStorageActive() ? <DropdownMenuItem disabled className="menu-danger"><Trash2 aria-hidden="true" /><span>Full cloud reset unavailable<span className="small menu-description">Cloud sync is active. Local-only deletion could restore data on refresh. A verified cross-device reset is required.</span></span></DropdownMenuItem> : <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>}
       </div>}
      </DropdownMenuContent></DropdownMenu>
     </div></header>
