@@ -124,6 +124,9 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     modal.current?.querySelector<HTMLButtonElement>('button[aria-label="بستن تنظیم همگام‌سازی"]')?.focus({ preventScroll: true });
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (modal.current?.isConnected) modal.current.querySelector<HTMLButtonElement>('button[aria-label="بستن تنظیم همگام‌سازی"]')?.focus({ preventScroll: true });
+    });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -154,6 +157,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     };
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', onKeyDown, true);
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus({ preventScroll: true });
