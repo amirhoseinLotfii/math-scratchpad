@@ -21,6 +21,16 @@ export function LessonPicker({ open, lessons, progressByLesson, hasBank = true, 
   onChoose: (lesson: Lesson) => void;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
+  const resumable = lessons.filter(lesson => {
+    const state = progressByLesson[lesson.id];
+    return state && state.status !== 'done';
+  }).sort((a, b) => {
+    const time = (lesson: Lesson) => {
+      const state = progressByLesson[lesson.id];
+      return state?.practiceStartedAt ?? state?.learnDoneAt ?? state?.learnStartedAt ?? '';
+    };
+    return time(b).localeCompare(time(a));
+  })[0];
   const uiLang = lessons[0] ? lessonUiLanguage(lessons[0]) : 'en';
   const fa = uiLang === 'fa';
   const groups = new Map<string, Lesson[]>();
@@ -33,6 +43,7 @@ export function LessonPicker({ open, lessons, progressByLesson, hasBank = true, 
     <DialogContent className="lesson-picker-dialog" onCloseAutoFocus={onCloseAutoFocus}>
       <DialogTitle>{fa ? 'درس‌ها' : 'Lessons'}</DialogTitle>
       <DialogDescription>{fa ? 'برای یادگیری یا مرور پیش از تمرین، یک درس انتخاب کنید.' : 'Choose a lesson to learn or review before practice.'}</DialogDescription>
+      {resumable && <Button className="lesson-picker-resume" onClick={() => onChoose(resumable)}>{fa ? 'ادامهٔ درس ناتمام: ' : 'Resume unfinished lesson: '}<LessonText text={displayEducationalHeading(resumable.title)} /></Button>}
       {lessons.length === 0 ? <div className="lesson-picker-empty-state">
         <p className="lesson-picker-empty" role="status">{hasBank ? (fa ? 'هنوز درسی در این مجموعه ثبت نشده است.' : 'This bank has no lessons yet.') : (fa ? 'مجموعهٔ سؤال‌ها بارگذاری نشده است. برای دیدن درس‌ها، یک مجموعه را از Google Drive بارگذاری کنید.' : 'No question bank is loaded. Load a bank from Google Drive to browse lessons.')}</p>
         {onLoadBank && <Button onClick={onLoadBank}>{fa ? 'بارگذاری مجموعه' : 'Load bank'}</Button>}
