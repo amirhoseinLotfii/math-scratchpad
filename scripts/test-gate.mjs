@@ -21,4 +21,9 @@ for (const [name, command, args] of commands) {
 mkdirSync('test-results', { recursive: true });
 process.exitCode = results.every(x => x.status === 0 && !x.error) ? 0 : 1;
 record(process.exitCode ? 'blocked' : 'automated-passed');
+if (process.exitCode) {
+ for (const failed of results.filter(x => x.status !== 0 || x.error)) {
+  console.error(`Gate failure: ${failed.name} (exit=${failed.status}, signal=${failed.signal ?? 'none'}, error=${failed.error ?? 'none'})`);
+ }
+}
 console.log(process.exitCode ? 'Automated gate BLOCKED. Release is not approved.' : 'Automated checks passed. Manual acceptance remains required.');
