@@ -167,6 +167,45 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect(corsAuthFailure.headers.get('Access-Control-Allow-Origin')).toBe(ALLOWED_ORIGIN);
   });
 
+
+  it('requires owner login and complete scope filters for the read-only reset preflight', async () => {
+    const app = createApp(validVerifier);
+    expect((await call(app, '/reset/preview?scope=all')).status).toBe(401);
+    expect((await call(app, '/reset/preview?scope=unknown', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/preview?scope=section&lesson=L1', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/preview?scope=all&session=x', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/preview?scope=session&session=x&lesson=ignored', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(404);
+  });
+
+  it('shows all-data reset impact but preserves the question bank config and server state', async () => {
+    const app = createApp(validVerifier);
+    await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } });
+    await call(app, '/state', { token: 'valid-test-token', body: { key: 'math-scratchpad-drive-config-v1', value: '{"fileId":"bank-safe"}', revision: 0 } });
+    await call(app, '/state', { token: 'valid-test-token', body: { key: 'math-scratchpad-session-v3', value: '{"draft":true}', revision: 0 } });
+    const preview = await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' });
+    expect(preview.status).toBe(200);
+    expect(await preview.json()).toMatchObject({
+      readOnly: true, canExecute: false, scope: 'all', matchingEvents: 1, totalEvents: 1,
+      lastSeq: 1, protectedBankAndIdentityStateKeys: 1, sharedStateKeysRequiringSelectiveMerge: 1,
+      requiresCloudReconciliation: true,
+    });
+    const saved = await (await call(app, '/state', { token: 'valid-test-token' })).json() as { records: { key: string; value: string }[] };
+    expect(saved.records.some(x => x.key === 'math-scratchpad-drive-config-v1' && x.value.includes('bank-safe'))).toBe(true);
+    expect(saved.records.some(x => x.key === 'math-scratchpad-session-v3')).toBe(true);
+  });
+
+  it('counts only the selected lesson or section without altering the event log', async () => {
+    const app = createApp(validVerifier);
+    const event = makeEvent();
+    await call(app, '/events', { token: 'valid-test-token', body: { events: [event] } });
+    const lesson = new URLSearchParams({ scope: 'lesson', bankVersion: event.bankVersion, lesson: event.lesson });
+    expect(await (await call(app, `/reset/preview?${lesson}`, { token: 'valid-test-token' })).json()).toMatchObject({ scope: 'lesson', matchingEvents: 1, canExecute: false });
+    const otherSection = new URLSearchParams({ scope: 'section', bankVersion: event.bankVersion, lesson: event.lesson, section: 'other-section' });
+    expect(await (await call(app, `/reset/preview?${otherSection}`, { token: 'valid-test-token' })).json()).toMatchObject({ matchingEvents: 0 });
+    expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events).toHaveLength(1);
+  });
+
   it('persists the editor snapshot on the server with owner authentication and conflict protection', async () => {
     const app = createApp(validVerifier);
     const key = 'math-scratchpad-session-v3';
