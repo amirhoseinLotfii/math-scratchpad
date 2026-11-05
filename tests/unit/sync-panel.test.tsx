@@ -104,6 +104,33 @@ afterEach(async () => {
 });
 
 describe('sync and migration panel', () => {
+  it('traps keyboard focus in the floating inspector and restores the menu trigger after closing', async () => {
+    await initializeLearningStorage();
+    installGooglePicker();
+    const trigger = document.createElement('button');
+    trigger.textContent = 'Open sync';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const onClose = vi.fn();
+    const { unmount } = render(<SyncPanel onClose={onClose} />);
+    const dialog = screen.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
+    const close = within(dialog).getByRole('button', { name: 'بستن تنظیم همگام‌سازی' });
+    expect(document.activeElement).toBe(close);
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(document.body.style.overflow).toBe('hidden');
+    await userEvent.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    trigger.focus();
+    await userEvent.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(document.activeElement).toBe(trigger);
+    expect(document.body.style.overflow).toBe('');
+    trigger.remove();
+  });
+
   it('sends one explicitly classified synthetic event only when both mirrors are ready', async () => {
     await initializeLearningStorage();
     installGooglePicker();

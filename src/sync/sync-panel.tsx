@@ -103,6 +103,10 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const runtime = getDefaultSyncRuntime();
   const status = useSyncExternalStore(runtime?.subscribe ?? (() => () => undefined), runtime?.getSnapshot ?? (() => EMPTY_SYNC_STATUS), () => EMPTY_SYNC_STATUS);
   const googleButton = useRef<HTMLDivElement>(null);
+  const modal = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const isClosable = !!onClose;
   const backupFile = useRef<HTMLInputElement>(null);
   const [migration, setMigration] = useState<LegacyMigration | null>(null);
   const [importBackup, setImportBackup] = useState<FullLearningBackup | null>(null);
@@ -111,6 +115,54 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  // This panel is visually fixed over the notebook; its keyboard behavior must be
+  // modal as well. Otherwise Tab reaches inputs hidden behind the overlay.
+  useEffect(() => {
+    if (!isClosable) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    modal.current?.querySelector<HTMLButtonElement>('button[aria-label="بستن تنظیم همگام‌سازی"]')?.focus({ preventScroll: true });
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (modal.current?.isConnected) modal.current.querySelector<HTMLButtonElement>('button[aria-label="بستن تنظیم همگام‌سازی"]')?.focus({ preventScroll: true });
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab' || !modal.current) return;
+      const focusables = Array.from(modal.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], iframe, [tabindex]:not([tabindex="-1"])',
+      )).filter(element => !element.closest('[hidden]') && getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none');
+      if (!focusables.length) {
+        event.preventDefault();
+        modal.current.focus({ preventScroll: true });
+        return;
+      }
+      const first = focusables[0], last = focusables[focusables.length - 1];
+      const current = document.activeElement;
+      if (!modal.current.contains(current)) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      } else if (event.shiftKey && current === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus({ preventScroll: true });
+    };
+  }, [isClosable]);
 
   useEffect(() => {
     if (!runtime) return;
@@ -285,7 +337,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   }, [importBackup, importPreview]);
 
   const needsMigrationBackup = migration && migration.status !== 'complete';
-  return <section aria-labelledby="sync-panel-title" lang="fa" className="sync-panel-floating mx-auto mt-4 w-full max-w-3xl rounded-xl border border-white/15 bg-white/5 p-4 text-start" dir="rtl">
+  return <>{isClosable && <div className="sync-panel-backdrop" aria-hidden="true" onClick={() => closeRef.current?.()} />}<section ref={modal} role={isClosable ? "dialog" : "region"} aria-modal={isClosable ? true : undefined} tabIndex={-1} aria-labelledby="sync-panel-title" lang="fa" className="sync-panel-floating mx-auto mt-4 w-full max-w-3xl rounded-xl border border-white/15 bg-white/5 p-4 text-start" dir="rtl">
     <div className="flex items-center justify-between gap-3"><h2 id="sync-panel-title" className="text-base font-semibold">همگام‌سازی و حفظ داده‌ها</h2>{onClose && <button type="button" aria-label="بستن تنظیم همگام‌سازی" onClick={onClose} className="rounded-md p-2"><X aria-hidden="true" /></button>}</div>
     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
       <div role="group" aria-label="وضعیت سرور" className="rounded-lg border border-white/15 p-3">
@@ -368,5 +420,5 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     </div>
     {message && <p role="status" className="mt-3 text-sm text-emerald-300">{message}</p>}
     {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
-  </section>;
+  </section></>;
 }
