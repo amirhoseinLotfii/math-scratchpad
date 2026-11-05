@@ -147,6 +147,19 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     finally { setBusy(false); }
   }, [runtime]);
 
+  // Status reads are safe even when the server is still draining a large mirror backlog.
+  // Unlike the integration test they never enqueue another learning event.
+  const refreshMirrorHealth = useCallback(async () => {
+    if (!runtime) { setError('موتور همگام‌سازی آماده نیست.'); return; }
+    setError(''); setMessage(''); setBusy(true);
+    try {
+      await runtime.refreshMirrorStatuses();
+      setMessage('وضعیت Drive و Notion دوباره از سرور دریافت شد. جزئیات خطاها را در بخش بالا ببین.');
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'خواندن وضعیت سرویس‌ها ناموفق بود.');
+    } finally { setBusy(false); }
+  }, [runtime]);
+
   const sendSafeIntegrationTest = useCallback(async () => {
     if (!runtime || status.phase !== 'synced'
       || status.driveMirror?.status !== 'synced' || status.notionMirror?.status !== 'synced'
@@ -272,7 +285,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   }, [importBackup, importPreview]);
 
   const needsMigrationBackup = migration && migration.status !== 'complete';
-  return <section aria-labelledby="sync-panel-title" lang="fa" className="mx-auto mt-4 w-full max-w-3xl rounded-xl border border-white/15 bg-white/5 p-4 text-start" dir="rtl">
+  return <section aria-labelledby="sync-panel-title" lang="fa" className="sync-panel-floating mx-auto mt-4 w-full max-w-3xl rounded-xl border border-white/15 bg-white/5 p-4 text-start" dir="rtl">
     <div className="flex items-center justify-between gap-3"><h2 id="sync-panel-title" className="text-base font-semibold">همگام‌سازی و حفظ داده‌ها</h2>{onClose && <button type="button" aria-label="بستن تنظیم همگام‌سازی" onClick={onClose} className="rounded-md p-2"><X aria-hidden="true" /></button>}</div>
     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
       <div role="group" aria-label="وضعیت سرور" className="rounded-lg border border-white/15 p-3">
@@ -293,6 +306,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
         {quarantinedEventsLabel(status.notionMirror) && <p className="mt-1 text-xs opacity-75">{quarantinedEventsLabel(status.notionMirror)}</p>}
       </div>
     </div>
+    <p className="mt-2 text-xs opacity-75">تعدادهای Drive و Notion، رویدادهای در انتظار تأیید در مقصد هستند، نه تعداد سؤال‌ها. ریست جلسه به‌تنهایی صف‌های سرور را حذف نمی‌کند.</p>
     <details className="mt-3 rounded-lg border border-white/15 px-3 py-2">
       <summary className="cursor-pointer text-sm font-medium">جزئیات آخرین همگام‌سازی و خطاها</summary>
       <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
@@ -305,6 +319,9 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
       <div ref={googleButton} role="group" aria-label="ورود امن به حساب Google" />
       <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy || status.phase === 'syncing'} onClick={() => void syncNow()}>
         همگام‌سازی الان
+      </button>
+      <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={() => void refreshMirrorHealth()}>
+        بررسی اتصال و خطای Drive / Notion
       </button>
       <button
         type="button"
