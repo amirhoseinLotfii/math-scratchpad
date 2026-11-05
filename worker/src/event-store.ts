@@ -209,7 +209,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const supported = (request.method === 'POST' && url.pathname === '/events')
-      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status' || url.pathname === '/state'))
+      || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status' || url.pathname === '/state' || url.pathname === '/reset/preview'))
       || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup' || url.pathname === '/state' || url.pathname === '/internal/sync-all'));
     if (!supported) return json({ error: 'not_found' }, 404);
 
@@ -226,6 +226,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const rate = this.consumeRateLimit();
     if (rate) return rate;
 
+    if (url.pathname === '/reset/preview') return this.resetPreview(url);
     if (url.pathname === '/state') return request.method === 'GET' ? this.readAppState() : this.writeAppState(request);
     if (url.pathname === '/events') return this.append(request);
     if (url.pathname === '/drive/status') return json(await this.getDriveStatus());
@@ -240,6 +241,59 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return json({ notion: status }, status.status === 'synced' ? 200 : status.status === 'not_configured' ? 503 : status.status === 'pending' ? 202 : 502);
     }
     return this.readPage(url, url.pathname === '/snapshot');
+  }
+
+
+  /** Read-only, owner-authenticated preflight. Never deletes or mutates learning data. */
+  private resetPreview(url: URL): Response {
+    const scope = url.searchParams.get('scope');
+    if (scope !== 'all' && scope !== 'session' && scope !== 'lesson' && scope !== 'section') {
+      return json({ error: 'invalid_reset_scope' }, 400);
+    }
+    const requested = ['bankVersion', 'session', 'lesson', 'section'] as const;
+    const values = Object.fromEntries(requested.map(name => [name, url.searchParams.get(name)])) as Record<typeof requested[number], string | null>;
+    if (requested.some(name => values[name] !== null && (!values[name]?.trim() || values[name]!.length > 120 || /[\x00-\x1f]/.test(values[name]!)))) {
+      return json({ error: 'invalid_reset_scope' }, 400);
+    }
+    const required = scope === 'section' ? ['bankVersion', 'lesson', 'section']
+      : scope === 'lesson' ? ['bankVersion', 'lesson']
+      : scope === 'session' ? ['session'] : [];
+    if (required.some(name => !values[name as keyof typeof values])) return json({ error: 'missing_reset_filter' }, 400);
+    if (scope === 'all' && requested.some(name => values[name] !== null)) return json({ error: 'invalid_reset_scope' }, 400);
+    const fields = scope === 'section' ? ['bankVersion', 'lesson', 'section'] as const
+      : scope === 'lesson' ? ['bankVersion', 'lesson'] as const
+      : scope === 'session' ? ['session'] as const : [] as const;
+    const where = fields.length ? ` WHERE ${fields.map(name => `json_extract(event_json, '$.${name}') = ?`).join(' AND ')}` : '';
+    const args = fields.map(name => values[name]!);
+    const matchingEvents = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM learning_events${where}`, ...args,
+    ).one().count);
+    const overall = this.ctx.storage.sql.exec<{ count: number; lastSeq: number | null }>(
+      'SELECT COUNT(*) AS count, MAX(seq) AS lastSeq FROM learning_events',
+    ).one();
+    const stateKeys = this.ctx.storage.sql.exec<{ key: string }>(
+      "SELECT key FROM app_state WHERE key LIKE 'math-scratchpad-%'",
+    ).toArray().map(record => record.key);
+    const protectedStateKeys = stateKeys.filter(key => key.includes('drive-config') || key.includes('bank-cache') || key.includes('device-id'));
+    const affectedSharedStateKeys = stateKeys.filter(key => key.includes('lesson-progress') || key.includes('session-archive') || key.includes('session-v3'));
+    const notionPages = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM notion_page_refs',
+    ).one().count);
+    return json({
+      readOnly: true,
+      canExecute: false,
+      scope,
+      filters: Object.fromEntries(fields.map(name => [name, values[name]])),
+      matchingEvents,
+      totalEvents: Number(overall.count),
+      lastSeq: Number(overall.lastSeq ?? 0),
+      appStateRevision: this.appStateRevision(),
+      protectedBankAndIdentityStateKeys: protectedStateKeys.length,
+      sharedStateKeysRequiringSelectiveMerge: affectedSharedStateKeys.length,
+      notionPageReferencesRequiringReconciliation: scope === 'all' ? notionPages : null,
+      requiresCloudReconciliation: true,
+      warning: 'Preview only. No reset or deletion endpoint is enabled.',
+    });
   }
 
   /** Durable Object alarm retries configured private mirrors after transient failures. */
