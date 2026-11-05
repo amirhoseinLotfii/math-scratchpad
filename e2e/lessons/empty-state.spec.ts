@@ -9,11 +9,20 @@ test('the no-bank Learn entry opens a usable Drive action on short mobile', asyn
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
   const picker = page.getByRole('dialog', { name: 'Lessons' });
   await expect(picker.getByRole('status')).toHaveText('No question bank is loaded. Load a bank from Google Drive to browse lessons.');
+  const notebookTopBefore = await page.locator('.editor-layout').evaluate(element => element.getBoundingClientRect().top);
   await picker.getByRole('button', { name: 'Load bank' }).click();
-  const drive = page.getByRole('region', { name: 'Google Drive question bank' });
+  const drive = page.getByRole('dialog', { name: 'Google Drive question bank' });
   await expect(drive).toBeVisible();
   await expect(drive.getByRole('heading', { name: 'Google Drive question bank' })).toBeVisible();
+  await expect(drive).toHaveCSS('position', 'fixed');
+  const notebookTopAfter = await page.locator('.editor-layout').evaluate(element => element.getBoundingClientRect().top);
+  expect(Math.abs(notebookTopAfter - notebookTopBefore)).toBeLessThan(2);
+  await expect(drive.getByRole('button', { name: 'Close' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect(drive).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('.drive-bank-backdrop')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(drive).toBeHidden();
 });
 
 test('loads the project favicon without the previous implicit 404', async ({ page }) => {

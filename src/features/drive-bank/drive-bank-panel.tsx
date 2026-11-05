@@ -59,6 +59,50 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     const frame = requestAnimationFrame(() => (ready ? connectButton.current : panel.current)?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
   }, [open, ready]);
+  // A fixed inspector must also be modal for keyboard and assistive technology.
+  // The nested Radix confirmation dialog owns focus while it is visible.
+  const closePanelRef = useRef(close);
+  closePanelRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const priorOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (confirmation !== null) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closePanelRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !panel.current) return;
+      const candidates = Array.from(panel.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter(node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden');
+      if (!candidates.length) {
+        event.preventDefault();
+        panel.current.focus({ preventScroll: true });
+        return;
+      }
+      const first = candidates[0], last = candidates[candidates.length - 1];
+      if (!panel.current.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = priorOverflow;
+    };
+  }, [open, confirmation]);
+
   useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (!active.current) return; setReady(true); const savedToken = cfg.current.fileId ? readDriveSessionToken() : undefined; if (savedToken) { setBusy(true); afterToken(savedToken); } }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
   function expire(text: string) { token.current = null; clearDriveSessionToken(); setConnected(false); setMessage(text); }
   const announce = (bank: DriveBank | null, version = '') => {
@@ -171,7 +215,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
   }
   const current = store.getState().doc.session;
   const same = available && current?.bankId === available.bank.bank_id && current.bankVersion === available.version;
-  return <section ref={panel} tabIndex={-1} className="setup-panel" lang="en" dir="ltr" aria-label="Google Drive question bank" hidden={!open}>
+  return <>{open && <div className="drive-bank-backdrop" aria-hidden="true" onClick={() => closePanelRef.current()} />}<section ref={panel} role="dialog" aria-modal={open ? true : undefined} tabIndex={-1} className="setup-panel" lang="en" dir="ltr" aria-label="Google Drive question bank" hidden={!open}>
     <h2>Google Drive question bank</h2>
     <p>This app can access only a file you select in Google's picker (drive.file permission), not the rest of your Drive. While this panel is open, the selected file is checked for changes every 30 seconds.</p>
     <p>Selected file: <span dir="ltr">{config.fileName || (config.fileId ? 'Selected' : '—')}</span>{checkedAt && ` · Last checked ${checkedAt}`}</p>
@@ -206,5 +250,5 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
         </div>
       </DialogContent>
     </Dialog>
-  </section>;
+  </section></>;
 }

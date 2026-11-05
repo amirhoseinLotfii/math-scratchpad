@@ -514,6 +514,28 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .state-answered { background: var(--success); color: var(--primary-foreground); }
 #math-scratchpad-redux .diagnostic-report { background: var(--card); border-color: var(--border); }
 #math-scratchpad-redux .setup-panel, #math-scratchpad-redux .manual-copy, #math-scratchpad-redux .symbols-panel { background: var(--card); border-color: var(--border); border-radius: 10px; }
+/* Backdrop blocks pointer access to notebook controls behind the fixed bank dialog. */
+#math-scratchpad-redux .drive-bank-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  background: rgb(0 0 0 / 0.55);
+}
+/* Drive bank selection is another inspector: it must not reflow the notebook. */
+#math-scratchpad-redux .setup-panel[aria-label="Google Drive question bank"] {
+  position: fixed;
+  z-index: 43;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline: 12px;
+  margin: 0 auto;
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  box-shadow: 0 20px 55px rgb(0 0 0 / 0.5);
+}
+
 .modal-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 18px 56px #0009; }
 .modal-overlay { background: rgb(7 9 10 / 72%); }
 .dropdown-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 16px 44px #0009; }

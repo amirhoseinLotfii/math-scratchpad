@@ -69,7 +69,7 @@ async function connect(user: ReturnType<typeof userEvent.setup>) {
 describe('Drive bank panel', () => {
   it('uses English LTR app controls, a polite status region and no manual config inputs', () => {
     mockGoogle(); mockDrive({ content: '', rev: 1 }); panel();
-    const region = screen.getByRole('region', { name: 'Google Drive question bank' }); expect(region.getAttribute('dir')).toBe('ltr'); expect(region.getAttribute('lang')).toBe('en');
+    const region = screen.getByRole('dialog', { name: 'Google Drive question bank' }); expect(region.getAttribute('dir')).toBe('ltr'); expect(region.getAttribute('lang')).toBe('en');
     expect(within(region).getByRole('status').getAttribute('aria-live')).toBe('polite'); expect(within(region).queryAllByRole('textbox')).toHaveLength(0);
   });
   it('rejects a non-project Google account and keeps disconnected', async () => {

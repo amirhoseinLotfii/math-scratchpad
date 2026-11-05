@@ -68,5 +68,5 @@ test('an empty lesson list remains discoverable and offers the Drive bank action
   await expect(picker.getByRole('status')).toHaveText('This bank has no lessons yet.');
   await expect(picker.getByRole('button', { name: 'Load bank' })).toBeVisible();
   await picker.getByRole('button', { name: 'Load bank' }).click();
-  await expect(page.getByRole('region', { name: 'Google Drive question bank' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Google Drive question bank' })).toBeVisible();
 });
