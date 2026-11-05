@@ -1010,7 +1010,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) { width: 100%; max-width: none; }
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) .lesson-screen { max-width: none; padding-inline: 16px; }
 #math-scratchpad-redux .lesson-split-wide { display: grid; grid-template-columns: minmax(0, var(--lesson-split, 50%)) 10px minmax(0, 1fr); align-items: start; gap: 0; }
-#math-scratchpad-redux .lesson-split-wide > .lesson-split-lesson { min-width: 0; padding-inline-end: 12px; }
+#math-scratchpad-redux .lesson-split-wide > .lesson-split-lesson { position: sticky; top: 0; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; min-width: 0; padding-inline-end: 12px; scroll-padding-block: 12px; }
 #math-scratchpad-redux .lesson-split-wide > .lesson-split-work { position: sticky; top: 0; max-height: 100vh; max-height: 100dvh; overflow: auto; overscroll-behavior: contain; min-width: 0; padding-inline-start: 12px; padding-block: 8px; }
 #math-scratchpad-redux .lesson-split-handle { align-self: stretch; cursor: col-resize; touch-action: none; position: relative; min-height: 100%; }
 #math-scratchpad-redux .lesson-split-handle::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 4px; width: 2px; border-radius: 2px; background: var(--border); }
