@@ -17,7 +17,9 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Verify vendored UI/UX Pro Max skill\n        run: node scripts/verify-vendored-ui-skill.mjs\n      - run: npm ci
+      - name: Verify vendored UI/UX Pro Max skill
+        run: node scripts/verify-vendored-ui-skill.mjs
+      - run: npm ci
       - run: npm run test:browser:prepare
       - run: npx playwright install --with-deps firefox webkit
       - run: npm run test:gate
