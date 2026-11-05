@@ -123,12 +123,15 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       </div>
       {state.kind !== 'online' && (
         <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" dir="rtl" style={{
-          position: 'fixed', top: 12, right: 12, zIndex: 10000,
+          // Keep auth controls in normal flow, after the workspace. A fixed
+          // 10,000-layer Google iframe obscured menu items and session actions.
+          // The editor remains stationary while the connection status changes.
+          position: 'relative', margin: '12px 12px 18px auto',
           width: 'min(440px, calc(100% - 24px))', padding: 16, borderRadius: 14,
           background: 'rgba(32, 35, 38, .97)', color: '#F0F3F1',
           border: '1px solid #536259', boxShadow: '0 8px 30px rgba(0,0,0,.35)',
           fontFamily: 'system-ui, sans-serif', lineHeight: 1.8, textAlign: 'right',
-          pointerEvents: 'none',
+          pointerEvents: 'auto',
         }}>
           <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
           <p style={{ margin: '4px 0 10px', fontSize: 14 }}>{state.message}</p>

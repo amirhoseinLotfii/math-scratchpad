@@ -568,6 +568,14 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (existing) closeReference(existing.id);
   else await startReferencePracticeQuestion(questionId);
  }
+ // Inline setup panels are alternatives, not independently stackable cards.
+ // Switching workflows preserves form state but keeps the workspace readable.
+ function openInlinePanel(panel: 'new' | 'backup' | 'fractions' | 'diagnostic') {
+  setSetup(panel === 'new');
+  setBackup(panel === 'backup');
+  setConfirmFractions(panel === 'fractions');
+  setConfirmExam(panel === 'diagnostic');
+ }
  function openDriveBank() { setDriveBankInitialized(true); setDriveBankOpen(true); }
  function loadBankFromLessons() { setLessonPickerOpen(false); openDriveBank(); }
  async function startLessonPractice(lesson: Lesson, progress: LessonProgress, selectedQuestions: BankQuestion[], sectionId?: string) {
@@ -700,7 +708,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  async function copySession() {
   const text = serialize(store.getState());
   if (await writeClipboard(text)) dispatch(actions.notice('Full session JSON copied.'));
-  else { jsonForm.reset({ json: text }); setBackup(true); dispatch(actions.notice('Clipboard blocked. Select and copy the session JSON manually.')); }
+  else { jsonForm.reset({ json: text }); openInlinePanel('backup'); dispatch(actions.notice('Clipboard blocked. Select and copy the session JSON manually.')); }
  }
  const stamp = () => isoLocal().slice(0, 16).replace(/:/g, '');
  async function exportTutor(force = false) {
@@ -719,7 +727,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const data = buildTutorExport(doc, new Date(), lessonExport), text = JSON.stringify(data, null, 2);
   emitLearnEvent(sessionEventContext, { type: 'report_generated', itemId: `session:${data.session_id}`, note: 'Tutor export generated.' });
   const copiedOk = await writeClipboard(text), saved = downloadText(`math-session-${data.session_id}.json`, text);
-  if (!copiedOk) { jsonForm.reset({ json: text }); setBackup(true); }
+  if (!copiedOk) { jsonForm.reset({ json: text }); openInlinePanel('backup'); }
   dispatch(actions.notice(`Tutor export ready${copiedOk ? ' · copied' : ''}${saved ? ' · downloaded' : ''}.`));
  }
  function downloadBackup() { const saved = downloadText(`math-scratchpad-backup-${stamp()}.json`, serialize(store.getState())); if (saved) emitLearnEvent(sessionEventContext, { type: 'backup_created', itemId: `session:${sessionId || 'unknown'}` }); dispatch(actions.notice(saved ? 'Backup file downloaded.' : 'Download blocked. Use Session JSON to copy the backup.')); }
@@ -882,7 +890,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
       <DropdownMenuItem className="menu-primary-action" onSelect={() => request('copy')}><ClipboardCheck aria-hidden="true" />Check · Copy for Review</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => { void exportTutor(); }}><FileJson2 aria-hidden="true" />Export for tutor (JSON)</DropdownMenuItem>
       <DropdownMenuItem onSelect={openDriveBank}><HardDrive aria-hidden="true" />Google Drive · Question bank</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setSetup(true)}><NotebookPen aria-hidden="true" />New Problem</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => openInlinePanel('new')}><NotebookPen aria-hidden="true" />New Problem</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => dispatch(actions.setSkipped(!ex.skipped))}>{ex.skipped ? <RotateCcw aria-hidden="true" /> : <SkipForward aria-hidden="true" />}{ex.skipped ? 'Unskip question' : 'Skip question'}</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => setLessonPickerOpen(true)}><BookOpen aria-hidden="true" />Lessons</DropdownMenuItem>
       <DropdownMenuItem className="menu-disclosure" aria-expanded={menuMore} aria-controls={menuMore ? 'more-notebook-actions' : undefined} onSelect={event => { event.preventDefault(); setMenuMore(value => !value); }}><span>Show more</span><ChevronDown className={menuMore ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" /></DropdownMenuItem>
@@ -899,8 +907,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('session')}><RotateCcw aria-hidden="true" />Reset current session</DropdownMenuItem>
 
        <DropdownMenuLabel className="menu-section-heading">Practice</DropdownMenuLabel>
-       <DropdownMenuItem onSelect={() => setConfirmFractions(true)}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => setConfirmExam(true)}>Start 30-question diagnostic</DropdownMenuItem>
+       <DropdownMenuItem onSelect={() => openInlinePanel('fractions')}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
+       <DropdownMenuItem onSelect={() => openInlinePanel('diagnostic')}>Start 30-question diagnostic</DropdownMenuItem>
        <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' }))}>Use example</DropdownMenuItem>
        <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newProblem' }))}>Use current expression as new problem</DropdownMenuItem>
 
@@ -908,7 +916,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => { void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
        <DropdownMenuItem onSelect={downloadBackup}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
        <DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => { jsonForm.reset({ json: '' }); setBackup(true); }}>Import session JSON</DropdownMenuItem>
+       <DropdownMenuItem onSelect={() => { jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => setSyncPanelOpen(value => !value)}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
 
        <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
@@ -988,7 +996,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
-  <Dialog open={insertOpen} onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } }}><DialogContent className="insert-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => dialogRefs.current[0]?.focus({ preventScroll: true })); }} onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); restoreInsertFocus(); }}>
+  <Dialog open={insertOpen} onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } }}><DialogContent className="insert-dialog" onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => dialogRefs.current[0]?.focus({ preventScroll: true })); }} onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); }}>
    <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'Show fewer' : `Show more (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
   </DialogContent></Dialog>
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
