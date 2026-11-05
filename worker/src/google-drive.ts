@@ -1,4 +1,5 @@
 import type { WorkerEnv } from './env';
+import { SnapshotError, snapshotHash, snapshotName, writeImmutableSnapshot, type SnapshotStore } from './immutable-snapshot';
 
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
@@ -29,6 +30,7 @@ export class DriveMirrorError extends Error {
 
 export type DriveFileRef = { id: string; etag: string };
 export type DriveFileContent = DriveFileRef & { content: string };
+export type DriveSnapshotRef = { id: string; name: string; sha256: string };
 type DriveFileMetadata = { id?: unknown; name?: unknown; mimeType?: unknown; parents?: unknown };
 type MergeContent = (remote: string, desired: string) => string;
 type DriveRequestStage =
@@ -94,6 +96,42 @@ export class GoogleDriveClient {
     return this.ensureFolder(name, 'root');
   }
 
+  /** Store a content-addressed Drive file and verify its exact bytes after upload. */
+  async writeImmutableTextFile(input: {
+    logicalName: string;
+    parentId: string;
+    mimeType: string;
+    content: string;
+  }): Promise<DriveSnapshotRef> {
+    const name = await snapshotName(input.logicalName, input.content);
+    const store: SnapshotStore = {
+      find: candidate => this.findFileIds(candidate, input.parentId, input.mimeType),
+      create: candidate => this.createSnapshotFile(candidate, input.parentId, input.mimeType, input.content),
+      read: id => this.readTextContent(id),
+    };
+    try {
+      const saved = await writeImmutableSnapshot(store, input.logicalName, input.content);
+      return { ...saved, sha256: await snapshotHash(input.content) };
+    } catch (error) {
+      if (error instanceof SnapshotError) {
+        throw new DriveMirrorError(error.code === 'duplicate_snapshot' ? 'duplicate_file' : 'invalid_response');
+      }
+      throw error;
+    }
+  }
+
+  /** Find the legacy mutable file without modifying it; used only during migration to snapshots. */
+  async findTextFileId(name: string, parentId: string, mimeType: string): Promise<string | undefined> {
+    return this.findFile(name, parentId, mimeType);
+  }
+
+  /** Read media bytes without relying on an ETag header, which Drive omits for media downloads. */
+  async readTextContent(id: string): Promise<string> {
+    const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?alt=media`, { method: 'GET' }, 'drive_file_read');
+    if (!response.ok) throw errorForStatus(response.status);
+    return response.text();
+  }
+
   async upsertTextFile(input: {
     name: string;
     parentId: string;
@@ -154,6 +192,20 @@ export class GoogleDriveClient {
     return id;
   }
 
+  private async findFileIds(name: string, parentId: string, mimeType: string): Promise<string[]> {
+    const query = new URLSearchParams({
+      q: `name = '${escapeQuery(name)}' and mimeType = '${escapeQuery(mimeType)}' and '${escapeQuery(parentId)}' in parents and trashed = false`,
+      spaces: 'drive',
+      pageSize: '1000',
+      fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents)',
+    });
+    const matches = await this.listFiles(query, file => file.name === name && file.mimeType === mimeType
+      && Array.isArray(file.parents) && file.parents.includes(parentId), 'drive_file_lookup');
+    const ids = matches.map(file => file.id);
+    if (ids.some(id => typeof id !== 'string' || id.length === 0)) throw new DriveMirrorError('invalid_response');
+    return ids as string[];
+  }
+
   private async listFiles(
     query: URLSearchParams,
     matches: (file: DriveFileMetadata) => boolean,
@@ -166,14 +218,50 @@ export class GoogleDriveClient {
       if (pageToken) query.set('pageToken', pageToken);
       const response = await this.apiFetch(`${DRIVE_FILES_API}?${query.toString()}`, { method: 'GET' }, stage);
       if (!response.ok) throw errorForStatus(response.status);
-      const data = await readJson<{ files?: DriveFileMetadata[]; nextPageToken?: unknown }>(response);
-      found.push(...(data.files?.filter(matches) ?? []));
+      const data = await readJson<{ files?: unknown; nextPageToken?: unknown; incompleteSearch?: unknown }>(response);
+      if (!Array.isArray(data.files) || data.incompleteSearch === true) throw new DriveMirrorError('invalid_response');
+      const page = data.files.filter((file): file is DriveFileMetadata => Boolean(file && typeof file === 'object' && !Array.isArray(file)));
+      found.push(...page.filter(matches));
       const next = data.nextPageToken;
-      if (typeof next !== 'string' || !next || seenTokens.has(next)) break;
+      if (typeof next !== 'string' || !next) break;
+      if (seenTokens.has(next)) throw new DriveMirrorError('invalid_response');
       seenTokens.add(next);
       pageToken = next;
     } while (true);
     return found;
+  }
+
+  private async createSnapshotFile(name: string, parentId: string, mimeType: string, content: string): Promise<string> {
+    let response: Response;
+    if (utf8Length(content) > MULTIPART_UPLOAD_LIMIT_BYTES) {
+      response = await this.resumableUpload({
+        url: `${DRIVE_UPLOAD_API}?uploadType=resumable&fields=id,name,mimeType,parents`,
+        method: 'POST',
+        mimeType,
+        content,
+        metadata: { name, mimeType, parents: [parentId] },
+      });
+    } else {
+      const boundary = `mathscratchpad_${crypto.randomUUID().replace(/-/g, '')}`;
+      const metadata = JSON.stringify({ name, mimeType, parents: [parentId] });
+      const body = [
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
+        `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n${content}\r\n`,
+        `--${boundary}--`,
+      ].join('');
+      response = await this.apiFetch(`${DRIVE_UPLOAD_API}?uploadType=multipart&fields=id,name,mimeType,parents`, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body,
+      });
+    }
+    if (!response.ok) throw errorForStatus(response.status);
+    const file = await readJson<DriveFileMetadata>(response);
+    if (typeof file.id !== 'string' || file.name !== name || file.mimeType !== mimeType
+      || !Array.isArray(file.parents) || !file.parents.includes(parentId)) {
+      throw new DriveMirrorError('invalid_response');
+    }
+    return file.id;
   }
 
   private async createTextFile(name: string, parentId: string, mimeType: string, content: string): Promise<DriveFileContent> {

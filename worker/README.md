@@ -98,7 +98,11 @@ When configured, the Durable Object mirrors the complete event stream to the own
 - `Math_Project/03_Sync/state/progress.json` — current chapter, lesson, section and chunk, gate state, completion, unlocked sections, bank version, and last event/sequence.
 - `Math_Project/03_Sync/sync_manifest.json` — last sequence/event, UTC and Tehran timestamps, and SHA-256 hashes for event and progress files.
 
-The Worker creates or reuses these app-owned folders and files. New events must explicitly carry isTest=false (live) or isTest=true (test). Events without a boolean isTest value are excluded from monthly JSONL files, progress projections, manifests' file contents, and weekly snapshots; the Drive status and manifest report the quarantined count. Existing stale JSONL/weekly backup content is filtered so unclassified records cannot be reintroduced by conflict merges. It does not call Drive's permissions or delete endpoints; new files inherit the owner's private Drive access. Small files use conditional ETag writes. A `412` response triggers a read, an event-ID merge, and up to three retries. Files over 5 MB use Drive's resumable upload protocol while keeping the ETag condition. Partial failures retain the last successful file checkpoints and retry after one minute. Normal event sync is queued for five seconds after the event arrives.
+The Worker stores new mirror writes as immutable, content-addressed snapshots. Each snapshot filename includes the SHA-256 of its exact UTF-8 content. Before creating one, it checks for the same name; an existing snapshot is reused only after its content is read back and verified. A newly created snapshot is also read back and hash-checked. Duplicate names or a content/hash mismatch fail closed. The manifest records the latest snapshot file ID, filename, and hash for each logical path.
+
+Legacy files with mutable logical names may be read during migration but are not overwritten or deleted. This avoids relying on ETags from Drive media responses for concurrency control. Weekly backup retries keep a stable creation timestamp so they can find the same verified snapshot after a lost upload response. Identical canonical event sets remain idempotent; different content produces a different snapshot name. Events without a boolean `isTest` value are quarantined and excluded from event JSONL, progress projections, and weekly backup snapshots.
+
+
 
 The OAuth refresh token must belong to the configured `OWNER_EMAIL` and have the `drive.file` and `userinfo.email` scopes. Set the OAuth consent screen to **In production** so the refresh token does not expire after the Testing-mode seven-day limit. Obtain the token in the owner's Google browser flow, then add it directly to Cloudflare Worker Secrets; never paste it into source files, shell history, issues, or chat:
 
@@ -107,4 +111,9 @@ npx wrangler secret put GOOGLE_DRIVE_CLIENT_SECRET --config worker/wrangler.json
 npx wrangler secret put GOOGLE_DRIVE_REFRESH_TOKEN --config worker/wrangler.jsonc
 ```
 
-The prompts accept secret values without adding them to the repository. Until both secrets are present, `/drive/status` reports `not_configured` and `/drive/sync` returns `503`. After configuring secrets, verify the returned account is the owner and confirm one `isTest: true` learner event is visible in Drive before relying on the mirror. Do not run that live check until the owner approves the Cloudflare and Google OAuth steps.
+The prompts accept secret values without adding them to the repository. Until both secrets are present, `/drive/status` reports `not_configured` and `/drive/sync` returns `503`. In the 2026-11-04 production verification, the configured personal account was confirmed, one synthetic `isTest: true` event was written and read back from an immutable Drive snapshot, and the manifest hash matched. Secret values were not read or exposed.
+
+
+## Production verification — 2026-11-04
+
+The existing Worker was deployed with the immutable-snapshot Drive implementation after its exact source commit passed the full CI gate and build. A synthetic event with `isTest: true` was synced once. Drive media read-back matched the SHA-256 in the content-addressed filename, and the manifest referenced that same snapshot and hash. The corresponding Notion Attempt and linked Session were read back with `Data Mode=Test`. The app reported zero pending queues. The Notion `Data Check` formula result was not exposed by the connected query tool and remains unverified. The live weekly backup artifact/read-back and a real legacy-data migration remain separate checks.
