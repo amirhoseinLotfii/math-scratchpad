@@ -13,7 +13,7 @@ for (const file of manifest.files) {
   const target = resolve(root, manifest.targetDirectory, file.path);
   if (!existsSync(target)) { errors.push('MISSING ' + file.path); continue; }
   const body = readFileSync(target);
-  const hash = createHash('sha1').update('blob ' + body.length + '\\0').update(body).digest('hex');
+  const hash = createHash('sha1').update('blob ' + body.length + '\0').update(body).digest('hex');
   if (hash !== file.sha) errors.push('HASH_MISMATCH ' + file.path + ' expected ' + file.sha + ' got ' + hash);
   if (body.length !== file.size) errors.push('SIZE_MISMATCH ' + file.path);
 }
