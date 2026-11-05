@@ -9,7 +9,7 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
   for (const view of ['concept', 'checks', 'summary', 'loading', 'unavailable', 'empty-picker', 'image-error'] as const) {
     await page.goto(`/e2e/fixtures/lesson-preview.html?view=${view}`);
     if (view === 'image-error') {
-      await expect(page.getByRole('status')).toHaveText('Image unavailable.');
+      await expect(page.getByRole('status', { name: 'Image unavailable.' })).toHaveText('Image unavailable.');
       const description = page.getByText('Sample diagram alternative text', { exact: true });
       await expect(description).not.toBeVisible();
       await page.getByText('Show image description').click();
