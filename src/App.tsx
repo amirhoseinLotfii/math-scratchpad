@@ -568,6 +568,15 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (existing) closeReference(existing.id);
   else await startReferencePracticeQuestion(questionId);
  }
+ // New Problem is an inline form: move keyboard focus into the input after
+ // the menu closes, rather than leaving focus on the background menu button.
+ useEffect(() => {
+  if (!setup) return;
+  const frame = requestAnimationFrame(() => {
+   document.getElementById('problem-input')?.focus({ preventScroll: true });
+  });
+  return () => cancelAnimationFrame(frame);
+ }, [setup]);
  // Inline setup panels are alternatives, not independently stackable cards.
  // Switching workflows preserves form state but keeps the workspace readable.
  function openInlinePanel(panel: 'new' | 'backup' | 'fractions' | 'diagnostic') {
@@ -886,7 +895,11 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
     {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Browser cache updated at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : syncStatus.pending > 0 ? `Queued ${syncStatus.pending}` : syncStatus.phase === 'syncing' ? 'Syncing…' : syncStatus.phase === 'synced' && (!state.savedAt || Date.parse(syncStatus.lastSyncedAt ?? '') >= Date.parse(state.savedAt)) ? 'Synced ✓' : state.savedAt ? 'Browser cache' : 'Waiting for sync'}</span>
      {isMathAnswer && <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; writeKeyboardChoice(open); dispatch(actions.keyboard(open)); if (open) requestAnimationFrame(focusEditor); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>}
-     <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onKeyDown={rememberMenuKeyboardActivation} onClick={toggleMenuFromClick}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu" onCloseAutoFocus={event => { if (syncPanelOpen) event.preventDefault(); }}>
+     <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onKeyDown={rememberMenuKeyboardActivation} onClick={toggleMenuFromClick}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu" onCloseAutoFocus={event => {
+       if (syncPanelOpen || setup || backup) event.preventDefault();
+       if (setup || backup) requestAnimationFrame(() =>
+         document.getElementById(setup ? 'problem-input' : 'session-json')?.focus({ preventScroll: true }));
+      }}>
       <DropdownMenuItem className="menu-primary-action" onSelect={() => request('copy')}><ClipboardCheck aria-hidden="true" />Check · Copy for Review</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => { void exportTutor(); }}><FileJson2 aria-hidden="true" />Export for tutor (JSON)</DropdownMenuItem>
       <DropdownMenuItem onSelect={openDriveBank}><HardDrive aria-hidden="true" />Google Drive · Question bank</DropdownMenuItem>

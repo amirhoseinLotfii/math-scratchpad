@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
@@ -8,7 +8,7 @@ import { getLearnChecks, getPracticeQuestionOrigin, getPracticeQuestions, getSec
 import { LessonCheck } from './lesson-check';
 import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits } from './lesson-content';
 import { buildLessonSections, type LessonSection } from './lesson-sections';
-import { createLessonMathStore } from './lesson-math-check';
+import { createLessonMathStore, LessonKeyboardContext, LessonMathCheck } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
@@ -49,8 +49,8 @@ function newProgress(lessonId: string): LessonProgress {
   return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
 }
 
-function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSingleConceptHeading = false }: {
-  section: LessonSection; onReveal: (key: string, value: number) => void; revealedSteps: Record<string, number>; uiLang: 'fa' | 'en'; hideSingleConceptHeading?: boolean;
+function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSingleConceptHeading = false, renderExampleWork }: {
+  section: LessonSection; onReveal: (key: string, value: number) => void; revealedSteps: Record<string, number>; uiLang: 'fa' | 'en'; hideSingleConceptHeading?: boolean; renderExampleWork?: (blockKey: string) => ReactNode;
 }) {
   return <div className="lesson-section-content">
     {section.concepts.map(({ concept, conceptIndex, blocks }) => {
@@ -58,7 +58,10 @@ function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSi
         const originalIndex = concept.blocks.indexOf(block);
         if (isRedundantOpeningHeading(concept, block, originalIndex)) return null;
         const key = `${concept.id}:${originalIndex >= 0 ? originalIndex : blockIndex}`;
-        return <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
+        const view = <LessonBlockView block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
+        return block.type === 'example' && renderExampleWork
+          ? <div key={key} className="lesson-example-with-work">{view}{renderExampleWork(key)}</div>
+          : <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
       })}</div>;
       if (hideSingleConceptHeading && section.concepts.length === 1) return <div className="lesson-section-concept" key={concept.id}>{content}</div>;
       return <section className="lesson-section-concept" key={concept.id} aria-labelledby={`lesson-section-concept-${concept.id}`}>
@@ -68,6 +71,16 @@ function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSi
       </section>;
     })}
   </div>;
+}
+
+function InlineExampleEditor({ item, uiLang, getWorkStore, onWork }: {
+  item: LessonWorkItem;
+  uiLang: 'fa' | 'en';
+  getWorkStore: (item: LessonWorkItem) => ScratchStore;
+  onWork: (key: string, answer: { type: 'math'; steps: Step[] }) => void;
+}) {
+  const onAnswered = useCallback((_: string, answer: { type: 'math'; steps: Step[] }) => onWork(item.key, answer), [item.key, onWork]);
+  return <LessonMathCheck question={item.workQuestion} store={getWorkStore(item)} onAnswered={onAnswered} uiLang={uiLang} />;
 }
 
 function ReviewQuestionContent({ question }: { question: BankQuestion }) {
@@ -103,6 +116,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const autoStartedLesson = useRef<string | null>(null);
   const paneMode = lessonPaneMode(useSyncExternalStore(subscribeSplit, splitSnapshot, () => false)), split = paneMode === 'split';
   const [splitRatio, setSplitRatio] = useState(readSplitRatio);
+  const [activeInlineCheckId, setActiveInlineCheckId] = useState<string | null>(null);
+  const [activeInlineExampleKey, setActiveInlineExampleKey] = useState<string | null>(null);
   const [paneTab, setPaneTab] = useState<'lesson' | 'work'>(() =>
     Object.keys(initialProgress?.workAnswers ?? {}).length ? 'work' : 'lesson');
   const [selectedWorkKey, setSelectedWorkKey] = useState<string | undefined>(() =>
@@ -558,8 +573,29 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     emitLearnEvent(makeEventContext(undefined, currentSection, item.conceptId), { type: 'example_revealed', itemId: item.key, itemType: 'step_by_step', questionText: fullText.slice(0, 8_000), note: 'Learner requested comparison after writing work.' });
   }
 
-  const renderCheck = (question: BankQuestion) => <LessonCheck key={question.id} question={question}
+  const renderExampleWork = (blockKey: string) => {
+    const item = workItems.find(candidate => candidate.key === `ex:${blockKey}` && candidate.kind === 'example');
+    if (!item) return null;
+    const open = activeInlineExampleKey === item.key;
+    return <div className="lesson-example-work" aria-label={fa ? 'حل همین مثال' : 'Solve this example'}>
+      <Button aria-expanded={!split && open} onClick={() => {
+        setSelectedWorkKey(item.key);
+        if (split) {
+          requestAnimationFrame(() => document.querySelector<HTMLElement>('.lesson-work-select')?.focus({ preventScroll: true }));
+        } else {
+          setActiveInlineExampleKey(previous => previous === item.key ? null : item.key);
+        }
+      }}>{split ? (fa ? 'حل در پنل کار من' : 'Solve in Your work') : (open ? (fa ? 'بستن حل این مثال' : 'Close example editor') : (fa ? 'حل این مثال در همین‌جا' : 'Solve this example here'))}</Button>
+      {!split && open && <InlineExampleEditor item={item} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} />}
+    </div>;
+  };
+
+  const firstMathCheckId = checks.find(question => question.answerType === 'math' || (!question.answerType && question.mode === 'math'))?.id;
+  const currentInlineCheckId = checks.some(question => question.id === activeInlineCheckId) ? activeInlineCheckId : firstMathCheckId;
+  const renderCheck = (question: BankQuestion, inline = false) => <LessonCheck key={question.id} question={question}
           uiLang={uiLang}
+          compact={inline && question.id !== currentInlineCheckId && (question.answerType === 'math' || (!question.answerType && question.mode === 'math'))}
+          onExpand={() => setActiveInlineCheckId(question.id)}
           mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
           answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
           skipped={progress.skippedChecks.some(item => item.questionId === question.id)}
@@ -632,7 +668,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
         <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
         <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
-        <LessonSectionContent section={currentSection} revealedSteps={progress.revealedSteps} onReveal={revealStep} uiLang={uiLang} hideSingleConceptHeading={!currentSection.title && currentSection.concepts.length === 1} />
+        <LessonSectionContent section={currentSection} revealedSteps={progress.revealedSteps} onReveal={revealStep} uiLang={uiLang} hideSingleConceptHeading={!currentSection.title && currentSection.concepts.length === 1} renderExampleWork={renderExampleWork} />
       </section>
       <section className="lesson-section-practice" aria-label={fa ? 'تمرین‌های همین بخش' : 'Practice for this section'}>
         <h2>{fa ? 'تمرین‌های همین بخش' : 'Practice for this section'}</h2>
@@ -651,7 +687,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
                 <span className="lesson-check-link-status">{progress.answeredCheckIds.includes(question.id) ? (fa ? 'پاسخ داده شد' : 'Answered') : progress.skippedChecks.some(item => item.questionId === question.id) ? (fa ? 'ردشده' : 'Skipped') : (fa ? 'حل در «کار من»' : 'Solve in Your work')}</span>
               </Button>
             </li>)}</ul>
-          : checks.map(renderCheck)}
+          : checks.map(question => renderCheck(question, true))}
       </section>}
       <nav className="lesson-concept-navigation" aria-label={fa ? 'پیمایش بخش‌های درس' : 'Lesson section navigation'}>
         <Button onClick={goPrevious} disabled={sectionIndex === 0}>{fa ? '→ بخش قبلی' : '← Previous section'}</Button>
@@ -706,8 +742,11 @@ function LessonAvailability({ loading, onBack }: { loading: boolean; onBack: () 
 
 /** Handles the brief unavailable/loading states around the synchronously parsed bank content. */
 export function LessonScreen(props: Props) {
+  const [activeKeyboardId, setActiveKeyboardId] = useState<string | null>(null);
   if (props.loading || !props.bank || !props.lesson) {
     return <LessonAvailability loading={!!props.loading} onBack={props.onBack} />;
   }
-  return <ReadyLessonScreen {...props as ReadyProps} />;
+  return <LessonKeyboardContext.Provider value={{ activeId: activeKeyboardId, setActiveId: setActiveKeyboardId }}>
+    <ReadyLessonScreen {...props as ReadyProps} />
+  </LessonKeyboardContext.Provider>;
 }

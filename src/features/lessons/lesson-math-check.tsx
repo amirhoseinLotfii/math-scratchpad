@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { createContext, useContext, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { Provider } from '../../app/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
@@ -12,6 +12,13 @@ import type { ScratchStore } from '../../store';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from '../math-editor/mathlive-adapter';
 import { MathLiveStepInput } from '../math-editor/components/mathlive-step-input';
 import { localizeLessonDigits } from './lesson-content';
+
+/** Coordinates the inline math keyboards across a single lesson.
+ * Stores remain independent so switching exercises cannot discard answers. */
+export const LessonKeyboardContext = createContext<{
+  activeId: string | null;
+  setActiveId: (id: string | null) => void;
+} | null>(null);
 
 export function createLessonMathStore(question: BankQuestion, phone: boolean, savedSteps?: Step[]): ScratchStore {
   const state = initialState(), previous = state.doc.exercises[0], step = blankStep();
@@ -38,11 +45,20 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
   const layout = useWorkspaceLayout(), wide = layout !== 'phone';
   const fa = uiLang === 'fa';
   const root = useRef<HTMLElement>(null);
+  const keyboardOwner = useContext(LessonKeyboardContext);
   const state = useAppSelector(s => s);
   const dispatch = useAppDispatch();
   const exercise = exerciseOf(state.doc);
   const currentStepIndex = exercise.steps.findIndex(step => step.id === state.doc.cursor.stepId);
   const answered = exercise.steps.some(step => !stepIsBlank(step));
+
+  // Only one inline exercise keyboard at a time. Never reset the math store.
+  useEffect(() => {
+    if (state.keyboardOpen && keyboardOwner?.activeId && keyboardOwner.activeId !== question.id) {
+      dispatch(actions.keyboard(false));
+    }
+  }, [dispatch, keyboardOwner?.activeId, question.id, state.keyboardOpen]);
+
 
   useEffect(() => onAnswered(question.id, { type: 'math', steps: exercise.steps }), [answered, exercise.steps, onAnswered, question.id]);
 
@@ -62,6 +78,13 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       const visibleBottom = Math.min(window.innerHeight, viewport ? viewport.offsetTop + viewport.height : window.innerHeight) - 8;
       if (rect.top < visibleTop) window.scrollBy({ top: rect.top - visibleTop, behavior: 'auto' });
       else if (rect.bottom > visibleBottom) window.scrollBy({ top: rect.bottom - visibleBottom, behavior: 'auto' });
+      // When the user opens the in-app keypad, the first row must be visible
+      // without manually scrolling past unrelated exercise controls.
+      const firstKey = root.current?.querySelector<HTMLElement>('.math-keyboard .key-grid button');
+      const keyRect = firstKey?.getBoundingClientRect();
+      if (keyRect && keyRect.bottom > visibleBottom) {
+        window.scrollBy({ top: keyRect.bottom - visibleBottom + 12, behavior: 'auto' });
+      }
     }));
   }
   function insert(kind: string) { dispatchInsert(store, kind); focusEditor(); }
@@ -112,12 +135,13 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
     onInsert={insert} moreOpen={state.keyboardOpen && state.symbolsOpen} onMore={() => {
       if (!state.keyboardOpen) {
         dispatch(actions.keyboard(true));
+        keyboardOwner?.setActiveId(question.id);
         if (!state.symbolsOpen) dispatch(actions.symbols());
       } else dispatch(actions.symbols());
     }} />;
 
   return <section ref={root} className="lesson-math-editor" tabIndex={0} aria-label={`${fa ? 'پاسخ ریاضی برای' : 'Math answer for'} ${question.id}`} onKeyDownCapture={handleKey}>
-      <div className="lesson-answer-heading"><h4>{fa ? 'راه‌حل را گام‌به‌گام بنویسید' : 'Write each step'}</h4><Button className="lesson-keyboard-toggle" aria-label={state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; dispatch(actions.keyboard(open)); if (open) focusEditor(); }}>{state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')}</Button></div>
+      <div className="lesson-answer-heading"><h4>{fa ? 'راه‌حل را گام‌به‌گام بنویسید' : 'Write each step'}</h4><Button className="lesson-keyboard-toggle" aria-label={state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; dispatch(actions.keyboard(open)); keyboardOwner?.setActiveId(open ? question.id : null); if (open) focusEditor(); }}>{state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')}</Button></div>
       {wide && tools}
       <section className="lesson-answer-steps" aria-label={`${fa ? 'گام‌های پاسخ تمرین' : 'Steps for check'} ${question.id}`}>
         {exercise.steps.map((step, index) => <article className={`lesson-answer-step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id}>
@@ -128,9 +152,9 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
           <div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={fa ? `عبارت گام ${localizeLessonDigits(index + 1, uiLang)}` : `Step ${index + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
         </article>)}
       </section>
+      {state.keyboardOpen && <Keyboard onFocusEditor={focusEditor} />}
       <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep' })); focusEditor(); }}>{fa ? 'افزودن گام' : 'Add step'}</Button>
       {!wide && tools}
-      {state.keyboardOpen && <Keyboard onFocusEditor={focusEditor} />}
     </section>;
 }
 
