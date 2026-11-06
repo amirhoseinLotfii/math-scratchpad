@@ -92,6 +92,8 @@ test('Drive bank inspector traps keyboard focus and Escape restores workspace ac
   const panel = page.getByRole('dialog', { name: 'Google Drive question bank' });
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('aria-modal', 'true');
+  // The menu's focus restoration must not leave initial focus behind the modal.
+  await expect.poll(async () => panel.evaluate(node => node.contains(document.activeElement))).toBe(true);
   const close = panel.getByRole('button', { name: 'Close' });
   await close.focus();
   await page.keyboard.press('Tab');
