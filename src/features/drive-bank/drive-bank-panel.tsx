@@ -56,8 +56,17 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
   }, []);
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => (ready ? connectButton.current : panel.current)?.focus({ preventScroll: true }));
-    return () => cancelAnimationFrame(frame);
+    // Radix menu may restore focus to its trigger after the panel mounts.
+    // Reassert initial modal focus on the next frame without stealing focus
+    // once the user has already moved inside the panel.
+    let followUp = 0;
+    const frame = requestAnimationFrame(() => {
+      if (!panel.current?.contains(document.activeElement)) (ready ? connectButton.current : panel.current)?.focus({ preventScroll: true });
+      followUp = requestAnimationFrame(() => {
+        if (panel.current && !panel.current.contains(document.activeElement)) (ready ? connectButton.current : panel.current)?.focus({ preventScroll: true });
+      });
+    });
+    return () => { cancelAnimationFrame(frame); cancelAnimationFrame(followUp); };
   }, [open, ready]);
   // A fixed inspector must also be modal for keyboard and assistive technology.
   // The nested Radix confirmation dialog owns focus while it is visible.
