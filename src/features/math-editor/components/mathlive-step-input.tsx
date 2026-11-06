@@ -57,6 +57,26 @@ export function MathLiveStepInput({
       }
       insertMathSymbol(stepId, event.key);
     };
+    // A newly switched question can accept a pointer click before MathLive
+    // finishes connecting its focusable surface. During that brief interval
+    // the page body receives early physical keystrokes instead of the field.
+    // Capture only math keys when this field was the user's last click target.
+    let pendingFocus = false;
+    const click = () => { pendingFocus = true; };
+    const outsidePointer = (event: PointerEvent) => {
+      if (!field.contains(event.target as Node)) pendingFocus = false;
+    };
+    const earlyGlobalKeydown = (event: KeyboardEvent) => {
+      if (!pendingFocus || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (document.activeElement !== document.body) return;
+      if (mathLatexForSymbol(event.key) === undefined) return;
+      event.preventDefault();
+      if (attached) insertMathSymbol(stepId, event.key);
+      else pendingInitialKeys.push(event.key);
+    };
+    field.addEventListener('click', click, true);
+    document.addEventListener('pointerdown', outsidePointer, true);
+    document.addEventListener('keydown', earlyGlobalKeydown, true);
     // Listen before awaiting custom-element upgrade so a fast first keystroke
     // cannot disappear in the gap between React rendering and MathLive setup.
     field.addEventListener('keydown', keydown, true);
@@ -89,6 +109,9 @@ export function MathLiveStepInput({
         field.removeEventListener('focus', focus);
         if (mathfieldForStep(stepId) === field) registerMathfield(stepId, null);
       }
+      field.removeEventListener('click', click, true);
+      document.removeEventListener('pointerdown', outsidePointer, true);
+      document.removeEventListener('keydown', earlyGlobalKeydown, true);
       field.removeEventListener('keydown', keydown, true);
     };
   }, [stepId]);
