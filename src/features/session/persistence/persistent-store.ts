@@ -25,6 +25,31 @@ const workSignature = (session: PersistedSession['session']) => JSON.stringify({
 });
 export const STORAGE_PREFIX = 'math-scratchpad';
 const PERSIST_DEBOUNCE_MS = 800;
+// IndexedDB is asynchronous. A synchronous, per-tab emergency journal retains
+// edits made immediately before reload/close until the primary DB confirms save.
+const DRAFT_TAB_KEY = 'math-scratchpad-draft-tab-v1';
+const PENDING_DRAFT_PREFIX = 'math-scratchpad-pending-draft-v1:';
+type PendingDraftJournal = { version: 1; baseRevision: number; snapshot: Envelope };
+function currentTabJournalKey(): string | undefined {
+ try {
+  let tabId = sessionStorage.getItem(DRAFT_TAB_KEY);
+  if (!tabId) {
+   tabId = uid();
+   sessionStorage.setItem(DRAFT_TAB_KEY, tabId);
+  }
+  return PENDING_DRAFT_PREFIX + tabId;
+ } catch { return undefined; }
+}
+function readPendingJournal(key: string | undefined): PendingDraftJournal | null {
+ if (!key) return null;
+ try {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  const value = JSON.parse(raw) as PendingDraftJournal;
+  if (value?.version !== 1 || !Number.isSafeInteger(value.baseRevision) || value.baseRevision < 0) return null;
+  return value;
+ } catch { return null; }
+}
 let activeSessionFlush: (() => Promise<void>) | undefined;
 export async function flushPersistedSession(): Promise<void> { await activeSessionFlush?.(); }
 /** Remove every localStorage key owned by this app (all schema versions). */
@@ -44,11 +69,42 @@ export function clearAppStorage() {
 export function createPersistentStore() {
  const writerId = uid();
  const storage = getLearningStorage();
+ const journalKey = currentTabJournalKey();
+ let recoveredJournal = false;
  let saved: Envelope | null = null, protectedDraft = false, bootError = '';
  let initial: ScratchState, hasLegacyState = false;
  try {
   const raw = storage.getItem(SESSION_KEY);
-  if (raw) { saved = decode(raw); initial = { ...initialState(), ...saved.state.session }; }
+  if (raw) saved = decode(raw);
+  let journalRaw: string | null = null;
+  try { journalRaw = journalKey ? localStorage.getItem(journalKey) : null; } catch { /* Optional recovery layer is inaccessible. */ }
+  const journal = readPendingJournal(journalKey);
+  if (journalRaw && !journal) {
+   protectedDraft = true;
+   bootError = 'A pending browser draft could not be read. It remains untouched; export a backup before recovery.';
+  }
+  if (journal) {
+   try {
+    const candidate = decode(JSON.stringify(journal.snapshot));
+    const matchesStored = saved && fullSignature(saved.state.session) === fullSignature(candidate.state.session);
+    if (matchesStored && saved!.state.sync.revision > journal.baseRevision) {
+     // The async IndexedDB save already finished; remove the stale emergency copy.
+     try { localStorage.removeItem(journalKey!); } catch { /* Harmless duplicate snapshot. */ }
+    } else if (!saved || saved.state.sync.revision === journal.baseRevision) {
+     saved = candidate;
+     recoveredJournal = true;
+    } else {
+     // Another tab saved a newer revision. Preserve both versions instead
+     // of silently overwriting newer server/IndexedDB work.
+     protectedDraft = true;
+     bootError = 'A pending browser draft conflicts with newer saved work. Both versions are preserved; export a backup before continuing.';
+    }
+   } catch {
+    protectedDraft = true;
+    bootError = 'A pending browser draft could not be validated. It remains untouched; export a backup before recovery.';
+   }
+  }
+  if (saved) initial = { ...initialState(), ...saved.state.session };
   else {
    hasLegacyState = !!(storage.getItem('math-scratchpad-redux-v2') ?? storage.getItem('math-scratchpad-flow-v1'));
    initial = restoreState();
@@ -78,6 +134,14 @@ export function createPersistentStore() {
    await flushLearningStorage();
    revision = next.state.sync.revision; lastWriter = writerId; author = true;
    lastSignature = fullSignature(session); lastWork = workSignature(session); failedSignature = '';
+   // A newer edit may have arrived while IndexedDB was writing the snapshot.
+   // Never discard its emergency journal when completing an older save.
+   if (journalKey) {
+    const journal = readPendingJournal(journalKey);
+    if (journal && fullSignature(journal.snapshot.state.session) === lastSignature) {
+     try { localStorage.removeItem(journalKey); } catch { /* IndexedDB remains authoritative. */ }
+    }
+   }
    suppress = true; store.setState(store.getState().storageState?.kind === 'error' ? { storageState: undefined, savedAt: isoLocal() } : { savedAt: isoLocal() }); suppress = false;
   } catch {
    failedSignature = fullSignature(session);
@@ -92,6 +156,15 @@ export function createPersistentStore() {
   if (!force && !author && work === lastWork) return;
   if (work !== lastWork) author = true;
   pending = session;
+  if (journalKey && (work !== lastWork || recoveredJournal)) {
+   const snapshot: Envelope = { version: 3, state: { session, sync: { revision, writerId } } };
+   try {
+    localStorage.setItem(journalKey, JSON.stringify({ version: 1, baseRevision: revision, snapshot } satisfies PendingDraftJournal));
+   } catch {
+    // Private-browsing/quota restrictions disable only the emergency layer.
+    // The existing IndexedDB flush and its error feedback remain intact.
+   }
+  }
   // Flush the newest work on a fixed cadence. Resetting this timer on every
   // keystroke let continuous typing postpone persistence indefinitely.
   if (timeout === undefined) timeout = setTimeout(() => { timeout = undefined; void flush(); }, PERSIST_DEBOUNCE_MS);
@@ -112,6 +185,11 @@ export function createPersistentStore() {
  store = makeStore(initial, options);
  function applyRemote(value: Envelope) {
   clearTimeout(timeout); pending = null; remote = null;
+  // An explicit 'Use saved draft' choice (or a clean remote update) abandons
+  // this tab's pending work. Its emergency copy must not resurrect on reload.
+  if (journalKey) {
+   try { localStorage.removeItem(journalKey); } catch { /* The validated incoming draft is still in IndexedDB. */ }
+  }
   revision = value.state.sync.revision; lastWriter = value.state.sync.writerId;
   lastSignature = fullSignature(value.state.session); lastWork = workSignature(value.state.session); author = false;
   suppress = true;
@@ -155,6 +233,11 @@ export function createPersistentStore() {
  const unsubscribeLearningStorage = subscribeLearningStorage(storageEvent);
  const nativeStorageEvent = (event: StorageEvent) => storageEvent(event);
  window.addEventListener('storage', nativeStorageEvent); window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibilitychange);
+ if (recoveredJournal && !protectedDraft) {
+  // Carry the recovered draft back into authoritative IndexedDB without
+  // requiring the learner to edit again after a rapid reload.
+  queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
+ }
  if (!saved && !protectedDraft) {
   const onlyExercise = initial.doc.exercises.length === 1 ? initial.doc.exercises[0] : undefined;
   const pristineDefault = !!onlyExercise && onlyExercise.source === example && !onlyExercise.bankQuestionId
