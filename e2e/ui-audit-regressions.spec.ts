@@ -122,3 +122,29 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await expect(page.getByRole('region', { name: 'New exercise' })).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm fraction round start' })).toBeVisible();
 });
+
+test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons', async ({ page }) => {
+ for (const size of [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+ ]) {
+  await page.setViewportSize(size);
+  await page.goto('/?serverMode');
+  const banner = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
+  await expect(banner).toBeVisible();
+  await menu(page).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).click();
+  const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
+  await expect(dialog).toBeVisible();
+  await expect(banner).toBeHidden();
+  await dialog.getByRole('button', { name: 'همگام‌سازی الان' }).click();
+  await dialog.getByRole('button', { name: 'بررسی اتصال و خطای Drive / Notion' }).click();
+  // A real click without force was previously intercepted by the banner.
+  await dialog.getByRole('button', { name: 'دانلود پشتیبان کامل JSON' }).click();
+  await dialog.getByRole('button', { name: 'بستن تنظیم همگام‌سازی' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(banner).toBeVisible();
+ }
+});

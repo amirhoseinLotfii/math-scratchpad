@@ -1115,6 +1115,16 @@ body:has(> #math-scratchpad-redux) {
   .lesson-picker-dialog > .dialog-actions { flex: none; padding-top: 8px; }
 }
 
+/* The local-only connection banner follows the editor in DOM order. When
+   the sync inspector is open, that banner (including its Google iframe) must
+   not paint over the inspector or intercept its scrollable backup actions.
+   Hide only while the inspector is modal; restore it on close. */
+body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
+  aside[aria-label="وضعیت همگام‌سازی"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* Keep the fixed sync inspector truly modal without moving the notebook. */
 #math-scratchpad-redux .sync-panel-backdrop {
   position: fixed;
