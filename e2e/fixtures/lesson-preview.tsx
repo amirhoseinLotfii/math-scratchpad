@@ -30,6 +30,20 @@ if (view === 'checks') {
   const mathCheck = bank.questions.find(question => question.id === 'SAMPLE-1.1-L02');
   if (mathCheck) { mathCheck.conceptId = concept.id; concept.checkQuestionIds.push(mathCheck.id); }
 }
+// Synthetic four-exercise lesson for screenshot and regression coverage.
+// Never connects to an account or modifies a learner's real question bank.
+if (view === 'stacked') {
+  const concept = lesson.concepts[0];
+  const template = bank.questions.find(question => question.id === 'SAMPLE-1.1-L02')!;
+  const first = bank.questions.find(question => question.id === 'SAMPLE-1.1-L01')!;
+  first.answerType = 'math';
+  first.prompt = 'First practice problem: x + 1';
+  for (let index = 2; index <= 4; index++) {
+    const question = { ...template, id: `STACKED-MATH-${index}`, conceptId: concept.id, source: `x+${index}`, prompt: `Example ${index}: calculate x+${index}` };
+    bank.questions.push(question);
+    concept.checkQuestionIds.push(question.id);
+  }
+}
 if (view === 'image-error') lesson.concepts[0].blocks.push({ type: 'image', src: '/missing-learn-illustration.png', alt: 'Sample diagram alternative text' });
 const currentConceptIndex = view === 'math' ? 1 : 0;
 const progress: LessonProgress = {

@@ -148,3 +148,15 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   await expect(banner).toBeVisible();
  }
 });
+
+
+test('UI-AUDIT-09: New Problem receives form focus after menu action', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'New Problem' }).click();
+  const problem = page.getByRole('textbox', { name: 'Problem', exact: true });
+  await expect(problem).toBeVisible();
+  await expect(problem).toBeFocused();
+  await page.keyboard.type('x+2');
+  await expect(problem).toHaveValue('x+2');
+});

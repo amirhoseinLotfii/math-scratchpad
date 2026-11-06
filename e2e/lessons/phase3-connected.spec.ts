@@ -22,6 +22,12 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
     if (await batchStart.isVisible().catch(() => false)) await batchStart.getByRole('button', { name: 'Skip for now' }).click();
     await expect(page.getByText('Sample practice 1.')).toBeVisible();
     await expect(page.locator('.step.current-step')).toBeVisible();
+    // The editor restores each test profile's keyboard preference asynchronously.
+    // This suite tests lesson navigation, not the default keyboard preference;
+    // explicitly open it before asserting the numeric keys and lesson behavior.
+    if (!(await page.getByRole('group', { name: 'Numeric keys' }).isVisible())) {
+      await page.getByRole('button', { name: 'Show Keyboard' }).click();
+    }
     await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
     const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
     expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);

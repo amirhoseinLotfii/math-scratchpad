@@ -6,7 +6,7 @@ import { LessonMathCheck } from './lesson-math-check';
 import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';
 import type { LessonCheckAnswer } from './types';
 
-export function LessonCheck({ question, mathStore, answer, answered, confidence, skipped, onAnswer, onConfidence, onSkip, onEngage, onLeave, uiLang = 'en' }: {
+export function LessonCheck({ question, mathStore, answer, answered, confidence, skipped, onAnswer, onConfidence, onSkip, onEngage, onLeave, uiLang = 'en', compact = false, onExpand }: {
   question: BankQuestion;
   mathStore?: ScratchStore;
   answer?: LessonCheckAnswer;
@@ -19,6 +19,8 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
   onEngage?: (id: string) => void;
   onLeave?: (id: string) => void;
   uiLang?: 'fa' | 'en';
+  compact?: boolean;
+  onExpand?: () => void;
 }) {
   const id = useId();
   const answerType = question.answerType ?? (question.mode === 'text' ? 'text' : 'math');
@@ -32,7 +34,16 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
     onLeave?.(question.id);
   }
 
-  return <article className="lesson-check" aria-labelledby={`${id}-title`} onFocusCapture={() => onEngage?.(question.id)} onBlurCapture={leaveCheck}>
+  // In a stack of math checks, keep inactive cards short; their saved answers
+  // remain in the lesson progress/store, while only the selected editor expands.
+  if (compact && answerType === 'math') return <article className="lesson-check lesson-check-collapsed" data-check-id={question.id} aria-labelledby={`${id}-title`}>
+    <header className="lesson-check-header"><h3 id={`${id}-title`}>{fa ? 'تمرین بررسی' : 'Check'} · <bdi dir="ltr">{question.id}</bdi></h3>
+      {completed && <span className="lesson-check-answered">{fa ? 'پاسخ داده شد' : 'Answered'}</span>}</header>
+    {question.prompt && <p className="lesson-check-prompt" lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
+    <Button className="lesson-check-expand" aria-expanded={false} onClick={onExpand}>{fa ? (answered ? 'ادامه حل تمرین' : 'حل این تمرین') : (answered ? 'Continue this check' : 'Solve this check')}</Button>
+  </article>;
+
+  return <article className="lesson-check" data-check-id={question.id} aria-labelledby={`${id}-title`} onFocusCapture={() => onEngage?.(question.id)} onBlurCapture={leaveCheck}>
     <header className="lesson-check-header"><h3 id={`${id}-title`}>{fa ? 'تمرین بررسی' : 'Check'} · <bdi dir="ltr">{question.id}</bdi></h3>{skipped && <span className="lesson-check-skipped">{fa ? 'رد شد' : 'Skipped'}</span>}{!skipped && completed && <span className="lesson-check-answered">{fa ? 'پاسخ داده شد' : 'Answered'}</span>}</header>
     {question.prompt && <p className="lesson-check-prompt" lang={languageForText(question.prompt)} dir={contentDirection(question.prompt)}><LessonText text={question.prompt} /></p>}
     <QuestionSource source={question.source} mode={question.mode} label={fa ? 'عبارت سؤال' : 'Question expression'} mathLabel={fa ? 'عبارت ریاضی سؤال' : 'Question math expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />

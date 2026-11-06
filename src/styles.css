@@ -1132,3 +1132,65 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
   z-index: 44;
   background: rgb(0 0 0 / 0.55);
 }
+
+
+/* Lesson math tools must adapt to the width of the work pane, not the viewport.
+   Keep each action independently clickable at every split ratio. */
+#math-scratchpad-redux .lesson-math-editor .math-tools-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  justify-content: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+#math-scratchpad-redux .lesson-math-editor .wide-history-tools {
+  grid-column: 1;
+  grid-row: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+#math-scratchpad-redux .lesson-math-editor .wide-more-tools {
+  grid-column: 2;
+  grid-row: 1;
+  position: static;
+  min-width: 44px;
+  max-width: 100%;
+}
+#math-scratchpad-redux .lesson-math-editor .quick-math-tools {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+#math-scratchpad-redux .lesson-math-editor .quick-math-tools button {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+}
+@media (max-width: 599px) {
+  #math-scratchpad-redux .lesson-math-editor .math-tools-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  #math-scratchpad-redux .lesson-math-editor .quick-math-tools {
+    order: 1;
+    flex: 1 1 230px;
+  }
+  #math-scratchpad-redux .lesson-math-editor .wide-more-tools { order: 2; }
+}
+
+/* Compact inactive math checks reduce tall scrolling while preserving status
+   and the source question. The active check owns the full step editor. */
+#math-scratchpad-redux .lesson-check-collapsed { display: grid; gap: 7px; }
+#math-scratchpad-redux .lesson-check-collapsed .lesson-check-prompt { margin: 0; }
+#math-scratchpad-redux .lesson-check-expand { justify-self: start; min-height: 44px; }
+
+/* Worked examples open the same persistent math editor immediately underneath
+   the example on compact layouts; split layouts select the existing work pane. */
+#math-scratchpad-redux .lesson-example-work { margin: 8px 0 14px; display: grid; gap: 8px; }
+#math-scratchpad-redux .lesson-example-work > button { justify-self: start; min-height: 44px; }
+#math-scratchpad-redux .lesson-example-work .lesson-math-editor { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
