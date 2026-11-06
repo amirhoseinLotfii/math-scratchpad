@@ -584,6 +584,12 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
           requestAnimationFrame(() => document.querySelector<HTMLElement>('.lesson-work-select')?.focus({ preventScroll: true }));
         } else {
           setActiveInlineExampleKey(previous => previous === item.key ? null : item.key);
+          if (!open) requestAnimationFrame(() => requestAnimationFrame(() => {
+            const examples = [...document.querySelectorAll<HTMLElement>('.lesson-example-with-work')];
+            const current = examples.find(element =>
+              element.querySelector('.lesson-example-work .lesson-math-editor') !== null);
+            current?.querySelector<HTMLElement>('.lesson-example-work math-field')?.focus({ preventScroll: false });
+          }));
         }
       }}>{split ? (fa ? 'حل در پنل کار من' : 'Solve in Your work') : (open ? (fa ? 'بستن حل این مثال' : 'Close example editor') : (fa ? 'حل این مثال در همین‌جا' : 'Solve this example here'))}</Button>
       {!split && open && <InlineExampleEditor item={item} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} />}
@@ -595,7 +601,14 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const renderCheck = (question: BankQuestion, inline = false) => <LessonCheck key={question.id} question={question}
           uiLang={uiLang}
           compact={inline && question.id !== currentInlineCheckId && (question.answerType === 'math' || (!question.answerType && question.mode === 'math'))}
-          onExpand={() => setActiveInlineCheckId(question.id)}
+          onExpand={() => {
+            setActiveInlineCheckId(question.id);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              const article = [...document.querySelectorAll<HTMLElement>('.lesson-check')]
+                .find(element => element.dataset.checkId === question.id);
+              article?.querySelector<HTMLElement>('math-field')?.focus({ preventScroll: false });
+            }));
+          }}
           mathStore={question.answerType === 'math' || (!question.answerType && question.mode === 'math') ? getMathStore(question) : undefined}
           answer={progress.checkAnswers?.[question.id]} answered={progress.answeredCheckIds.includes(question.id)} confidence={progress.confidenceByCheckId?.[question.id]}
           skipped={progress.skippedChecks.some(item => item.questionId === question.id)}

@@ -12,6 +12,7 @@ test('four inline lesson checks keep only one keypad open, visible below its act
     const cards = page.locator('.lesson-check');
     await expect(cards).toHaveCount(4);
     await cards.nth(1).getByRole('button', { name: 'Solve this check' }).click();
+    await expect.poll(() => cards.nth(1).evaluate(article => article.contains(document.activeElement) || !!article.querySelector('math-field')?.shadowRoot?.activeElement)).toBe(true);
     await cards.nth(1).getByRole('button', { name: 'Show Keyboard' }).click();
     const second = cards.nth(1);
     await expect(second.locator('.math-keyboard')).toBeVisible();

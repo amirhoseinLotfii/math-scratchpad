@@ -9,6 +9,7 @@ test('worked example opens its real saved math editor immediately below the exam
     await example.getByRole('button', { name: 'Solve this example here' }).click();
     const work = example.locator('.lesson-example-work');
     const math = work.locator('math-field').first();
+    await expect.poll(() => math.evaluate(element => element === document.activeElement || !!element.shadowRoot?.activeElement)).toBe(true);
     await expect(math).toBeVisible();
     await math.click();
     await page.keyboard.type('7');
