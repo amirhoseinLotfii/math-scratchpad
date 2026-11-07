@@ -15,20 +15,28 @@ test('wide lesson keeps its section header fixed while only the lesson content s
     await expect(content).toHaveAttribute('role', 'region');
     await expect(content).toHaveAttribute('tabindex', '0');
 
+    const headerTopBefore = (await header.boundingBox())?.y ?? -1;
+    await content.evaluate(element => {
+      const filler = document.createElement('div');
+      filler.setAttribute('aria-hidden', 'true');
+      filler.style.height = '1800px';
+      element.appendChild(filler);
+    });
+    await content.focus();
+    await expect(content).toBeFocused();
+    const contentBox = await content.boundingBox();
+    if (!contentBox) throw new Error('Lesson content region has no visible box.');
+    await page.mouse.move(contentBox.x + contentBox.width / 2, contentBox.y + contentBox.height / 2);
+    await page.mouse.wheel(0, 500);
+    await expect.poll(() => content.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+
     const metrics = await page.evaluate(() => {
       const screen = document.querySelector<HTMLElement>('.lesson-screen')!;
       const pane = document.querySelector<HTMLElement>('.lesson-split-lesson')!;
       const header = pane.querySelector<HTMLElement>('.lesson-split-lesson-header')!;
       const content = pane.querySelector<HTMLElement>('.lesson-split-lesson-scroll')!;
-      const filler = document.createElement('div');
-      filler.setAttribute('aria-hidden', 'true');
-      filler.style.height = '1800px';
-      content.appendChild(filler);
-      const headerTopBefore = header.getBoundingClientRect().top;
-      content.scrollTop = 280;
       return {
         paddingTop: Number.parseFloat(getComputedStyle(screen).paddingTop),
-        headerTopBefore,
         headerTopAfter: header.getBoundingClientRect().top,
         contentScrollTop: content.scrollTop,
         paneScrollTop: pane.scrollTop,
@@ -43,7 +51,7 @@ test('wide lesson keeps its section header fixed while only the lesson content s
     expect(metrics.contentScrollTop).toBeGreaterThan(0);
     expect(metrics.paneScrollTop).toBe(0);
     expect(metrics.windowScrollY).toBe(0);
-    expect(metrics.headerTopAfter).toBeCloseTo(metrics.headerTopBefore, 0);
+    expect(metrics.headerTopAfter).toBeCloseTo(headerTopBefore, 0);
     await expect(header).toBeVisible();
   }
 });
