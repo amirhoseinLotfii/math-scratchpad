@@ -42,7 +42,7 @@ test('QA-WORKSPACE-01: menu, sync overlay, new exercise and math picker preserve
     const field = setup.getByRole('textbox', { name: 'Problem' });
     await expect(field).toBeFocused();
     await evidence(page, testInfo, `workspace-${size}-new-exercise-empty`);
-    await field.fill(String.raw`\\frac{3}{4}+\\frac{1}{8}`);
+    await field.fill(String.raw`\frac{3}{4}+\frac{1}{8}`);
     await evidence(page, testInfo, `workspace-${size}-new-exercise-filled`);
     await setup.getByRole('button', { name: 'Start' }).click();
     await expect(page.locator('math-div[aria-label="Original question expression"]')).toBeVisible();
