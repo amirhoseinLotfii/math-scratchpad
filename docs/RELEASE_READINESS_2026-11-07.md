@@ -27,14 +27,14 @@ Previously the **Session complete** dialog only stated that work was saved, even
 - `skippedQuestions` (when nonzero),
 - `not answered (unverified)` for remaining questions.
 
-No fake grading outcome or automatic correctness claim is produced. **Finish & Analyze**, **Copy full session JSON**, **Check · Copy for Review**, and **Close** keep their existing behavior. Example: a 20-question batch with no solved answers explicitly reports **0 of 20 questions answered · 20 not answered (unverified)**.
+An additional mixed-status check identified a real reporting ambiguity: saved drafts were previously counted as untouched. The summary now distinguishes drafts from truly unstarted questions. Example: **0 answered · 1 draft · 1 skipped · 18 not answered (unverified)** in a 20-question batch. No fake grading outcome or automatic correctness claim is produced. **Finish & Analyze**, **Copy full session JSON**, **Check · Copy for Review**, and **Close** keep their existing behavior. Example: a 20-question batch with no solved answers explicitly reports **0 of 20 questions answered · 20 not answered (unverified)**.
 
 ## Regression validation
 
 - TypeScript app and test declarations: **PASS**.
 - Existing suites: **286 unit**, **43 UX**, **34 accessibility**, **169 integration**, **42 responsive/wide**, **5 architecture** = **579 passing checks**.
 - Production build: **PASS**.
-- Focused Chromium E2E: **14/14 PASS**, including simulated Google sign-in and offline/online reconnection (`server-first.spec.ts`), sync modal backup button, New Problem focus, and both newly added scenarios.
+- Focused Chromium E2E: **15/15 PASS**, including simulated Google sign-in and offline/online reconnection (`server-first.spec.ts`), sync modal backup button, New Problem focus, and both newly added scenarios.
 - Real browser checked at 320/390/1440 px with Google iframe visible in the tested state and no site-wide horizontal overflow.
 - Note: the full GitHub Actions gate is still required and must pass on the PR. Deployment must be checked separately and a production smoke test repeated after publishing.
 

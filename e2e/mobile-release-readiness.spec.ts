@@ -38,3 +38,31 @@ test('practice completion tells learner how many answers remain unverified', { t
   await done.getByRole('button', { name: 'Finish & Analyze' }).click();
   await expect(page.getByRole('region', { name: 'Diagnostic report' })).toContainText('unverified');
 });
+
+
+test('session summary counts saved drafts separately from untouched questions', { tag: '@only-mobile-390' }, async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).click();
+  await page.getByRole('button', { name: 'Start 20 Questions' }).click();
+  await page.getByRole('button', { name: 'Skip for now' }).click();
+  const showKeyboard = page.getByRole('button', { name: 'Show Keyboard' });
+  if (await showKeyboard.count()) await showKeyboard.click();
+  await page.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '7', exact: true }).click();
+  await page.getByRole('button', { name: 'Mark Step 1 as final' }).click();
+  await expect(page.getByRole('combobox', { name: 'Select question' }).locator('option').first()).toContainText('Draft');
+  await page.getByRole('combobox', { name: 'Select question' }).selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Skip question' }).click();
+  await page.getByRole('combobox', { name: 'Select question' }).selectOption({ index: 19 });
+  await page.getByRole('button', { name: 'Finish session' }).click();
+  const confidence = page.getByRole('dialog', { name: 'Answer confidence' });
+  await confidence.getByRole('radio', { name: 'Low' }).click();
+  await confidence.getByRole('button', { name: 'Continue' }).click();
+  const summary = page.getByRole('dialog', { name: 'Session complete' }).getByRole('status');
+  await expect(summary).toContainText('0 of 20 questions answered');
+  await expect(summary).toContainText('1 draft (saved, not submitted)');
+  await expect(summary).toContainText('1 skipped');
+  await expect(summary).toContainText('18 not answered (unverified)');
+});
