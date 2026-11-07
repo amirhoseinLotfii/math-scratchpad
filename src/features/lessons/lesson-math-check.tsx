@@ -72,7 +72,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       if (!active) return;
       active.focus();
       // Unlike the page, the wide lesson's work pane has its own scroll container.
-      active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      active.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
       const rect = active.getBoundingClientRect();
       const source = root.current?.closest('.lesson-check')?.querySelector<HTMLElement>('.lesson-check-source');
       const sourceRect = source?.getBoundingClientRect();
