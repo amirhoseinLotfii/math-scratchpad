@@ -221,8 +221,11 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   useEffect(() => {
     const target = (summary ? summaryHeadingRef : headingRef).current;
     target?.focus({ preventScroll: true });
-    target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
-  }, [sectionIndex, summary]);
+    // In split mode the section heading lives in the pinned pane header.
+    // Reset only the lesson body when the learner changes sections; never move the outer document.
+    if (split && !summary) document.querySelector<HTMLElement>('.lesson-split-lesson-scroll')?.scrollTo?.({ top: 0, behavior: 'auto' });
+    else target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+  }, [sectionIndex, summary, split]);
 
   useEffect(() => {
     if (lesson.concepts.length !== 0 || autoStartedLesson.current === lesson.id) return;
@@ -678,9 +681,16 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       </div>}
       <div ref={splitRef} className={`lesson-split ${split ? 'lesson-split-wide' : 'lesson-split-tabs'}`} data-pane-mode={paneMode} style={split ? { ['--lesson-split' as string]: `${splitRatio}%` } : undefined}>
       {(split || paneTab === 'lesson') && <div className="lesson-split-lesson" id="lesson-panel-lesson" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-lesson' })}>
+      {split && <div className="lesson-split-lesson-header">
+        <section className="lesson-concept lesson-pane-fixed-heading" aria-labelledby="lesson-concept-title">
+          <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
+          <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
+        </section>
+      </div>}
+      <div className={split ? 'lesson-split-lesson-scroll' : 'lesson-split-lesson-flow'} {...(split ? { role: 'region', 'aria-label': fa ? 'محتوای درس‌نامه' : 'Lesson content', tabIndex: 0 } : {})}>
       <section className="lesson-concept" aria-labelledby="lesson-concept-title">
-        <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
-        <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
+        {!split && <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>}
+        {!split && <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>}
         <LessonSectionContent section={currentSection} revealedSteps={progress.revealedSteps} onReveal={revealStep} uiLang={uiLang} hideSingleConceptHeading={!currentSection.title && currentSection.concepts.length === 1} renderExampleWork={renderExampleWork} />
       </section>
       <section className="lesson-section-practice" aria-label={fa ? 'تمرین‌های همین بخش' : 'Practice for this section'}>
@@ -710,6 +720,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
         ? `برای فعال شدن «بخش بعدی»، ${localizeLessonDigits(checks.filter(question => !isCheckComplete(question.id)).length, uiLang)} تمرین کوتاه باقی‌مانده را پاسخ بده یا رد کن.`
         : `Answer or skip the ${checks.filter(question => !isCheckComplete(question.id)).length} remaining quick check(s) to unlock the next section.`}</p>}
       {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>{fa ? 'رفتن به تمرین پایانی کل درس' : 'Skip to practice'}</Button>}
+      </div>
       </div>}
       {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
       {(split || paneTab === 'work') && <div className="lesson-split-work" id="lesson-panel-work" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-work' })}>

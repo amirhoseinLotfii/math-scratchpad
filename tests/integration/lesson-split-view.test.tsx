@@ -38,6 +38,14 @@ describe('lesson split view', () => {
     expect(localStorage.getItem('math-scratchpad:lesson-split-ratio')).toBe('70');
     const pane = screen.getByRole('complementary', { name: 'Your work' });
     expect(pane).toBeInTheDocument();
+    const lessonPane = document.getElementById('lesson-panel-lesson')!;
+    const fixedHeader = lessonPane.querySelector('.lesson-split-lesson-header');
+    const lessonScroll = screen.getByRole('region', { name: 'Lesson content' });
+    expect(fixedHeader?.parentElement).toBe(lessonPane);
+    expect(lessonScroll.parentElement).toBe(lessonPane);
+    expect(fixedHeader?.querySelector('#lesson-concept-title')).toBeInTheDocument();
+    expect(lessonScroll).toHaveAttribute('tabindex', '0');
+    expect(lessonScroll.querySelector('.lesson-section-practice')).toBeInTheDocument();
     const select = screen.getByLabelText('What are you working on?') as HTMLSelectElement;
     expect([...select.options].map(option => option.text)[0]).toContain('Worked example');
     // the step editor is composed into the pane for the selected item
