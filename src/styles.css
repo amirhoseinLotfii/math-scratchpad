@@ -776,16 +776,16 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-math-editor:focus-visible { outline: 3px solid var(--ring); outline-offset: 3px; border-radius: 6px; }
 #math-scratchpad-redux .lesson-answer-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #math-scratchpad-redux .lesson-answer-heading h4 { margin: 0; font-size: 14px; }
-#math-scratchpad-redux .lesson-keyboard-toggle { min-height: 40px; padding: 6px 9px; font-size: 13px; }
+#math-scratchpad-redux .lesson-keyboard-toggle { min-height: 48px; padding: 6px 9px; font-size: 13px; }
 #math-scratchpad-redux .lesson-math-editor .lesson-answer-steps { display: grid; gap: 8px; min-width: 0; }
 #math-scratchpad-redux .lesson-answer-step { min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); scroll-margin-block: 10px; }
 #math-scratchpad-redux .lesson-answer-step.current-step { border-color: var(--primary); }
 #math-scratchpad-redux .lesson-answer-step > header { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
-#math-scratchpad-redux .lesson-step-title { min-height: 40px; padding: 4px; }
+#math-scratchpad-redux .lesson-step-title { min-height: 48px; padding: 4px; }
 #math-scratchpad-redux .lesson-answer-step .step-state { color: var(--muted-foreground); font-size: 12px; }
 #math-scratchpad-redux .lesson-answer-step .step-state.needs-review { color: var(--warning); }
 #math-scratchpad-redux .lesson-answer-step .step-state.edited { color: var(--success); }
-#math-scratchpad-redux .lesson-answer-step .final-marker { min-height: 40px; padding: 5px 8px; font-size: 12px; }
+#math-scratchpad-redux .lesson-answer-step .final-marker { min-height: 48px; padding: 5px 8px; font-size: 12px; }
 #math-scratchpad-redux .lesson-answer-step .expression { min-height: 56px; padding-block: 3px; overflow-x: auto; }
 #math-scratchpad-redux .lesson-answer-step math-field.mathlive-step-input { min-height: 48px; font-size: clamp(24px, 6vw, 30px); }
 #math-scratchpad-redux .lesson-answer-step .selection { color: var(--muted-foreground); }
@@ -798,11 +798,12 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-answer-step .math-gap:hover:not(:disabled) { border-color: transparent !important; background: transparent !important; }
 #math-scratchpad-redux .lesson-answer-step .math-gap.at-gap { width: 36px; min-width: 36px; border-color: var(--primary) !important; background: #343c37 !important; color: var(--primary); }
 #math-scratchpad-redux .lesson-answer-step .top-sequence > .math-chunk > .math-token.operator { width: 28px; min-width: 28px; margin-inline: 3px; padding-inline: 0; }
-#math-scratchpad-redux .lesson-math-editor .add-step { width: 100%; min-height: 44px; margin-block: 7px; }
+#math-scratchpad-redux .lesson-math-editor .add-step { width: 100%; min-height: 48px; margin-block: 7px; }
+#math-scratchpad-redux .lesson-active-step-keyboard { min-width: 0; scroll-margin-block: 8px; }
 #math-scratchpad-redux .lesson-math-editor .math-tools-row { justify-content: flex-start; }
 #math-scratchpad-redux .lesson-math-editor .math-keyboard { position: static; }
-#math-scratchpad-redux .lesson-math-editor .key-grid { grid-auto-rows: minmax(46px, auto); }
-#math-scratchpad-redux .lesson-math-editor .key-grid button { min-height: 46px; }
+#math-scratchpad-redux .lesson-math-editor .key-grid { grid-auto-rows: minmax(48px, auto); }
+#math-scratchpad-redux .lesson-math-editor .key-grid button { min-height: 48px; }
 #math-scratchpad-redux .lesson-concept-navigation { display: flex; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 #math-scratchpad-redux .lesson-concept-navigation > button { min-width: 0; min-height: 48px; }
 #math-scratchpad-redux .lesson-primary-action { border-color: var(--primary) !important; background: var(--primary) !important; color: var(--primary-foreground) !important; font-weight: 650; }
