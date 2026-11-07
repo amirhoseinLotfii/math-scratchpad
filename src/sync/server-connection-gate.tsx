@@ -122,28 +122,26 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
         {children}
       </div>
       {state.kind !== 'online' && (
-        <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" dir="rtl" style={{
-          // Keep auth controls in normal flow, after the workspace. A fixed
-          // 10,000-layer Google iframe obscured menu items and session actions.
-          // The editor remains stationary while the connection status changes.
+        <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl" style={{
+          // The authentication banner must stay in normal document flow:
+          // fixed overlays previously intercepted math controls and dialogs.
           position: 'relative', margin: '12px 12px 18px auto',
-          width: 'min(440px, calc(100% - 24px))', padding: 16, borderRadius: 14,
+          width: 'min(440px, calc(100% - 24px))', padding: 12, borderRadius: 14,
           background: 'rgba(32, 35, 38, .97)', color: '#F0F3F1',
           border: '1px solid #536259', boxShadow: '0 8px 30px rgba(0,0,0,.35)',
-          fontFamily: 'system-ui, sans-serif', lineHeight: 1.8, textAlign: 'right',
+          fontFamily: 'system-ui, sans-serif', lineHeight: 1.5, textAlign: 'right',
           pointerEvents: 'auto',
         }}>
-          <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
-          <p style={{ margin: '4px 0 10px', fontSize: 14 }}>{state.message}</p>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#CFD8D2' }}>
-            کار و پیشرفتت در حافظهٔ همین مرورگر ذخیره می‌شود و پس از برقراری اتصال دوباره همگام خواهد شد.
-          </p>
-          <button type="button" onClick={() => { void check(); }} style={{
-            background: '#86B99B', color: '#101A14', border: 0, borderRadius: 10,
-            padding: '8px 14px', fontWeight: 600, fontSize: 15, cursor: 'pointer',
-            pointerEvents: 'auto',
-          }}>بررسی دوباره اتصال</button>
-          <div ref={retryButton} style={{ marginTop: 12, display: 'flex', justifyContent: 'center', direction: 'ltr', pointerEvents: 'auto' }} />
+          <div className="server-connection-gate-header">
+            <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
+            <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }} style={{
+              background: '#86B99B', color: '#101A14', border: 0, borderRadius: 10,
+              minHeight: 44, padding: '8px 10px', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}>بررسی اتصال</button>
+          </div>
+          <p className="server-connection-gate-message" style={{ margin: '8px 0 0', fontSize: 13 }}>{state.message}</p>
+          <div ref={retryButton} className="server-connection-gate-google" style={{ marginTop: 8, display: 'flex', justifyContent: 'center', direction: 'ltr', pointerEvents: 'auto' }} />
         </aside>
       )}
     </>
