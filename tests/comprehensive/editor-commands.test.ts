@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../../src/store';
 import { latex } from '../../src/model';
 import { validateSession, serialize } from '../../src/persistence';
+import { questionStatus } from '../../src/features/workspace/model/workspace-layout';
 
 const setup = () => { const s = makeStore(initialState()); const doc = () => s.getState().doc; const tex = () => latex(stepOf(doc()).expression); return { s, doc, tex, d: s.dispatch }; };
 const clear = (d: ReturnType<typeof setup>['d']) => d(actions.command({ type: 'clear' }));
@@ -73,5 +74,72 @@ describe('session metadata', () => {
   it('addQuestionTime accumulates and ignores unknown exercises', () => {
     const { d, doc } = setup(); const id = doc().exerciseId; d(actions.addQuestionTime({ exerciseId: id, milliseconds: 1500 })); d(actions.addQuestionTime({ exerciseId: id, milliseconds: 500 })); d(actions.addQuestionTime({ exerciseId: 'nope', milliseconds: 99 }));
     expect(exerciseOf(doc()).elapsedMs).toBe(2000);
+  });
+});
+
+
+describe('submitted answer invalidation', () => {
+  it('math edits demote a submitted answer to a saved draft and require new confidence', () => {
+    const { d, doc } = setup();
+    const ex = () => exerciseOf(doc());
+    const stepId = ex().steps[0].id;
+    d(actions.command({ type: 'digit', value: '7' }));
+    d(actions.setConfidence('medium'));
+    expect(questionStatus(ex())).toBe('Answered');
+    expect(ex().submittedAt).toBeTruthy();
+
+    d(actions.mathLiveInput({ stepId, value: '7139' }));
+    expect(questionStatus(ex())).toBe('Draft');
+    expect(ex().confidence).toBeUndefined();
+    expect(ex().submittedAt).toBeUndefined();
+
+    d(actions.setConfidence('high'));
+    expect(questionStatus(ex())).toBe('Answered');
+    d(actions.mathInput({ stepId, value: '82' }));
+    expect(questionStatus(ex())).toBe('Draft');
+    expect(ex().confidence).toBeUndefined();
+  });
+
+  it('text and choice answer edits invalidate confidence, but identical values do not', () => {
+    for (const answerType of ['text', 'choice'] as const) {
+      const { d, doc } = setup();
+      const ex = () => exerciseOf(doc());
+      const initialAnswer = answerType === 'text' ? 'first' : 'A';
+      d(actions.setAnswerText({ answerType, value: initialAnswer, choices: answerType === 'choice' ? ['A', 'B'] : undefined }));
+      d(actions.setConfidence('low'));
+      expect(questionStatus(ex())).toBe('Answered');
+
+      d(actions.setAnswerText({ answerType, value: initialAnswer, choices: answerType === 'choice' ? ['A', 'B'] : undefined }));
+      expect(questionStatus(ex())).toBe('Answered');
+
+      d(actions.setAnswerText({ answerType, value: answerType === 'text' ? 'corrected' : 'B', choices: answerType === 'choice' ? ['A', 'B'] : undefined }));
+      expect(questionStatus(ex())).toBe('Draft');
+      expect(ex().submittedAt).toBeUndefined();
+      expect(ex().confidence).toBeUndefined();
+    }
+  });
+
+  it('changing choices invalidates a previously submitted choice answer', () => {
+    const { d, doc } = setup();
+    const ex = () => exerciseOf(doc());
+    d(actions.setAnswerText({ answerType: 'choice', value: 'A', choices: ['A', 'B'] }));
+    d(actions.setConfidence('medium'));
+    d(actions.setAnswerText({ answerType: 'choice', value: 'A', choices: ['A revised', 'B'] }));
+    expect(questionStatus(ex())).toBe('Draft');
+    expect(ex().confidence).toBeUndefined();
+  });
+
+  it('final-answer metadata and a new blank step do not invalidate unchanged submitted content', () => {
+    const { d, doc } = setup();
+    const ex = () => exerciseOf(doc());
+    d(actions.command({ type: 'digit', value: '7' }));
+    d(actions.setConfidence('high'));
+    expect(questionStatus(ex())).toBe('Answered');
+    d(actions.command({ type: 'final' }));
+    expect(questionStatus(ex())).toBe('Answered');
+    expect(ex().confidence).toBe('high');
+    d(actions.command({ type: 'newStep' }));
+    expect(questionStatus(ex())).toBe('Answered');
+    expect(ex().confidence).toBe('high');
   });
 });

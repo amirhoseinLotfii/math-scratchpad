@@ -51,7 +51,19 @@ function put(doc: Document, node: MathNode) {
   }
   const { parent, index, replace } = insertion(doc); parent.children.splice(index, replace ? 1 : 0, node); focusFirst(doc, node);
 }
-function invalidate(doc: Document, from: number) { exerciseOf(doc).steps.forEach((s, i) => { if (i >= from) s.status = i === from ? 'unchecked' : 'needs-review'; }); }
+function invalidateSubmission(exercise: Exercise) {
+  // Confidence confirms the content that existed when the learner submitted.
+  // Any meaningful edit requires an explicit confirmation of the new answer.
+  delete exercise.confidence;
+  delete exercise.submittedAt;
+}
+function invalidate(doc: Document, from: number) {
+  const exercise = exerciseOf(doc);
+  invalidateSubmission(exercise);
+  exercise.steps.forEach((step, index) => {
+    if (index >= from) step.status = index === from ? 'unchecked' : 'needs-review';
+  });
+}
 export type Command =
   | { type: 'digit' | 'operator' | 'identifier' | 'insert'; value: string }
   | { type: 'insertBlankNumber' | 'deleteForward' | 'backspace' | 'clear' | 'newStep' | 'deleteStep' | 'final' | 'duplicate' | 'cut' | 'paste' | 'deleteStructure' }
@@ -306,11 +318,17 @@ const handlers = {
     },
     setAnswerText(state: ScratchState, action: PayloadAction<{ value: string; answerType?: 'text' | 'choice'; choices?: string[] }>) {
       const ex = exerciseOf(state.doc);
+      const previousType = ex.answerType;
+      const previousAnswer = ex.answerText ?? '';
+      const previousChoices = JSON.stringify(ex.choices ?? []);
       if (action.payload.answerType === 'text' || action.payload.answerType === 'choice') ex.answerType = action.payload.answerType;
       if (ex.answerType === 'choice' && action.payload.choices && action.payload.choices.length >= 2 && action.payload.choices.length <= 12 && action.payload.choices.every(choice => typeof choice === 'string' && choice.trim() && choice.length <= 500)) ex.choices = [...action.payload.choices];
       const answer = action.payload.value.slice(0, 4000);
       if (answer) { ex.answerText = answer; if (!ex.startedAt) ex.startedAt = isoLocal(); }
       else delete ex.answerText;
+      if (previousType !== ex.answerType
+        || previousAnswer !== (ex.answerText ?? '')
+        || previousChoices !== JSON.stringify(ex.choices ?? [])) invalidateSubmission(ex);
     },
     setHint(state: ScratchState, action: PayloadAction<{ used: boolean; note?: string }>) {
       const ex = exerciseOf(state.doc); ex.hintUsed = action.payload.used;
