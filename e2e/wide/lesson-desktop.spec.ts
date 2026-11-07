@@ -23,7 +23,7 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
   await page.getByRole('dialog', { name: 'درس‌ها' }).getByRole('button', { name: /^توابع و تابع‌نما/ }).click();
-  const interactive = page.getByRole('region', { name: 'درس‌نامه' });
+  const interactive = page.getByRole('region', { name: 'درس‌نامه', exact: true });
   await expect(interactive).toHaveAttribute('lang', 'fa');
   await expect(interactive).toHaveAttribute('dir', 'rtl');
   await expect(interactive.getByRole('heading', { name: 'تعریف تابع' })).toBeVisible();
