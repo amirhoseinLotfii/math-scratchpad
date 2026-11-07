@@ -1,0 +1,57 @@
+name: PR 71 interaction evidence
+
+on:
+  push:
+    branches:
+      - qa/lesson-keyboard-ux-audit-20261107
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr71-ux-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    name: Targeted mobile and desktop browser audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Browser preparation
+        run: |
+          npm run test:browser:prepare
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Focus, keyboard, sync overlay and responsive transition audit
+        run: >
+          npx playwright test
+          e2e/interaction-state-audit.spec.ts
+          e2e/lessons/keyboard-adjacent-audit.spec.ts
+          e2e/lessons/keyboard-placement-regression.spec.ts
+          e2e/wide/keyboard-adjacent-audit.spec.ts
+          e2e/accessibility/insert-dialog-open-focus.spec.ts
+          e2e/ui-audit-regressions.spec.ts
+          --project=mobile-390
+          --project=laptop-1440
+          --workers=1
+          --retries=0
+        env:
+          CI: 'true'
+      - name: Publish screenshots and traces even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr71-mobile-wide-screenshot-evidence
+          path: |
+            test-results/browser-artifacts/
+            test-results/playwright.json
+          if-no-files-found: warn
+          retention-days: 7
