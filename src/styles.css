@@ -1194,3 +1194,20 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
 #math-scratchpad-redux .lesson-example-work { margin: 8px 0 14px; display: grid; gap: 8px; }
 #math-scratchpad-redux .lesson-example-work > button { justify-self: start; min-height: 44px; }
 #math-scratchpad-redux .lesson-example-work .lesson-math-editor { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+
+/* Compact, nonmodal connection status: preserve full Google sign-in and retry
+   while keeping the banner below the workspace and out of menu hit targets. */
+.server-connection-gate .server-connection-gate-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.server-connection-gate .server-connection-gate-header strong {
+  font-size: 14px;
+}
+.server-connection-gate .server-connection-gate-google {
+  max-width: 100%;
+  min-width: 0;
+}
