@@ -654,7 +654,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
  }
- function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setInsertOpen(true); }
+ function openInsert(source?: HTMLElement) { insertInvoker.current = source ?? document.activeElement as HTMLElement; restoreInsert.current = true; setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function restoreInsertFocus() {
   const invoker = insertInvoker.current;

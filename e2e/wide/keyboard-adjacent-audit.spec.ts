@@ -2,7 +2,7 @@ import { expect, test, type Page } from '../support/test';
 
 async function capture(page: Page, testInfo: import('@playwright/test').TestInfo, name: string) {
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path, fullPage: false, animations: 'disabled' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 

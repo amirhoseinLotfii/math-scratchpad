@@ -3,7 +3,7 @@ import { startBatch } from './support/mobile-journey';
 
 async function evidence(page: Page, testInfo: import('@playwright/test').TestInfo, label: string) {
   const path = testInfo.outputPath(`${label}.png`);
-  await page.screenshot({ path, animations: 'disabled', fullPage: true });
+  await page.screenshot({ path, animations: 'disabled', fullPage: false });
   await testInfo.attach(label, { path, contentType: 'image/png' });
 }
 

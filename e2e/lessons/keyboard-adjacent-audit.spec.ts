@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '../support/test';
 /** Evidence is from synthetic lesson fixtures only; never capture actual learner answers. */
 async function capture(page: Page, testInfo: import('@playwright/test').TestInfo, id: string) {
   const path = testInfo.outputPath(`${id}.png`);
-  await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path, fullPage: false, animations: 'disabled' });
   await testInfo.attach(id, { path, contentType: 'image/png' });
 }
 
