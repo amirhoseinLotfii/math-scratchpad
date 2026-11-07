@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
-import { ascii, example, leaves, stepIsBlank, symbolList, stepLatex } from './model';
+import { ascii, example, leaves, stepIsBlank, stepLatex } from './model';
 import { parse } from './parser';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
@@ -26,6 +26,8 @@ import { QuestionNavigator } from './features/workspace/components/question-navi
 import { MathTools } from './features/workspace/components/math-tools';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from './features/math-editor/mathlive-adapter';
 import { MathLiveStepInput } from './features/math-editor/components/mathlive-step-input';
+import { MathInsertDialog } from './features/math-editor/components/math-insert-dialog';
+export { INSERT_VISIBLE } from './features/math-editor/components/math-insert-dialog';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { ShortcutHelp } from './features/workspace/components/shortcut-help';
 import { SessionScales } from './features/session/components/session-panel';
@@ -52,27 +54,18 @@ import { getDefaultSyncRuntime } from './sync/runtime';
 import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
 import { queueChapterSnapshot } from './sync/chapter-snapshot';
 
-const INSERT_OPTIONS = [
- { name: 'Fraction', kind: 'fraction' }, { name: 'Number', kind: 'number' },
- { name: '√ Root', kind: 'root' }, { name: 'Power', kind: 'power' },
- { name: 'Parentheses', kind: 'group' }, { name: '+', kind: '+' },
- { name: '−', kind: '−' }, { name: '×', kind: '×' }, { name: '÷', kind: '÷' }, { name: '=', kind: '=' },
-];
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
 type Decision = 'next' | 'complete' | 'copy';
 function freshLessonProgress(lessonId: string): LessonProgress {
  return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
 }
-/** Number of insert tools shown before “Show more”. */
-export const INSERT_VISIBLE = 8;
 /** `initialBank` is used by isolated browser previews/tests; normal app startup loads through DriveBankPanel. */
 export function App({ initialBank }: { initialBank?: { bank: DriveBank; version: string } } = {}) {
  const layout = useWorkspaceLayout(), wide = layout !== 'phone';
  const syncRuntime = getDefaultSyncRuntime();
  const syncStatus = useSyncExternalStore(syncRuntime?.subscribe ?? NO_SYNC_SUBSCRIBE, syncRuntime?.getSnapshot ?? (() => EMPTY_SYNC_STATUS), () => EMPTY_SYNC_STATUS);
- const insertOptions = useMemo(() => wide ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({name:item.title,kind:item.key}))] : INSERT_OPTIONS, [wide]);
- const [shortcutsOpen, setShortcutsOpen] = useState(false), [insertExpanded, setInsertExpanded] = useState(false);
+ const [shortcutsOpen, setShortcutsOpen] = useState(false);
  const [guidanceOpen, setGuidanceOpen] = useState(false);
  const [wellbeingDismissed, setWellbeingDismissed] = useState<string | null>(null);
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
@@ -103,13 +96,12 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [practiceLessonId, setPracticeLessonId] = useState<string | null>(null), [practiceStartError, setPracticeStartError] = useState('');
  const lessonButton = useRef<HTMLButtonElement>(null);
  const [confirmExam, setConfirmExam] = useState(false), [confirmFractions, setConfirmFractions] = useState(false);
- const [insertOpen, setInsertOpen] = useState(false), [choice, setChoice] = useState(0);
+ const [insertOpen, setInsertOpen] = useState(false);
  const [decision, setDecision] = useState<Decision | null>(null), [complete, setComplete] = useState(false);
  const [manual, setManual] = useState(''), [busy, setBusy] = useState(false), [showResults, setShowResults] = useState(false);
- const visibleInsert = insertExpanded ? insertOptions : insertOptions.slice(0, INSERT_VISIBLE);
  const editorRoot = useRef<HTMLElement>(null), manualRef = useRef<HTMLTextAreaElement>(null);
  const invoker = useRef<HTMLElement | null>(null), insertInvoker = useRef<HTMLElement | null>(null), restoreInsert = useRef(true);
- const dialogRefs = useRef<(HTMLButtonElement | null)[]>([]), decisionRef = useRef<Decision | null>(null), copyBusy = useRef(false);
+ const decisionRef = useRef<Decision | null>(null), copyBusy = useRef(false);
  const problemForm = useForm({ resolver: zodResolver(problemSchema), defaultValues: { source: '', mode: 'math' as 'math' | 'text' } });
  const jsonForm = useForm({ resolver: zodResolver(jsonInputSchema), defaultValues: { json: '' } });
  const mode = problemForm.watch('mode');
@@ -244,8 +236,6 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   };
  }, [menu, modalOpen]);
  useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); setGuidanceOpen(false); }, [ex.id]);
- useEffect(() => { setChoice(0); }, [wide]);
- useEffect(() => { if (insertOpen) { const button = dialogRefs.current[choice]; button?.focus({ preventScroll: true }); button?.scrollIntoView?.({block:'nearest'}); } }, [insertOpen, choice]);
  function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
  function rememberMenuKeyboardActivation(event: KeyboardEvent<HTMLButtonElement>) {
   if (event.key === 'Enter' || event.key === ' ') menuKeyboardActivation.current = true;
@@ -664,7 +654,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
  }
- function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setChoice(0); setInsertExpanded(false); setInsertOpen(true); }
+ function openInsert() { insertInvoker.current = document.activeElement as HTMLElement; restoreInsert.current = true; setInsertOpen(true); }
  function closeInsert() { restoreInsert.current = true; setInsertOpen(false); }
  function restoreInsertFocus() {
   const invoker = insertInvoker.current;
@@ -848,16 +838,6 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    focusEditor();
   }
  }
- function dialogKeys(event: KeyboardEvent<HTMLDivElement>) {
-  event.stopPropagation(); const size = visibleInsert.length;
-  if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault(); const delta = ({ArrowRight:1,ArrowLeft:-1,ArrowDown:3,ArrowUp:-3} as Record<string,number>)[event.key]; setChoice(c => (c + delta + size) % size); }
-  else if ((event.key === 'Home' || event.key === 'End') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); setChoice(event.key === 'Home' ? 0 : size - 1); }
-  else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) { event.preventDefault(); insert((event.target as HTMLElement).getAttribute('data-insert-kind')!); }
-  else if (event.key === 'Tab') {
-   event.preventDefault(); const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button')); const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-   buttons[(at + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length]?.focus();
-  }
- }
  const examGrades = useMemo(() => !showResults || !exam ? [] : questionBank.map(question => {
   const entry = state.doc.exercises.find(x => x.diagnosticId === question.id); return { question, result: !entry || entry.skipped ? null : gradeDiagnostic(entry, question) };
  }), [showResults, exam, questionBank, state.doc]);
@@ -1009,9 +989,13 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
   <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
   <CompletionDialog totalQuestions={state.doc.exercises.length} answeredQuestions={answeredCount} skippedQuestions={skippedCount} draftQuestions={state.doc.exercises.filter(question => questionStatus(question) === "Draft").length} open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
-  <Dialog open={insertOpen} onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } }}><DialogContent className="insert-dialog" onOpenAutoFocus={event => { event.preventDefault(); const first = dialogRefs.current[0]; if (first?.isConnected) first.focus({ preventScroll: true }); else requestAnimationFrame(() => dialogRefs.current[0]?.focus({ preventScroll: true })); }} onKeyDown={dialogKeys} onCloseAutoFocus={event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); }}>
-   <DialogTitle>Insert Math Element</DialogTitle><DialogDescription>/ opens · Arrows choose · Enter inserts · Tab moves focus · Escape closes</DialogDescription><div className="insert-options" id="insert-options">{visibleInsert.map((option, i) => <Button key={option.kind} data-insert-kind={option.kind} onFocus={() => setChoice(i)} ref={el => { dialogRefs.current[i] = el; }} aria-pressed={choice === i} onClick={() => insert(option.kind)}>{option.name}</Button>)}</div>{insertOptions.length > INSERT_VISIBLE && <Button className="insert-more" aria-expanded={insertExpanded} aria-controls="insert-options" onClick={() => { setInsertExpanded(!insertExpanded); if (insertExpanded && choice >= INSERT_VISIBLE) setChoice(0); }}>{insertExpanded ? 'Show fewer' : `Show more (${insertOptions.length - INSERT_VISIBLE})`}</Button>}<Button onClick={closeInsert}>Cancel · Esc</Button>
-  </DialogContent></Dialog>
+  <MathInsertDialog
+   open={insertOpen}
+   onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } else setInsertOpen(true); }}
+   wide={wide}
+   onInsert={insert}
+   onCloseAutoFocus={event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); }}
+  />
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
   {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" style={{ position: 'fixed', inset: 0, zIndex: 20_000, display: 'grid', placeItems: 'center', padding: 24, background: 'rgba(12, 15, 13, .86)', color: '#F0F3F1', textAlign: 'center', pointerEvents: 'all' }}>
    <div><strong style={{ fontSize: 18 }}>در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>

@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useRef, type KeyboardEvent } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { Provider } from '../../app/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
+import { MathInsertDialog } from '../math-editor/components/math-insert-dialog';
 import { Keyboard } from '../../Keyboard';
 import { actions, exerciseOf, initialState, makeStore } from '../../store';
 import { blankStep, leaves, stepIsBlank, stepLatex, uid, type Step } from '../../model';
@@ -45,6 +46,8 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
   const layout = useWorkspaceLayout(), wide = layout !== 'phone';
   const fa = uiLang === 'fa';
   const root = useRef<HTMLElement>(null);
+  const insertInvoker = useRef<HTMLElement | null>(null);
+  const [insertOpen, setInsertOpen] = useState(false);
   const keyboardOwner = useContext(LessonKeyboardContext);
   const state = useAppSelector(s => s);
   const dispatch = useAppDispatch();
@@ -88,6 +91,38 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
     }));
   }
   function insert(kind: string) { dispatchInsert(store, kind); focusEditor(); }
+  function openInsertDialog(target: HTMLElement) {
+    const field = target.closest('math-field');
+    insertInvoker.current = field instanceof HTMLElement ? field : document.activeElement as HTMLElement | null;
+    setInsertOpen(true);
+  }
+  function insertFromDialog(kind: string) {
+    dispatchInsert(store, kind);
+    dispatch(actions.recentSymbol(kind));
+    dispatch(actions.closeSymbols());
+  }
+  function restoreInsertFocus(event: Event) {
+    event.preventDefault();
+    const invoker = insertInvoker.current;
+    const mathfieldInvoker = invoker?.matches('math-field') ? invoker as HTMLElement & { hasFocus?: () => boolean } : null;
+    const stepId = mathfieldInvoker?.dataset.stepId;
+    const restore = (attempt = 0) => {
+      const currentMathfield = (stepId ? mathfieldForStep(stepId) : null) as (HTMLElement & { hasFocus?: () => boolean }) | null;
+      const target = currentMathfield?.isConnected ? currentMathfield : invoker;
+      if (target?.isConnected) {
+        const mathFocus = target.matches('math-field') ? (target as HTMLElement & { hasFocus?: () => boolean }).hasFocus?.() : undefined;
+        if (document.activeElement !== target || mathFocus === false) target.focus({ preventScroll: true });
+        target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        if (attempt < 8 && (document.activeElement !== target || (target.matches('math-field') && (target as HTMLElement & { hasFocus?: () => boolean }).hasFocus?.() === false))) {
+          requestAnimationFrame(() => restore(attempt + 1));
+        }
+        return;
+      }
+      if (attempt < 8) requestAnimationFrame(() => restore(attempt + 1));
+      else focusEditor();
+    };
+    requestAnimationFrame(() => requestAnimationFrame(() => restore()));
+  }
   function handleKey(event: KeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     const target = event.target as HTMLElement, key = event.key;
@@ -102,7 +137,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       }
       if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); }
       else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); dispatch(actions.command({ type: 'newStep' })); focusEditor(); }
-      else if (key === '/') { event.preventDefault(); dispatch(actions.symbols()); }
+      else if (key === '/') { event.preventDefault(); openInsertDialog(target); }
       return;
     }
     if (target !== root.current && !target.closest('.expression')) return;
@@ -119,7 +154,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
     if (event.altKey) return;
     if (/^[0-9.]$/.test(key)) { event.preventDefault(); insert(key); }
     else if (/^[a-zA-Z]$/.test(key)) { event.preventDefault(); insert(key); }
-    else if (key === '/') { event.preventDefault(); dispatch(actions.symbols()); }
+    else if (key === '/') { event.preventDefault(); openInsertDialog(target); }
     else if (['+','-','−','*','×','÷','='].includes(key)) { event.preventDefault(); insert(({ '-':'−','*':'×' } as Record<string, string>)[key] ?? key); }
     else if (key === '(') { event.preventDefault(); insert('group'); }
     else if (key === 'ArrowLeft' || key === 'ArrowRight') { event.preventDefault(); if (!moveMathfield(state.doc.cursor.stepId, key === 'ArrowLeft' ? -1 : 1)) dispatch(actions.horizontal(key === 'ArrowLeft' ? -1 : 1)); }
@@ -155,6 +190,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       {state.keyboardOpen && <Keyboard onFocusEditor={focusEditor} />}
       <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep' })); focusEditor(); }}>{fa ? 'افزودن گام' : 'Add step'}</Button>
       {!wide && tools}
+      <MathInsertDialog open={insertOpen} onOpenChange={setInsertOpen} wide={wide} onInsert={insertFromDialog} onCloseAutoFocus={restoreInsertFocus} />
     </section>;
 }
 

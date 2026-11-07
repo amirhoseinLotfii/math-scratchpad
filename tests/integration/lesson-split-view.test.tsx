@@ -50,6 +50,12 @@ describe('lesson split view', () => {
     expect([...select.options].map(option => option.text)[0]).toContain('Worked example');
     // the step editor is composed into the pane for the selected item
     expect(pane.querySelector('.lesson-math-editor')).not.toBeNull();
+    const field = pane.querySelector('math-field')!;
+    fireEvent.keyDown(field, { key: '/' });
+    expect(screen.getByRole('dialog', { name: 'Insert Math Element' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Fraction$/ })).toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: /^Fraction$/ }));
+    expect(screen.queryByRole('dialog', { name: 'Insert Math Element' })).not.toBeInTheDocument();
   });
 
   it('links a quick check from the lesson column to the work pane without rendering a second editor', async () => {
