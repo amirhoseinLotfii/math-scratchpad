@@ -8,6 +8,10 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('PR #71 - Math Keyboard Placement Screenshots', () => {
+  // Archival visual captures require a seeded lesson bank and approved snapshots.
+  // They are not CI assertions; active keyboard behavior is covered by the
+  // keyboard-placement-regression.spec.ts browser suite.
+  test.skip(!!process.env.CI, 'Manual screenshot evidence requires a seeded lesson bank and approved visual baselines.');
   test.beforeEach(async ({ page }) => {
     await page.goto('/lessons/1.1');
     await page.waitForLoadState('networkidle');

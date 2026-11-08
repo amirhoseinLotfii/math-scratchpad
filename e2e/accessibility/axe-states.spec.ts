@@ -16,7 +16,11 @@ for (const state of states) test(`AXE ${state}: no WCAG A/AA violations includin
   if (state === 'invalid-json') {
    await page.getByRole('button', { name: 'Exercise menu' }).click();
    await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-   await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+   // On narrow viewports Data is an inline disclosure, not a hover flyout.
+   const data = page.getByRole('menuitem', { name: 'Data', exact: true });
+   if (page.viewportSize()!.width < 600) await data.click();
+   else await data.hover();
+   await expect(page.getByRole('menuitem', { name: 'Import session JSON' })).toBeVisible();
    await page.getByRole('menuitem', { name: 'Import session JSON' }).press('Enter');
    await page.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('not JSON');
    await page.getByRole('button', { name: 'Restore' }).click();

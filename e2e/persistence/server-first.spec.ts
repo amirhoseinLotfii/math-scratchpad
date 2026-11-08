@@ -119,7 +119,17 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
   await expect.poll(() => mathValue(mathField(page))).toContain('321');
 
   const connectionCard = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
-  await connectionCard.getByRole('button', { name: 'Test owner login' }).click();
+  await expect(connectionCard.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' })).toBeVisible();
+
+  // This suite tests local-first persistence and server mirroring, not Google's
+  // interactive OAuth consent. Emulate an already-authorized session: the
+  // Worker is mocked above, and a reload restores the same tab-scoped token.
+  const expiresAt = Date.now() + 3_600_000;
+  const tokenPayload = Buffer.from(JSON.stringify({ exp: Math.floor(expiresAt / 1000) })).toString('base64url');
+  await page.evaluate(({ token, expiresAt }) => {
+    sessionStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({ token, expiresAt }));
+  }, { token: `header.${tokenPayload}.signature`, expiresAt });
+  await page.reload();
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
   await expect.poll(() => records.has('math-scratchpad-session-v3')).toBeTruthy();
   expect(bankCachePosts).toBe(0);
