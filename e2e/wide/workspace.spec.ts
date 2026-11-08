@@ -94,7 +94,7 @@ test('WIDE-16: final completion keeps JSON copy explicit',async({page})=>{
 });
 test('WIDE-17: menu JSON export includes all questions and ordered steps',async({page})=>{
  await page.addInitScript(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('blocked')}}});document.execCommand=()=>false;});
- await startBatch(page);await page.getByRole('button',{name:'Add step',exact:true}).click();await clickMathKeys(page,'12');await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Data',exact:true}).click();await page.getByRole('menuitem',{name:/^Copy full session JSON/}).click();
+ await startBatch(page);await page.getByRole('button',{name:'Add step',exact:true}).click();await clickMathKeys(page,'12');await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Data',exact:true}).focus();await page.keyboard.press('ArrowRight');await page.getByRole('menuitem',{name:/^Copy full session JSON/}).press('Enter');
  const raw=await page.getByRole('textbox',{name:'Copy or paste session JSON'}).inputValue();const saved=JSON.parse(raw);expect(saved.doc.exercises).toHaveLength(20);expect(saved.doc.exercises[0].steps).toHaveLength(2);
 });
 test('WIDE-18: 200 percent text sizing and long math avoid document overflow',async({page})=>{
