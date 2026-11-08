@@ -125,8 +125,8 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await expect(page.getByRole('region', { name: 'New exercise' })).toBeVisible();
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- const practiceMenu = page.getByRole('menuitem', { name: 'Practice', exact: true });
- await (page.viewportSize()!.width < 600 ? practiceMenu.click() : practiceMenu.hover());
+ const fractionPracticeMenu = page.getByRole('menuitem', { name: 'Practice', exact: true });
+ await (page.viewportSize()!.width < 600 ? fractionPracticeMenu.click() : fractionPracticeMenu.hover());
  await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
  await expect(page.getByRole('region', { name: 'New exercise' })).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm fraction round start' })).toBeVisible();
