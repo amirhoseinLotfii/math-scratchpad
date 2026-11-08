@@ -76,7 +76,7 @@ test('WIDE-12: resetting a different step targets that step and Undo restores it
  await expect.poll(()=>mathValue(mathField(page,2))).toBe('22');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect.poll(()=>mathValue(mathField(page))).toBe('11');
 });
 test('WIDE-13: shortcut dialog traps focus, Escape restores the trigger, and work stays unchanged',async({page})=>{
- await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();const trigger=page.getByRole('menuitem',{name:'Keyboard shortcuts',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'Keyboard shortcuts'});await expect(dialog).toBeVisible();
+ await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).press('Enter');const trigger=page.getByRole('menuitem',{name:'Keyboard shortcuts',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'Keyboard shortcuts'});await expect(dialog).toBeVisible();
  await expect(dialog.getByText('Open Insert Math Element; choose Fraction to insert a fraction')).toBeVisible();
  for(let i=0;i<5;i++)await page.keyboard.press('Tab');expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Exercise menu'})).toBeFocused();await expect(page.getByRole('group',{name:'Numeric keys'})).toHaveCount(0);
@@ -94,7 +94,7 @@ test('WIDE-16: final completion keeps JSON copy explicit',async({page})=>{
 });
 test('WIDE-17: menu JSON export includes all questions and ordered steps',async({page})=>{
  await page.addInitScript(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('blocked')}}});document.execCommand=()=>false;});
- await startBatch(page);await page.getByRole('button',{name:'Add step',exact:true}).click();await clickMathKeys(page,'12');await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Data',exact:true}).hover();await page.getByRole('menuitem',{name:/^Copy full session JSON/}).press('Enter');
+ await startBatch(page);await page.getByRole('button',{name:'Add step',exact:true}).click();await clickMathKeys(page,'12');await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).press('Enter');await page.getByRole('menuitem',{name:'Data',exact:true}).hover();await page.getByRole('menuitem',{name:/^Copy full session JSON/}).press('Enter');
  const raw=await page.getByRole('textbox',{name:'Copy or paste session JSON'}).inputValue();const saved=JSON.parse(raw);expect(saved.doc.exercises).toHaveLength(20);expect(saved.doc.exercises[0].steps).toHaveLength(2);
 });
 test('WIDE-18: 200 percent text sizing and long math avoid document overflow',async({page})=>{
@@ -108,7 +108,7 @@ test('WIDE-20: reduced motion and forced colors retain focus and controls',async
  await page.emulateMedia({forcedColors:'active',reducedMotion:'reduce'});await startBatch(page);await inView(page,'Add step');const add=page.getByRole('button',{name:'Add step',exact:true});await add.focus();await expect(add).toBeFocused();expect(await add.evaluate(el=>getComputedStyle(el).forcedColorAdjust)).not.toBe('none');
 });
 test('WIDE-21: shortcut help has no automated WCAG violations',async({page},info)=>{
- await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']).analyze();await info.attach('axe-shortcuts',{body:JSON.stringify(result),contentType:'application/json'});expect(result.violations).toEqual([]);
+ await startBatch(page);await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).press('Enter');await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']).analyze();await info.attach('axe-shortcuts',{body:JSON.stringify(result),contentType:'application/json'});expect(result.violations).toEqual([]);
 });
 test('WIDE-22: narrow-height landscape keeps dialog controls reachable',async({page})=>{
  await page.setViewportSize({width:1024,height:480});await startBatch(page);await page.getByRole('button',{name:/Next question/}).click();await inView(page,'Continue');await inView(page,'Cancel');
@@ -149,7 +149,7 @@ for(const state of ['single','batch','multi-step','shortcuts'] as const)test(`WI
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByLabel('Question elapsed time')).toHaveText('00:03');
  if(state==='multi-step'){const first=await enterMath(page,1,'12');await expect.poll(()=>mathValue(first)).toContain('12');await page.getByRole('button',{name:'Add step',exact:true}).click();const second=mathField(page,2);await expect(second).toBeFocused();await page.keyboard.type('42');await expect.poll(()=>mathValue(second)).toContain('42');}
- if(state==='shortcuts'){await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).click();await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();}
+ if(state==='shortcuts'){await page.getByRole('button',{name:'Exercise menu'}).click();await page.getByRole('menuitem',{name:'Show more'}).press('Enter');await page.getByRole('menuitem',{name:'Keyboard shortcuts'}).click();}
  // Keep the public policy footer outside reviewed editor pixels.
  await page.addStyleTag({ content: 'body > footer { display: none !important; }' });
  const viewport = page.viewportSize();
