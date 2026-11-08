@@ -14,7 +14,7 @@
  --muted-foreground: var(--color-text-muted, #b2b9b5);
  --border: var(--color-border, #707a75);
  --ring: var(--color-ring, #8cbfff);
- --destructive: var(--color-error, #e7827d);
+ --destructive: var(--color-error-400, #f87171);
  --ms-danger: var(--color-error, #b42318);
  --ms-on-danger: var(--color-error-foreground, #ffffff);
  --success: var(--color-success, #8fa89a);
