@@ -13,6 +13,7 @@ import { MathDisplay } from '../../MathDisplay';
 import type { ScratchStore } from '../../store';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
 import { MAX_SESSION_EXERCISES, stepIsBlank, stepLatex, type Step } from '../../model';
+import { conceptAnchorId, sectionAnchorId } from '../progress/reading-position-anchors';
 import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
 import { ActivityTracker } from '../../sync/activity-tracker';
@@ -63,8 +64,8 @@ function LessonSectionContent({ section, onReveal, revealedSteps, uiLang, hideSi
           ? <div key={key} className="lesson-example-with-work">{view}{renderExampleWork(key)}</div>
           : <LessonBlockView key={key} block={block} blockKey={key} revealed={revealedSteps[key] ?? 0} onReveal={value => onReveal(key, value)} uiLang={uiLang} />;
       })}</div>;
-      if (hideSingleConceptHeading && section.concepts.length === 1) return <div className="lesson-section-concept" key={concept.id}>{content}</div>;
-      return <section className="lesson-section-concept" key={concept.id} aria-labelledby={`lesson-section-concept-${concept.id}`}>
+      if (hideSingleConceptHeading && section.concepts.length === 1) return <div className="lesson-section-concept" key={concept.id} data-anchor-id={conceptAnchorId(concept.id)}>{content}</div>;
+      return <section className="lesson-section-concept" key={concept.id} data-anchor-id={conceptAnchorId(concept.id)} aria-labelledby={`lesson-section-concept-${concept.id}`}>
         <p className="lesson-section-concept-label">{uiLang === 'fa' ? 'مفهوم' : 'Concept'} {localizeLessonDigits(conceptIndex + 1, uiLang)}</p>
         <h3 id={`lesson-section-concept-${concept.id}`} lang={languageForText(concept.title)} dir={contentDirection(concept.title)}><LessonText text={displayEducationalHeading(concept.title)} /></h3>
         {content}
@@ -688,7 +689,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
         </section>
       </div>}
       <div className={split ? 'lesson-split-lesson-scroll' : 'lesson-split-lesson-flow'} {...(split ? { role: 'region', 'aria-label': fa ? 'محتوای درس‌نامه' : 'Lesson content', tabIndex: 0 } : {})}>
-      <section className="lesson-concept" aria-labelledby="lesson-concept-title">
+      <section className="lesson-concept" data-anchor-id={sectionAnchorId(currentSection.id)} aria-labelledby="lesson-concept-title">
         {!split && <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>}
         {!split && <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>}
         <LessonSectionContent section={currentSection} revealedSteps={progress.revealedSteps} onReveal={revealStep} uiLang={uiLang} hideSingleConceptHeading={!currentSection.title && currentSection.concepts.length === 1} renderExampleWork={renderExampleWork} />

@@ -21,6 +21,12 @@ export {
 } from './reading-position-store';
 
 export {
+  sectionAnchorId,
+  conceptAnchorId,
+  parseAnchorId,
+} from './reading-position-anchors';
+
+export {
   useReadingPosition,
   useLessonPosition,
 } from './use-reading-position';
@@ -29,7 +35,7 @@ export {
   ReadingPositionProvider,
   useReadingPositionContext,
   ContinueLearningButton,
-} from './ReadingPositionContext';
+} from './reading-position-context';
 
 export {
   initializeReadingPositionSync,
@@ -41,4 +47,4 @@ export {
 export {
   RestorePosition,
   useSemanticScrollRestoration,
-} from './RestorePosition';
+} from './restore-position';

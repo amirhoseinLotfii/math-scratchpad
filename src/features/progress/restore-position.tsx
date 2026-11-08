@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useReadingPositionContext } from './ReadingPositionContext';
+import { useReadingPositionContext } from './reading-position-context';
 import { ReadingPosition } from './reading-position-types';
 
 /** Props for RestorePosition component */
@@ -178,7 +178,8 @@ export function RestorePosition({
         });
       },
       {
-        rootMargin: '0 -50% 0 0', // Trigger when element is in viewport
+        // CSS margin syntax requires units; bare 0 is invalid for IntersectionObserver.
+        rootMargin: '0px 0px -45% 0px',
         threshold: 0.1,
       }
     );
