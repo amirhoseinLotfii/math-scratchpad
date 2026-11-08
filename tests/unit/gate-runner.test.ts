@@ -99,7 +99,7 @@ describe('GATE-RUN: aggregate exit codes and stale evidence', () => {
  });
  it('stops after a type-check failure without rerunning downstream suites', () => {
   const { result, record } = run('types-fail'); expect(result.status).toBe(1); expect(record.status).toBe('blocked');
-  expect(record.results.map((r: { status: number }) => r.status)).toEqual([7]);
+  expect(record.results.map((r) => r.status)).toEqual([7]);
  });
  it('treats browser launch failure as blocked rather than a successful skip', () => {
   const { result, record } = run('browser-fail'); expect(result.status).toBe(1); expect(record.status).toBe('blocked'); expect(record.results[3].status).toBe(127);
