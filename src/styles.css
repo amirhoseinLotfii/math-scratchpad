@@ -525,6 +525,9 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .state-answered { background: var(--success); color: var(--primary-foreground); }
 #math-scratchpad-redux .diagnostic-report { background: var(--card); border-color: var(--border); }
 #math-scratchpad-redux .setup-panel, #math-scratchpad-redux .manual-copy, #math-scratchpad-redux .symbols-panel { background: var(--card); border-color: var(--border); border-radius: 10px; }
+/* WCAG 1.4.11: distinguish editable problem fields from their card surface. */
+#math-scratchpad-redux .setup-panel textarea { border-color: var(--color-neutral-500); }
+
 /* Backdrop blocks pointer access to notebook controls behind the fixed bank dialog. */
 #math-scratchpad-redux .drive-bank-backdrop {
   position: fixed;
