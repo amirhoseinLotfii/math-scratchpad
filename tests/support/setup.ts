@@ -1,20 +1,36 @@
 import { vi } from 'vitest';
 
 // Mock Web Crypto API for Node.js environment
-// Using a simple SHA-256 implementation for testing
-import { createHash } from 'crypto';
+// Use Node.js webcrypto which provides the full Web Crypto API
+import { webcrypto as nodeWebCrypto } from 'node:crypto';
 
-if (typeof globalThis.crypto === 'undefined') {
-  globalThis.crypto = {
-    subtle: {
-      digest: vi.fn().mockImplementation(async (algorithm: string, data: ArrayBuffer) => {
-        // Use Node.js crypto for consistent hashing in tests
-        const hash = createHash('sha256');
-        hash.update(Buffer.from(data));
-        return new Uint8Array(hash.digest());
-      })
-    } as any
-  };
+// In jsdom, globalThis.crypto is a getter-only property, so we need to redefine it
+if (typeof globalThis.crypto === 'undefined' || !globalThis.crypto.randomUUID) {
+  // Use Node.js webcrypto if available, otherwise create a mock
+  const cryptoImpl = nodeWebCrypto && typeof nodeWebCrypto.randomUUID === 'function'
+    ? nodeWebCrypto
+    : {
+        subtle: {
+          digest: vi.fn().mockImplementation(async (algorithm: string, data: ArrayBuffer) => {
+            const { createHash } = await import('node:crypto');
+            const hash = createHash('sha256');
+            hash.update(Buffer.from(data));
+            return new Uint8Array(hash.digest());
+          })
+        } as any,
+        randomUUID: vi.fn().mockImplementation(() => {
+          let uuidCounter = 0;
+          const hex = (uuidCounter++).toString(16).padStart(8, '0');
+          return `${hex}-${hex}-4${hex.slice(0, 3)}-8${hex.slice(0, 3)}-${hex.slice(0, 8)}`;
+        })
+      };
+
+  Object.defineProperty(globalThis, 'crypto', {
+    value: cryptoImpl,
+    writable: true,
+    configurable: true,
+    enumerable: true
+  });
 }
 
 /**

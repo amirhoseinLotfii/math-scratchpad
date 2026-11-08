@@ -1,9 +1,19 @@
 import 'fake-indexeddb/auto';
+import { webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from '../../src/sync/runtime';
 import { SyncPanel } from '../../src/sync/sync-panel';
+
+// Ensure Node.js webcrypto is available as globalThis.crypto for tests
+// In jsdom, globalThis.crypto is a getter-only property, so we need to redefine it
+Object.defineProperty(globalThis, 'crypto', {
+  value: webcrypto,
+  writable: true,
+  configurable: true,
+  enumerable: true
+});
 import {
   getLearningDb,
   initializeLearningStorage,

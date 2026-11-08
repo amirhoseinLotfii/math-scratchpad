@@ -15,26 +15,25 @@ const utf8 = new TextEncoder();
 function hex(bytes: Uint8Array): string { return [...bytes].map(value => value.toString(16).padStart(2, '0')).join(''); }
 
 // Polyfill for Node.js environment
-let sha256Impl: (bytes: Uint8Array) => Promise<string>;
-if (typeof globalThis.crypto?.subtle !== 'undefined') {
-  sha256Impl = async (bytes: Uint8Array): Promise<string> => {
-    const buffer = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(buffer).set(bytes);
-    return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
-  };
-} else {
-  // Node.js environment - use crypto module
-  import { createHash } from 'crypto';
-  sha256Impl = async (bytes: Uint8Array): Promise<string> => {
+// Always check for crypto at runtime to support tests that set globalThis.crypto after module load
+async function sha256(bytes: Uint8Array): Promise<string> {
+  // Check at runtime if we have a working Web Crypto API
+  if (typeof globalThis.crypto?.randomUUID === 'function' && typeof globalThis.crypto?.subtle?.digest === 'function') {
+    try {
+      const buffer = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(buffer).set(bytes);
+      return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
+    } catch {
+      // Fallback to Node.js crypto if Web Crypto fails
+    }
+  }
+
+  // Node.js environment or test environment - use Node.js crypto
+  try {
+    const { createHash } = await import('node:crypto');
     const hash = createHash('sha256');
     hash.update(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
     return hex(new Uint8Array(hash.digest()));
-  };
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  try {
-    return await sha256Impl(bytes);
   } catch {
     throw new Error('Browser cryptography is unavailable; migration was left unchanged.');
   }
