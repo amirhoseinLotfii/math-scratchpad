@@ -25,8 +25,8 @@ test('QA-WORKSPACE-01: menu, sync overlay, new exercise and math picker preserve
     await menu.click();
     await evidence(page, testInfo, `workspace-${size}-menu-open`);
     await page.getByRole('menuitem', { name: 'Show more' }).click();
-    await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).click();
+    await page.getByRole('menuitem', { name: 'Data', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+    await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).press('Enter');
     const sync = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
     await expect(sync).toBeVisible();
     await evidence(page, testInfo, `workspace-${size}-sync-open`);
