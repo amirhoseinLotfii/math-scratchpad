@@ -1,4 +1,22 @@
 import { vi } from 'vitest';
+
+// Mock Web Crypto API for Node.js environment
+// Using a simple SHA-256 implementation for testing
+import { createHash } from 'crypto';
+
+if (typeof globalThis.crypto === 'undefined') {
+  globalThis.crypto = {
+    subtle: {
+      digest: vi.fn().mockImplementation(async (algorithm: string, data: ArrayBuffer) => {
+        // Use Node.js crypto for consistent hashing in tests
+        const hash = createHash('sha256');
+        hash.update(Buffer.from(data));
+        return new Uint8Array(hash.digest());
+      })
+    } as any
+  };
+}
+
 /**
  * Most legacy suites start batches and drive the editor directly. The once-per-batch
  * anxiety/energy prompt is a modal, so it is treated as already answered unless a test

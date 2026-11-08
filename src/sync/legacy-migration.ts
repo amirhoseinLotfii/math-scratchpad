@@ -13,11 +13,31 @@ const CHUNK_BYTES = 6_000;
 const utf8 = new TextEncoder();
 
 function hex(bytes: Uint8Array): string { return [...bytes].map(value => value.toString(16).padStart(2, '0')).join(''); }
+
+// Polyfill for Node.js environment
+let sha256Impl: (bytes: Uint8Array) => Promise<string>;
+if (typeof globalThis.crypto?.subtle !== 'undefined') {
+  sha256Impl = async (bytes: Uint8Array): Promise<string> => {
+    const buffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(buffer).set(bytes);
+    return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
+  };
+} else {
+  // Node.js environment - use crypto module
+  import { createHash } from 'crypto';
+  sha256Impl = async (bytes: Uint8Array): Promise<string> => {
+    const hash = createHash('sha256');
+    hash.update(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+    return hex(new Uint8Array(hash.digest()));
+  };
+}
+
 async function sha256(bytes: Uint8Array): Promise<string> {
-  if (!globalThis.crypto?.subtle) throw new Error('Browser cryptography is unavailable; migration was left unchanged.');
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
+  try {
+    return await sha256Impl(bytes);
+  } catch {
+    throw new Error('Browser cryptography is unavailable; migration was left unchanged.');
+  }
 }
 
 function toBase64(bytes: Uint8Array): string {
