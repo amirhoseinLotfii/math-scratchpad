@@ -18,8 +18,13 @@ for (const state of states) test(`AXE ${state}: no WCAG A/AA violations includin
    await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
    // On narrow viewports Data is an inline disclosure, not a hover flyout.
    const data = page.getByRole('menuitem', { name: 'Data', exact: true });
-   if (page.viewportSize()!.width < 600) await data.click();
-   else await data.hover();
+   if (page.viewportSize()!.width < 600) {
+    // Radix menu disclosure is keyboard-selectable; Enter avoids pointer hover
+    // interactions that can close the menu before the inline group is exposed.
+    await data.press('Enter');
+    await expect(data).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('group', { name: 'Data actions' })).toBeVisible();
+   } else await data.hover();
    await expect(page.getByRole('menuitem', { name: 'Import session JSON' })).toBeVisible();
    await page.getByRole('menuitem', { name: 'Import session JSON' }).press('Enter');
    await page.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('not JSON');
