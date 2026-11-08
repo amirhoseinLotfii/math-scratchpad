@@ -61,6 +61,7 @@ async function runOfflineAnswerJourney(page: Page, testInfo: TestInfo) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
   await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).click();
   const syncPanel = page.getByRole('region', { name: /Cloud sync and migration|همگام‌سازی و حفظ داده‌ها/ }).or(page.locator('section[aria-labelledby="sync-panel-title"]'));
   await expect(syncPanel).toBeVisible();
