@@ -37,7 +37,7 @@
   --color-neutral-200-rgb: 229, 229, 229;
   --color-neutral-300-rgb: 212, 212, 212;
   --color-neutral-400-rgb: 163, 163, 163;
-  --color-neutral-500-rgb: 115, 115, 115;
+  --color-neutral-500-rgb: 140, 140, 140;
   --color-neutral-600-rgb: 82, 82, 82;
   --color-neutral-700-rgb: 64, 64, 64;
   --color-neutral-800-rgb: 38, 38, 38;
@@ -134,7 +134,7 @@
   --color-neutral-200: #e5e5e5;
   --color-neutral-300: #d4d4d4;
   --color-neutral-400: #a3a3a3;
-  --color-neutral-500: #737373;
+  --color-neutral-500: #8c8c8c;
   --color-neutral-600: #525252;
   --color-neutral-700: #404040;
   --color-neutral-800: #262626;
@@ -157,7 +157,7 @@
   /* Text Colors */
   --color-text-primary: var(--color-neutral-50); /* #fafafa */
   --color-text-secondary: var(--color-neutral-400); /* #a3a3a3 */
-  --color-text-muted: var(--color-neutral-500); /* #737373 */
+  --color-text-muted: var(--color-neutral-500); /* #8c8c8c */
   --color-text-disabled: var(--color-neutral-600); /* #525252 */
   
   /* Primary Colors */
@@ -198,7 +198,7 @@
   --color-math-background: var(--color-neutral-800); /* #262626 */
   --color-math-surface: var(--color-neutral-700); /* #404040 */
   --color-math-border: var(--color-neutral-600); /* #525252 */
-  --color-math-placeholder: var(--color-neutral-500); /* #737373 */
+  --color-math-placeholder: var(--color-neutral-500); /* #8c8c8c */
 }
 
 /* ============================================================================
