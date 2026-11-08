@@ -5,7 +5,7 @@ test.use({ autoDismissWellbeing: false });
 test('desktop diagnostic keeps immediate physical math input before focus upgrade', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
   await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
   await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).press('Enter');
   await page.getByRole('button', { name: 'Start 30 Questions' }).click();
