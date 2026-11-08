@@ -34,6 +34,8 @@
 #math-scratchpad-redux button.primary { color: var(--ms-on-primary); background: var(--ms-primary); border-color: var(--ms-primary); font-weight: 650; }
 #math-scratchpad-redux textarea, #math-scratchpad-redux select { border: 1px solid var(--ms-border); border-radius: var(--ms-radius); background: var(--color-surface-sunken); padding: 12px; min-height: 48px; max-width: 100%; font-size: 16px; }
 #math-scratchpad-redux textarea { display: block; width: 100%; min-height: 112px; resize: vertical; margin: 8px 0 14px; }
+/* Inputs in setup/backup panels need an outline distinguishable from their dark fill. */
+#math-scratchpad-redux .setup-panel :is(textarea, select) { border-color: var(--color-border-form); }
 #math-scratchpad-redux label { display: block; font-size: 14px; line-height: 1.5; }
 #math-scratchpad-redux .app-header, #math-scratchpad-redux .exercise-bar, #math-scratchpad-redux .step-header, #math-scratchpad-redux .panel-heading { display: flex; align-items: center; gap: 8px; justify-content: space-between; min-width: 0; }
 #math-scratchpad-redux .app-header { padding-right: 84px; flex-wrap: wrap; margin-bottom: 20px; }
