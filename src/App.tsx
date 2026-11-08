@@ -452,7 +452,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   });
   const target = recent.find(lesson => lesson.id === storedId) ?? recent[0];
   setDriveBankOpen(false);
-  if (target) { setLessonPickerOpen(false); setLessonScreen(target); }
+  if (target) { setLessonPickerOpen(true); setLessonScreen(target); }
   else { setLessonScreen(null); setLessonPickerOpen(true); }
  }
  function openLesson(lesson: Lesson) {
@@ -997,8 +997,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    onCloseAutoFocus={event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); }}
   />
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
-  {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" className="chapter-transition-overlay" style={{ zIndex: 20_000 }}>
-   <div><strong style={{ fontSize: 'var(--text-xl)' }}>در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
+  {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" className="chapter-transition-overlay" >
+   <div><strong >در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
   </div>}
  </main>;
 }

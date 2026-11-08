@@ -1273,3 +1273,7 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
   max-width: 100%;
   min-width: 0;
 }
+
+/* Phase C-3: Component-level fixes */
+#math-scratchpad-redux .chapter-transition-overlay { z-index: 20000; }
+#math-scratchpad-redux .chapter-transition-overlay strong { font-size: var(--text-xl); }
