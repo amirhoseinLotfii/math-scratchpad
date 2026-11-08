@@ -7,7 +7,7 @@ test('desktop connection notice retains sign-in and never blocks backup controls
   await expect(notice.getByRole('button', { name: 'بررسی دوباره اتصال' })).toBeVisible();
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
   await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).press('Enter');
   const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
   await expect(dialog).toBeVisible();
