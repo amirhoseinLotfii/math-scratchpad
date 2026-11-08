@@ -9,9 +9,9 @@ import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
 import { ReadingPositionProvider } from './features/progress/ReadingPositionContext';
 import { initializeReadingPositionSync } from './features/progress/reading-position-sync';
 import './fonts.css';
+import './styles/design-tokens.css';
 import './styles/tokens.css';
 import './styles/globals.css';
-import './styles/design-tokens.css';
 import './styles.css';
 
 const root = document.getElementById('math-scratchpad-redux');

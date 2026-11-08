@@ -1,14 +1,28 @@
 :root {
  color-scheme: dark;
- --background: #151719; --foreground: #e7ebe8;
- --card: #202326; --card-foreground: #e7ebe8;
- --raised: #292d30;
- --primary: #86b99b; --primary-foreground: #101a14;
- --secondary: #292d30; --secondary-foreground: #e7ebe8;
- --muted: #24282b; --muted-foreground: #b2b9b5;
---border: #707a75; --ring: #8cbfff; --destructive: #e7827d;
- --ms-danger: #b42318; --ms-on-danger: #ffffff;
- --success: #8fa89a; --warning: #e4b66b;
- --radius: 0.625rem; --font-sans: 'Inter', system-ui, sans-serif;
- --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+ /* Legacy MS tokens - now mapped to Design System tokens for backward compatibility */
+ --background: var(--color-background, #151719);
+ --foreground: var(--color-text-primary, #e7ebe8);
+ --card: var(--color-surface, #202326);
+ --card-foreground: var(--color-text-primary, #e7ebe8);
+ --raised: var(--color-surface-elevated, #292d30);
+ --primary: var(--color-primary, #86b99b);
+ --primary-foreground: var(--color-primary-foreground, #101a14);
+ --secondary: var(--color-surface-elevated, #292d30);
+ --secondary-foreground: var(--color-text-primary, #e7ebe8);
+ --muted: var(--color-surface, #24282b);
+ --muted-foreground: var(--color-text-muted, #b2b9b5);
+ --border: var(--color-border, #707a75);
+ --ring: var(--color-ring, #8cbfff);
+ --destructive: var(--color-error, #e7827d);
+ --ms-danger: var(--color-error, #b42318);
+ --ms-on-danger: var(--color-error-foreground, #ffffff);
+ --success: var(--color-success, #8fa89a);
+ --warning: var(--color-warning, #e4b66b);
+ --radius: var(--radius-lg, 0.625rem);
+ --font-sans: var(--font-family-sans, 'Inter', system-ui, sans-serif);
+ --space-1: 0.25rem;
+ --space-2: 0.5rem;
+ --space-3: 0.75rem;
+ --space-4: 1rem;
 }
