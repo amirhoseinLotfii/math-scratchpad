@@ -927,7 +927,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
          <DropdownMenuItem onSelect={() => { setMenu(false); downloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); fileInput.current?.click(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(value => !value); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(true); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
         </ResponsiveDropdownMenuSub>
 
        <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
