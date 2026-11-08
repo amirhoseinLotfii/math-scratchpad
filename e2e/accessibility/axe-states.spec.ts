@@ -15,7 +15,7 @@ for (const state of states) test(`AXE ${state}: no WCAG A/AA violations includin
   if (state === 'new-problem') { await page.getByRole('button', { name: 'Exercise menu' }).click(); await page.getByRole('menuitem', { name: 'New Problem', exact: true }).click(); }
   if (state === 'invalid-json') {
    await page.getByRole('button', { name: 'Exercise menu' }).click();
-   await page.getByRole('menuitem', { name: 'Show more' }).click();
+   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
    await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
    await page.getByRole('menuitem', { name: 'Import session JSON' }).press('Enter');
    await page.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('not JSON');
