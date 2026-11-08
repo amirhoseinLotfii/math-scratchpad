@@ -558,6 +558,10 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .session-details-panel .menu-info-value { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 5px 2px; color: var(--muted-foreground); font-size: 13px; line-height: 1.35; }
 .session-details-panel .menu-info-value span:last-child { color: var(--foreground); text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .dropdown-item.menu-disclosure { justify-content: space-between; color: var(--muted-foreground); text-align: start; }
+/* Phone submenus stay in the parent scroll container, never outside the viewport. */
+.notebook-menu .menu-inline-subcontent { margin-inline-start: 10px; padding-inline-start: 6px; border-inline-start: 1px solid var(--border); min-width: 0; }
+.notebook-menu .menu-inline-subcontent .dropdown-item { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+
 .menu-disclosure .menu-chevron { width: 16px; height: 16px; transition: transform 140ms ease; }
 .menu-disclosure .menu-chevron-open { transform: rotate(180deg); }
 .dropdown-item.menu-danger { color: var(--destructive); }
