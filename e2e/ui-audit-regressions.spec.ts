@@ -139,8 +139,20 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   await expect(banner).toBeVisible();
   await menu(page).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-  await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).click();
+  const dataActions = page.getByRole('menuitem', { name: 'Data', exact: true });
+  const cloudSync = page.getByRole('menuitem', { name: 'Cloud sync and migration' });
+  if (size.width < 600) {
+   // Actual phone interaction: tap to expand the inline action group.
+   await dataActions.click();
+   await cloudSync.click();
+  } else {
+   // Keyboard traverses Radix's side flyout without diagonally crossing other
+   // parent-menu items, which can close a pointer-hovered submenu.
+   await dataActions.focus();
+   await dataActions.press('ArrowRight');
+   await expect(cloudSync).toBeVisible();
+   await cloudSync.press('Enter');
+  }
   const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
   await expect(dialog).toBeVisible();
   await expect(banner).toBeHidden();
