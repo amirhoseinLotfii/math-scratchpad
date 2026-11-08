@@ -40,3 +40,28 @@
 - **SEVERITY:** P1
 - **STATUS:** OPEN
 - **NEXT:** wire click → lesson route; render in resume surface; persist via existing learning storage
+
+## BUG-006
+- **TITLE:** last-open-lesson key excluded from server sync allowlist
+- **MODULE:** `src/sync/browser-db.ts`
+- **SEVERITY:** P1
+- **STATUS:** VERIFIED FIXED (unit)
+- **ROOT CAUSE:** `isLearningStorageKey` only allowed session keys + lesson-progress prefix
+- **FIX:** allow `math-scratchpad-last-open-lesson-v1:` and `math-scratchpad-reading-position-v1:`
+- **REGRESSION:** `tests/unit/learning-storage-keys.test.ts`
+
+## BUG-007
+- **TITLE:** Reading position never updated from live lesson navigation
+- **MODULE:** `lesson-screen.tsx`
+- **SEVERITY:** P1
+- **STATUS:** PARTIAL — section changes now call `trackPosition`; RestorePosition wrapper still pending
+- **FIX:** track chapter/lesson/section + contentAnchorId on section change
+
+## BUG-008
+- **TITLE:** Reading position used parallel IndexedDB + localStorage instead of server learning state
+- **MODULE:** `reading-position-store.ts`
+- **SEVERITY:** P0/P1
+- **STATUS:** VERIFIED FIXED (unit)
+- **ROOT CAUSE:** Separate IndexedDB + zustand persist; not allowlisted server path; not driven by latest learn event
+- **FIX:** Persist via `math-scratchpad-reading-position-v1` learning storage; update from latest location learn event; last-timestamp wins
+- **REGRESSION:** `tests/unit/reading-position-from-event.test.ts`

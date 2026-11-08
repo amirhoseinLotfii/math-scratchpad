@@ -95,7 +95,7 @@ export const DEFAULT_POSITION_CONFIG: ReadingPositionConfig = {
   storagePrefix: 'math-scratchpad_position',
 };
 
-/** Storage key for the last reading position */
+/** Legacy local-only key (superseded by learning-storage / server state). */
 export const READING_POSITION_KEY = 'lastReadingPosition';
 
 /** Storage key for the current session */

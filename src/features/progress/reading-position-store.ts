@@ -1,151 +1,124 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import type { LearnEvent } from '../../sync/events';
+import { getDeviceId, subscribeToLearnEvents } from '../../sync/events';
+import { subscribeLearningStorage } from '../../sync/browser-db';
+import {
+  mergeLatestReadingPosition,
+  readingPositionFromLearnEvent,
+} from './reading-position-from-event';
+import {
+  clearReadingPositionFromLearningStorage,
+  readReadingPositionFromLearningStorage,
+  READING_POSITION_STORAGE_KEY,
+  writeReadingPositionToLearningStorage,
+} from './reading-position-storage';
 import { ReadingPosition, MinimalReadingPosition, DEFAULT_POSITION_CONFIG } from './reading-position-types';
 
-/** Storage interface for reading positions */
-interface ReadingPositionStorage {
-  getPosition: () => Promise<ReadingPosition | null>;
-  savePosition: (position: ReadingPosition) => Promise<void>;
-  clearPosition: () => Promise<void>;
-}
-
-/** Default storage using IndexedDB */
-class IndexedDBStorage implements ReadingPositionStorage {
-  private dbPromise: Promise<IDBDatabase>;
-  private storeName = 'readingPositions';
-
-  constructor() {
-    this.dbPromise = this.openDB();
-  }
-
-  private async openDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('MathScratchpadDB', 2);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-      request.onupgradeneeded = (event) => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName, { keyPath: 'userId' });
-        }
-      };
-    });
-  }
-
-  async getPosition(): Promise<ReadingPosition | null> {
-    try {
-      const db = await this.dbPromise;
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(this.storeName, 'readonly');
-        const store = transaction.objectStore(this.storeName);
-        const request = store.get('currentUser'); // Using a fixed key for simplicity
-        
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
-    } catch {
-      return null;
-    }
-  }
-
-  async savePosition(position: ReadingPosition): Promise<void> {
-    try {
-      const db = await this.dbPromise;
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(this.storeName, 'readwrite');
-        const store = transaction.objectStore(this.storeName);
-        const request = store.put({ ...position, userId: 'currentUser' });
-        
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch {
-      // Fallback to localStorage
-      localStorage.setItem('readingPositionBackup', JSON.stringify(position));
-    }
-  }
-
-  async clearPosition(): Promise<void> {
-    try {
-      const db = await this.dbPromise;
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(this.storeName, 'readwrite');
-        const store = transaction.objectStore(this.storeName);
-        const request = store.delete('currentUser');
-        
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch {
-      localStorage.removeItem('readingPositionBackup');
-    }
-  }
-}
-
-/** Create the reading position store */
-export const useReadingPositionStore = create<{
+type ReadingPositionStore = {
   position: ReadingPosition | null;
   config: typeof DEFAULT_POSITION_CONFIG;
-  storage: ReadingPositionStorage;
   setPosition: (position: ReadingPosition) => Promise<void>;
+  upsertPosition: (partial: Partial<ReadingPosition>) => Promise<ReadingPosition>;
   updatePosition: (partial: Partial<ReadingPosition>) => Promise<void>;
   clearPosition: () => Promise<void>;
   restorePosition: () => Promise<ReadingPosition | null>;
-}>()(
-  persist(
-    (set, get) => ({
-      position: null,
-      config: DEFAULT_POSITION_CONFIG,
-      storage: new IndexedDBStorage(),
-      
-      setPosition: async (position: ReadingPosition) => {
-        await get().storage.savePosition(position);
-        set({ position });
-      },
-      
-      updatePosition: async (partial: Partial<ReadingPosition>) => {
-        const current = get().position;
-        if (current) {
-          const updated = { ...current, ...partial, updatedAt: new Date() };
-          await get().setPosition(updated);
-        }
-      },
-      
-      clearPosition: async () => {
-        await get().storage.clearPosition();
-        set({ position: null });
-      },
-      
-      restorePosition: async () => {
-        const stored = await get().storage.getPosition();
-        if (stored) {
-          set({ position: stored });
-        }
-        return stored;
-      },
-    }),
-    {
-      name: 'reading-position-store',
-      partialize: (state) => ({
-        // Only persist minimal data to avoid storage bloat
-        position: state.position ? {
-          chapterId: state.position.chapterId,
-          lessonId: state.position.lessonId,
-          sectionId: state.position.sectionId,
-          exerciseId: state.position.exerciseId,
-          stepId: state.position.stepId,
-          scrollOffset: state.position.scrollOffset,
-          contentVersion: state.position.contentVersion,
-          lastActivity: state.position.lastActivity,
-          updatedAt: state.position.updatedAt.toISOString(),
-        } : null,
-      }),
-    }
-  )
-);
+  applyLearnEvent: (event: LearnEvent) => Promise<ReadingPosition | null>;
+};
 
-/** Get minimal position for quick restoration */
+let eventUnsubscribe: (() => void) | undefined;
+let storageUnsubscribe: (() => void) | undefined;
+
+function buildPosition(partial: Partial<ReadingPosition>, current: ReadingPosition | null): ReadingPosition {
+  return {
+    userId: partial.userId ?? current?.userId ?? getDeviceId(),
+    chapterId: partial.chapterId ?? current?.chapterId,
+    lessonId: partial.lessonId ?? current?.lessonId,
+    sectionId: partial.sectionId ?? current?.sectionId,
+    contentAnchorId: partial.contentAnchorId ?? current?.contentAnchorId,
+    exerciseId: partial.exerciseId ?? current?.exerciseId,
+    stepId: partial.stepId ?? current?.stepId,
+    scrollOffset: partial.scrollOffset ?? current?.scrollOffset,
+    relativeOffset: partial.relativeOffset ?? current?.relativeOffset,
+    contentVersion: partial.contentVersion ?? current?.contentVersion ?? 'unknown',
+    lastActivity: partial.lastActivity ?? current?.lastActivity ?? 'reading',
+    updatedAt: partial.updatedAt ?? new Date(),
+    deviceMetadata: partial.deviceMetadata ?? current?.deviceMetadata,
+  };
+}
+
+export const useReadingPositionStore = create<ReadingPositionStore>((set, get) => ({
+  position: null,
+  config: DEFAULT_POSITION_CONFIG,
+
+  setPosition: async (position) => {
+    const merged = mergeLatestReadingPosition(get().position, position);
+    writeReadingPositionToLearningStorage(merged);
+    set({ position: merged });
+  },
+
+  upsertPosition: async (partial) => {
+    const next = buildPosition(partial, get().position);
+    const merged = mergeLatestReadingPosition(get().position, next);
+    writeReadingPositionToLearningStorage(merged);
+    set({ position: merged });
+    return merged;
+  },
+
+  updatePosition: async (partial) => {
+    await get().upsertPosition(partial);
+  },
+
+  clearPosition: async () => {
+    clearReadingPositionFromLearningStorage();
+    set({ position: null });
+  },
+
+  restorePosition: async () => {
+    const stored = readReadingPositionFromLearningStorage();
+    if (stored) set({ position: mergeLatestReadingPosition(get().position, stored) });
+    return get().position;
+  },
+
+  applyLearnEvent: async (event) => {
+    const candidate = readingPositionFromLearnEvent(event);
+    if (!candidate) return get().position;
+    const merged = mergeLatestReadingPosition(get().position, candidate);
+    if (merged === get().position) return merged;
+    writeReadingPositionToLearningStorage(merged);
+    set({ position: merged });
+    return merged;
+  },
+}));
+
+/** Start listening to learn events + learning-storage mirrors (server/tab updates). */
+export function startReadingPositionPersistence(): () => void {
+  eventUnsubscribe?.();
+  storageUnsubscribe?.();
+
+  eventUnsubscribe = subscribeToLearnEvents(event => {
+    void useReadingPositionStore.getState().applyLearnEvent(event);
+  });
+
+  storageUnsubscribe = subscribeLearningStorage(change => {
+    if (change.key !== READING_POSITION_STORAGE_KEY) return;
+    const remote = readReadingPositionFromLearningStorage();
+    if (!remote) {
+      useReadingPositionStore.setState({ position: null });
+      return;
+    }
+    const current = useReadingPositionStore.getState().position;
+    const merged = mergeLatestReadingPosition(current, remote);
+    if (merged !== current) useReadingPositionStore.setState({ position: merged });
+  });
+
+  return () => {
+    eventUnsubscribe?.();
+    storageUnsubscribe?.();
+    eventUnsubscribe = undefined;
+    storageUnsubscribe = undefined;
+  };
+}
+
 export function getMinimalPosition(position: ReadingPosition | null): MinimalReadingPosition | null {
   if (!position) return null;
   return {

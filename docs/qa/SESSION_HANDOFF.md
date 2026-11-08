@@ -32,12 +32,17 @@ Research doc was based on `b7215e3`. On current branch many P0 items are already
 ## Preserved local WIP
 Earlier incomplete WIP used `userId: 'default-user'` everywhere. Discarded in favor of main’s `trackPosition` upsert. Do not re-apply that stash pattern.
 
+## Reading position → server (this turn)
+- Source of truth: latest location learn event (timestamp wins).
+- Persist key: `math-scratchpad-reading-position-v1` via `getLearningStorage()` → authenticated `/state`.
+- Removed parallel IndexedDB + zustand persist path.
+- Provider starts `startReadingPositionPersistence()` (event + storage listeners).
+
 ## Next (priority order)
-1. Wire `RestorePosition` into `lesson-screen` with real chapter/lesson/section ids (without fighting existing lesson-progress restore).
-2. Allowlist + persist reading position through existing `browser-db` / server storage (do not invent a second sync stack).
-3. Give `ContinueLearningButton` a real navigation handler and render it where resume belongs.
-4. Run Playwright keyboard placement suites + capture evidence.
-5. Full journey E2E: open lesson → example → keyboard → save → refresh → restore.
+1. Wire `RestorePosition` into `lesson-screen` without fighting lesson-progress restore.
+2. Give `ContinueLearningButton` a real navigation handler and render it where resume belongs.
+3. Run Playwright keyboard placement suites + capture evidence.
+4. Full journey E2E: open lesson → example → keyboard → save → refresh → restore.
 
 ## Known remaining P1
 - Reading Position is still not cross-device (BroadcastChannel/localStorage only).
