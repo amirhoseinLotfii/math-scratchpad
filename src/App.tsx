@@ -997,8 +997,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    onCloseAutoFocus={event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); }}
   />
   <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
-  {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" style={{ position: 'fixed', inset: 0, zIndex: 20_000, display: 'grid', placeItems: 'center', padding: 24, background: 'rgba(12, 15, 13, .86)', color: '#F0F3F1', textAlign: 'center', pointerEvents: 'all' }}>
-   <div><strong style={{ fontSize: 18 }}>در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
+  {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" className="chapter-transition-overlay" style={{ zIndex: 20_000 }}>
+   <div><strong style={{ fontSize: 'var(--text-xl)' }}>در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
   </div>}
  </main>;
 }
