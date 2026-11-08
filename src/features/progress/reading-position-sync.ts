@@ -15,7 +15,7 @@ export type SyncMessageType =
 /** Message payload for sync */
 export interface SyncMessage {
   type: SyncMessageType;
-  position?: ReadingPosition;
+  position?: ReadingPosition | null;
   requestId?: string;
   tabId?: string;
 }

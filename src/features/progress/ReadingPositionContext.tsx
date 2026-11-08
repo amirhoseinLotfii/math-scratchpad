@@ -63,15 +63,16 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
   }, [storeRestorePosition]);
 
   /** Navigate to a specific position */
-  const navigateToPosition = async (position: MinimalReadingPosition) => {
+  const navigateToPosition = async (minimalPosition: MinimalReadingPosition) => {
     // Store the position we're navigating to
     const fullPosition: ReadingPosition = {
-      chapterId: position.chapterId,
-      lessonId: position.lessonId,
-      sectionId: position.sectionId,
-      exerciseId: position.exerciseId,
-      stepId: position.stepId,
-      scrollOffset: position.scrollOffset,
+      userId: position?.userId ?? 'currentUser',
+      chapterId: minimalPosition.chapterId,
+      lessonId: minimalPosition.lessonId,
+      sectionId: minimalPosition.sectionId,
+      exerciseId: minimalPosition.exerciseId,
+      stepId: minimalPosition.stepId,
+      scrollOffset: minimalPosition.scrollOffset,
       contentVersion: '1.0',
       lastActivity: 'reading',
       updatedAt: new Date(),
@@ -81,6 +82,17 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
     
     // In a real implementation, this would trigger navigation
     // For now, just store the position
+  };
+
+  const trackPosition = async (partial: Partial<ReadingPosition>) => {
+    await setPosition({
+      ...(position ?? {}),
+      ...partial,
+      userId: partial.userId ?? position?.userId ?? 'currentUser',
+      contentVersion: partial.contentVersion ?? position?.contentVersion ?? '1.0',
+      lastActivity: partial.lastActivity ?? position?.lastActivity ?? 'reading',
+      updatedAt: new Date(),
+    });
   };
 
   /** Get minimal position for sharing */
@@ -100,7 +112,7 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
     position,
     isLoading,
     isRestored,
-    trackPosition: setPosition,
+    trackPosition,
     updatePosition,
     clearPosition,
     restorePosition: storeRestorePosition,

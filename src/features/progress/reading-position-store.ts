@@ -4,7 +4,7 @@ import { ReadingPosition, MinimalReadingPosition, DEFAULT_POSITION_CONFIG } from
 
 /** Storage interface for reading positions */
 interface ReadingPositionStorage {
-  getPosition: () => ReadingPosition | null;
+  getPosition: () => Promise<ReadingPosition | null>;
   savePosition: (position: ReadingPosition) => Promise<void>;
   clearPosition: () => Promise<void>;
 }

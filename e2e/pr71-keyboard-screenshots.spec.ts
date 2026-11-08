@@ -7,13 +7,13 @@
 
 import { test, expect } from '@playwright/test';
 
-describe('PR #71 - Math Keyboard Placement Screenshots', () => {
+test.describe('PR #71 - Math Keyboard Placement Screenshots', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/lessons/1.1');
     await page.waitForLoadState('networkidle');
   });
 
-  describe('Mobile - 390px', () => {
+  test.describe('Mobile - 390px', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
     test('Keyboard before interaction - mobile', async ({ page }) => {
@@ -41,14 +41,18 @@ describe('PR #71 - Math Keyboard Placement Screenshots', () => {
       
       const fieldRect = await page.locator('.math-field').boundingBox();
       const keyboardRect = await page.locator('.math-keyboard').boundingBox();
-      
-      expect(keyboardRect!.top).toBeGreaterThan(fieldRect!.bottom - 50);
-      expect(keyboardRect!.top).toBeLessThan(fieldRect!.bottom + 100);
-      expect(Math.abs(keyboardRect!.width - fieldRect!.width)).toBeLessThan(50);
+      if (!fieldRect || !keyboardRect) {
+        throw new Error('Expected the math field and keyboard to have layout bounds');
+      }
+
+      const fieldBottom = fieldRect.y + fieldRect.height;
+      expect(keyboardRect.y).toBeGreaterThan(fieldBottom - 50);
+      expect(keyboardRect.y).toBeLessThan(fieldBottom + 100);
+      expect(Math.abs(keyboardRect.width - fieldRect.width)).toBeLessThan(50);
     });
   });
 
-  describe('Desktop - 1024px', () => {
+  test.describe('Desktop - 1024px', () => {
     test.use({ viewport: { width: 1024, height: 768 } });
 
     test('Keyboard before interaction - desktop', async ({ page }) => {
@@ -74,14 +78,18 @@ describe('PR #71 - Math Keyboard Placement Screenshots', () => {
       
       const fieldRect = await page.locator('.math-field').boundingBox();
       const keyboardRect = await page.locator('.math-keyboard').boundingBox();
-      
-      expect(keyboardRect!.top).toBeGreaterThan(fieldRect!.bottom - 50);
-      expect(keyboardRect!.top).toBeLessThan(fieldRect!.bottom + 100);
-      expect(Math.abs(keyboardRect!.width - fieldRect!.width)).toBeLessThan(50);
+      if (!fieldRect || !keyboardRect) {
+        throw new Error('Expected the math field and keyboard to have layout bounds');
+      }
+
+      const fieldBottom = fieldRect.y + fieldRect.height;
+      expect(keyboardRect.y).toBeGreaterThan(fieldBottom - 50);
+      expect(keyboardRect.y).toBeLessThan(fieldBottom + 100);
+      expect(Math.abs(keyboardRect.width - fieldRect.width)).toBeLessThan(50);
     });
   });
 
-  describe('Desktop - 1440px', () => {
+  test.describe('Desktop - 1440px', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
     test('Keyboard before interaction - wide desktop', async ({ page }) => {
