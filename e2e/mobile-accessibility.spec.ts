@@ -40,7 +40,7 @@ test('batch completion requires confidence and offers explicit export actions', 
 });
 test('menu stays within viewport and does not push the page horizontally', async ({ page }) => {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  const exportButton = page.getByRole('menuitem', { name: /^Copy full session JSON/ });
  await expect(exportButton).toBeInViewport();
@@ -109,7 +109,7 @@ test('clipboard export contains the whole batch rather than only the visible que
  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
  await startBatch(page); await typeWithAppKeys(page, '123');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
  const text = await page.evaluate(() => navigator.clipboard.readText());
@@ -150,7 +150,7 @@ test('copy denial exposes a manual JSON fallback without leaving the question', 
  await startBatch(page);
  const before = await page.getByRole('combobox', { name: 'Select question' }).inputValue();
  await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
  const fallback = page.getByRole('textbox', { name: /session JSON/i });
