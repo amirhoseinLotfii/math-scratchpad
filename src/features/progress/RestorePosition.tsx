@@ -178,7 +178,7 @@ export function RestorePosition({
         });
       },
       {
-        rootMargin: '0px 0px -50% 0px', // Trigger when element is in viewport
+        rootMargin: '0 -50% 0 0', // Trigger when element is in viewport
         threshold: 0.1,
       }
     );

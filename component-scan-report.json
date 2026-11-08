@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-11-08T08:05:33.973Z",
+  "files": [
+    {
+      "file": "src\\features\\lessons\\lesson-screen.tsx",
+      "issues": {
+        "inlineStyles": 1
+      }
+    }
+  ],
+  "components": [
+    "POLL_MS",
+    "BANK_SCHEMA",
+    "GOOGLE_CLIENT_ID",
+    "DRIVE_SCOPE",
+    "LessonCheck",
+    "languageForText",
+    "LessonKeyboardContext",
+    "splitLessonText",
+    "LessonPicker",
+    "LESSON_PROGRESS_PREFIX",
+    "LessonReferenceDialog",
+    "LessonScreen",
+    "pageRange",
+    "parseLessonTable",
+    "SPLIT_MIN",
+    "workItemLabel",
+    "parseLessons",
+    "getLesson",
+    "INSERT_VISIBLE",
+    "MathLiveStepInput",
+    "registerMathfield",
+    "isoLocal",
+    "parse",
+    "exerciseOf",
+    "useReadingPositionStore",
+    "initializeReadingPositionSync",
+    "DEFAULT_POSITION_CONFIG",
+    "ReadingPositionProvider",
+    "RestorePosition",
+    "useReadingPosition",
+    "CloudResetPreviewDialog",
+    "CompletionDialog",
+    "ConfidenceDialog",
+    "SessionPanel",
+    "TUTOR_EXPORT_SCHEMA",
+    "SESSION_KEY",
+    "confidenceSchema",
+    "MathTools",
+    "QuestionNavigator",
+    "ShortcutHelp",
+    "layoutAtWidth"
+  ],
+  "issues": {
+    "hardcodedColors": [],
+    "inlineStyles": [
+      {
+        "file": "src\\features\\lessons\\lesson-screen.tsx",
+        "count": 1
+      }
+    ],
+    "pxValues": []
+  }
+}
