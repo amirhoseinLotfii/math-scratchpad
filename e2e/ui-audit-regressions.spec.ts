@@ -104,6 +104,7 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await page.goto('/?serverMode');
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
  await page.getByRole('menuitem', { name: 'Import session JSON' }).click();
  const backup = page.getByRole('region', { name: 'Session backup' });
  await expect(backup).toBeVisible();
@@ -138,6 +139,7 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   await expect(banner).toBeVisible();
   await menu(page).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).click();
   const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
   await expect(dialog).toBeVisible();
