@@ -97,7 +97,7 @@ test('SYNC-07: IndexedDB write failure keeps editing usable and exposes export r
  await expect(page.getByRole('alert').filter({ hasText: /storage|saved|backup/i })).toBeVisible();
  await expect.poll(() => mathValue(first)).toContain('987');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  await expect(page.getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
 });
