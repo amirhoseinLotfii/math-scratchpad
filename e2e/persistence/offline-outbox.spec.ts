@@ -1,23 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { readOutboxCount, readOutboxEvents } from '../support/indexeddb';
+import { seedMockGoogleSession } from '../support/mock-google-session';
 
 const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
-
-async function installFakeGoogle(page: Page) {
-  await page.route('https://accounts.google.com/gsi/client', route => route.fulfill({
-    status: 200,
-    contentType: 'text/javascript',
-    body: `window.google = { accounts: { oauth2: {}, id: {
-      initialize(options) { window.__testGoogleCallback = options.callback; },
-      renderButton(element) {
-        const button = document.createElement('button'); button.type='button'; button.textContent='Sign in with Google'; button.setAttribute('aria-label','Sign in with Google');
-        button.addEventListener('click', () => { const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now()/1000)+3600 })).replace(/=/g,''); window.__testGoogleCallback({ credential: 'header.'+payload+'.signature' }); });
-        element.replaceChildren(button);
-      }
-    } } };`,
-  }));
-}
 
 async function installSyncWorker(page: Page, getOnline: () => boolean, posted: Array<Record<string, unknown>>) {
   const server: Array<{ seq: number; event: Record<string, unknown> }> = [];
@@ -56,7 +42,7 @@ async function installSyncWorker(page: Page, getOnline: () => boolean, posted: A
 async function runOfflineAnswerJourney(page: Page, testInfo: TestInfo) {
   let online = false;
   const posted: Array<Record<string, unknown>> = [];
-  await installFakeGoogle(page);
+  await seedMockGoogleSession(page);
   await installSyncWorker(page, () => online, posted);
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
@@ -67,7 +53,6 @@ async function runOfflineAnswerJourney(page: Page, testInfo: TestInfo) {
   await expect(syncPanel).toBeVisible();
   const accessibility = await new AxeBuilder({ page }).include('section[aria-labelledby="sync-panel-title"]').analyze();
   expect(accessibility.violations.filter(issue => issue.impact === 'critical' || issue.impact === 'serious')).toEqual([]);
-  await page.getByRole('button', { name: 'Sign in with Google' }).click();
   await expect.poll(() => page.getByText(/اتصال برقرار نیست|تلاش دوباره/).count()).toBeGreaterThan(0);
   await expect.poll(() => readOutboxCount(page)).toBeGreaterThan(0);
 
