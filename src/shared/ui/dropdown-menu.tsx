@@ -1,6 +1,16 @@
 import * as Primitive from '@radix-ui/react-dropdown-menu';
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'react';
+import { forwardRef, useSyncExternalStore, type ComponentPropsWithoutRef, type ElementRef } from 'react';
 import { cn } from '../lib/utils';
+// A horizontal Radix submenu cannot fit beside a full-width trigger on a narrow phone.
+// Anchor it below the trigger instead and keep the desktop side-flyout behavior.
+const narrowMenuQuery = '(max-width: 599px)';
+const subscribeToNarrowMenu = (notify: () => void) => {
+ const media = window.matchMedia(narrowMenuQuery);
+ media.addEventListener('change', notify);
+ return () => media.removeEventListener('change', notify);
+};
+const getNarrowMenu = () => typeof window !== 'undefined' && window.matchMedia(narrowMenuQuery).matches;
+const getServerNarrowMenu = () => false;
 export const DropdownMenu = Primitive.Root;
 export const DropdownMenuSub = Primitive.Sub;
 export const DropdownMenuTrigger = Primitive.Trigger;
@@ -12,9 +22,10 @@ export const DropdownMenuSubTrigger = forwardRef<ElementRef<typeof Primitive.Sub
  <Primitive.SubTrigger ref={ref} className={cn('dropdown-item', 'dropdown-sub-trigger', className)} {...props} />
 ));
 DropdownMenuSubTrigger.displayName = 'DropdownMenuSubTrigger';
-export const DropdownMenuSubContent = forwardRef<ElementRef<typeof Primitive.SubContent>, ComponentPropsWithoutRef<typeof Primitive.SubContent>>(({ className, ...props }, ref) => (
- <Primitive.Portal><Primitive.SubContent ref={ref} sideOffset={4} className={cn('dropdown-content', 'dropdown-sub-content', className)} {...props} /></Primitive.Portal>
-));
+export const DropdownMenuSubContent = forwardRef<ElementRef<typeof Primitive.SubContent>, ComponentPropsWithoutRef<typeof Primitive.SubContent>>(({ className, ...props }, ref) => {
+ const narrow = useSyncExternalStore(subscribeToNarrowMenu, getNarrowMenu, getServerNarrowMenu);
+ return <Primitive.Portal><Primitive.SubContent ref={ref} side={narrow ? 'bottom' : 'right'} align={narrow ? 'end' : 'start'} sideOffset={4} collisionPadding={8} className={cn('dropdown-content', 'dropdown-sub-content', className)} {...props} /></Primitive.Portal>;
+});
 DropdownMenuSubContent.displayName = 'DropdownMenuSubContent';
 export const DropdownMenuItem = forwardRef<ElementRef<typeof Primitive.Item>, ComponentPropsWithoutRef<typeof Primitive.Item>>(({ className, ...props }, ref) => (
  <Primitive.Item ref={ref} className={cn('dropdown-item', className)} {...props} />
