@@ -8,7 +8,7 @@ test('editing a submitted math answer returns it to Draft until confidence is co
     await page.goto('/');
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Show more' }).click();
-    await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+    await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
     await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
     await page.getByRole('button', { name: 'Start 20 Questions' }).click();
     await page.getByRole('button', { name: 'Skip for now' }).click();
