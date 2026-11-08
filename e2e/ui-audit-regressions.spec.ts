@@ -140,7 +140,7 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   await menu(page).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
   await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-  await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).click();
   const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
   await expect(dialog).toBeVisible();
   await expect(banner).toBeHidden();
