@@ -78,6 +78,13 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false), [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
+ useEffect(() => {
+  if (menu) return;
+  // Menu actions also close the controlled root directly with setMenu(false);
+  // reset disclosures here because Radix onOpenChange is not guaranteed for those closes.
+  setMenuMore(false);
+  setSessionDetailsOpen(false);
+ }, [menu]);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
  const [chapterTransitioning, setChapterTransitioning] = useState(false);
  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
