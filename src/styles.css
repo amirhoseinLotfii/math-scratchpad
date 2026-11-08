@@ -492,6 +492,9 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .question-timer output { color: var(--success); font-variant-numeric: tabular-nums; }
 #math-scratchpad-redux .question-timer button { background: var(--secondary); border-color: var(--border); }
 #math-scratchpad-redux .step { background: var(--card); border-color: var(--border); border-radius: 10px; }
+/* Inactive answer cards need a non-text contrast >= 3:1 against the dark card surface. */
+#math-scratchpad-redux .step:not(.current-step) { border-color: var(--color-neutral-500); }
+
 #math-scratchpad-redux .step.current-step { border-color: var(--primary); }
 #math-scratchpad-redux .current-step { scroll-margin-block: 10px; }
 #math-scratchpad-redux .math-token.token-active { color: var(--foreground); background: transparent; box-shadow: none; }
@@ -549,6 +552,13 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .dropdown-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 16px 44px rgba(var(--color-neutral-1000-rgb), 0.04); }
 .dropdown-item[data-highlighted] { background: var(--color-surface); outline-color: var(--ring); }
 .dropdown-content.notebook-menu { width: min(330px, calc(100vw - 16px)); max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 8px; }
+/* Preserve the app header and safe areas while keeping all menu actions scrollable on a phone. */
+@media (max-width: 599px) {
+  .dropdown-content.notebook-menu { width: min(340px, calc(100vw - 16px)); max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 128px)); padding: 6px; }
+  .notebook-menu .dropdown-item { min-height: 44px; padding: 9px 12px; }
+  .notebook-menu .dropdown-label.menu-section-heading { padding-block: 8px 4px; }
+}
+
 .dropdown-item.menu-primary-action { background: var(--primary); color: var(--primary-foreground); font-weight: 650; }
 .dropdown-item.menu-primary-action[data-highlighted] { background: var(--color-primary); color: var(--primary-foreground); }
 .dropdown-label.menu-section-heading { display: block; padding: 12px 10px 5px; color: var(--muted-foreground); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
