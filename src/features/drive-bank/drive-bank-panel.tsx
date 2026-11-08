@@ -141,8 +141,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
       // Other bank versions still require an explicit "Open received batch" confirmation.
       if (selectedFileByUser.current) {
         selectedFileByUser.current = false;
-        const session = store.getState().doc.session;
-        if (session?.bankId === parsed.bank_id && session.bankVersion === version) onResumeBank?.(parsed, version);
+        onResumeBank?.(parsed, version);
       }
       const readyMessage = parsed.questions.length ? `Bank ${parsed.bank_id} (version ${parsed.version}) loaded; ${parsed.questions.length} questions ready.` : 'Connected. The bank has no questions yet.';
       const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
@@ -221,6 +220,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     setConfirmation(null);
     if (action?.kind === 'batch') await startBank();
     else if (action?.kind === 'restore') await restore(action.saved);
+    close();
   }
   const current = store.getState().doc.session;
   const same = available && current?.bankId === available.bank.bank_id && current.bankVersion === available.version;

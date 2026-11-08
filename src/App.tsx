@@ -433,8 +433,15 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  }, [updateLessonProgressState]);
  const lastOpenedLessonKey = (bankId: string, version: string) => `math-scratchpad-last-open-lesson-v1:${encodeURIComponent(bankId)}:${encodeURIComponent(version)}`;
  function resumeBankLesson(bank: DriveBank, version: string) {
+  // Once the user has picked a file from Google Drive, close the Drive bank
+  // picker panel and resume the lesson from where the user left off.
+  setDriveBankOpen(false);
   // Banks without lessons remain in the regular question workspace.
-  if (!bank.lessons?.length) return;
+  if (!bank.lessons?.length) {
+    setLessonScreen(null);
+    setLessonPickerOpen(false);
+    return;
+  }
   const restored = readLessonProgress(bank, version);
   const active = bank.lessons ?? [];
   let storedId: string | null = null;
@@ -451,9 +458,13 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    return date(b).localeCompare(date(a));
   });
   const target = recent.find(lesson => lesson.id === storedId) ?? recent[0];
-  setDriveBankOpen(false);
-  if (target) { setLessonPickerOpen(true); setLessonScreen(target); }
-  else { setLessonScreen(null); setLessonPickerOpen(true); }
+  if (target) {
+    setLessonPickerOpen(false);
+    setLessonScreen(target);
+  } else {
+    setLessonScreen(null);
+    setLessonPickerOpen(true);
+  }
  }
  function openLesson(lesson: Lesson) {
   const before = lessonProgressById[lesson.id];

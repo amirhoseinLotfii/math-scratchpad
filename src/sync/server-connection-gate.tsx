@@ -122,13 +122,13 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
         {children}
       </div>
       {state.kind !== 'online' && (
-        <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl" }>
+        <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl">
           <div className="server-connection-gate-header">
             <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
-            <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }}}>بررسی اتصال</button>
+            <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }}>بررسی اتصال</button>
           </div>
-          <p className="server-connection-gate-message" }>{state.message}</p>
-          <div ref={retryButton} className="server-connection-gate-google" } />
+          <p className="server-connection-gate-message">{state.message}</p>
+          <div ref={retryButton} className="server-connection-gate-google" />
         </aside>
       )}
     </>
