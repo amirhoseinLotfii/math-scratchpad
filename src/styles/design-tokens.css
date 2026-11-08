@@ -185,6 +185,8 @@
   --color-border: var(--color-neutral-700); /* #404040 */
   --color-border-strong: var(--color-neutral-600); /* #525252 */
   --color-border-subtle: var(--color-neutral-800); /* #262626 */
+  /* Accessible 3:1+ non-text contrast for form field outlines on dark surfaces. */
+  --color-border-form: #767676;
   
   /* Focus and Ring Colors */
   --color-ring: var(--color-primary-400); /* #34d399 */
