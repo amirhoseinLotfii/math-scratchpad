@@ -22,7 +22,7 @@ test('mobile offline status is compact, discoverable and does not block math act
 test('practice completion tells learner how many answers remain unverified', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
   await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
   await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
   await page.getByRole('button', { name: 'Start 20 Questions' }).click();
@@ -44,7 +44,7 @@ test('practice completion tells learner how many answers remain unverified', { t
 test('session summary counts saved drafts separately from untouched questions', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
   await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
   await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
   await page.getByRole('button', { name: 'Start 20 Questions' }).click();
