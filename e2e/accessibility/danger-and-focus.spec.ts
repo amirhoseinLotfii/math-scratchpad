@@ -57,7 +57,7 @@ test('batch wellbeing Skip for now returns focus to the practice editor', { tag:
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+  await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
   await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
   await page.getByRole('button', { name: 'Start 20 Questions' }).click();
 
