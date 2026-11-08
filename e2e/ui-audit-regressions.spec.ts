@@ -85,6 +85,7 @@ test('UI-AUDIT-06: fraction batch confirmation stays clickable with sync active'
  await page.goto('/?serverMode');
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).click();
  await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).click();
  const start = page.getByRole('button', { name: 'Start 20 Questions' });
  expect(await start.evaluate(hitCenter)).toBe(true);
@@ -109,6 +110,7 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await backup.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('synthetic draft');
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).click();
  await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).click();
  await expect(backup).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm diagnostic start' })).toBeVisible();
@@ -118,6 +120,7 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await expect(page.getByRole('region', { name: 'New exercise' })).toBeVisible();
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).click();
  await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).click();
  await expect(page.getByRole('region', { name: 'New exercise' })).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm fraction round start' })).toBeVisible();
