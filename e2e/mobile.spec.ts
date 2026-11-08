@@ -53,7 +53,7 @@ test('confidence modal supports keyboard cancellation without losing focus', asy
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
  await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
- await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
+ await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
  const next = page.getByRole('button', { name: /Next question/i });
