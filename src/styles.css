@@ -1,24 +1,26 @@
 #math-scratchpad-redux {
   color-scheme: dark;
-  --ms-bg: #121a18;
-  --ms-surface: #202624;
-  --ms-key: #2b302f;
-  --ms-fg: #f2f6f3;
-  --ms-muted: #b8c5bf;
-  --ms-border: #707a75;
-  --ms-primary: #d0f5e2;
-  --ms-on-primary: #163d2e;
-  --ms-danger: #a82924;
-  --ms-on-danger: #ffffff;
-  --ms-highlight: #254c3d;
-  --ms-warning: #f4c16f;
-  --ms-radius: 14px;
-  font-family: 'Inter', 'Vazirmatn', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Legacy MS tokens - mapped to Design System for backward compatibility */
+  --ms-bg: var(--color-background, var(--color-background));
+  --ms-surface: var(--color-surface, var(--color-surface));
+  --ms-key: var(--color-surface-elevated, var(--color-surface-elevated));
+  --ms-fg: var(--color-text-primary, var(--color-text-primary));
+  --ms-muted: var(--color-text-muted, var(--color-text-muted));
+  --ms-border: var(--color-border, var(--color-border));
+  --ms-primary: var(--color-primary, var(--color-primary));
+  --ms-on-primary: var(--color-primary-foreground, var(--color-primary-foreground));
+  --ms-danger: var(--color-error, var(--color-error));
+  --ms-on-danger: var(--color-error-foreground, var(--color-text-primary));
+  --ms-highlight: var(--color-highlight, var(--color-highlight));
+  --ms-warning: var(--color-warning, var(--color-warning));
+  --ms-radius: var(--radius-xl, 14px);
+  
+  font-family: var(--font-family-sans, 'Inter', 'Vazirmatn', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   color: var(--ms-fg); direction: ltr; text-align: start; max-width: 736px; margin: auto;
   container-type: inline-size;
 }
 #math-scratchpad-redux *, #math-scratchpad-redux *::before, #math-scratchpad-redux *::after { box-sizing: border-box; }
-#math-scratchpad-redux .scratchpad { background: radial-gradient(ellipse at top left, #1b3329 0, transparent 420px), var(--ms-bg); border: 1px solid var(--ms-border); border-radius: 24px; padding: 20px; isolation: isolate; min-width: 0; }
+#math-scratchpad-redux .scratchpad { background: radial-gradient(ellipse at top left, var(--color-background) 0, transparent 420px), var(--ms-bg); border: 1px solid var(--ms-border); border-radius: 24px; padding: 20px; isolation: isolate; min-width: 0; }
 #math-scratchpad-redux h1 { font-size: clamp(22px, 4cqi, 30px); line-height: 1.2; font-weight: 650; letter-spacing: -.6px; margin: 0; }
 #math-scratchpad-redux h2 { font-size: 21px; line-height: 1.3; margin: 0 0 12px; font-weight: 600; }
 #math-scratchpad-redux h3 { font-size: 18px; line-height: 1.4; margin: 8px 0; font-weight: 600; }
@@ -26,11 +28,11 @@
 #math-scratchpad-redux .small { color: var(--ms-muted); font-size: 12px; }
 #math-scratchpad-redux .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 1.3px; color: var(--ms-muted); margin: 0 0 10px; }
 #math-scratchpad-redux button, #math-scratchpad-redux select, #math-scratchpad-redux textarea, #math-scratchpad-redux summary { font: inherit; color: inherit; }
-#math-scratchpad-redux button { min-width: 44px; min-height: 48px; border: 1px solid var(--ms-border); background: linear-gradient(160deg, #303634, var(--ms-key)); border-radius: var(--ms-radius); padding: 10px 14px; touch-action: manipulation; overflow-wrap: anywhere; }
+#math-scratchpad-redux button { min-width: 44px; min-height: 48px; border: 1px solid var(--ms-border); background: linear-gradient(160deg, var(--color-surface), var(--ms-key)); border-radius: var(--ms-radius); padding: 10px 14px; touch-action: manipulation; overflow-wrap: anywhere; }
 #math-scratchpad-redux button:disabled { opacity: .42; }
-#math-scratchpad-redux button[aria-pressed="true"] { background: var(--ms-highlight); box-shadow: inset 0 0 0 1px var(--ms-primary); border-color: #7fab96; }
+#math-scratchpad-redux button[aria-pressed="true"] { background: var(--ms-highlight); box-shadow: inset 0 0 0 1px var(--ms-primary); border-color: var(--color-primary); }
 #math-scratchpad-redux button.primary { color: var(--ms-on-primary); background: var(--ms-primary); border-color: var(--ms-primary); font-weight: 650; }
-#math-scratchpad-redux textarea, #math-scratchpad-redux select { border: 1px solid var(--ms-border); border-radius: var(--ms-radius); background: #252b28; padding: 12px; min-height: 48px; max-width: 100%; font-size: 16px; }
+#math-scratchpad-redux textarea, #math-scratchpad-redux select { border: 1px solid var(--ms-border); border-radius: var(--ms-radius); background: var(--color-surface-sunken); padding: 12px; min-height: 48px; max-width: 100%; font-size: 16px; }
 #math-scratchpad-redux textarea { display: block; width: 100%; min-height: 112px; resize: vertical; margin: 8px 0 14px; }
 #math-scratchpad-redux label { display: block; font-size: 14px; line-height: 1.5; }
 #math-scratchpad-redux .app-header, #math-scratchpad-redux .exercise-bar, #math-scratchpad-redux .step-header, #math-scratchpad-redux .panel-heading { display: flex; align-items: center; gap: 8px; justify-content: space-between; min-width: 0; }
@@ -42,26 +44,26 @@
 #math-scratchpad-redux .exercise-bar > button { align-self: end; }
 #math-scratchpad-redux .menu-panel, #math-scratchpad-redux .setup-panel, #math-scratchpad-redux .symbols-panel, #math-scratchpad-redux .manual-copy { background: var(--ms-surface); border: 1px solid var(--ms-border); padding: 16px; border-radius: 18px; margin: 12px 0; }
 #math-scratchpad-redux .menu-panel { display: grid; gap: 8px; }
-#math-scratchpad-redux .problem { background: #1b2420; border: 1px solid var(--ms-border); border-radius: 18px; padding: 0 14px; margin-bottom: 18px; }
+#math-scratchpad-redux .problem { background: var(--color-surface-sunken); border: 1px solid var(--ms-border); border-radius: 18px; padding: 0 14px; margin-bottom: 18px; }
 #math-scratchpad-redux summary { padding: 12px 2px; min-height: 48px; }
 #math-scratchpad-redux .problem > summary { font-weight: 600; }
 #math-scratchpad-redux .problem-formula { padding: 0 2px 14px; }
 #math-scratchpad-redux .latex-source { direction: ltr; unicode-bidi: isolate; font-family: ui-monospace, monospace; }
 #math-scratchpad-redux .steps { display: grid; gap: 12px; min-width: 0; }
-#math-scratchpad-redux .step { background: linear-gradient(135deg, #222925, #1d2220); border: 1px solid var(--ms-border); border-radius: 18px; padding: 12px 14px; min-width: 0; }
-#math-scratchpad-redux .current-step { border-color: #719b85; }
+#math-scratchpad-redux .step { background: var(--color-surface-sunken); border: 1px solid var(--ms-border); border-radius: 18px; padding: 12px 14px; min-width: 0; }
+#math-scratchpad-redux .current-step { border-color: var(--color-primary); }
 #math-scratchpad-redux .step-title { font-weight: 600; border: 0; background: transparent; padding-left: 0; white-space: nowrap; }
 #math-scratchpad-redux .step-header { flex-wrap: wrap; }
 #math-scratchpad-redux .step-state { font-size: 12px; margin-right: auto; }
 #math-scratchpad-redux .step-state.needs-review, #math-scratchpad-redux .step-state.edited { padding: 5px 7px; border-radius: 7px; }
-#math-scratchpad-redux .step-state.needs-review { color: var(--ms-warning); background: #402e17; border: 1px solid #8c6936; }
-#math-scratchpad-redux .step-state.edited { color: var(--ms-primary); background: #203c2f; border: 1px solid #567b65; }
+#math-scratchpad-redux .step-state.needs-review { color: var(--ms-warning); background: var(--color-highlight-foreground); border: 1px solid var(--color-warning); }
+#math-scratchpad-redux .step-state.edited { color: var(--ms-primary); background: var(--color-highlight); border: 1px solid var(--color-success); }
 #math-scratchpad-redux .step-header > button[aria-pressed="true"] { color: var(--ms-primary); }
 #math-scratchpad-redux .step-menu { position: relative; }
 #math-scratchpad-redux .step-menu summary { min-width: 44px; list-style: none; text-align: center; border-radius: var(--ms-radius); }
-#math-scratchpad-redux .step-menu-items { position: absolute; right: 0; top: 100%; z-index: 4; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--ms-border); border-radius: var(--ms-radius); width: 154px; background: var(--ms-surface); box-shadow: 0 8px 24px #0005; }
+#math-scratchpad-redux .step-menu-items { position: absolute; right: 0; top: 100%; z-index: 4; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--ms-border); border-radius: var(--ms-radius); width: 154px; background: var(--ms-surface); box-shadow: 0 8px 24px rgba(var(--color-neutral-1000-rgb), 0.2); }
 #math-scratchpad-redux .expression { padding: 12px 0 18px; min-width: 0; direction: ltr; unicode-bidi: isolate; }
-#math-scratchpad-redux math-field.mathlive-step-input { display: block; width: fit-content; max-width: 100%; min-height: 48px; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--foreground); font-size: clamp(25px, 6vw, 34px); direction: ltr; --caret-color: var(--primary); --selection-background-color: #52745f66; --selection-color: var(--foreground); }
+#math-scratchpad-redux math-field.mathlive-step-input { display: block; width: fit-content; max-width: 100%; min-height: 48px; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--foreground); font-size: clamp(25px, 6vw, 34px); direction: ltr; --caret-color: var(--primary); --selection-background-color: rgba(var(--color-success-500-rgb), 0.4); --selection-color: var(--foreground); }
 #math-scratchpad-redux math-field.mathlive-step-input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 #math-scratchpad-redux math-field.mathlive-step-input::part(container) { min-width: 44px; min-height: 44px; }
 #math-scratchpad-redux math-field.mathlive-step-input::part(content) { padding: 2px 0; }
@@ -72,7 +74,7 @@
 #math-scratchpad-redux .math-chunk, #math-scratchpad-redux .group, #math-scratchpad-redux .radical { display: inline-flex; align-items: center; direction: ltr; unicode-bidi: isolate; }
 #math-scratchpad-redux .math-chunk { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
 #math-scratchpad-redux .math-token { border: 1px solid transparent; background: transparent; min-width: 44px; min-height: 48px; padding: 2px 5px; font-family: 'Cambria Math', 'STIX Two Math', Georgia, serif; font-size: 34px; line-height: 1.3; border-radius: 9px; white-space: pre; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: lining-nums; }
-#math-scratchpad-redux .math-token.token-active { background: var(--ms-highlight); box-shadow: inset 0 0 0 1.5px var(--ms-primary); color: #e8fff1; }
+#math-scratchpad-redux .math-token.token-active { background: var(--ms-highlight); box-shadow: inset 0 0 0 1.5px var(--ms-primary); color: var(--color-text-primary); }
 #math-scratchpad-redux .readonly-token { min-width: 30px; min-height: 36px; font-size: 27px; padding: 0 4px; }
 #math-scratchpad-redux .placeholder { color: var(--ms-muted); }
 #math-scratchpad-redux .caret { display: inline-block; height: 1em; border-left: 2px solid var(--ms-primary); margin: 0; }
@@ -82,7 +84,7 @@
 #math-scratchpad-redux .math-gap { border: 0; background: transparent; min-width: 44px; min-height: 48px; width: 44px; padding: 0; border-radius: 8px; color: var(--ms-muted); font-size: 20px; }
 #math-scratchpad-redux .math-gap.at-gap { background: var(--ms-highlight); color: var(--ms-primary); }
 #math-scratchpad-redux .math-structure { display: inline-flex; align-items: center; max-width: 100%; border-radius: 9px; }
-#math-scratchpad-redux .structure-selected { background: #244636; box-shadow: inset 0 0 0 2px var(--ms-primary); padding: 3px; }
+#math-scratchpad-redux .structure-selected { background: var(--color-highlight); box-shadow: inset 0 0 0 2px var(--ms-primary); padding: 3px; }
 #math-scratchpad-redux .power { display: inline-flex; align-items: center; }
 #math-scratchpad-redux .power > sup { align-self: flex-start; padding-bottom: 24px; }
 #math-scratchpad-redux .power > sup .math-token { font-size: 23px; }
@@ -100,8 +102,8 @@
 #math-scratchpad-redux .shortcut-list > button { min-width: 48px; font-family: Georgia, serif; font-size: 21px; }
 #math-scratchpad-redux .key-grid, #math-scratchpad-redux .navigation-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; direction: ltr; margin: 8px 0; }
 #math-scratchpad-redux .key-grid button { font-size: 24px; min-height: 56px; padding-inline: 2px; }
-#math-scratchpad-redux .key-grid .number-key { background: linear-gradient(150deg, #2a302d, #252a28); }
-#math-scratchpad-redux .key-grid .operator-key { background: var(--ms-highlight); border-color: #3d6652; }
+#math-scratchpad-redux .key-grid .number-key { background: linear-gradient(150deg, var(--color-surface-elevated), var(--color-surface-sunken)); }
+#math-scratchpad-redux .key-grid .operator-key { background: var(--ms-highlight); border-color: var(--color-highlight); }
 #math-scratchpad-redux .editing-tools button, #math-scratchpad-redux .navigation-grid button { padding-inline: 3px; }
 #math-scratchpad-redux .symbols-panel { padding: 12px; margin-inline: 0; }
 #math-scratchpad-redux .panel-heading { flex-wrap: wrap; margin-bottom: 12px; }
@@ -113,13 +115,13 @@
 #math-scratchpad-redux .symbol-item > button:first-child { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; border-radius: 12px 0 0 12px; padding: 8px; }
 #math-scratchpad-redux .symbol-item > button:first-child > span:first-child { font-family: Georgia, serif; font-size: 26px; min-width: 42px; text-align: center; }
 #math-scratchpad-redux .symbol-item > button:last-child { border-radius: 0 12px 12px 0; padding-inline: 9px; }
-#math-scratchpad-redux .symbol-item > button[aria-pressed="true"] { color: #f4cd70; box-shadow: none; }
+#math-scratchpad-redux .symbol-item > button[aria-pressed="true"] { color: var(--color-warning); box-shadow: none; }
 #math-scratchpad-redux .topic-list { gap: 6px; padding-block: 6px; border-block: 1px solid var(--ms-border); }
 #math-scratchpad-redux .topic-list button { font-size: 12px; padding: 8px 10px; }
-#math-scratchpad-redux .template-preview { background: #1b2721; border: 1px solid #527861; border-radius: 14px; padding: 12px; min-width: 0; }
+#math-scratchpad-redux .template-preview { background: var(--color-surface-sunken); border: 1px solid var(--color-success); border-radius: 14px; padding: 12px; min-width: 0; }
 #math-scratchpad-redux .preview-formula { padding-block: 10px; min-width: 0; }
 #math-scratchpad-redux .template-preview > button { width: 100%; }
-#math-scratchpad-redux .structure-selection { margin-top: 12px; padding: 10px; background: #213c2e; border: 1px solid #739f85; border-radius: 14px; }
+#math-scratchpad-redux .structure-selection { margin-top: 12px; padding: 10px; background: var(--color-highlight); border: 1px solid var(--color-success); border-radius: 14px; }
 #math-scratchpad-redux .structure-label { color: var(--ms-primary); font-size: 13px; }
 #math-scratchpad-redux .structure-label .small { display: block; }
 #math-scratchpad-redux .primary-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -130,7 +132,7 @@
 #math-scratchpad-redux .copy-state.changed { color: var(--ms-warning); }
 #math-scratchpad-redux .manual-copy textarea, #math-scratchpad-redux #session-json { min-height: 170px; font-family: ui-monospace, monospace; }
 @media (hover: hover) {
-  #math-scratchpad-redux button:not(:disabled):hover { border-color: #a1c5ae; }
+  #math-scratchpad-redux button:not(:disabled):hover { border-color: var(--color-primary); }
 }
 @container (max-width: 520px) {
   #math-scratchpad-redux .symbols-layout { grid-template-columns: minmax(0, 1fr); }
@@ -175,29 +177,29 @@
 #math-scratchpad-redux .notebook-main { min-width: 0; }
 #math-scratchpad-redux .keyboard-side { min-width: 0; position: sticky; top: 12px; }
 #math-scratchpad-redux .math-keyboard { background: var(--ms-surface); border: 1px solid var(--ms-border); border-radius: 17px; padding: 12px; min-width: 0; }
-#math-scratchpad-redux .problem { padding: 13px 17px; margin-bottom: 14px; background: #19271e; border-color: #4c7656; }
+#math-scratchpad-redux .problem { padding: 13px 17px; margin-bottom: 14px; background: var(--color-surface-sunken); border-color: var(--color-highlight); }
 #math-scratchpad-redux .problem-formula { padding: 6px 0 3px; }
-#math-scratchpad-redux .question-statement { text-align: start; unicode-bidi: plaintext; font-size: 14px; line-height: 1.85; color: #e8f4eb; margin: 0 0 10px; }
+#math-scratchpad-redux .question-statement { text-align: start; unicode-bidi: plaintext; font-size: 14px; line-height: 1.85; color: var(--color-text-secondary); margin: 0 0 10px; }
 #math-scratchpad-redux .steps { gap: 11px; }
 #math-scratchpad-redux .step { border-radius: 14px; }
 #math-scratchpad-redux .expression { padding-bottom: 7px; }
 #math-scratchpad-redux .step .selection { margin: 6px 0 0; }
 #math-scratchpad-redux .insertion-bar { display: flex; flex-wrap: wrap; gap: 7px; margin: 13px 0; }
 #math-scratchpad-redux .insertion-bar button { min-height: 39px; font-size: 12px; padding: 7px 11px; }
-#math-scratchpad-redux .diagnostic-track { width: 100%; background: #2e4035; border-radius: 99px; height: 7px; overflow: hidden; }
-#math-scratchpad-redux .diagnostic-track > div { background: #a9e6bc; height: 100%; }
+#math-scratchpad-redux .diagnostic-track { width: 100%; background: var(--color-highlight); border-radius: 99px; height: 7px; overflow: hidden; }
+#math-scratchpad-redux .diagnostic-track > div { background: var(--color-primary); height: 100%; }
 #math-scratchpad-redux .diagnostic-progress { margin-bottom: 14px; }
 #math-scratchpad-redux .diagnostic-progress p { margin: 6px 0 0; }
 #math-scratchpad-redux .diagnostic-controls { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; padding: 13px 0; }
 #math-scratchpad-redux .diagnostic-controls button { min-height: 36px; font-size: 12px; padding: 6px 9px; }
-#math-scratchpad-redux .diagnostic-report { border: 1px solid #679479; border-radius: 15px; padding: 15px; background: #192b20; margin-top: 16px; }
+#math-scratchpad-redux .diagnostic-report { border: 1px solid var(--color-success); border-radius: 15px; padding: 15px; background: var(--color-surface-sunken); margin-top: 16px; }
 #math-scratchpad-redux .report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
 #math-scratchpad-redux .report-grid > div { padding: 9px; border: 1px solid var(--ms-border); border-radius: 9px; font-size: 12px; line-height: 1.7; }
-#math-scratchpad-redux .insert-overlay { position: absolute; z-index: 30; inset: 0; background: #000b; display: flex; align-items: flex-start; justify-content: center; padding: min(14vh, 84px) 12px 12px; border-radius: 19px; }
-#math-scratchpad-redux .insert-dialog { background: #263b2d; width: min(430px, 100%); padding: 17px; border: 1px solid #8eb79d; border-radius: 15px; box-shadow: 0 20px 60px #0008; }
+#math-scratchpad-redux .insert-overlay { position: absolute; z-index: 30; inset: 0; background: rgba(var(--color-neutral-1000-rgb), 0.04); display: flex; align-items: flex-start; justify-content: center; padding: min(14vh, 84px) 12px 12px; border-radius: 19px; }
+#math-scratchpad-redux .insert-dialog { background: var(--color-highlight); width: min(430px, 100%); padding: 17px; border: 1px solid var(--color-primary); border-radius: 15px; box-shadow: 0 20px 60px rgba(var(--color-neutral-1000-rgb), 0.03); }
 #math-scratchpad-redux .insert-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 13px 0; }
 #math-scratchpad-redux .insert-options button { min-width: 0; min-height: 51px; }
-#math-scratchpad-redux .insert-options button[aria-pressed="true"] { background: #426b4e; border-color: #c0ecd0; }
+#math-scratchpad-redux .insert-options button[aria-pressed="true"] { background: var(--color-highlight); border-color: var(--color-text-secondary); }
 @container (max-width: 780px) {
   #math-scratchpad-redux .editor-layout { grid-template-columns: minmax(0, 1fr); }
   #math-scratchpad-redux .keyboard-side { position: static; }
@@ -233,13 +235,13 @@
 html { background: var(--background); }
 body { margin: 0; }
 body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--font-sans); }
-#math-scratchpad-redux { --ms-bg: var(--background); --ms-surface: var(--card); --ms-key: var(--secondary); --ms-fg: var(--foreground); --ms-muted: var(--muted-foreground); --ms-border: var(--border); --ms-primary: var(--primary); --ms-on-primary: var(--primary-foreground); --ms-highlight: #284f3b; max-width: 1100px; }
+#math-scratchpad-redux { --ms-bg: var(--color-background); --ms-surface: var(--color-surface); --ms-key: var(--color-surface-elevated); --ms-fg: var(--color-text-primary); --ms-muted: var(--color-text-muted); --ms-border: var(--color-border); --ms-primary: var(--color-primary); --ms-on-primary: var(--color-primary-foreground); --ms-highlight: var(--color-highlight); max-width: 1100px; }
 .ui-button, #math-scratchpad-redux button.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; min-height: 48px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--secondary); color: var(--foreground); font: 500 14px/1.35 var(--font-sans); cursor: pointer; touch-action: manipulation; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .ui-button svg { width: 20px; height: 20px; flex: 0 0 20px; }
 .ui-button.button-primary, #math-scratchpad-redux button.ui-button.button-primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); font-weight: 650; }
 .ui-button.button-danger, #math-scratchpad-redux button.ui-button.button-danger { background: var(--ms-danger); color: var(--ms-on-danger); border-color: var(--ms-danger); font-weight: 650; }
-.ui-button.button-danger:hover, #math-scratchpad-redux button.ui-button.button-danger:hover { background: #922018; border-color: #922018; }
-.ui-button.button-danger:active, #math-scratchpad-redux button.ui-button.button-danger:active { background: #7e1b16; border-color: #7e1b16; }
+.ui-button.button-danger:hover, #math-scratchpad-redux button.ui-button.button-danger:hover { background: var(--color-error); border-color: var(--color-error); }
+.ui-button.button-danger:active, #math-scratchpad-redux button.ui-button.button-danger:active { background: var(--color-error-hover); border-color: var(--color-error-hover); }
 .ui-button.button-ghost, #math-scratchpad-redux button.ui-button.button-ghost { background: transparent; border-color: transparent; }
 .ui-button.button-icon, #math-scratchpad-redux button.ui-button.button-icon { width: 44px; min-height: 44px; padding: 10px; flex: 0 0 44px; }
 .ui-button:disabled, #math-scratchpad-redux button:disabled { opacity: .48; cursor: not-allowed; }
@@ -282,7 +284,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .keyboard-toolbar button > span { font-size: 18px; }
 #math-scratchpad-redux .key-grid { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(48px, 1fr)); gap: 7px; margin: 0; }
 #math-scratchpad-redux .key-grid button { min-width: 44px; min-height: 48px; padding: 5px 3px; font-size: 24px; }
-#math-scratchpad-redux .key-grid .operator-key { background: #223f31; }
+#math-scratchpad-redux .key-grid .operator-key { background: var(--color-highlight); }
 #math-scratchpad-redux .key-grid button:nth-last-child(2) { font-size: 13px; }
 #math-scratchpad-redux .more-tools-panel { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 8px; background: var(--card); }
 #math-scratchpad-redux .editing-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -293,7 +295,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux [role='status']:empty, #math-scratchpad-redux .copy-state:empty { display: none; }
 #math-scratchpad-redux .copy-state, #math-scratchpad-redux [role='status'] { font-size: 12px; margin: 6px 0 0; }
 #math-scratchpad-redux p[role='alert'], .modal-content [role='alert'] { color: var(--destructive); }
-.modal-overlay { position: fixed; inset: 0; z-index: 50; background: #000b; }
+.modal-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(var(--color-neutral-1000-rgb), 0.04); }
 .modal-content { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; z-index: 51; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); padding: 20px; font: 16px/1.5 var(--font-sans); box-sizing: border-box; }
 .modal-content h2 { margin: 0 0 8px; font-size: 22px; }
 .modal-content p { color: var(--muted-foreground); margin: 8px 0 16px; }
@@ -303,12 +305,12 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .confidence-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .confidence-options label { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; min-height: 48px; padding: 8px 4px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
 .confidence-options input { width: 18px; height: 18px; accent-color: var(--primary); }
-.confidence-options label:has(:checked) { background: #254b37; border-color: var(--ring); }
+.confidence-options label:has(:checked) { background: var(--color-highlight); border-color: var(--ring); }
 .confidence-options label:focus-within { outline: 3px solid var(--ring); outline-offset: 2px; }
 .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .completion-actions { display: grid; gap: 10px; }
 .insert-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
-.dropdown-content { z-index: 60; width: min(310px, calc(100vw - 24px)); max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); padding: 6px; box-shadow: 0 12px 40px #0008; font: 14px/1.4 var(--font-sans); box-sizing: border-box; }
+.dropdown-content { z-index: 60; width: min(310px, calc(100vw - 24px)); max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); padding: 6px; box-shadow: 0 12px 40px rgba(var(--color-neutral-1000-rgb), 0.03); font: 14px/1.4 var(--font-sans); box-sizing: border-box; }
 .dropdown-item { display: flex; align-items: center; gap: 10px; padding: 12px 10px; min-height: 44px; border-radius: 8px; outline: none; cursor: pointer; user-select: none; box-sizing: border-box; }
 .dropdown-item[data-highlighted] { background: var(--secondary); outline: 2px solid var(--ring); outline-offset: -2px; }
 .dropdown-item svg { width: 18px; height: 18px; flex: 0 0 18px; }
@@ -423,7 +425,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .session-panel select, .session-panel input[type="text"] { min-height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; background: transparent; color: inherit; }
 .session-panel input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); }
 .session-panel .hint-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.session-panel .final-status.missing { color: #e0a43a; }
+.session-panel .final-status.missing { color: var(--color-warning); }
 .save-indicator { overflow-wrap: anywhere; }
 .session-panel { min-width: 0; max-width: 100%; }
 .session-panel code, .session-panel .final-status { overflow-wrap: anywhere; word-break: break-word; }
@@ -452,19 +454,19 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 /* Graphite notebook refresh */
 #math-scratchpad-redux {
   color-scheme: dark;
-  --ms-bg: #151719;
-  --ms-surface: #202326;
-  --ms-key: #292d30;
-  --ms-fg: #e7ebe8;
-  --ms-muted: #b2b9b5;
-  --ms-border: #707a75;
-  --ms-primary: #86b99b;
-  --ms-on-primary: #101a14;
-  --ms-danger: #b42318;
-  --ms-on-danger: #ffffff;
-  --ms-highlight: #343c37;
-  --ms-warning: #e4b66b;
-  --ms-success: #8fa89a;
+  --ms-bg: var(--color-background);
+  --ms-surface: var(--color-surface);
+  --ms-key: var(--color-surface-elevated);
+  --ms-fg: var(--color-text-primary);
+  --ms-muted: var(--color-text-muted);
+  --ms-border: var(--color-border);
+  --ms-primary: var(--color-primary);
+  --ms-on-primary: var(--color-primary-foreground);
+  --ms-danger: var(--color-error);
+  --ms-on-danger: var(--color-text-primary);
+  --ms-highlight: var(--color-surface);
+  --ms-warning: var(--color-warning);
+  --ms-success: var(--color-success);
   --ms-radius: 10px;
 }
 #math-scratchpad-redux .scratchpad { background: var(--background); border-color: var(--border); }
@@ -486,31 +488,31 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .step { background: var(--card); border-color: var(--border); border-radius: 10px; }
 #math-scratchpad-redux .step.current-step { border-color: var(--primary); }
 #math-scratchpad-redux .current-step { scroll-margin-block: 10px; }
-#math-scratchpad-redux .math-token.token-active { color: var(--foreground); background: #343c37; box-shadow: inset 0 0 0 1.5px var(--primary); }
-#math-scratchpad-redux .math-gap.at-gap { color: var(--primary); background: #343c37; }
-#math-scratchpad-redux .structure-selected { background: #333a36; box-shadow: inset 0 0 0 2px var(--primary); }
-#math-scratchpad-redux .step-state.needs-review { color: #f0ca81; background: #342c1d; border-color: #6f5b34; }
-#math-scratchpad-redux .step-state.edited { color: var(--success); background: #252d29; border-color: #52645a; }
+#math-scratchpad-redux .math-token.token-active { color: var(--foreground); background: var(--color-surface); box-shadow: inset 0 0 0 1.5px var(--primary); }
+#math-scratchpad-redux .math-gap.at-gap { color: var(--primary); background: var(--color-surface); }
+#math-scratchpad-redux .structure-selected { background: var(--color-surface); box-shadow: inset 0 0 0 2px var(--primary); }
+#math-scratchpad-redux .step-state.needs-review { color: var(--color-warning); background: var(--color-surface); border-color: var(--color-warning); }
+#math-scratchpad-redux .step-state.edited { color: var(--success); background: var(--color-surface-sunken); border-color: var(--color-success); }
 #math-scratchpad-redux .key-grid .operator-key, #math-scratchpad-redux .quick-math-tools button { background: var(--secondary); border-color: var(--border); }
 #math-scratchpad-redux .key-grid .number-key { background: var(--secondary); border-color: var(--border); }
 #math-scratchpad-redux .template-preview { background: var(--raised); border-color: var(--border); border-radius: 10px; }
-#math-scratchpad-redux .insert-dialog { background: var(--card); border-color: var(--border); border-radius: 10px; box-shadow: 0 18px 44px #0008; }
-#math-scratchpad-redux .insert-options button[aria-pressed="true"] { background: #343c37; border-color: var(--primary); color: var(--foreground); box-shadow: inset 0 0 0 1px var(--primary); }
-#math-scratchpad-redux .structure-selection { background: #252d29; border-color: var(--primary); color: var(--foreground); border-radius: 10px; }
+#math-scratchpad-redux .insert-dialog { background: var(--card); border-color: var(--border); border-radius: 10px; box-shadow: 0 18px 44px rgba(var(--color-neutral-1000-rgb), 0.03); }
+#math-scratchpad-redux .insert-options button[aria-pressed="true"] { background: var(--color-surface); border-color: var(--primary); color: var(--foreground); box-shadow: inset 0 0 0 1px var(--primary); }
+#math-scratchpad-redux .structure-selection { background: var(--color-surface-sunken); border-color: var(--primary); color: var(--foreground); border-radius: 10px; }
 #math-scratchpad-redux button.primary, #math-scratchpad-redux button.ui-button.button-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
-#math-scratchpad-redux button.primary:hover, #math-scratchpad-redux button.ui-button.button-primary:hover { background: #97c8a9; border-color: #97c8a9; }
-#math-scratchpad-redux button.primary:active, #math-scratchpad-redux button.ui-button.button-primary:active { background: #75a98a; border-color: #75a98a; }
-#math-scratchpad-redux button[aria-pressed="true"] { background: #343c37; border-color: var(--primary); color: var(--foreground); }
+#math-scratchpad-redux button.primary:hover, #math-scratchpad-redux button.ui-button.button-primary:hover { background: var(--color-primary); border-color: var(--color-primary); }
+#math-scratchpad-redux button.primary:active, #math-scratchpad-redux button.ui-button.button-primary:active { background: var(--color-primary); border-color: var(--color-primary); }
+#math-scratchpad-redux button[aria-pressed="true"] { background: var(--color-surface); border-color: var(--primary); color: var(--foreground); }
 #math-scratchpad-redux .copy-state, #math-scratchpad-redux .final-status:not(.missing) { color: var(--success); }
 #math-scratchpad-redux .final-status { margin: 5px 2px 0; }
-#math-scratchpad-redux button:not(:disabled):hover { border-color: #97c8a9; }
+#math-scratchpad-redux button:not(:disabled):hover { border-color: var(--color-primary); }
 #math-scratchpad-redux button:not(:disabled):active { transform: translateY(1px); }
 #math-scratchpad-redux button:disabled { opacity: .45; }
-#math-scratchpad-redux :is(button, select, textarea, input, [role='menuitem'], summary):focus-visible { outline: 3px solid #8cbfff; outline-offset: 2px; }
+#math-scratchpad-redux :is(button, select, textarea, input, [role='menuitem'], summary):focus-visible { outline: 3px solid var(--color-ring); outline-offset: 2px; }
 #math-scratchpad-redux .add-step { color: var(--foreground); border-color: var(--border); background: var(--secondary); }
 #math-scratchpad-redux .diagnostic-track > div { background: var(--success); }
 #math-scratchpad-redux .question-navigator { background: var(--card); border-color: var(--border); border-radius: 10px; }
-#math-scratchpad-redux .question-destination[aria-current='page'] { background: #343c37; outline-color: var(--primary); }
+#math-scratchpad-redux .question-destination[aria-current='page'] { background: var(--color-surface); outline-color: var(--primary); }
 #math-scratchpad-redux .state-answered { background: var(--success); color: var(--primary-foreground); }
 #math-scratchpad-redux .diagnostic-report { background: var(--card); border-color: var(--border); }
 #math-scratchpad-redux .setup-panel, #math-scratchpad-redux .manual-copy, #math-scratchpad-redux .symbols-panel { background: var(--card); border-color: var(--border); border-radius: 10px; }
@@ -536,13 +538,13 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   box-shadow: 0 20px 55px rgb(0 0 0 / 0.5);
 }
 
-.modal-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 18px 56px #0009; }
+.modal-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 18px 56px rgba(var(--color-neutral-1000-rgb), 0.04); }
 .modal-overlay { background: rgb(7 9 10 / 72%); }
-.dropdown-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 16px 44px #0009; }
-.dropdown-item[data-highlighted] { background: #343c37; outline-color: var(--ring); }
+.dropdown-content { border-radius: 12px; border-color: var(--border); background: var(--card); box-shadow: 0 16px 44px rgba(var(--color-neutral-1000-rgb), 0.04); }
+.dropdown-item[data-highlighted] { background: var(--color-surface); outline-color: var(--ring); }
 .dropdown-content.notebook-menu { width: min(330px, calc(100vw - 16px)); max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 8px; }
 .dropdown-item.menu-primary-action { background: var(--primary); color: var(--primary-foreground); font-weight: 650; }
-.dropdown-item.menu-primary-action[data-highlighted] { background: #97c8a9; color: var(--primary-foreground); }
+.dropdown-item.menu-primary-action[data-highlighted] { background: var(--color-primary); color: var(--primary-foreground); }
 .dropdown-label.menu-section-heading { display: block; padding: 12px 10px 5px; color: var(--muted-foreground); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .dropdown-label.menu-section-heading:not(:first-child) { margin-top: 5px; border-top: 1px solid var(--border); }
 .dropdown-label.menu-section-heading.danger-heading { color: var(--destructive); }
@@ -553,7 +555,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .menu-disclosure .menu-chevron { width: 16px; height: 16px; transition: transform 140ms ease; }
 .menu-disclosure .menu-chevron-open { transform: rotate(180deg); }
 .dropdown-item.menu-danger { color: var(--destructive); }
-.dropdown-item.menu-danger[data-highlighted] { background: #3b2929; outline-color: var(--destructive); }
+.dropdown-item.menu-danger[data-highlighted] { background: var(--color-surface); outline-color: var(--destructive); }
 .dropdown-item.menu-danger svg { color: var(--destructive); }
 
 #math-scratchpad-redux .math-tools-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; width: 100%; min-width: 0; margin: 10px 0 8px; padding: 0; border: 0; background: transparent; }
@@ -760,7 +762,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-choice-options { display: flex; flex-wrap: wrap; gap: 8px; }
 #math-scratchpad-redux .lesson-choice-options label { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-width: 64px; min-height: 48px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--raised); cursor: pointer; }
 #math-scratchpad-redux .lesson-choice-options input, #math-scratchpad-redux .lesson-confidence-options input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); }
-#math-scratchpad-redux .lesson-choice-options label.lesson-choice-selected, #math-scratchpad-redux .lesson-confidence-options label.lesson-confidence-selected, #math-scratchpad-redux .lesson-choice-options label:has(:checked), #math-scratchpad-redux .lesson-confidence-options label:has(:checked) { border-color: var(--primary); background: #343c37; box-shadow: inset 0 0 0 1px var(--primary); }
+#math-scratchpad-redux .lesson-choice-options label.lesson-choice-selected, #math-scratchpad-redux .lesson-confidence-options label.lesson-confidence-selected, #math-scratchpad-redux .lesson-choice-options label:has(:checked), #math-scratchpad-redux .lesson-confidence-options label:has(:checked) { border-color: var(--primary); background: var(--color-surface); box-shadow: inset 0 0 0 1px var(--primary); }
 #math-scratchpad-redux .lesson-choice-options label:has(:checked) span::before { content: '✓'; margin-inline-end: 7px; color: var(--success); font-size: 16px; }
 #math-scratchpad-redux .lesson-choice-options label span { font-size: 24px; line-height: 1.2; }
 #math-scratchpad-redux .lesson-choice-math { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
@@ -791,12 +793,12 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-answer-step .selection { color: var(--muted-foreground); }
 #math-scratchpad-redux .lesson-answer-step .math-token { min-width: 0; min-height: 44px; padding: 2px 2px; border-color: transparent !important; border-radius: 3px; background: transparent !important; box-shadow: none !important; }
 #math-scratchpad-redux .lesson-answer-step .math-token:hover:not(:disabled) { border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
-#math-scratchpad-redux .lesson-answer-step .math-token.token-active { background: #343c37 !important; box-shadow: inset 0 -2px 0 var(--primary) !important; color: var(--foreground); }
-#math-scratchpad-redux .lesson-answer-step .math-token.token-active:hover:not(:disabled) { background: #343c37 !important; box-shadow: inset 0 -2px 0 var(--primary) !important; }
+#math-scratchpad-redux .lesson-answer-step .math-token.token-active { background: var(--color-surface) !important; box-shadow: inset 0 -2px 0 var(--primary) !important; color: var(--foreground); }
+#math-scratchpad-redux .lesson-answer-step .math-token.token-active:hover:not(:disabled) { background: var(--color-surface) !important; box-shadow: inset 0 -2px 0 var(--primary) !important; }
 #math-scratchpad-redux .lesson-answer-step .math-token .caret { border-color: var(--primary); }
 #math-scratchpad-redux .lesson-answer-step .math-gap { width: 28px; min-width: 28px; min-height: 44px; padding: 0; border-color: transparent !important; border-radius: 4px; background: transparent !important; color: var(--muted-foreground); }
 #math-scratchpad-redux .lesson-answer-step .math-gap:hover:not(:disabled) { border-color: transparent !important; background: transparent !important; }
-#math-scratchpad-redux .lesson-answer-step .math-gap.at-gap { width: 36px; min-width: 36px; border-color: var(--primary) !important; background: #343c37 !important; color: var(--primary); }
+#math-scratchpad-redux .lesson-answer-step .math-gap.at-gap { width: 36px; min-width: 36px; border-color: var(--primary) !important; background: var(--color-surface) !important; color: var(--primary); }
 #math-scratchpad-redux .lesson-answer-step .top-sequence > .math-chunk > .math-token.operator { width: 28px; min-width: 28px; margin-inline: 3px; padding-inline: 0; }
 #math-scratchpad-redux .lesson-math-editor .add-step { width: 100%; min-height: 48px; margin-block: 7px; }
 #math-scratchpad-redux .lesson-active-step-keyboard { min-width: 0; scroll-margin-block: 8px; }
@@ -807,8 +809,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-concept-navigation { display: flex; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 #math-scratchpad-redux .lesson-concept-navigation > button { min-width: 0; min-height: 48px; }
 #math-scratchpad-redux .lesson-primary-action { border-color: var(--primary) !important; background: var(--primary) !important; color: var(--primary-foreground) !important; font-weight: 650; }
-#math-scratchpad-redux .lesson-primary-action:hover:not(:disabled) { background: #97c8a9 !important; border-color: #97c8a9 !important; }
-#math-scratchpad-redux .lesson-primary-action:active:not(:disabled) { background: #75a98a !important; border-color: #75a98a !important; }
+#math-scratchpad-redux .lesson-primary-action:hover:not(:disabled) { background: var(--color-primary) !important; border-color: var(--color-primary) !important; }
+#math-scratchpad-redux .lesson-primary-action:active:not(:disabled) { background: var(--color-primary) !important; border-color: var(--color-primary) !important; }
 #math-scratchpad-redux .lesson-summary { display: grid; gap: 14px; padding-top: 18px; }
 #math-scratchpad-redux .lesson-summary-heading { display: flex; align-items: center; gap: 9px; }
 #math-scratchpad-redux .lesson-summary-heading svg { width: 21px; height: 21px; color: var(--success); }
@@ -838,15 +840,15 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .lesson-picker-item svg { width: 18px; height: 18px; flex: none; color: var(--success); }
 .lesson-picker-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .lesson-status { flex: none; padding: 3px 8px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted-foreground); font-size: 12px; line-height: 1.35; }
-.lesson-status-learning { color: var(--primary); border-color: #527861; }
-.lesson-status-practising { color: #b4cce0; border-color: #54748d; }
-.lesson-status-done { color: var(--success); border-color: #527861; }
+.lesson-status-learning { color: var(--primary); border-color: var(--color-success); }
+.lesson-status-practising { color: var(--color-text-secondary); border-color: var(--color-primary); }
+.lesson-status-done { color: var(--success); border-color: var(--color-success); }
 .lesson-state { display: grid; justify-items: start; gap: 12px; width: min(100%, 900px); min-width: 0; margin-inline: auto; padding: max(16px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom)); color: var(--foreground); font: 16px/1.6 var(--font-sans); }
 .lesson-state h1 { margin: 0; font-size: clamp(22px, 4vw, 30px); line-height: 1.3; overflow-wrap: anywhere; }
 .lesson-state p { max-width: 68ch; margin: 0; overflow-wrap: anywhere; }
 .lesson-state h1:focus { outline: none; }
 .lesson-state h1:focus-visible { outline: 3px solid var(--ring); outline-offset: 4px; border-radius: 3px; }
-.lesson-state-error > p[role='alert'] { padding: 10px 12px; border-inline-start: 3px solid var(--destructive); background: #332727; color: #f0b8b8; }
+.lesson-state-error > p[role='alert'] { padding: 10px 12px; border-inline-start: 3px solid var(--destructive); background: var(--color-surface); color: var(--color-error); }
 .lesson-skeleton { display: grid; gap: 10px; width: 100%; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 .lesson-skeleton span { display: block; height: 18px; border-radius: 4px; background: var(--raised); }
 .lesson-skeleton span:first-child { width: 52%; height: 26px; }
@@ -911,8 +913,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .lesson-reference-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
 .lesson-reference-choices li { min-width: 48px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--raised); text-align: center; }
 #math-scratchpad-redux .lesson-skip-practice { min-height: 44px; margin-top: 6px; color: var(--muted-foreground); }
-#math-scratchpad-redux .lesson-practice-error { padding: 9px 11px; border-inline-start: 3px solid var(--destructive); background: #332727; color: #f0b8b8; }
-#math-scratchpad-redux .lesson-progress-message, #math-scratchpad-redux .lesson-persistence-warning { padding: 9px 11px; border-inline-start: 3px solid var(--warning); border-radius: 4px; background: #352f24; color: var(--warning); overflow-wrap: anywhere; }
+#math-scratchpad-redux .lesson-practice-error { padding: 9px 11px; border-inline-start: 3px solid var(--destructive); background: var(--color-surface); color: var(--color-error); }
+#math-scratchpad-redux .lesson-progress-message, #math-scratchpad-redux .lesson-persistence-warning { padding: 9px 11px; border-inline-start: 3px solid var(--warning); border-radius: 4px; background: var(--color-surface); color: var(--warning); overflow-wrap: anywhere; }
 #math-scratchpad-redux .lesson-persistence-warning { margin: 8px 0 12px; }
 #math-scratchpad-redux .lesson-screen[lang="fa"] { direction: rtl; font-size: 16px; line-height: 1.85; }
 #math-scratchpad-redux .lesson-screen[lang="fa"] .lesson-book-line { text-align: left; unicode-bidi: isolate; }
@@ -1097,8 +1099,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 }
 #math-scratchpad-redux .lesson-split-handle { align-self: stretch; cursor: col-resize; touch-action: none; position: relative; min-height: 100%; }
 #math-scratchpad-redux .lesson-split-handle::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 4px; width: 2px; border-radius: 2px; background: var(--border); }
-#math-scratchpad-redux .lesson-split-handle:is(:hover, :focus-visible)::before { background: var(--primary, #2563eb); width: 3px; }
-#math-scratchpad-redux .lesson-split-handle:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 1px; }
+#math-scratchpad-redux .lesson-split-handle:is(:hover, :focus-visible)::before { background: var(--color-primary, #2563eb); width: 3px; }
+#math-scratchpad-redux .lesson-split-handle:focus-visible { outline: 2px solid var(--color-primary, #2563eb); outline-offset: 1px; }
 #math-scratchpad-redux .lesson-pane-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-block: 8px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 #math-scratchpad-redux .lesson-pane-tab { min-height: 40px; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); font: inherit; font-weight: 600; cursor: pointer; }
 #math-scratchpad-redux .lesson-pane-tab[aria-selected="true"] { background: var(--raised); color: var(--foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
@@ -1113,7 +1115,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-work-solution { margin: 0; padding-inline-start: 22px; line-height: 1.8; }
 #math-scratchpad-redux .lesson-check-links { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 #math-scratchpad-redux .lesson-check-link { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; height: auto; min-height: 40px; justify-content: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; text-align: start; white-space: normal; }
-#math-scratchpad-redux .lesson-check-link[aria-current="true"] { border-color: var(--primary, #2563eb); }
+#math-scratchpad-redux .lesson-check-link[aria-current="true"] { border-color: var(--color-primary, #2563eb); }
 #math-scratchpad-redux .lesson-check-link-status { margin-inline-start: auto; color: var(--muted-foreground); font-size: 12px; }
 
 /* Keep the public OAuth policy links visible without adding an extra
