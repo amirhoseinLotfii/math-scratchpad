@@ -5,7 +5,7 @@ export const legacyStorageKey = 'math-scratchpad-redux-v2';
 export const storageKey = 'math-scratchpad-session-v3';
 export async function startBatch(page: Page) {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
  await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
