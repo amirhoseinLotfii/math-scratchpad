@@ -118,30 +118,17 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
 
   return (
     <>
-      <div data-server-editor data-connection-state={state.kind} style={{ display: 'contents' }}>
+      <div data-server-editor data-connection-state={state.kind} >
         {children}
       </div>
       {state.kind !== 'online' && (
-        <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl" style={{
-          // The authentication banner must stay in normal document flow:
-          // fixed overlays previously intercepted math controls and dialogs.
-          position: 'relative', margin: '12px 12px 18px auto',
-          width: 'min(440px, calc(100% - 24px))', padding: 12, borderRadius: 14,
-          background: 'rgba(32, 35, 38, .97)', color: '#F0F3F1',
-          border: '1px solid #536259', boxShadow: '0 8px 30px rgba(0,0,0,.35)',
-          fontFamily: 'system-ui, sans-serif', lineHeight: 1.5, textAlign: 'right',
-          pointerEvents: 'auto',
-        }}>
+        <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl" }>
           <div className="server-connection-gate-header">
             <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
-            <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }} style={{
-              background: '#86B99B', color: '#101A14', border: 0, borderRadius: 10,
-              minHeight: 44, padding: '8px 10px', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-              pointerEvents: 'auto',
-            }}>بررسی اتصال</button>
+            <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }}}>بررسی اتصال</button>
           </div>
-          <p className="server-connection-gate-message" style={{ margin: '8px 0 0', fontSize: 13 }}>{state.message}</p>
-          <div ref={retryButton} className="server-connection-gate-google" style={{ marginTop: 8, display: 'flex', justifyContent: 'center', direction: 'ltr', pointerEvents: 'auto' }} />
+          <p className="server-connection-gate-message" }>{state.message}</p>
+          <div ref={retryButton} className="server-connection-gate-google" } />
         </aside>
       )}
     </>

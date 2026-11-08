@@ -1260,6 +1260,7 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
 /* Compact, nonmodal connection status: preserve full Google sign-in and retry
    while keeping the banner below the workspace and out of menu hit targets. */
 .server-connection-gate .server-connection-gate-header {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1267,9 +1268,11 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
   gap: 8px;
 }
 .server-connection-gate .server-connection-gate-header strong {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
   font-size: 14px;
 }
 .server-connection-gate .server-connection-gate-google {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
   max-width: 100%;
   min-width: 0;
 }
@@ -1277,3 +1280,61 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
 /* Phase C-3: Component-level fixes */
 #math-scratchpad-redux .chapter-transition-overlay { z-index: 20000; }
 #math-scratchpad-redux .chapter-transition-overlay strong { font-size: var(--text-xl); }
+
+/* Phase C-3: server-connection-gate fixes */
+#math-scratchpad-redux [data-server-editor] { display: contents; }
+.server-connection-gate {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
+  position: relative;
+  margin: 12px 12px 18px auto;
+  width: min(440px, calc(100% - 24px));
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 30px rgba(var(--color-neutral-1000-rgb), 0.35);
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  text-align: right;
+  pointer-events: auto;
+}
+
+.server-connection-gate-header {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.server-connection-gate-message {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.server-connection-gate-google {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  direction: ltr;
+  pointer-events: auto;
+}
+
+.server-connection-gate button {
+#math-scratchpad-redux [data-server-editor] { display: contents; }
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  border: 0;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#math-scratchpad-redux [data-server-editor] { display: contents; }
