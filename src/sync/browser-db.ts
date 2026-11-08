@@ -52,11 +52,15 @@ const SESSION_KEYS = new Set([
   'math-scratchpad-flow-v1',
   'math-scratchpad-drive-session-archive-v1',
   'math-scratchpad-inline-fractions-round1-v1',
+  'math-scratchpad-reading-position-v1',
 ]);
 const DEVICE_ID_KEY = 'math-scratchpad-device-id-v1';
 
 export function isLearningStorageKey(key: string): boolean {
-  return SESSION_KEYS.has(key) || key.startsWith('math-scratchpad-lesson-progress-v1:');
+  return SESSION_KEYS.has(key)
+    || key.startsWith('math-scratchpad-lesson-progress-v1:')
+    || key.startsWith('math-scratchpad-last-open-lesson-v1:')
+    || key.startsWith('math-scratchpad-reading-position-v1:');
 }
 function isIndexedDbCacheKey(key: string): boolean {
   return isLearningStorageKey(key) || key === DEVICE_ID_KEY || key.startsWith('math-scratchpad-drive-bank-cache-v1:');

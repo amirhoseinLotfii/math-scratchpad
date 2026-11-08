@@ -6,7 +6,7 @@ import { initializeLearningStorage, initializeAuthenticatedServerStorage, refres
 import { getGoogleIdToken } from './sync/google-id-token';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
-import { ReadingPositionProvider } from './features/progress/ReadingPositionContext';
+import { ReadingPositionProvider } from './features/progress/reading-position-context';
 import { initializeReadingPositionSync } from './features/progress/reading-position-sync';
 import './fonts.css';
 import './styles/design-tokens.css';

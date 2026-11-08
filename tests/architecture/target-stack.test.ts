@@ -4,10 +4,7 @@ import { basename, join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 const root = process.cwd();
-const legacyNamingExceptions = new Set([
- 'src/features/progress/ReadingPositionContext.tsx',
- 'src/features/progress/RestorePosition.tsx',
-]);
+const legacyNamingExceptions = new Set<string>([]);
 function files(relative: string): string[] {
  const path = join(root, relative); if (!existsSync(path)) return [];
  return readdirSync(path, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(relative, entry.name)) : /\.(ts|tsx)$/.test(entry.name) ? [join(relative, entry.name)] : []);

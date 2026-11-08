@@ -1,45 +1,26 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { getDeviceId } from '../../sync/events';
 import { ReadingPosition, MinimalReadingPosition } from './reading-position-types';
-import { useReadingPositionStore } from './reading-position-store';
+import { startReadingPositionPersistence, useReadingPositionStore } from './reading-position-store';
 
-/** Context type for reading position */
 interface ReadingPositionContextType {
-  /** Current reading position */
   position: ReadingPosition | null;
-  
-  /** Whether position is being loaded */
   isLoading: boolean;
-  
-  /** Whether position has been restored */
   isRestored: boolean;
-  
-  /** Track current position */
   trackPosition: (position: Partial<ReadingPosition>) => Promise<void>;
-  
-  /** Update current position */
   updatePosition: (partial: Partial<ReadingPosition>) => Promise<void>;
-  
-  /** Clear current position */
   clearPosition: () => Promise<void>;
-  
-  /** Restore position from storage */
   restorePosition: () => Promise<ReadingPosition | null>;
-  
-  /** Navigate to a specific position */
   navigateToPosition: (position: MinimalReadingPosition) => Promise<void>;
-  
-  /** Get minimal position for sharing */
   getMinimalPosition: () => MinimalReadingPosition | null;
 }
 
-/** Default context value */
 const ReadingPositionContext = createContext<ReadingPositionContextType | null>(null);
 
-/** Provider component */
 export function ReadingPositionProvider({ children }: { children: React.ReactNode }) {
   const {
     position,
-    setPosition,
+    upsertPosition,
     updatePosition,
     clearPosition,
     restorePosition: storeRestorePosition,
@@ -48,8 +29,8 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
   const [isLoading, setIsLoading] = useState(true);
   const [isRestored, setIsRestored] = useState(false);
 
-  // Restore position on mount
   useEffect(() => {
+    const stop = startReadingPositionPersistence();
     const restore = async () => {
       setIsLoading(true);
       try {
@@ -59,43 +40,33 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
         setIsLoading(false);
       }
     };
-    restore();
+    void restore();
+    return stop;
   }, [storeRestorePosition]);
 
-  /** Navigate to a specific position */
   const navigateToPosition = async (minimalPosition: MinimalReadingPosition) => {
-    // Store the position we're navigating to
-    const fullPosition: ReadingPosition = {
-      userId: position?.userId ?? 'currentUser',
+    await upsertPosition({
+      userId: position?.userId ?? getDeviceId(),
       chapterId: minimalPosition.chapterId,
       lessonId: minimalPosition.lessonId,
       sectionId: minimalPosition.sectionId,
       exerciseId: minimalPosition.exerciseId,
       stepId: minimalPosition.stepId,
       scrollOffset: minimalPosition.scrollOffset,
-      contentVersion: '1.0',
+      contentVersion: position?.contentVersion ?? 'unknown',
       lastActivity: 'reading',
-      updatedAt: new Date(),
-    };
-    
-    await setPosition(fullPosition);
-    
-    // In a real implementation, this would trigger navigation
-    // For now, just store the position
-  };
-
-  const trackPosition = async (partial: Partial<ReadingPosition>) => {
-    await setPosition({
-      ...(position ?? {}),
-      ...partial,
-      userId: partial.userId ?? position?.userId ?? 'currentUser',
-      contentVersion: partial.contentVersion ?? position?.contentVersion ?? '1.0',
-      lastActivity: partial.lastActivity ?? position?.lastActivity ?? 'reading',
       updatedAt: new Date(),
     });
   };
 
-  /** Get minimal position for sharing */
+  const trackPosition = async (partial: Partial<ReadingPosition>) => {
+    await upsertPosition({
+      ...partial,
+      userId: partial.userId ?? position?.userId ?? getDeviceId(),
+      updatedAt: partial.updatedAt ?? new Date(),
+    });
+  };
+
   const getMinimalPosition = (): MinimalReadingPosition | null => {
     if (!position) return null;
     return {
@@ -127,7 +98,6 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
   );
 }
 
-/** Hook to use reading position context */
 export function useReadingPositionContext() {
   const context = useContext(ReadingPositionContext);
   if (!context) {
@@ -136,31 +106,27 @@ export function useReadingPositionContext() {
   return context;
 }
 
-/** Component to display continue learning button */
+export function useOptionalReadingPositionContext() {
+  return useContext(ReadingPositionContext);
+}
+
 export function ContinueLearningButton() {
-  const { position, getMinimalPosition, isLoading, isRestored } = useReadingPositionContext();
+  const { position, isLoading, isRestored } = useReadingPositionContext();
 
-  if (isLoading || !isRestored || !position) {
-    return null;
-  }
-
-  const hasMeaningfulPosition = position.chapterId || position.lessonId;
-  if (!hasMeaningfulPosition) {
-    return null;
-  }
+  if (isLoading || !isRestored || !position) return null;
+  if (!position.chapterId && !position.lessonId) return null;
 
   return (
     <div className="continue-learning-container">
-      <button 
+      <button
+        type="button"
         className="continue-learning-button"
         aria-label="Continue from where you left off"
       >
         Continue Learning
-        {position.lessonId && (
-          <span className="continue-learning-details">
-            {/* Show lesson info if available */}
-          </span>
-        )}
+        {position.lessonId ? (
+          <span className="continue-learning-details" dir="ltr">{position.lessonId}</span>
+        ) : null}
       </button>
     </div>
   );

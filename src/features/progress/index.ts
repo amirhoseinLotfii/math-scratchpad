@@ -18,7 +18,26 @@ export {
 export {
   useReadingPositionStore,
   getMinimalPosition,
+  startReadingPositionPersistence,
 } from './reading-position-store';
+
+export {
+  READING_POSITION_STORAGE_KEY,
+  serializeReadingPosition,
+  deserializeReadingPosition,
+} from './reading-position-storage';
+
+export {
+  readingPositionFromLearnEvent,
+  mergeLatestReadingPosition,
+  isLocationLearnEvent,
+} from './reading-position-from-event';
+
+export {
+  sectionAnchorId,
+  conceptAnchorId,
+  parseAnchorId,
+} from './reading-position-anchors';
 
 export {
   useReadingPosition,
@@ -28,17 +47,17 @@ export {
 export {
   ReadingPositionProvider,
   useReadingPositionContext,
+  useOptionalReadingPositionContext,
   ContinueLearningButton,
-} from './ReadingPositionContext';
+} from './reading-position-context';
 
 export {
   initializeReadingPositionSync,
   cleanupReadingPositionSync,
-  needsSync,
   getTimeSinceLastSync,
 } from './reading-position-sync';
 
 export {
   RestorePosition,
   useSemanticScrollRestoration,
-} from './RestorePosition';
+} from './restore-position';
