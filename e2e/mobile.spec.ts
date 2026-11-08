@@ -40,6 +40,7 @@ test('quick tools have approved order and editing never exposes inline confidenc
 test('full session export is reachable during editing', async ({ page }) => {
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
  await expect(page.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeVisible();
 });
 test('only question prose is Persian and the app interface stays English', async ({ page }) => {
@@ -51,6 +52,7 @@ test('only question prose is Persian and the app interface stays English', async
 test('confidence modal supports keyboard cancellation without losing focus', async ({ page }) => {
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).click();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
