@@ -29,7 +29,7 @@
 --primary: var(--color-primary, #86b99b);
 --border: var(--color-border, #707a75);
 --radius: var(--radius-lg, 0.625rem);
---font-sans: var(--font-family-sans, 'Inter', system-ui, sans-serif);
+--font-sans: var(--font-family-sans, 'Inter', 'Vazirmatn', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
 ```
 
 **Impact**: 
@@ -40,19 +40,37 @@
 
 ---
 
-### Phase C-2: Hardcoded Color Migration ⏳ IN PROGRESS
+### Phase C-2: Hardcoded Color Migration ✅ COMPLETE
 
 #### Task 2.1: Migrate styles.css Colors
-**Status**: Not Started
-**Effort**: 6-10 hours
+**Status**: Complete
+**Commit**: be9a896
+**Effort**: ~2 hours (with automation)
 **Priority**: P1 (High)
 
 **Target**: Replace all hardcoded colors in `src/styles.css` with Design System tokens
 
-**Current State**:
-- 95+ hardcoded color values identified (from hardcoded-values-report.md)
-- All colors currently use legacy MS tokens
-- Need to map to Design System semantic tokens
+**Results**:
+- ✅ 94 hardcoded hex colors identified and replaced
+- ✅ 91 colors migrated to Design System tokens
+- ✅ 4 rgba() colors converted to RGB variables
+- ✅ 3 fallback colors preserved for safety (var(--color-primary, #2563eb))
+- ✅ MS tokens mapped to Design System tokens in styles.css
+- ✅ All categories covered: backgrounds, text, borders, primary, success, warning, error
+
+**Files Modified**:
+- `src/styles.css` - Main migration target (1550+ lines changed)
+- `migrate-colors.cjs` - Automation script for rgba() colors
+- `src/styles.css.backup` - Backup of original file
+
+**Color Categories Migrated**:
+- Background colors: #121a18, #151719, #1b2420, etc. → var(--color-background/surface)
+- Text colors: #e7ebe8, #f2f6f3, etc. → var(--color-text-primary/muted)
+- Primary colors: #86b99b, #97c8a9, etc. → var(--color-primary)
+- Success colors: #527861, #679479, etc. → var(--color-success)
+- Warning colors: #e4b66b, #f4c16f, etc. → var(--color-warning)
+- Error colors: #b42318, #a82924, etc. → var(--color-error)
+- rgba() colors: #0005, #0008, #0009, #52745f66 → rgba(var(--color-*-rgb), alpha)
 
 **Mapping Strategy**:
 ```css
