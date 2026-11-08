@@ -85,7 +85,7 @@ test('UI-AUDIT-06: fraction batch confirmation stays clickable with sync active'
  await page.goto('/?serverMode');
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
  await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
  const start = page.getByRole('button', { name: 'Start 20 Questions' });
  expect(await start.evaluate(hitCenter)).toBe(true);
@@ -104,14 +104,14 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await page.goto('/?serverMode');
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Data', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  await page.getByRole('menuitem', { name: 'Import session JSON' }).press('Enter');
  const backup = page.getByRole('region', { name: 'Session backup' });
  await expect(backup).toBeVisible();
  await backup.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('synthetic draft');
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
  await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).press('Enter');
  await expect(backup).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm diagnostic start' })).toBeVisible();
@@ -121,7 +121,7 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await expect(page.getByRole('region', { name: 'New exercise' })).toBeVisible();
  await menu(page).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
  await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
  await expect(page.getByRole('region', { name: 'New exercise' })).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm fraction round start' })).toBeVisible();
@@ -139,7 +139,7 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   await expect(banner).toBeVisible();
   await menu(page).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
   await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).press('Enter');
   const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
   await expect(dialog).toBeVisible();
