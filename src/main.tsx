@@ -97,8 +97,15 @@ void (async () => {
   // A newly opened tab has its own sessionStorage. Ask an existing same-origin
   // app tab for still-valid credentials without persisting tokens across sessions.
   if (!isLocalTestOrDevelopment && (!token)) {
-    void restoreGoogleTabSession().then(restored => {
-      if (restored) syncRuntime?.setIdToken(getGoogleIdToken() ?? null);
+    void restoreGoogleTabSession().then(async restored => {
+      const idToken = restored ? getGoogleIdToken() : undefined;
+      if (!idToken) return;
+      syncRuntime?.setIdToken(idToken);
+      // Run the same authenticated storage handoff as an interactive login;
+      // do not wait for the next connection-gate polling interval.
+      await connectAuthenticatedStorage(idToken).catch(() => {
+        // The visible gate will keep local editing available and report retry state.
+      });
     });
   }
 })().catch(error => {
