@@ -64,7 +64,8 @@
 #math-scratchpad-redux .step-menu-items { position: absolute; right: 0; top: 100%; z-index: 4; display: grid; gap: 6px; padding: 8px; border: 1px solid var(--ms-border); border-radius: var(--ms-radius); width: 154px; background: var(--ms-surface); box-shadow: 0 8px 24px rgba(var(--color-neutral-1000-rgb), 0.2); }
 #math-scratchpad-redux .expression { padding: 12px 0 18px; min-width: 0; direction: ltr; unicode-bidi: isolate; }
 #math-scratchpad-redux math-field.mathlive-step-input { display: block; width: fit-content; max-width: 100%; min-height: 48px; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--foreground); font-size: clamp(25px, 6vw, 34px); direction: ltr; --caret-color: var(--primary); --selection-background-color: rgba(var(--color-success-500-rgb), 0.4); --selection-color: var(--foreground); }
-#math-scratchpad-redux math-field.mathlive-step-input:focus-visible { outline: none; outline-offset: 0; box-shadow: none; }
+#math-scratchpad-redux math-field.mathlive-step-input:focus,
+#math-scratchpad-redux math-field.mathlive-step-input:focus-visible { outline: none !important; outline-offset: 0; box-shadow: none; }
 #math-scratchpad-redux math-field.mathlive-step-input::part(container) { min-width: 44px; min-height: 44px; border: none !important; background: transparent !important; box-shadow: none !important; }
 #math-scratchpad-redux math-field.mathlive-step-input::part(input) { background: transparent !important; border: none !important; box-shadow: none !important; color: inherit !important; }
 #math-scratchpad-redux math-field.mathlive-step-input::part(content) { padding: 2px 0; background: transparent !important; }
@@ -317,6 +318,8 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .dropdown-item { display: flex; align-items: center; gap: 10px; padding: 12px 10px; min-height: 44px; border-radius: 8px; outline: none; cursor: pointer; user-select: none; box-sizing: border-box; }
 .dropdown-item[data-highlighted] { background: var(--secondary); outline: 2px solid var(--ring); outline-offset: -2px; }
 .dropdown-item svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.dropdown-sub-trigger { justify-content: space-between; }
+.dropdown-sub-content { max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; overscroll-behavior: contain; }
 .menu-description { display: block; color: var(--muted-foreground); font-size: 12px; margin-top: 4px; }
 [aria-hidden='true'][inert] { pointer-events: none; }
 @container (min-width: 840px) {

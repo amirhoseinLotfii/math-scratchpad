@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { Provider } from '../../src/app/store-provider';
 import { App } from '../../src/App';
 import { actions, initialState, makeStore } from '../../src/store';
+import { submenuAction } from '../support/menu-actions';
 const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 const execDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
 afterEach(() => {
@@ -39,7 +40,7 @@ describe('Approved mobile batch workflow', () => {
   expect(screen.getByRole('menuitem', { name: 'Check · Copy for Review' })).toBeTruthy();
   expect(screen.queryByRole('menuitem', { name: /^Copy full session JSON/ })).toBeNull();
   await userEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
-  expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
+  expect(await submenuAction('Copy full session JSON')).toBeTruthy();
  });
  it('opens completion actions after final-question confidence without silently copying', async () => {
   const store = mount();
@@ -76,7 +77,7 @@ describe('Session copy and recovery', () => {
   const before = JSON.stringify(store.getState().doc.exercises);
   await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: /^Copy full session JSON/ }));
+  fireEvent.click(await submenuAction('Copy full session JSON'));
   await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
   const data = JSON.parse(copy.mock.calls[0][0]);
   expect(data.doc.exercises).toEqual(store.getState().doc.exercises);
@@ -89,7 +90,7 @@ describe('Session copy and recovery', () => {
   mount();
   await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: /^Copy full session JSON/ }));
+  fireEvent.click(await submenuAction('Copy full session JSON'));
   const field = await screen.findByRole('textbox', { name: /session JSON/i });
   expect(JSON.parse((field as HTMLTextAreaElement).value).doc.exercises).toHaveLength(20);
  });

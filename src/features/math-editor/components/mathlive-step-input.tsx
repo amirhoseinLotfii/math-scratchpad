@@ -7,10 +7,11 @@ import { insertMathSymbol, mathfieldForStep, mathLatexForSymbol, registerMathfie
 if (typeof MathfieldElement !== 'undefined') MathfieldElement.fontsDirectory = null;
 
 function fieldValue(value: string) {
-  const normalized = value || String.raw`\placeholder{}`;
-  // Older AST-backed drafts serialize every empty math slot as \square.
-  // In MathLive these must become editable placeholders, not literal squares.
-  return normalized.replaceAll(String.raw`\square`, String.raw`\placeholder{}`);
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === String.raw`\square`) return '';
+  // Older AST-backed drafts serialize empty slots as \square. MathLive needs
+  // editable placeholders for nested slots, but an empty step uses its caret.
+  return value.replaceAll(String.raw`\square`, String.raw`\placeholder{}`);
 }
 
 export function MathLiveStepInput({
@@ -45,7 +46,7 @@ export function MathLiveStepInput({
     const keydown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const currentValue = typeof field.value === 'string' && field.value !== '' ? field.value : fieldValue(valueRef.current);
-      if (!/^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(currentValue)) return;
+      if (currentValue !== '' && !/^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(currentValue)) return;
       // MathLive's native first-key insertion can leave the blank placeholder
       // unchanged on some mobile Chromium builds. Also catch keys before a
       // lazily upgraded field is ready, then replay them after registration.

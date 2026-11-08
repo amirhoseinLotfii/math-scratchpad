@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
+import { submenuAction } from './support/menu-actions';
 import { actions, initialState, makeStore, exerciseOf, stepOf } from '../src/store';
 import { fractionRoundOne, fractionCompetencies } from '../src/fractionRoundOne';
 import { evaluateSequence, gradeDiagnostic } from '../src/assessment';
@@ -46,7 +47,7 @@ describe('Minimal original-UI fixes and twenty-question round',()=>{
   expect(field.querySelectorAll('[data-node-id], .math-token')).toHaveLength(0);
  });
  it('adds twenty questions in the original notebook and retains answers, confidence and skips through JSON',async()=>{
-  const {store}=mount();click('Exercise menu');click('Start Round 1 · 20 fraction questions');click('Start 20 Questions');
+  const {store}=mount();click('Exercise menu');fireEvent.click(await submenuAction('Start Round 1 · 20 fraction questions'));click('Start 20 Questions');
   expect(store.getState().doc.exercises).toHaveLength(20);
   expect((screen.getByLabelText('Select question') as HTMLSelectElement).selectedOptions[0]?.textContent).toBe('Question 1 · Not started');
   expect(document.querySelectorAll('.header-progress-track')).toHaveLength(1);

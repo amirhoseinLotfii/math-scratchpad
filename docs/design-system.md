@@ -7,7 +7,7 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 - Tokens are root-scoped `--ms-*` CSS properties. The image-inspired product uses a fixed charcoal/forest-green theme with mint selections and amber review warnings. It stays dark in either host theme; ChatGPT chrome is owned by the host.
 - System UI fonts for controls; a system math/serif stack for equations. No downloaded fonts.
 - An 8 px spacing rhythm, 14 px control radius, 18 px step cards and a 24 px product shell. Matte gradients and mint structure outlines follow the approved image direction; marketing captions and magnifiers are not part of the editor.
-- Native buttons and fields retain browser focus indication. Controls are at least 44 px wide and 48 px high. Every action has a visible label or accessible name.
+- Native buttons and fields retain browser focus indication. The active step card and blinking caret identify focused math input without drawing a box around the MathLive field. Controls are at least 44 px wide and 48 px high. Every action has a visible label or accessible name.
 - Selected controls use both appearance and `aria-pressed`; status labels communicate state in words.
 
 ## Direction and layout
@@ -22,7 +22,7 @@ The interface prioritizes direct editing, visible reasoning and two-thumb input.
 
 | Component | States / interaction |
 | --- | --- |
-| Numeric token | Idle, caret active, empty placeholder; tapping chooses the nearest measured digit boundary |
+| Numeric token | Idle, caret active, empty fields show a blinking caret without placeholder boxes; tapping chooses the nearest measured digit boundary |
 | Structure | Unselected or whole structure selected; parent selection available by button |
 | Main-line gap | Visible dot, active insertion caret; never selects a fraction child |
 | Step | Active, inactive, genuinely edited, later step needs review, explicit final |
