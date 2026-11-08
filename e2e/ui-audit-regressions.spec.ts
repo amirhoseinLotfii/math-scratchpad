@@ -143,8 +143,9 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   const cloudSync = page.getByRole('menuitem', { name: 'Cloud sync and migration' });
   if (size.width < 600) {
    // Actual phone interaction: tap to expand the inline action group.
-   await dataActions.click();
-   await cloudSync.click();
+   await dataActions.tap();
+   await expect(cloudSync).toBeVisible();
+   await cloudSync.tap();
   } else {
    // Keyboard traverses Radix's side flyout without diagonally crossing other
    // parent-menu items, which can close a pointer-hovered submenu.
