@@ -1,0 +1,316 @@
+/**
+ * Math Scratchpad Design System
+ * 
+ * This file contains all design tokens for the application.
+ * Use these tokens instead of hardcoded values.
+ * 
+ * Color System: Forest/Dark theme optimized for math learning
+ * Typography: Inter for UI, Cambria Math/STIX Two Math for formulas
+ */
+
+/* ============================================================================
+   COLOR PALETTE
+   ============================================================================ */
+
+/* Forest Color Theme */
+:root {
+  /* Primary Colors */
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+  
+  /* Success Colors */
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-200: #bbf7d0;
+  --color-success-300: #86efac;
+  --color-success-400: #4ade80;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+  --color-success-800: #166534;
+  --color-success-900: #14532d;
+  
+  /* Warning Colors */
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-300: #fcd34d;
+  --color-warning-400: #fbbf24;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+  --color-warning-900: #78350f;
+  
+  /* Error Colors */
+  --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
+  --color-error-300: #fca5a5;
+  --color-error-400: #f87171;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-error-800: #991b1b;
+  --color-error-900: #7f1d1d;
+  
+  /* Neutral Colors - Dark Theme */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-1000: #0a0a0a;
+}
+
+/* ============================================================================
+   SEMANTIC COLOR TOKENS
+   ============================================================================ */
+
+:root {
+  /* Background Colors */
+  --color-background: var(--color-neutral-1000); /* #0a0a0a */
+  --color-background-secondary: var(--color-neutral-900); /* #171717 */
+  --color-surface: var(--color-neutral-800); /* #262626 */
+  --color-surface-elevated: var(--color-neutral-700); /* #404040 */
+  --color-surface-sunken: var(--color-neutral-1000); /* #0a0a0a */
+  
+  /* Text Colors */
+  --color-text-primary: var(--color-neutral-50); /* #fafafa */
+  --color-text-secondary: var(--color-neutral-400); /* #a3a3a3 */
+  --color-text-muted: var(--color-neutral-500); /* #737373 */
+  --color-text-disabled: var(--color-neutral-600); /* #525252 */
+  
+  /* Primary Colors */
+  --color-primary: var(--color-primary-400); /* #34d399 */
+  --color-primary-hover: var(--color-primary-300); /* #6ee7b7 */
+  --color-primary-active: var(--color-primary-500); /* #10b981 */
+  --color-primary-foreground: var(--color-neutral-900); /* #171717 */
+  
+  /* Success Colors */
+  --color-success: var(--color-success-500); /* #22c55e */
+  --color-success-hover: var(--color-success-400); /* #4ade80 */
+  --color-success-foreground: var(--color-neutral-50); /* #fafafa */
+  
+  /* Warning Colors */
+  --color-warning: var(--color-warning-500); /* #f59e0b */
+  --color-warning-hover: var(--color-warning-400); /* #fbbf24 */
+  --color-warning-foreground: var(--color-neutral-900); /* #171717 */
+  
+  /* Error Colors */
+  --color-error: var(--color-error-500); /* #ef4444 */
+  --color-error-hover: var(--color-error-400); /* #f87171 */
+  --color-error-foreground: var(--color-neutral-50); /* #fafafa */
+  
+  /* Border Colors */
+  --color-border: var(--color-neutral-700); /* #404040 */
+  --color-border-strong: var(--color-neutral-600); /* #525252 */
+  --color-border-subtle: var(--color-neutral-800); /* #262626 */
+  
+  /* Focus and Ring Colors */
+  --color-ring: var(--color-primary-400); /* #34d399 */
+  --color-ring-hover: var(--color-primary-300); /* #6ee7b7 */
+  
+  /* Special Colors */
+  --color-highlight: var(--color-primary-900); /* #064e3b */
+  --color-highlight-foreground: var(--color-primary-100); /* #d1fae5 */
+  
+  /* Math Editor Colors */
+  --color-math-background: var(--color-neutral-800); /* #262626 */
+  --color-math-surface: var(--color-neutral-700); /* #404040 */
+  --color-math-border: var(--color-neutral-600); /* #525252 */
+  --color-math-placeholder: var(--color-neutral-500); /* #737373 */
+}
+
+/* ============================================================================
+   SPACING SYSTEM
+   ============================================================================ */
+
+:root {
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  --space-20: 5rem;     /* 80px */
+}
+
+/* ============================================================================
+   BORDER RADIUS SYSTEM
+   ============================================================================ */
+
+:root {
+  --radius-sm: 0.25rem;   /* 4px */
+  --radius-md: 0.375rem;  /* 6px */
+  --radius-lg: 0.5rem;    /* 8px */
+  --radius-xl: 0.75rem;   /* 12px */
+  --radius-2xl: 1rem;     /* 16px */
+  --radius-full: 9999px; /* Circle */
+}
+
+/* ============================================================================
+   TYPOGRAPHY SYSTEM
+   ============================================================================ */
+
+:root {
+  /* Font Families */
+  --font-family-sans: 'Inter', 'Vazirmatn', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-family-math: 'Cambria Math', 'STIX Two Math', Georgia, serif;
+  
+  /* Font Sizes */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px */
+  --text-3xl: 2rem;      /* 32px */
+  --text-4xl: 2.5rem;    /* 40px */
+  
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* Line Heights */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* Letter Spacing */
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.025em;
+}
+
+/* ============================================================================
+   ELEVATION SYSTEM (Box Shadows)
+   ============================================================================ */
+
+:root {
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --shadow-glow: 0 0 20px rgba(52, 211, 153, 0.3);
+  --shadow-glow-lg: 0 0 40px rgba(52, 211, 153, 0.2);
+}
+
+/* ============================================================================
+   TRANSITIONS & ANIMATIONS
+   ============================================================================ */
+
+:root {
+  /* Transition Timing */
+  --transition-fast: 150ms;
+  --transition-normal: 250ms;
+  --transition-slow: 350ms;
+  --transition-slower: 500ms;
+  
+  /* Transition Functions */
+  --easing-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --easing-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --easing-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Common Transitions */
+  --transition-all: all var(--transition-normal) var(--easing-ease);
+  --transition-colors: color var(--transition-fast) var(--easing-ease);
+  --transition-opacity: opacity var(--transition-fast) var(--easing-ease);
+  --transition-transform: transform var(--transition-normal) var(--easing-ease);
+  --transition-background: background var(--transition-normal) var(--easing-ease);
+  --transition-border: border-color var(--transition-normal) var(--easing-ease);
+  --transition-shadow: box-shadow var(--transition-normal) var(--easing-ease);
+}
+
+/* ============================================================================
+   Z-INDEX SCALE
+   ============================================================================ */
+
+:root {
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
+  --z-max: 9999;
+}
+
+/* ============================================================================
+   BORDER WIDTHS
+   ============================================================================ */
+
+:root {
+  --border-sm: 1px;
+  --border-md: 2px;
+  --border-lg: 3px;
+  --border-xl: 4px;
+}
+
+/* ============================================================================
+   OPACITY VALUES
+   ============================================================================ */
+
+:root {
+  --opacity-disabled: 0.5;
+  --opacity-muted: 0.7;
+  --opacity-hover: 0.9;
+  --opacity-active: 0.8;
+  --opacity-focus: 1;
+}
+
+/* ============================================================================
+   SIZES
+   ============================================================================ */
+
+:root {
+  /* Common heights */
+  --height-sm: 32px;
+  --height-md: 40px;
+  --height-lg: 48px;
+  --height-xl: 56px;
+  --height-2xl: 64px;
+  
+  /* Min widths */
+  --min-width-sm: 32px;
+  --min-width-md: 40px;
+  --min-width-lg: 48px;
+  --min-width-xl: 56px;
+  
+  /* Max widths */
+  --max-width-xs: 320px;
+  --max-width-sm: 480px;
+  --max-width-md: 768px;
+  --max-width-lg: 1024px;
+  --max-width-xl: 1280px;
+  --max-width-2xl: 1536px;
+  
+  /* Content widths */
+  --content-width-narrow: 480px;
+  --content-width-medium: 768px;
+  --content-width-wide: 1200px;
+}
