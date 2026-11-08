@@ -177,8 +177,8 @@
   --color-warning-foreground: var(--color-neutral-900); /* #171717 */
   
   /* Error Colors */
-  --color-error: var(--color-error-500); /* #ef4444 */
-  --color-error-hover: var(--color-error-400); /* #f87171 */
+  --color-error: var(--color-error-600); /* #dc2626; accessible destructive control background */
+  --color-error-hover: var(--color-error-700); /* #b91c1c; accessible hover background */
   --color-error-foreground: var(--color-neutral-50); /* #fafafa */
   
   /* Border Colors */
