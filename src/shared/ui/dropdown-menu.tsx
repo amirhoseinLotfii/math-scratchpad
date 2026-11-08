@@ -1,8 +1,9 @@
 import * as Primitive from '@radix-ui/react-dropdown-menu';
-import { forwardRef, useSyncExternalStore, type ComponentPropsWithoutRef, type ElementRef } from 'react';
+import { forwardRef, useId, useState, useSyncExternalStore, type ComponentPropsWithoutRef, type ElementRef, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 // A horizontal Radix submenu cannot fit beside a full-width trigger on a narrow phone.
-// Anchor it below the trigger instead and keep the desktop side-flyout behavior.
+// Use inline disclosure groups on narrow viewports and side flyouts on wider ones.
 const narrowMenuQuery = '(max-width: 599px)';
 const subscribeToNarrowMenu = (notify: () => void) => {
  const media = window.matchMedia(narrowMenuQuery);
@@ -22,10 +23,9 @@ export const DropdownMenuSubTrigger = forwardRef<ElementRef<typeof Primitive.Sub
  <Primitive.SubTrigger ref={ref} className={cn('dropdown-item', 'dropdown-sub-trigger', className)} {...props} />
 ));
 DropdownMenuSubTrigger.displayName = 'DropdownMenuSubTrigger';
-export const DropdownMenuSubContent = forwardRef<ElementRef<typeof Primitive.SubContent>, ComponentPropsWithoutRef<typeof Primitive.SubContent>>(({ className, ...props }, ref) => {
- const narrow = useSyncExternalStore(subscribeToNarrowMenu, getNarrowMenu, getServerNarrowMenu);
- return <Primitive.Portal><Primitive.SubContent ref={ref} side={narrow ? 'bottom' : 'right'} align={narrow ? 'end' : 'start'} sideOffset={4} collisionPadding={8} className={cn('dropdown-content', 'dropdown-sub-content', className)} {...props} /></Primitive.Portal>;
-});
+export const DropdownMenuSubContent = forwardRef<ElementRef<typeof Primitive.SubContent>, ComponentPropsWithoutRef<typeof Primitive.SubContent>>(({ className, ...props }, ref) => (
+ <Primitive.Portal><Primitive.SubContent ref={ref} sideOffset={4} className={cn('dropdown-content', 'dropdown-sub-content', className)} {...props} /></Primitive.Portal>
+));
 DropdownMenuSubContent.displayName = 'DropdownMenuSubContent';
 export const DropdownMenuItem = forwardRef<ElementRef<typeof Primitive.Item>, ComponentPropsWithoutRef<typeof Primitive.Item>>(({ className, ...props }, ref) => (
  <Primitive.Item ref={ref} className={cn('dropdown-item', className)} {...props} />
@@ -35,3 +35,28 @@ export const DropdownMenuLabel = forwardRef<ElementRef<typeof Primitive.Label>, 
  <Primitive.Label ref={ref} className={cn('dropdown-label', className)} {...props} />
 ));
 DropdownMenuLabel.displayName = 'DropdownMenuLabel';
+
+/**
+ * Keeps submenu actions in the existing menu's scroll region on narrow phones.
+ * Radix SubContent is always a horizontal flyout, so its position cannot be
+ * switched to 'bottom' via props. Wider layouts retain the original submenu.
+ */
+export function ResponsiveDropdownMenuSub({ label, children }: { label: string; children: ReactNode }) {
+ const narrow = useSyncExternalStore(subscribeToNarrowMenu, getNarrowMenu, getServerNarrowMenu);
+ const [expanded, setExpanded] = useState(false);
+ const contentId = useId();
+ if (!narrow) {
+  return <Primitive.Sub>
+   <DropdownMenuSubTrigger>{label}<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
+   <DropdownMenuSubContent aria-label={`${label} actions`}>{children}</DropdownMenuSubContent>
+  </Primitive.Sub>;
+ }
+ return <>
+  <DropdownMenuItem className="menu-disclosure" aria-expanded={expanded} aria-controls={expanded ? contentId : undefined}
+   onPointerEnter={event => { if (event.pointerType === 'mouse') setExpanded(true); }}
+   onSelect={event => { event.preventDefault(); setExpanded(value => !value); }}>
+   <span>{label}</span><ChevronDown className={expanded ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" />
+  </DropdownMenuItem>
+  {expanded && <div id={contentId} role="group" aria-label={`${label} actions`} className="menu-inline-subcontent">{children}</div>}
+ </>;
+}
