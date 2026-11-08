@@ -6,8 +6,8 @@ export const storageKey = 'math-scratchpad-session-v3';
 export async function startBatch(page: Page) {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).click();
- await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+ await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
  await expect(page.locator('select[aria-label="Select question"] option')).toHaveCount(20);
