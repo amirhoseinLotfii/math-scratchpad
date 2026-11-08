@@ -562,6 +562,9 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   .notebook-menu .dropdown-label.menu-section-heading { padding-block: 8px 4px; }
 }
 
+/* A long nested menu label must not force the Radix popup outside a 320px viewport. */
+.notebook-menu .dropdown-item { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.notebook-menu .dropdown-item > span { min-width: 0; overflow-wrap: anywhere; }
 .dropdown-item.menu-primary-action { background: var(--primary); color: var(--primary-foreground); font-weight: 650; }
 .dropdown-item.menu-primary-action[data-highlighted] { background: var(--color-primary); color: var(--primary-foreground); }
 .dropdown-label.menu-section-heading { display: block; padding: 12px 10px 5px; color: var(--muted-foreground); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
