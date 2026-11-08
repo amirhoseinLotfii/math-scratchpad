@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { Provider } from '../../app/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
@@ -71,6 +71,8 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       const active = mathfieldForStep(store.getState().doc.cursor.stepId);
       if (!active) return;
       active.focus();
+      // Unlike the page, the wide lesson's work pane has its own scroll container.
+      active.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
       const rect = active.getBoundingClientRect();
       const source = root.current?.closest('.lesson-check')?.querySelector<HTMLElement>('.lesson-check-source');
       const sourceRect = source?.getBoundingClientRect();
@@ -85,7 +87,11 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       // without manually scrolling past unrelated exercise controls.
       const firstKey = root.current?.querySelector<HTMLElement>('.math-keyboard .key-grid button');
       const keyRect = firstKey?.getBoundingClientRect();
-      if (keyRect && keyRect.bottom > visibleBottom) {
+      const workScroll = firstKey?.closest<HTMLElement>('.lesson-split-work');
+      const workBounds = workScroll?.getBoundingClientRect();
+      if (keyRect && workScroll && workBounds && keyRect.bottom > workBounds.bottom - 8) {
+        workScroll.scrollTop += keyRect.bottom - workBounds.bottom + 12;
+      } else if (keyRect && keyRect.bottom > visibleBottom) {
         window.scrollBy({ top: keyRect.bottom - visibleBottom + 12, behavior: 'auto' });
       }
     }));
@@ -179,15 +185,14 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       <div className="lesson-answer-heading"><h4>{fa ? 'راه‌حل را گام‌به‌گام بنویسید' : 'Write each step'}</h4><Button className="lesson-keyboard-toggle" aria-label={state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; dispatch(actions.keyboard(open)); keyboardOwner?.setActiveId(open ? question.id : null); if (open) focusEditor(); }}>{state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')}</Button></div>
       {wide && tools}
       <section className="lesson-answer-steps" aria-label={`${fa ? 'گام‌های پاسخ تمرین' : 'Steps for check'} ${question.id}`}>
-        {exercise.steps.map((step, index) => <article className={`lesson-answer-step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id}>
+        {exercise.steps.map((step, index) => <Fragment key={step.id}><article className={`lesson-answer-step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id}>
           <header><Button variant="ghost" className="lesson-step-title" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>{fa ? 'گام' : 'Step'} {localizeLessonDigits(index + 1, uiLang)}</Button>
             <span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? (fa ? 'نیازمند بازبینی' : 'Needs review') : step.edited ? (fa ? 'ویرایش‌شده' : 'Edited') : ''}</span>
             <Button className="final-marker" aria-pressed={step.final} aria-label={fa ? `پاسخ نهایی، گام ${localizeLessonDigits(index + 1, uiLang)}` : `Final answer, Step ${index + 1}`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusEditor(); }}>{fa ? 'پاسخ نهایی' : 'Final answer'}{step.final ? ' ✓' : ''}</Button>
           </header>
           <div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={fa ? `عبارت گام ${localizeLessonDigits(index + 1, uiLang)}` : `Step ${index + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
-        </article>)}
+        </article>{state.keyboardOpen && step.id === state.doc.cursor.stepId && <div className="lesson-active-step-keyboard"><Keyboard onFocusEditor={focusEditor} /></div>}</Fragment>)}
       </section>
-      {state.keyboardOpen && <Keyboard onFocusEditor={focusEditor} />}
       <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep' })); focusEditor(); }}>{fa ? 'افزودن گام' : 'Add step'}</Button>
       {!wide && tools}
       <MathInsertDialog open={insertOpen} onOpenChange={setInsertOpen} wide={wide} onInsert={insertFromDialog} onCloseAutoFocus={restoreInsertFocus} />

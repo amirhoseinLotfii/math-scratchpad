@@ -21,7 +21,7 @@ test('four inline lesson checks keep only one keypad open, visible below its act
     const key = second.locator('.math-keyboard .key-grid button').first();
     await expect(key).toBeInViewport({ ratio: 0.6 });
     const layout = await second.evaluate(element => {
-      const field = element.querySelector('.lesson-answer-steps')!.getBoundingClientRect();
+      const field = element.querySelector('.lesson-answer-step.current-step')!.getBoundingClientRect();
       const keyboard = element.querySelector('.math-keyboard')!.getBoundingClientRect();
       return { fieldBottom: field.bottom, keyboardTop: keyboard.top };
     });
