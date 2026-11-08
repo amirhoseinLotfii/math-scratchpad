@@ -94,7 +94,7 @@ function ReviewQuestionContent({ question }: { question: BankQuestion }) {
 function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage, activityTracker, eventContext }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
-  const readingPosition = useOptionalReadingPositionContext();
+  const trackPosition = useOptionalReadingPositionContext()?.trackPosition;
   const sections = useMemo(() => buildLessonSections(lesson), [lesson]);
   const [lessonInfoOpen, setLessonInfoOpen] = useState(false);
   const practiceQuestions = useMemo(() => getPracticeQuestions(bank, lesson.id), [bank, lesson.id]);
@@ -141,8 +141,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
 
   const currentSection = sections[sectionIndex];
   useEffect(() => {
-    if (!readingPosition) return;
-    void readingPosition.trackPosition({
+    if (!trackPosition) return;
+    void trackPosition({
       chapterId: bank.chapter?.id ?? (bank.chapter?.number != null ? String(bank.chapter.number) : bank.bank_id),
       lessonId: lesson.id,
       sectionId: currentSection?.id,
@@ -150,7 +150,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       contentVersion: bank.version,
       lastActivity: 'reading',
     });
-  }, [bank.bank_id, bank.chapter?.id, bank.chapter?.number, bank.version, currentSection, lesson.id, readingPosition]);
+  }, [bank.bank_id, bank.chapter?.id, bank.chapter?.number, bank.version, currentSection, lesson.id, trackPosition]);
   const checks = useMemo(() => currentSection ? getSectionLearnChecks(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
   const sectionPracticeQuestions = useMemo(() => currentSection ? getSectionPracticeQuestions(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
   const workItems = useMemo(() => buildSectionWorkItems(currentSection, checks, sectionPracticeQuestions), [currentSection, checks, sectionPracticeQuestions]);

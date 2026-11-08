@@ -60,8 +60,9 @@ async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
   const panel = page.locator('section[aria-labelledby="sync-panel-title"]');
   await expect(panel).toBeVisible();
   await page.getByRole('button', { name: 'Sign in with Google' }).click();

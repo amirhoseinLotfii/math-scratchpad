@@ -8,8 +8,9 @@ const EVENT_ID = '22222222-2222-4222-8222-222222222222';
 async function openSyncPanel(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
   const panel = page.locator('section[aria-labelledby="sync-panel-title"]');
   await expect(panel).toBeVisible();
   return panel;

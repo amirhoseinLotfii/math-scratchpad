@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { getDeviceId } from '../../sync/events';
 import { ReadingPosition, MinimalReadingPosition } from './reading-position-types';
 import { startReadingPositionPersistence, useReadingPositionStore } from './reading-position-store';
@@ -18,13 +18,13 @@ interface ReadingPositionContextType {
 const ReadingPositionContext = createContext<ReadingPositionContextType | null>(null);
 
 export function ReadingPositionProvider({ children }: { children: React.ReactNode }) {
-  const {
-    position,
-    upsertPosition,
-    updatePosition,
-    clearPosition,
-    restorePosition: storeRestorePosition,
-  } = useReadingPositionStore();
+  // Subscribe only to the state/actions this provider exposes. Zustand action
+  // references are stable, so position updates do not recreate tracking callbacks.
+  const position = useReadingPositionStore(state => state.position);
+  const upsertPosition = useReadingPositionStore(state => state.upsertPosition);
+  const updatePosition = useReadingPositionStore(state => state.updatePosition);
+  const clearPosition = useReadingPositionStore(state => state.clearPosition);
+  const storeRestorePosition = useReadingPositionStore(state => state.restorePosition);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRestored, setIsRestored] = useState(false);
@@ -44,42 +44,48 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
     return stop;
   }, [storeRestorePosition]);
 
-  const navigateToPosition = async (minimalPosition: MinimalReadingPosition) => {
+  const navigateToPosition = useCallback(async (minimalPosition: MinimalReadingPosition) => {
+    const currentPosition = useReadingPositionStore.getState().position;
     await upsertPosition({
-      userId: position?.userId ?? getDeviceId(),
+      userId: currentPosition?.userId ?? getDeviceId(),
       chapterId: minimalPosition.chapterId,
       lessonId: minimalPosition.lessonId,
       sectionId: minimalPosition.sectionId,
       exerciseId: minimalPosition.exerciseId,
       stepId: minimalPosition.stepId,
       scrollOffset: minimalPosition.scrollOffset,
-      contentVersion: position?.contentVersion ?? 'unknown',
+      contentVersion: currentPosition?.contentVersion ?? 'unknown',
       lastActivity: 'reading',
       updatedAt: new Date(),
     });
-  };
+  }, [upsertPosition]);
 
-  const trackPosition = async (partial: Partial<ReadingPosition>) => {
+  // Keep this callback stable across position updates. Lesson effects depend on
+  // it to record a location change; capturing position here caused a feedback
+  // loop: write -> Zustand update -> provider render -> new callback -> write.
+  const trackPosition = useCallback(async (partial: Partial<ReadingPosition>) => {
+    const currentPosition = useReadingPositionStore.getState().position;
     await upsertPosition({
       ...partial,
-      userId: partial.userId ?? position?.userId ?? getDeviceId(),
+      userId: partial.userId ?? currentPosition?.userId ?? getDeviceId(),
       updatedAt: partial.updatedAt ?? new Date(),
     });
-  };
+  }, [upsertPosition]);
 
-  const getMinimalPosition = (): MinimalReadingPosition | null => {
-    if (!position) return null;
+  const getMinimalPosition = useCallback((): MinimalReadingPosition | null => {
+    const currentPosition = useReadingPositionStore.getState().position;
+    if (!currentPosition) return null;
     return {
-      chapterId: position.chapterId,
-      lessonId: position.lessonId,
-      sectionId: position.sectionId,
-      exerciseId: position.exerciseId,
-      stepId: position.stepId,
-      scrollOffset: position.scrollOffset,
+      chapterId: currentPosition.chapterId,
+      lessonId: currentPosition.lessonId,
+      sectionId: currentPosition.sectionId,
+      exerciseId: currentPosition.exerciseId,
+      stepId: currentPosition.stepId,
+      scrollOffset: currentPosition.scrollOffset,
     };
-  };
+  }, []);
 
-  const value: ReadingPositionContextType = {
+  const value = useMemo<ReadingPositionContextType>(() => ({
     position,
     isLoading,
     isRestored,
@@ -89,7 +95,17 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
     restorePosition: storeRestorePosition,
     navigateToPosition,
     getMinimalPosition,
-  };
+  }), [
+    position,
+    isLoading,
+    isRestored,
+    trackPosition,
+    updatePosition,
+    clearPosition,
+    storeRestorePosition,
+    navigateToPosition,
+    getMinimalPosition,
+  ]);
 
   return (
     <ReadingPositionContext.Provider value={value}>

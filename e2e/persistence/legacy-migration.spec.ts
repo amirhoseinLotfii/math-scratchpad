@@ -59,8 +59,9 @@ test('legacy lesson progress stays intact until server chunks are verified and D
   const serverEvents = await installWorker(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
 
   const syncPanel = page.locator('section[aria-labelledby="sync-panel-title"]');
   await expect(syncPanel).toBeVisible();

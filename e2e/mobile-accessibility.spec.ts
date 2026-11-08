@@ -40,7 +40,8 @@ test('batch completion requires confidence and offers explicit export actions', 
 });
 test('menu stays within viewport and does not push the page horizontally', async ({ page }) => {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  const exportButton = page.getByRole('menuitem', { name: /^Copy full session JSON/ });
  await expect(exportButton).toBeInViewport();
  const box = await exportButton.boundingBox();
@@ -108,8 +109,9 @@ test('clipboard export contains the whole batch rather than only the visible que
  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
  await startBatch(page); await typeWithAppKeys(page, '123');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+ await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
  const text = await page.evaluate(() => navigator.clipboard.readText());
  const data = JSON.parse(text);
  expect(data.doc.exercises).toHaveLength(20);
@@ -148,8 +150,9 @@ test('copy denial exposes a manual JSON fallback without leaving the question', 
  await startBatch(page);
  const before = await page.getByRole('combobox', { name: 'Select question' }).inputValue();
  await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+ await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
  const fallback = page.getByRole('textbox', { name: /session JSON/i });
  await expect(fallback).toBeVisible(); expect(JSON.parse(await fallback.inputValue()).doc.exercises).toHaveLength(20);
  await expect(page.getByRole('combobox', { name: 'Select question' })).toHaveValue(before);

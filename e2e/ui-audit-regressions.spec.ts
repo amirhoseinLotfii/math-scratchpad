@@ -84,8 +84,9 @@ test('UI-AUDIT-05: legal pages wrap long contact links at narrow sizes', async (
 test('UI-AUDIT-06: fraction batch confirmation stays clickable with sync active', async ({ page }) => {
  await page.goto('/?serverMode');
  await menu(page).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+ await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
  const start = page.getByRole('button', { name: 'Start 20 Questions' });
  expect(await start.evaluate(hitCenter)).toBe(true);
  await start.click();
@@ -102,14 +103,16 @@ test('UI-AUDIT-06: fraction batch confirmation stays clickable with sync active'
 test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', async ({ page }) => {
  await page.goto('/?serverMode');
  await menu(page).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Import session JSON' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+ await page.getByRole('menuitem', { name: 'Import session JSON' }).press('Enter');
  const backup = page.getByRole('region', { name: 'Session backup' });
  await expect(backup).toBeVisible();
  await backup.getByRole('textbox', { name: 'Copy or paste session JSON' }).fill('synthetic draft');
  await menu(page).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+ await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).press('Enter');
  await expect(backup).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm diagnostic start' })).toBeVisible();
  await menu(page).click();
@@ -117,8 +120,9 @@ test('UI-AUDIT-07: setup panels are mutually exclusive across menu workflows', a
  await expect(page.getByRole('region', { name: 'Confirm diagnostic start' })).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'New exercise' })).toBeVisible();
  await menu(page).click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
- await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+ await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
  await expect(page.getByRole('region', { name: 'New exercise' })).toHaveCount(0);
  await expect(page.getByRole('region', { name: 'Confirm fraction round start' })).toBeVisible();
 });
@@ -134,8 +138,9 @@ test('UI-AUDIT-08: connection banner cannot cover sync inspector backup buttons'
   const banner = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
   await expect(banner).toBeVisible();
   await menu(page).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).press('Enter');
   const dialog = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
   await expect(dialog).toBeVisible();
   await expect(banner).toBeHidden();

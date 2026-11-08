@@ -854,7 +854,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .lesson-state p { max-width: 68ch; margin: 0; overflow-wrap: anywhere; }
 .lesson-state h1:focus { outline: none; }
 .lesson-state h1:focus-visible { outline: 3px solid var(--ring); outline-offset: 4px; border-radius: 3px; }
-.lesson-state-error > p[role='alert'] { padding: 10px 12px; border-inline-start: 3px solid var(--destructive); background: var(--color-surface); color: var(--color-error); }
+.lesson-state-error > p[role='alert'] { padding: 10px 12px; border-inline-start: 3px solid var(--destructive); background: var(--color-surface); color: var(--color-error-400); }
 .lesson-skeleton { display: grid; gap: 10px; width: 100%; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 .lesson-skeleton span { display: block; height: 18px; border-radius: 4px; background: var(--raised); }
 .lesson-skeleton span:first-child { width: 52%; height: 26px; }
@@ -919,7 +919,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .lesson-reference-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
 .lesson-reference-choices li { min-width: 48px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--raised); text-align: center; }
 #math-scratchpad-redux .lesson-skip-practice { min-height: 44px; margin-top: 6px; color: var(--muted-foreground); }
-#math-scratchpad-redux .lesson-practice-error { padding: 9px 11px; border-inline-start: 3px solid var(--destructive); background: var(--color-surface); color: var(--color-error); }
+#math-scratchpad-redux .lesson-practice-error { padding: 9px 11px; border-inline-start: 3px solid var(--destructive); background: var(--color-surface); color: var(--color-error-400); }
 #math-scratchpad-redux .lesson-progress-message, #math-scratchpad-redux .lesson-persistence-warning { padding: 9px 11px; border-inline-start: 3px solid var(--warning); border-radius: 4px; background: var(--color-surface); color: var(--warning); overflow-wrap: anywhere; }
 #math-scratchpad-redux .lesson-persistence-warning { margin: 8px 0 12px; }
 #math-scratchpad-redux .lesson-screen[lang="fa"] { direction: rtl; font-size: 16px; line-height: 1.85; }

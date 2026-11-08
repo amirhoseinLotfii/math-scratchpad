@@ -7,7 +7,7 @@ test('reset confirmation is visibly destructive, focuses Cancel first, and resto
   await page.goto('/');
   const menu = page.getByRole('button', { name: 'Exercise menu' });
   await menu.click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
   await page.getByRole('menuitem', { name: 'Reset current session' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Reset current session?' });
@@ -45,7 +45,7 @@ test('reset confirmation is visibly destructive, focuses Cancel first, and resto
   await expect(menu).toBeFocused();
 
   await menu.click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
   await page.getByRole('menuitem', { name: 'Reset all local storage' }).click();
   const allDialog = page.getByRole('dialog', { name: 'Reset all local storage?' });
   await expect(allDialog.getByRole('button', { name: 'Delete everything' })).toHaveClass(/button-danger/);
@@ -56,8 +56,9 @@ test('reset confirmation is visibly destructive, focuses Cancel first, and resto
 test('batch wellbeing Skip for now returns focus to the practice editor', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: /Start Round 1/ }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
   await page.getByRole('button', { name: 'Start 20 Questions' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Before you start this batch' });
