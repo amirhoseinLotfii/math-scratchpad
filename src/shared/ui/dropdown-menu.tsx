@@ -6,11 +6,12 @@ import { cn } from '../lib/utils';
 // Use inline disclosure groups on narrow viewports and side flyouts on wider ones.
 const narrowMenuQuery = '(max-width: 599px)';
 const subscribeToNarrowMenu = (notify: () => void) => {
+ if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
  const media = window.matchMedia(narrowMenuQuery);
  media.addEventListener('change', notify);
  return () => media.removeEventListener('change', notify);
 };
-const getNarrowMenu = () => typeof window !== 'undefined' && window.matchMedia(narrowMenuQuery).matches;
+const getNarrowMenu = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(narrowMenuQuery).matches;
 const getServerNarrowMenu = () => false;
 export const DropdownMenu = Primitive.Root;
 export const DropdownMenuSub = Primitive.Sub;
