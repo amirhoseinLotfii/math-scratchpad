@@ -25,7 +25,7 @@ export const DropdownMenuSubTrigger = forwardRef<ElementRef<typeof Primitive.Sub
 ));
 DropdownMenuSubTrigger.displayName = 'DropdownMenuSubTrigger';
 export const DropdownMenuSubContent = forwardRef<ElementRef<typeof Primitive.SubContent>, ComponentPropsWithoutRef<typeof Primitive.SubContent>>(({ className, ...props }, ref) => (
- <Primitive.Portal><Primitive.SubContent ref={ref} sideOffset={4} className={cn('dropdown-content', 'dropdown-sub-content', className)} {...props} /></Primitive.Portal>
+ <Primitive.Portal><Primitive.SubContent ref={ref} sideOffset={-4} collisionPadding={8} className={cn('dropdown-content', 'dropdown-sub-content', className)} {...props} /></Primitive.Portal>
 ));
 DropdownMenuSubContent.displayName = 'DropdownMenuSubContent';
 export const DropdownMenuItem = forwardRef<ElementRef<typeof Primitive.Item>, ComponentPropsWithoutRef<typeof Primitive.Item>>(({ className, ...props }, ref) => (
