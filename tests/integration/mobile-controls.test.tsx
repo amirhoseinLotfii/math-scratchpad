@@ -4,6 +4,7 @@ import { Provider } from '../../src/app/store-provider';
 import { App } from '../../src/App';
 import { actions, exerciseOf, initialState, makeStore } from '../../src/store';
 import { latex } from '../../src/model';
+import { submenuAction } from '../support/menu-actions';
 afterEach(cleanup);
 function mount(batch = true) {
  const store = makeStore(initialState());
@@ -91,13 +92,13 @@ describe('English interface, question RTL and single-question mode', () => {
   expect(screen.getByRole('button', { name: 'Check · Copy for Review' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Next question/i })).toBeNull();
  });
- it('menu can close without changing work and remains available after switching questions', () => {
+ it('menu can close without changing work and remains available after switching questions', async () => {
   const store = mount(), before = store.getState().doc.exercises;
   const menu = screen.getByRole('button', { name: 'Exercise menu' });
   fireEvent.click(menu); fireEvent.click(menu);
   expect(screen.queryByRole('button', { name: 'Copy full session JSON' })).toBeNull();
   expect(store.getState().doc.exercises).toEqual(before);
   act(() => store.dispatch(actions.adjacentExercise(1)));
-  fireEvent.click(menu); fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' })); expect(screen.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeTruthy();
+  fireEvent.click(menu); fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' })); expect(await submenuAction('Copy full session JSON')).toBeTruthy();
  });
 });

@@ -1,8 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { scanDOM } from '../support/accessibility';
+import { submenuAction } from '../support/menu-actions';
 afterEach(cleanup);
 
 describe('A11Y-FORM: validation, explanation and error focus', () => {
@@ -38,7 +39,7 @@ describe('A11Y-FORM: validation, explanation and error focus', () => {
   const { user, store } = renderMobileApp(); const answers = store.getState().doc.exercises.map(e => e.steps);
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await user.click(screen.getByRole('menuitem', { name: 'Show more' }));
-  await user.click(screen.getByRole('menuitem', { name: 'Import session JSON' }));
+  fireEvent.click(await submenuAction('Import session JSON'));
   const field = screen.getByRole('textbox', { name: 'Copy or paste session JSON' });
   await user.clear(field); await user.type(field, 'not JSON'); await user.click(screen.getByRole('button', { name: 'Restore' }));
   expect(field).toHaveValue('not JSON'); expect(screen.getByRole('alert')).not.toBeEmptyDOMElement();
@@ -77,7 +78,12 @@ describe('A11Y-MENU: shadcn dropdown interaction contract', () => {
   const menu = screen.getByRole('menu');
   expect(within(menu).queryByRole('menuitem', { name: /Copy full session JSON/i })).toBeNull();
   await user.click(within(menu).getByRole('menuitem', { name: 'Show more' }));
-  expect(within(menu).getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
+  const data = within(menu).getByRole('menuitem', { name: 'Data' });
+  expect(data).toHaveAttribute('aria-haspopup', 'menu');
+  expect(within(menu).queryByRole('menuitem', { name: /Copy full session JSON/i })).toBeNull();
+  await user.click(data);
+  expect(screen.getByRole('menu', { name: 'Data' })).toBeVisible();
+  expect(screen.getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
   expect(await scanDOM(menu)).toEqual([]);
  });
 });

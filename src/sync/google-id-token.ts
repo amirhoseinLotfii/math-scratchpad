@@ -1,14 +1,24 @@
 import { GOOGLE_CLIENT_ID } from '../features/drive-bank/drive-config';
 import { loadIdentity } from '../features/drive-bank/google';
+import { announceGoogleAuthStateChanged } from './google-auth-state';
 
 type GoogleCredential = { credential?: string };
+type PromptMomentNotification = {
+  isNotDisplayed?: () => boolean;
+  isSkippedMoment?: () => boolean;
+  isDismissedMoment?: () => boolean;
+};
 type GoogleIdApi = {
   initialize(options: { client_id: string; callback: (response: GoogleCredential) => void; auto_select?: boolean; cancel_on_tap_outside?: boolean }): void;
   renderButton(element: HTMLElement, options: Record<string, string | boolean>): void;
+  prompt(callback?: (notification: PromptMomentNotification) => void): void;
 };
 
 let initializedFor = '';
+let initializedApi: GoogleIdApi | undefined;
 const tokenListeners = new Set<(token: string, expiresAt: number) => void>();
+const credentialWaiters = new Set<(token: string, expiresAt: number) => void>();
+let standaloneButtonCount = 0;
 let cached: { token: string; expiresAt: number } | undefined;
 const SESSION_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
 
@@ -46,11 +56,14 @@ function tokenExpiry(token: string): number {
   } catch { return 0; }
 }
 
-export async function mountGoogleIdButton(element: HTMLElement, listener: (token: string, expiresAt: number) => void): Promise<() => void> {
-  await loadIdentity();
-  const api = (window as Window & { google?: { accounts?: { id?: GoogleIdApi } } }).google?.accounts?.id;
+function getGoogleIdApi(): GoogleIdApi | undefined {
+  return (window as Window & { google?: { accounts?: { id?: GoogleIdApi } } }).google?.accounts?.id;
+}
+
+function initializeGoogleIdClient(): GoogleIdApi {
+  const api = getGoogleIdApi();
   if (!api) throw new Error('ورود امن گوگل در این مرورگر بارگیری نشد.');
-  if (initializedFor !== GOOGLE_CLIENT_ID) {
+  if (initializedFor !== GOOGLE_CLIENT_ID || initializedApi !== api) {
     api.initialize({
       client_id: GOOGLE_CLIENT_ID,
       auto_select: true,
@@ -60,21 +73,86 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
         if (!token) return;
         const expiresAt = tokenExpiry(token);
         if (!expiresAt || expiresAt <= Date.now()) return;
+        if (credentialWaiters.size) {
+          for (const waiter of [...credentialWaiters]) waiter(token, expiresAt);
+          return;
+        }
+        if (!standaloneButtonCount) return;
         cached = { token, expiresAt };
         persistSessionToken(cached);
         for (const tokenListener of [...tokenListeners]) tokenListener(token, expiresAt);
+        announceGoogleAuthStateChanged();
       },
     });
     initializedFor = GOOGLE_CLIENT_ID;
+    initializedApi = api;
   }
-  // StrictMode and fast state changes can start overlapping mounts while GIS loads.
-  // Clear the target first so only one Google button remains in the connection card.
-  element.replaceChildren();
-  api.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
+  return api;
+}
+
+function addTokenListener(listener: (token: string, expiresAt: number) => void): () => void {
   tokenListeners.add(listener);
   const saved = getGoogleIdTokenRecord();
   if (saved) listener(saved.token, saved.expiresAt);
   return () => { tokenListeners.delete(listener); };
+}
+
+export async function prepareGoogleIdClient(): Promise<void> {
+  await loadIdentity();
+  initializeGoogleIdClient();
+}
+
+export async function subscribeGoogleIdToken(listener: (token: string, expiresAt: number) => void): Promise<() => void> {
+  await prepareGoogleIdClient();
+  return addTokenListener(listener);
+}
+
+export async function mountGoogleIdButton(element: HTMLElement, listener: (token: string, expiresAt: number) => void): Promise<() => void> {
+  await prepareGoogleIdClient();
+  // StrictMode and fast state changes can start overlapping mounts while GIS loads.
+  // Clear the target first so only one Google button remains in the connection card.
+  element.replaceChildren();
+  getGoogleIdApi()?.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
+  standaloneButtonCount += 1;
+  const unsubscribe = addTokenListener(listener);
+  return () => { standaloneButtonCount -= 1; unsubscribe(); };
+}
+
+/** Call from a user gesture after prepareGoogleIdClient; GIS may show its One Tap account prompt. */
+export function requestGoogleIdCredential(): Promise<{ token: string; expiresAt: number }> {
+  const saved = getGoogleIdTokenRecord();
+  if (saved) return Promise.resolve(saved);
+  let api: GoogleIdApi;
+  try { api = initializeGoogleIdClient(); }
+  catch { return Promise.reject(new Error('ورود گوگل هنوز آماده نیست. چند لحظه صبر کن و دوباره تلاش کن.')); }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let unsubscribe: () => void = () => undefined;
+    let timeout = 0;
+    const finish = (problem?: Error, value?: { token: string; expiresAt: number }) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      unsubscribe();
+      if (problem) reject(problem);
+      else if (value) resolve(value);
+      else reject(new Error('Google did not return an account credential.'));
+    };
+    const listener = (token: string, expiresAt: number) => finish(undefined, { token, expiresAt });
+    credentialWaiters.add(listener);
+    unsubscribe = () => { credentialWaiters.delete(listener); };
+    timeout = window.setTimeout(() => finish(new Error('Google account sign-in timed out. Try again and complete the Google prompt.')), 30_000);
+    try {
+      api.prompt(notification => {
+        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+          finish(new Error('Google account sign-in was not completed. Allow the Google prompt, then try again.'));
+        }
+      });
+    } catch (problem) {
+      finish(problem instanceof Error ? problem : new Error('Google account sign-in could not be started.'));
+    }
+  });
 }
 
 function getGoogleIdTokenRecord(): { token: string; expiresAt: number } | undefined {
@@ -87,9 +165,21 @@ export function getGoogleIdToken(): string | undefined {
   return getGoogleIdTokenRecord()?.token;
 }
 
+export function commitGoogleIdToken(token: string): void {
+  const expiresAt = tokenExpiry(token);
+  if (!expiresAt || expiresAt <= Date.now() + 60_000) {
+    throw new Error('Google returned an expired account credential.');
+  }
+  cached = { token, expiresAt };
+  persistSessionToken(cached);
+  for (const tokenListener of [...tokenListeners]) tokenListener(token, expiresAt);
+  announceGoogleAuthStateChanged();
+}
+
 export function clearGoogleIdToken(): void {
   cached = undefined;
   try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch { /* Storage may be blocked. */ }
+  announceGoogleAuthStateChanged();
 }
 
 export function googleIdTokenReady(): boolean { return !!getGoogleIdTokenRecord(); }

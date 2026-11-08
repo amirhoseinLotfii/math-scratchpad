@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
+import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ChevronRight, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
 import { ascii, example, leaves, stepIsBlank, stepLatex } from './model';
@@ -16,7 +16,7 @@ import { Keyboard } from './Keyboard';
 import { QuestionTimer } from './QuestionTimer';
 import { Button } from './shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './shared/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './shared/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './shared/ui/dropdown-menu';
 import { ConfidenceDialog } from './features/session/components/confidence-dialog';
 import { CompletionDialog } from './features/session/components/completion-dialog';
 import { problemSchema, jsonInputSchema } from './features/session/schemas/session-schema';
@@ -433,15 +433,13 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  }, [updateLessonProgressState]);
  const lastOpenedLessonKey = (bankId: string, version: string) => `math-scratchpad-last-open-lesson-v1:${encodeURIComponent(bankId)}:${encodeURIComponent(version)}`;
  function resumeBankLesson(bank: DriveBank, version: string) {
-  // Once the user has picked a file from Google Drive, close the Drive bank
-  // picker panel and resume the lesson from where the user left off.
-  setDriveBankOpen(false);
-  // Banks without lessons remain in the regular question workspace.
+  // Banks without lessons stay in the Drive panel so their question batch can be opened explicitly.
   if (!bank.lessons?.length) {
     setLessonScreen(null);
     setLessonPickerOpen(false);
     return;
   }
+  setDriveBankOpen(false);
   const restored = readLessonProgress(bank, version);
   const active = bank.lessons ?? [];
   let storedId: string | null = null;
@@ -910,18 +908,26 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => dispatch(actions.setSessionMeta({ endedAt: isoLocal() }))}>End session (record end time)</DropdownMenuItem>
        <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('session')}><RotateCcw aria-hidden="true" />Reset current session</DropdownMenuItem>
 
-       <DropdownMenuLabel className="menu-section-heading">Practice</DropdownMenuLabel>
-       <DropdownMenuItem onSelect={() => openInlinePanel('fractions')}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => openInlinePanel('diagnostic')}>Start 30-question diagnostic</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' }))}>Use example</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => dispatch(actions.command({ type: 'newProblem' }))}>Use current expression as new problem</DropdownMenuItem>
+       <DropdownMenuSub>
+        <DropdownMenuSubTrigger>Practice<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
+        <DropdownMenuSubContent aria-label="Practice actions">
+         <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('fractions'); }}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('diagnostic'); }}>Start 30-question diagnostic</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })); }}>Use example</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newProblem' })); }}>Use current expression as new problem</DropdownMenuItem>
+        </DropdownMenuSubContent>
+       </DropdownMenuSub>
 
-       <DropdownMenuLabel className="menu-section-heading">Data</DropdownMenuLabel>
-       <DropdownMenuItem onSelect={() => { void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
-       <DropdownMenuItem onSelect={downloadBackup}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => fileInput.current?.click()}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
-       <DropdownMenuItem onSelect={() => { jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setSyncPanelOpen(value => !value)}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
+       <DropdownMenuSub>
+        <DropdownMenuSubTrigger>Data<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
+        <DropdownMenuSubContent aria-label="Data actions">
+         <DropdownMenuItem onSelect={() => { setMenu(false); void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); downloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); fileInput.current?.click(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
+         <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(value => !value); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
+        </DropdownMenuSubContent>
+       </DropdownMenuSub>
 
        <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>

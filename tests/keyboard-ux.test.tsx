@@ -10,7 +10,7 @@ import { elapsedAt, latex, leaves, stepLatex } from '../src/model';
 import { serialize, validateSession } from '../src/persistence';
 import { fingerprint } from '../src/review';
 import { parse } from '../src/parser';
-import { menuAction } from './support/menu-actions';
+import { menuAction, submenuAction } from './support/menu-actions';
 const create=()=>makeStore(initialState());
 function mount(){const store=create();render(<Provider store={store}><App/></Provider>);return store;}
 function number(store:ReturnType<typeof create>, value='1234'){
@@ -59,14 +59,18 @@ describe('Predictable keyboard editing',()=>{
   expect(s.getState().doc.exerciseId).toBe(first);expect(latex(exerciseOf(s.getState().doc).steps[0].expression)).toBe('1');
   expect(latex(s.getState().doc.exercises[1].steps[0].expression)).toBe('34');expect(exerciseOf(s.getState().doc).confidence).toBe('high');expect(exerciseOf(s.getState().doc).elapsedMs).toBe(5000);
  });
- it('slash opens the chooser, Cancel remains reachable with Tab, Escape closes, and typing in text fields is not intercepted',()=>{
+ it('slash opens the chooser, Cancel remains reachable with Tab, Escape closes, and typing in text fields is not intercepted',async()=>{
   mount();const main=document.querySelector('main')!;fireEvent.keyDown(main,{key:'/'});expect(screen.getByRole('dialog')).toBeTruthy();
   const cancel=screen.getByRole('button',{name:'Cancel · Esc'});cancel.focus();fireEvent.keyDown(cancel,{key:'Tab'});expect(document.activeElement).toBe(screen.getByRole('button',{name:'Fraction'}));
   fireEvent.keyDown(document.activeElement!,{key:'Escape'});expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(menuAction('Show more'));fireEvent.click(menuAction('Keyboard shortcuts'));
   expect(screen.getByText('Open Insert Math Element; choose Fraction to insert a fraction')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Close'}));
-  fireEvent.click(menuAction('Import session JSON'));fireEvent.keyDown(screen.getByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
+  cleanup();mount();
+  fireEvent.click(screen.getByRole('button',{name:'Exercise menu'}));
+  fireEvent.click(screen.getByRole('menuitem',{name:'Show more'}));
+  await userEvent.click(await submenuAction('Import session JSON'));
+  fireEvent.keyDown(await screen.findByLabelText('Copy or paste session JSON'),{key:'/'});expect(screen.queryByRole('dialog')).toBeNull();
  });
  it('arrows on regular buttons never move the math cursor, and composition input does not insert partial text',()=>{
   const s=mount(),before=JSON.stringify(s.getState().doc.cursor);

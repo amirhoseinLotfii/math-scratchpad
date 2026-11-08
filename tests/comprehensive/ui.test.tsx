@@ -8,11 +8,12 @@ import { DriveBankPanel, POLL_MS } from '../../src/features/drive-bank/drive-ban
 import { actions, initialState, makeStore } from '../../src/store';
 import { bankDocument, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { parse } from '../../src/parser';
+import { clearDriveSessionToken } from '../../src/features/drive-bank/google';
 import userEvent from '@testing-library/user-event';
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async (p: { email?: string }) => p?.email === 'me@example.com' }));
 
 const BANK = (source = '1+2', version = 'v1') => JSON.stringify({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'GEN', version, questions: [{ id: 'A', mode: 'math', source }, { id: 'B', mode: 'text', source: 'متن' }] });
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
+afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); clearDriveSessionToken(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
 
 describe('question navigator', () => {
   it('shows per-question statuses and keyboard movement without duplicating header totals', async () => {
@@ -44,7 +45,10 @@ describe('question timer display', () => {
 function mockGoogle(email = 'me@example.com') {
   const picker = { ViewId: { DOCS: 'd' }, DocsViewMode: { LIST: 'l' }, Action: { PICKED: 'picked', CANCEL: 'cancel' }, DocsView: class { setMimeTypes() { return this; } setMode() { return this; } setQuery() { return this; } },
     PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey() { return this; } setAppId() { return this; } setOrigin() { return this; } setLocale() { return this; } setTitle() { return this; } setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb({ action: 'picked', docs: [{ id: 'private-file-123', name: 'MATH_QUESTION_BANK.json' }] }) }; } } };
-  window.gapi = {}; window.google = { picker, accounts: { oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (c: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => c.callback({ access_token: 'tok', expires_in: 3600 }) }) } } };
+  const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: 'me@example.com' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  let idCallback: ((response: { credential?: string }) => void) | undefined;
+  const identity = { initialize: (options: { callback: (response: { credential?: string }) => void }) => { idCallback = options.callback; }, prompt: () => idCallback?.({ credential: `header.${payload}.signature` }) };
+  window.gapi = {}; window.google = { picker, accounts: { id: identity, oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (c: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => c.callback({ access_token: 'tok', expires_in: 3600 }) }) } } };
   return email;
 }
 function mockDrive(state: { content: string; rev: number; status?: number; email?: string; mime?: string }) {
@@ -63,7 +67,7 @@ function panel() {
 }
 const media = (f: ReturnType<typeof mockDrive>) => f.mock.calls.filter(c => String(c[0]).includes('alt=media')).length;
 async function connect(user: ReturnType<typeof userEvent.setup>) {
-  const b = await screen.findByRole('button', { name: 'Connect Google Drive' }); await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false)); await user.click(b);
+  const b = await screen.findByRole('button', { name: 'Connect Google account + Drive' }); await waitFor(() => expect((b as HTMLButtonElement).disabled).toBe(false)); await user.click(b);
 }
 
 describe('Drive bank panel', () => {
@@ -74,7 +78,7 @@ describe('Drive bank panel', () => {
   });
   it('rejects a non-project Google account and keeps disconnected', async () => {
     mockGoogle(); mockDrive({ content: BANK(), rev: 1, email: 'other@example.com' }); const { user } = panel(); await connect(user);
-    expect(await screen.findByText(/not the personal project account/)).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Choose bank file' })).toBeNull();
+    expect(await screen.findByText(/not authorized for this project/)).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Choose bank file' })).toBeNull();
   });
   it('downloads once, then polls metadata only until it changes', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1 }; const f = mockDrive(drive); const { user, onAvailable, onBankReady } = panel();
@@ -115,7 +119,7 @@ describe('Drive bank panel', () => {
   it('401 expires the connection', async () => {
     mockGoogle(); const drive = { content: BANK(), rev: 1 } as Parameters<typeof mockDrive>[0]; mockDrive(drive); const { user } = panel(); await connect(user); await screen.findByText(/2 questions/);
     drive.status = 401; await user.click(screen.getByRole('button', { name: 'Check now' }));
-    expect(await screen.findByText(/authorization expired/)).toBeTruthy(); expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+    expect(await screen.findByText(/authorization expired/)).toBeTruthy(); expect(screen.getByRole('button', { name: 'Reconnect Google account + Drive' })).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
   });
   it('opening the bank archives the old session and the same version cannot be reopened', async () => {
     mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store, onAvailable } = panel(); const originalSessionId = store.getState().doc.session?.id; await connect(user);

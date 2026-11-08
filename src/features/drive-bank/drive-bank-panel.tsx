@@ -5,8 +5,10 @@ import { actions } from '../../store';
 import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
+import { GoogleLoginButton } from '../../sync/google-login-button';
+import { GOOGLE_AUTH_STATE_EVENT } from '../../sync/google-auth-state';
 import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
-import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, requestToken, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
+import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
@@ -54,6 +56,21 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
+  useEffect(() => {
+    const onGoogleAuthChanged = () => {
+      const saved = readDriveSessionToken();
+      if (!saved) {
+        token.current = null; setConnected(false);
+        return;
+      }
+      if (token.current?.accessToken === saved.accessToken) return;
+      token.current = saved; setConnected(true);
+      setMessage('Google Drive is connected. Choose a bank file or check the selected file.');
+      if (open && cfg.current.fileId) { fingerprint.current = ''; void sync(true); }
+    };
+    window.addEventListener(GOOGLE_AUTH_STATE_EVENT, onGoogleAuthChanged);
+    return () => window.removeEventListener(GOOGLE_AUTH_STATE_EVENT, onGoogleAuthChanged);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     // Radix menu may restore focus to its trigger after the panel mounts.
@@ -112,7 +129,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     };
   }, [open, confirmation]);
 
-  useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (!active.current) return; setReady(true); const savedToken = cfg.current.fileId ? readDriveSessionToken() : undefined; if (savedToken) { setBusy(true); afterToken(savedToken); } }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
+  useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (!active.current) return; setReady(true); const savedToken = cfg.current.fileId ? readDriveSessionToken() : undefined; if (savedToken) { setBusy(true); void afterToken(savedToken).catch(() => undefined); } }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
   function expire(text: string) { token.current = null; clearDriveSessionToken(); setConnected(false); setMessage(text); }
   const announce = (bank: DriveBank | null, version = '') => {
     const current = store.getState().doc.session;
@@ -155,21 +172,22 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     } finally { syncing.current = false; }
   }
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !open) return;
     const tick = () => { if (document.visibilityState === 'visible') void sync(); };
     const timer = setInterval(tick, POLL_MS); document.addEventListener('visibilitychange', tick);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
-  }, [connected]);
-  function afterToken(t: Token) {
-    void (async () => {
+  }, [connected, open]);
+  function afterToken(t: Token, accountVerified = false) {
+    return (async () => {
       try {
+        if (!accountVerified) {
         const who = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${t.accessToken}` }, cache: 'no-store' });
         if (!await permittedAccount(who.ok ? await who.json() : null)) throw Error('This is not the personal project account. Reconnect and choose the correct Google account.');
-        saveDriveSessionToken(t);
-        token.current = t; setConnected(true);
+        }
+        token.current = t; saveDriveSessionToken(t); setConnected(true);
         if (!cfg.current.fileId) { choose(); return; }
         fingerprint.current = ''; await sync(true);
-      } catch (e) { token.current = null; clearDriveSessionToken(); if (active.current) setMessage(e instanceof Error ? e.message : 'Connection failed.'); }
+      } catch (e) { token.current = null; clearDriveSessionToken(); if (active.current) setMessage(e instanceof Error ? e.message : 'Connection failed.'); throw e; }
       finally { if (active.current) setBusy(false); }
     })();
   }
@@ -182,14 +200,6 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
       const c = { ...cfg.current, fileId: r.id, fileName: r.name ?? '' }; saveConfig(c); setConfig(c); cfg.current = c;
       selectedFileByUser.current = true;
       fingerprint.current = ''; void sync(true);
-    });
-  }
-  /** Runs synchronously in the tap handler so Android Chrome allows the Google popup. */
-  function connect() {
-    setBusy(true); setMessage('Choose the personal project account in the Google window.');
-    requestToken(config.clientId, { prompt: connected || config.fileId ? '' : 'consent' }, r => {
-      if (!active.current) return;
-      if (r.token) afterToken(r.token); else { setBusy(false); setMessage(r.error ?? 'Connection failed.'); }
     });
   }
   async function startBank() {
@@ -230,7 +240,12 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     <p>Selected file: <span dir="ltr">{config.fileName || (config.fileId ? 'Selected' : '—')}</span>{checkedAt && ` · Last checked ${checkedAt}`}</p>
     <p role="status" aria-live="polite">{message}</p>
     {available?.bank.parseWarnings?.length ? <details className="bank-validation-warnings"><summary>Bank content notes ({available.bank.parseWarnings.length})</summary><ul>{available.bank.parseWarnings.map((warning, index) => <li key={`${index}-${warning}`}><bdi dir="auto">{warning}</bdi></li>)}</ul></details> : null}
-    <div className="toolbar"><Button ref={connectButton} onClick={connect} disabled={busy || !ready}>{connected || (token.current === null && config.fileId) ? 'Reconnect' : 'Connect Google Drive'}</Button>
+    <div className="toolbar"><GoogleLoginButton
+      buttonRef={connectButton}
+      disabled={busy || !ready}
+      label={connected || (token.current === null && config.fileId) ? 'Reconnect Google account + Drive' : 'Connect Google account + Drive'}
+      onComplete={({ driveToken }) => { setBusy(true); return afterToken(driveToken, true); }}
+    />
       {connected && <Button onClick={choose}>Choose bank file</Button>}
       {connected && config.fileId && <Button onClick={() => { void sync(true); }}>Check now</Button>}
       {available && available.bank.questions.length > 0 && <Button onClick={event => requestConfirmation('batch', event.currentTarget)} disabled={!!same}>Open received batch</Button>}<Button onClick={close}>Close</Button></div>

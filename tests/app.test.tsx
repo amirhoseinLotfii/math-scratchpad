@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Provider } from '../src/app/store-provider';
 import { App } from '../src/App';
+import { submenuAction } from './support/menu-actions';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
 import { leaves, latex, stepLatex } from '../src/model';
 import { writeClipboard } from '../src/review';
@@ -130,7 +131,7 @@ describe('Responsive Math Scratchpad', () => {
     expect(screen.getByLabelText('Numeric keys')).toBeTruthy();
   });
   it('starts 30 Persian-stem questions, preserves each answer with Next and Previous and has no hints',async()=>{
-    const {container,store}=mount();click('Exercise menu');click('Start 30-question diagnostic');click('Start 30 Questions');
+    const {container,store}=mount();click('Exercise menu');fireEvent.click(await submenuAction('Start 30-question diagnostic'));click('Start 30 Questions');
     expect(store.getState().doc.exercises).toHaveLength(30);
     expect(store.getState().doc.exercises[0].prompt).toContain('هم‌ارز');
     expect(container.querySelector('.scratchpad')?.getAttribute('dir')).toBe('ltr');

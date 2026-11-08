@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage } from './browser-db';
-import { mountGoogleIdButton } from './google-id-token';
+import { subscribeGoogleIdToken } from './google-id-token';
+import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
 
 type GateState = { kind: 'checking' | 'online' | 'blocked'; message: string };
@@ -20,7 +21,6 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
   const rerunAfterCheck = useRef(false);
   const mounted = useRef(false);
   const epoch = useRef(0);
-  const retryButton = useRef<HTMLDivElement>(null);
 
   const check = useCallback(async () => {
     if (checking.current) {
@@ -96,11 +96,10 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
   }, [check]);
 
   useEffect(() => {
-    if (state.kind === 'online' || !retryButton.current) return;
+    if (state.kind === 'online') return;
     let active = true;
-    const element = retryButton.current;
     let unsubscribe: (() => void) | undefined;
-    void mountGoogleIdButton(element, token => {
+    void subscribeGoogleIdToken(token => {
       if (!active) return;
       void onAuthenticated(token).then(check).catch(problem => {
         if (!active) return;
@@ -112,8 +111,13 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     }).then(removeListener => {
       if (!active) removeListener();
       else unsubscribe = removeListener;
-    }).catch(() => { /* The explicit retry action remains available. */ });
-    return () => { active = false; unsubscribe?.(); element.replaceChildren(); };
+    }).catch(problem => {
+      if (active) setState({
+        kind: 'blocked',
+        message: `ورود گوگل بارگیری نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. داده‌های این دستگاه محفوظ‌اند.`,
+      });
+    });
+    return () => { active = false; unsubscribe?.(); };
   }, [state.kind, onAuthenticated, check]);
 
   return (
@@ -128,7 +132,9 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
             <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }}>بررسی اتصال</button>
           </div>
           <p className="server-connection-gate-message">{state.message}</p>
-          <div ref={retryButton} className="server-connection-gate-google" />
+          <div className="server-connection-gate-google">
+            <GoogleLoginButton />
+          </div>
         </aside>
       )}
     </>

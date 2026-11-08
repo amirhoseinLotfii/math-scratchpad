@@ -39,9 +39,10 @@ function readBlob(blob: Blob): Promise<string> {
 
 function installGooglePicker(action: 'picked' | 'cancel' = 'picked') {
   let idCallback: ((response: { credential?: string }) => void) | undefined;
-  const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: 'owner@example.test' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const identity = {
     initialize(options: { callback: (response: { credential?: string }) => void }) { idCallback = options.callback; },
+    prompt() { idCallback?.({ credential: `header.${payload}.signature` }); },
     renderButton(element: HTMLElement) {
       const button = document.createElement('button');
       button.type = 'button'; button.textContent = 'Sign in with Google'; button.setAttribute('aria-label', 'Sign in with Google');
@@ -233,7 +234,6 @@ describe('sync and migration panel', () => {
     render(<SyncPanel onClose={onClose} />);
     expect(await screen.findByRole('heading', { name: 'همگام‌سازی و حفظ داده‌ها' })).toBeTruthy();
     expect(screen.getByText('آمادهٔ همگام‌سازی').getAttribute('role')).toBe('status');
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
     await userEvent.click(screen.getByRole('button', { name: 'بستن تنظیم همگام‌سازی' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -274,7 +274,7 @@ describe('sync and migration panel', () => {
     expect(fetcher).toHaveBeenCalledTimes(5);
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
     expect((await readLegacyMigration())?.status).toBe('complete');
-    expect(screen.getByRole('button', { name: 'Sign in with Google' }).isConnected).toBe(true);
+    expect(screen.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' }).isConnected).toBe(true);
   });
 
   it('preserves the old key when the owner cancels Drive folder selection', async () => {
@@ -351,7 +351,7 @@ describe('sync and migration panel', () => {
     render(<SyncPanel />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('حساب Google Drive با حساب مجاز پروژه تطبیق ندارد');
+    expect((await screen.findByRole('alert')).textContent).toContain('The selected Google Drive account is not authorized for this project.');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(LEGACY_KEY)).toBe('{"legacy":"preserve-me"}');
     expect((await readLegacyMigration())?.status).toBe('server-verified');

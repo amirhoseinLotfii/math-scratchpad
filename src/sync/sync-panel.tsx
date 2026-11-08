@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { X } from 'lucide-react';
-import { getConfig, loadPicker, pickBackupFolder, requestToken } from '../features/drive-bank/google';
+import { getConfig, loadPicker, pickBackupFolder } from '../features/drive-bank/google';
 import { createVerifiedDriveBackup } from './drive-backup';
-import { mountGoogleIdButton } from './google-id-token';
-import { permittedAccount } from '../features/drive-bank/identity';
+import { subscribeGoogleIdToken } from './google-id-token';
+import { GoogleLoginButton } from './google-login-button';
+import { requestCombinedGoogleAuth } from './google-auth';
 import { backupAndFinishLegacyMigration, finishLegacyMigration, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
 import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
 import { queueLearnEvent, readLegacyMigration, type LegacyMigration } from './browser-db';
@@ -80,13 +81,7 @@ function weeklyBackupLabel(status: MirrorSyncStatus | null): string {
 }
 
 async function awaitDriveToken(): Promise<string> {
-  const token = await new Promise<string>((resolve, reject) => requestToken(getConfig().clientId, { prompt: 'consent' }, result => {
-    if (result.token) resolve(result.token.accessToken);
-    else reject(new Error(result.error ?? 'Google Drive authorization failed.'));
-  }));
-  const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${token}` } });
-  const profile: unknown = response.ok ? await response.json() : null;
-  if (!await permittedAccount(profile)) throw new Error('حساب Google Drive با حساب مجاز پروژه تطبیق ندارد؛ هیچ پشتیبانی بارگذاری نشد.');
+  const token = (await requestCombinedGoogleAuth()).driveToken.accessToken;
   return token;
 }
 
@@ -102,7 +97,6 @@ function awaitFolderSelection(config: ReturnType<typeof getConfig>, token: strin
 export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const runtime = getDefaultSyncRuntime();
   const status = useSyncExternalStore(runtime?.subscribe ?? (() => () => undefined), runtime?.getSnapshot ?? (() => EMPTY_SYNC_STATUS), () => EMPTY_SYNC_STATUS);
-  const googleButton = useRef<HTMLDivElement>(null);
   const modal = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -178,17 +172,15 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   }, []);
 
   useEffect(() => {
-    const element = googleButton.current;
-    if (!element) return;
     let active = true;
     let unsubscribe: (() => void) | undefined;
-    void mountGoogleIdButton(element, token => runtime?.setIdToken(token)).then(removeListener => {
+    void subscribeGoogleIdToken(token => runtime?.setIdToken(token)).then(removeListener => {
       if (!active) removeListener();
       else unsubscribe = removeListener;
     }).catch(problem => {
       if (active) setError(problem instanceof Error ? problem.message : 'ورود گوگل بارگیری نشد.');
     });
-    return () => { active = false; unsubscribe?.(); element.replaceChildren(); };
+    return () => { active = false; unsubscribe?.(); };
   }, [runtime]);
 
   const syncNow = useCallback(async () => {
@@ -368,7 +360,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
       </dl>
     </details>
     <div className="mt-3 flex flex-wrap items-center gap-3">
-      <div ref={googleButton} role="group" aria-label="ورود امن به حساب Google" />
+      <GoogleLoginButton disabled={busy || status.phase === 'syncing'} showPrepareError={false} />
       <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy || status.phase === 'syncing'} onClick={() => void syncNow()}>
         همگام‌سازی الان
       </button>

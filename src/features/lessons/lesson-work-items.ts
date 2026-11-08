@@ -21,7 +21,8 @@ export type LessonWorkAnswers = Record<string, { type: 'math'; steps: Step[] }>;
 export const SPLIT_MIN = 30;
 export const SPLIT_MAX = 70;
 export const SPLIT_DEFAULT = 50;
-export const SPLIT_MEDIA_QUERY = '(min-width: var(--breakpoint-split))';
+// matchMedia cannot resolve CSS custom properties; keep in sync with --breakpoint-split.
+export const SPLIT_MEDIA_QUERY = '(min-width: 1100px)';
 export const SPLIT_RATIO_STORAGE_KEY = 'math-scratchpad:lesson-split-ratio';
 
 const GUIDED = /^\s*مثال\s+هدایت|^\s*guided\s+example/i;

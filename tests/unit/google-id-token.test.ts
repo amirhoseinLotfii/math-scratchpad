@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearGoogleIdToken, getGoogleIdToken, googleIdTokenReady, mountGoogleIdButton } from '../../src/sync/google-id-token';
 
 let credentialCallback: ((response: { credential?: string }) => void) | undefined;
+let promptCredential = '';
 const identityApi = {
   initialize: vi.fn((options: { callback: (response: { credential?: string }) => void }) => { credentialCallback = options.callback; }),
   renderButton: vi.fn((element: HTMLElement) => { element.textContent = 'Google sign-in'; }),
+  prompt: vi.fn((callback?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean; isDismissedMoment: () => boolean }) => void) => {
+    callback?.({ isNotDisplayed: () => false, isSkippedMoment: () => false, isDismissedMoment: () => false });
+    if (promptCredential) credentialCallback?.({ credential: promptCredential });
+  }),
 };
 const google = { accounts: { oauth2: {}, id: identityApi } };
 
@@ -22,6 +27,7 @@ afterEach(() => {
   vi.clearAllMocks();
   delete (window as Window & { google?: unknown }).google;
   credentialCallback = undefined;
+  promptCredential = '';
   document.body.replaceChildren();
 });
 
@@ -81,5 +87,19 @@ describe('Google Identity Services ID-token session', () => {
   it('reports when the identity script loaded without the ID-token button API', async () => {
     installGoogleApi({ accounts: { oauth2: {} } });
     await expect(mountGoogleIdButton(document.createElement('div'), vi.fn())).rejects.toThrow(/ورود امن گوگل/);
+  });
+
+  it('requests a Google ID credential through One Tap after client preparation', async () => {
+    vi.resetModules();
+    const identity = await import('../../src/sync/google-id-token');
+    installGoogleApi(google);
+    await identity.prepareGoogleIdClient();
+    promptCredential = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
+
+    await expect(identity.requestGoogleIdCredential()).resolves.toMatchObject({ token: promptCredential });
+    expect(identityApi.prompt).toHaveBeenCalledTimes(1);
+    expect(identity.getGoogleIdToken()).toBeUndefined();
+    identity.commitGoogleIdToken(promptCredential);
+    expect(identity.getGoogleIdToken()).toBe(promptCredential);
   });
 });
