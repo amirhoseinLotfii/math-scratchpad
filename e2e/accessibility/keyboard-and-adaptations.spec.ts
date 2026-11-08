@@ -69,7 +69,7 @@ test('A11Y-STAT-01: time ticks do not repeatedly announce to a live region', asy
 test('A11Y-STAT-02: copy success is announced without unexpectedly moving focus', async ({ page, context }) => {
  await context.grantPermissions(['clipboard-read','clipboard-write']); await startBatch(page);
  const trigger = page.getByRole('button', { name: 'Exercise menu' }); await trigger.click();
- await page.getByRole('menuitem', { name: 'Show more' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
  await page.getByRole('menuitem', { name: /Copy full session JSON/i }).press('Enter');
  await expect(page.getByRole('status').filter({ hasText: /copied/i })).toBeVisible();
