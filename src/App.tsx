@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ChevronRight, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
+import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
 import { ascii, example, leaves, stepIsBlank, stepLatex } from './model';
@@ -16,7 +16,7 @@ import { Keyboard } from './Keyboard';
 import { QuestionTimer } from './QuestionTimer';
 import { Button } from './shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './shared/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './shared/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, ResponsiveDropdownMenuSub } from './shared/ui/dropdown-menu';
 import { ConfidenceDialog } from './features/session/components/confidence-dialog';
 import { CompletionDialog } from './features/session/components/completion-dialog';
 import { problemSchema, jsonInputSchema } from './features/session/schemas/session-schema';
@@ -915,26 +915,20 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => dispatch(actions.setSessionMeta({ endedAt: isoLocal() }))}>End session (record end time)</DropdownMenuItem>
        <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('session')}><RotateCcw aria-hidden="true" />Reset current session</DropdownMenuItem>
 
-       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Practice<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
-        <DropdownMenuSubContent aria-label="Practice actions">
+       <ResponsiveDropdownMenuSub label="Practice">
          <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('fractions'); }}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('diagnostic'); }}>Start 30-question diagnostic</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })); }}>Use example</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newProblem' })); }}>Use current expression as new problem</DropdownMenuItem>
-        </DropdownMenuSubContent>
-       </DropdownMenuSub>
+        </ResponsiveDropdownMenuSub>
 
-       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Data<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
-        <DropdownMenuSubContent aria-label="Data actions">
+       <ResponsiveDropdownMenuSub label="Data">
          <DropdownMenuItem onSelect={() => { setMenu(false); void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); downloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); fileInput.current?.click(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
          <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(value => !value); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
-        </DropdownMenuSubContent>
-       </DropdownMenuSub>
+        </ResponsiveDropdownMenuSub>
 
        <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>
