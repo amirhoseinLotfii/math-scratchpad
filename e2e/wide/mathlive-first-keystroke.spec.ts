@@ -6,8 +6,8 @@ test('desktop diagnostic keeps immediate physical math input before focus upgrad
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
-  await page.getByRole('menuitem', { name: 'Practice', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).click();
+  await page.getByRole('menuitem', { name: 'Practice', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+  await page.getByRole('menuitem', { name: 'Start 30-question diagnostic' }).press('Enter');
   await page.getByRole('button', { name: 'Start 30 Questions' }).click();
   await page.getByRole('button', { name: 'Skip for now' }).click();
   const field = page.locator('math-field[aria-label="Step 1 expression"]').first();
