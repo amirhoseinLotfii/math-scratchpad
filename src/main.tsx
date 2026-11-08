@@ -6,9 +6,12 @@ import { initializeLearningStorage, initializeAuthenticatedServerStorage, refres
 import { getGoogleIdToken } from './sync/google-id-token';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
+import { ReadingPositionProvider } from './features/progress/ReadingPositionContext';
+import { initializeReadingPositionSync } from './features/progress/reading-position-sync';
 import './fonts.css';
 import './styles/tokens.css';
 import './styles/globals.css';
+import './styles/design-tokens.css';
 import './styles.css';
 
 const root = document.getElementById('math-scratchpad-redux');
@@ -51,7 +54,18 @@ async function connectAuthenticatedStorage(token: string): Promise<void> {
 function launchApp(showConnectionStatus = false) {
   root!.removeAttribute('role');
   root!.textContent = '';
-  const app = <Provider store={appRuntime!.store}><App /></Provider>;
+  
+  // Initialize reading position sync
+  initializeReadingPositionSync();
+  
+  const app = (
+    <ReadingPositionProvider>
+      <Provider store={appRuntime!.store}>
+        <App />
+      </Provider>
+    </ReadingPositionProvider>
+  );
+  
   createRoot(root!).render(showConnectionStatus
     ? <ServerConnectionGate
         tokenProvider={getGoogleIdToken}
