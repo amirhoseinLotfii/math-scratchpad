@@ -4,6 +4,7 @@ import { App } from './App';
 import { createPersistentStore } from './features/session/persistence/persistent-store';
 import { initializeLearningStorage, initializeAuthenticatedServerStorage, refreshAuthenticatedServerStorage, getAuthenticatedServerStorage, updateAuthenticatedServerToken } from './sync/browser-db';
 import { getGoogleIdToken } from './sync/google-id-token';
+import { startGoogleTabSession, restoreGoogleTabSession, stopGoogleTabSession } from './sync/google-tab-session';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
 import { ReadingPositionProvider } from './features/progress/reading-position-context';
@@ -83,6 +84,7 @@ void (async () => {
     appRuntime.store.setState({ storageState: { kind: 'error', message: persistence.warning } });
   }
 
+  startGoogleTabSession();
   syncRuntime = new BrowserSyncRuntime();
   setDefaultSyncRuntime(syncRuntime);
   await syncRuntime.start();
@@ -92,6 +94,20 @@ void (async () => {
   // Render from local data immediately. Sign-in is only needed to sync the
   // local outbox and learner records; a failed server connection never blocks editing.
   launchApp(!isLocalTestOrDevelopment);
+  // A newly opened tab has its own sessionStorage. Ask an existing same-origin
+  // app tab for still-valid credentials without persisting tokens across sessions.
+  if (!isLocalTestOrDevelopment && (!token)) {
+    void restoreGoogleTabSession().then(async restored => {
+      const idToken = restored ? getGoogleIdToken() : undefined;
+      if (!idToken) return;
+      syncRuntime?.setIdToken(idToken);
+      // Run the same authenticated storage handoff as an interactive login;
+      // do not wait for the next connection-gate polling interval.
+      await connectAuthenticatedStorage(idToken).catch(() => {
+        // The visible gate will keep local editing available and report retry state.
+      });
+    });
+  }
 })().catch(error => {
   root!.setAttribute('role', 'alert');
   root!.textContent = error instanceof Error
@@ -99,4 +115,4 @@ void (async () => {
     : 'Math Scratchpad could not restore its browser data.';
 });
 
-if (import.meta.hot) import.meta.hot.dispose(() => { appRuntime?.dispose(); syncRuntime?.stop(); });
+if (import.meta.hot) import.meta.hot.dispose(() => { appRuntime?.dispose(); syncRuntime?.stop(); stopGoogleTabSession(); });
