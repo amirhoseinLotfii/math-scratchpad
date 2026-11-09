@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { openMenuSubmenu } from '../../support/menu';
+import { openMenuSubmenu } from '../support/menu';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { seedMockGoogleSession } from '../support/mock-google-session';
 
