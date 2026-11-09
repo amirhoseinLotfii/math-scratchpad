@@ -2,7 +2,9 @@ export const GOOGLE_AUTH_STATE_EVENT = 'math-scratchpad:google-auth-changed';
 
 const CROSS_TAB_AUTH_KEYS = new Set([
   'math-scratchpad-google-id-token-v1',
+  'math-scratchpad-google-id-session-v1',
   'math-scratchpad-drive-token-v1',
+  'math-scratchpad-drive-consent-v1',
 ]);
 
 export function announceGoogleAuthStateChanged(): void {

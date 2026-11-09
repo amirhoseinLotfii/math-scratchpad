@@ -1,16 +1,17 @@
-import { getConfig, readDriveSessionToken, requestToken, saveDriveSessionToken, type Token } from '../features/drive-bank/google';
+import { ensureDriveSessionToken, getConfig, requestToken, saveDriveSessionToken, type Token } from '../features/drive-bank/google';
 import { permittedAccount } from '../features/drive-bank/identity';
 import { commitGoogleIdToken, getGoogleIdToken, requestGoogleIdCredential } from './google-id-token';
 
 export type GoogleAuthCredentials = { idToken: string; driveToken: Token };
 
 function requestDriveToken(): Promise<Token> {
-  const saved = readDriveSessionToken();
-  if (saved) return Promise.resolve(saved);
-  return new Promise((resolve, reject) => {
-    requestToken(getConfig().clientId, {}, result => {
-      if (result.token) resolve(result.token);
-      else reject(new Error(result.error ?? 'Google Drive authorization failed.'));
+  return ensureDriveSessionToken().then(saved => {
+    if (saved) return saved;
+    return new Promise((resolve, reject) => {
+      requestToken(getConfig().clientId, {}, result => {
+        if (result.token) resolve(result.token);
+        else reject(new Error(result.error ?? 'Google Drive authorization failed.'));
+      });
     });
   });
 }

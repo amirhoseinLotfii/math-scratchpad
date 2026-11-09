@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../sha
 import { GoogleLoginButton } from '../../sync/google-login-button';
 import { GOOGLE_AUTH_STATE_EVENT } from '../../sync/google-auth-state';
 import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
-import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
+import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, refreshDriveSessionTokenSilently, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
 
 export const POLL_MS = 30000;
@@ -137,8 +137,20 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
   };
   async function sync(force = false) {
     if (syncing.current) return;
-    const t = token.current, fileId = cfg.current.fileId;
-    if (!t || Date.now() >= t.expiresAt) { expire('The Google authorization expired. Select Reconnect to check for updates.'); return; }
+    let t = token.current;
+    const fileId = cfg.current.fileId;
+    if (!t || Date.now() >= t.expiresAt) {
+      const refreshed = await refreshDriveSessionTokenSilently();
+      if (!active.current) return;
+      if (refreshed) {
+        token.current = refreshed;
+        t = refreshed;
+        setConnected(true);
+      } else {
+        expire('The Google authorization expired. Select Reconnect to check for updates.');
+        return;
+      }
+    }
     if (!fileId) { setMessage('No question bank file is selected.'); return; }
     syncing.current = true;
     try {

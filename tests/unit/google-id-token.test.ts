@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearGoogleIdToken, getGoogleIdToken, googleIdTokenReady, mountGoogleIdButton } from '../../src/sync/google-id-token';
+import { clearGoogleIdToken, ensureGoogleIdToken, getGoogleIdToken, googleIdTokenReady, mountGoogleIdButton, refreshGoogleIdTokenSilently } from '../../src/sync/google-id-token';
 
 let credentialCallback: ((response: { credential?: string }) => void) | undefined;
 let promptCredential = '';
+let promptNotification = { isNotDisplayed: () => false, isSkippedMoment: () => false, isDismissedMoment: () => false };
 const identityApi = {
   initialize: vi.fn((options: { callback: (response: { credential?: string }) => void }) => { credentialCallback = options.callback; }),
   renderButton: vi.fn((element: HTMLElement) => { element.textContent = 'Google sign-in'; }),
   prompt: vi.fn((callback?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean; isDismissedMoment: () => boolean }) => void) => {
-    callback?.({ isNotDisplayed: () => false, isSkippedMoment: () => false, isDismissedMoment: () => false });
+    callback?.(promptNotification);
     if (promptCredential) credentialCallback?.({ credential: promptCredential });
   }),
 };
@@ -28,7 +29,10 @@ afterEach(() => {
   delete (window as Window & { google?: unknown }).google;
   credentialCallback = undefined;
   promptCredential = '';
+  promptNotification = { isNotDisplayed: () => false, isSkippedMoment: () => false, isDismissedMoment: () => false };
   document.body.replaceChildren();
+  localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe('Google Identity Services ID-token session', () => {
@@ -53,6 +57,7 @@ describe('Google Identity Services ID-token session', () => {
     expect(googleIdTokenReady()).toBe(true);
     expect(getGoogleIdToken()).toBe(token);
     expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeTruthy();
+    expect(localStorage.getItem('math-scratchpad-google-id-session-v1')).toBe('1');
 
     const secondButton = document.createElement('div');
     const secondListener = vi.fn();
@@ -82,6 +87,7 @@ describe('Google Identity Services ID-token session', () => {
     clearGoogleIdToken();
     expect(googleIdTokenReady()).toBe(false);
     expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
+    expect(localStorage.getItem('math-scratchpad-google-id-session-v1')).toBeNull();
   });
 
   it('reports when the identity script loaded without the ID-token button API', async () => {
@@ -132,5 +138,44 @@ describe('Google Identity Services ID-token session', () => {
     expect(identity.getGoogleIdToken()).toBeUndefined();
     identity.commitGoogleIdToken(promptCredential);
     expect(identity.getGoogleIdToken()).toBe(promptCredential);
+  });
+
+  it('silently refreshes an expired ID token when a prior session hint remains', async () => {
+    const expired = encodedCredential(Math.floor(Date.now() / 1000) - 10);
+    localStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({
+      token: expired,
+      expiresAt: Date.now() - 10_000,
+    }));
+    vi.resetModules();
+    const identity = await import('../../src/sync/google-id-token');
+    installGoogleApi(google);
+    expect(identity.getGoogleIdToken()).toBeUndefined();
+    expect(localStorage.getItem('math-scratchpad-google-id-session-v1')).toBe('1');
+
+    promptCredential = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
+    await expect(identity.ensureGoogleIdToken()).resolves.toBe(promptCredential);
+    expect(identityApi.prompt).toHaveBeenCalled();
+    expect(identity.getGoogleIdToken()).toBe(promptCredential);
+    expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeTruthy();
+  });
+
+  it('does not attempt a silent ID refresh when the user never signed in', async () => {
+    vi.resetModules();
+    const identity = await import('../../src/sync/google-id-token');
+    installGoogleApi(google);
+    await expect(identity.refreshGoogleIdTokenSilently()).resolves.toBeUndefined();
+    expect(identityApi.prompt).not.toHaveBeenCalled();
+    await expect(identity.ensureGoogleIdToken()).resolves.toBeUndefined();
+  });
+
+  it('treats a skipped One Tap moment as a failed silent refresh without throwing', async () => {
+    localStorage.setItem('math-scratchpad-google-id-session-v1', '1');
+    vi.resetModules();
+    const identity = await import('../../src/sync/google-id-token');
+    installGoogleApi(google);
+    promptNotification = { isNotDisplayed: () => true, isSkippedMoment: () => false, isDismissedMoment: () => false };
+    promptCredential = '';
+    await expect(identity.refreshGoogleIdTokenSilently()).resolves.toBeUndefined();
+    expect(identity.getGoogleIdToken()).toBeUndefined();
   });
 });

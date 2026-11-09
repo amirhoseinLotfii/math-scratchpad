@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage } from './browser-db';
-import { subscribeGoogleIdToken } from './google-id-token';
+import { ensureGoogleIdToken, subscribeGoogleIdToken } from './google-id-token';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
 
@@ -34,7 +34,8 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       setState({ kind: 'blocked', message: 'اینترنت قطع است؛ تمرین‌ها همچنان روی این دستگاه ذخیره می‌شوند.' });
       return;
     }
-    const token = tokenProvider();
+    let token = tokenProvider();
+    if (!token) token = await ensureGoogleIdToken();
     if (!token) {
       setState({ kind: 'blocked', message: 'برای همگام‌سازی با سرور وارد Google شو. تمرین‌ها روی این دستگاه ذخیره می‌شوند.' });
       return;

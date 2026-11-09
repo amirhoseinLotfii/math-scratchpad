@@ -43,7 +43,22 @@ const GIS_ERRORS: Record<string, string> = {
 export type Token = { accessToken: string; expiresAt: number };
 
 const DRIVE_TOKEN_SESSION_KEY = 'math-scratchpad-drive-token-v1';
+const DRIVE_CONSENT_KEY = 'math-scratchpad-drive-consent-v1';
+const DRIVE_REFRESH_SKEW_MS = 5 * 60_000;
 let cachedDriveToken: Token | undefined;
+let driveRefreshFlight: Promise<Token | undefined> | undefined;
+
+function hasDriveConsent(): boolean {
+  return readAuthRecord(DRIVE_CONSENT_KEY) === '1';
+}
+
+function markDriveConsent(): void {
+  writeAuthRecord(DRIVE_CONSENT_KEY, '1');
+}
+
+function clearDriveConsent(): void {
+  clearAuthRecord(DRIVE_CONSENT_KEY);
+}
 
 /** Short-lived Drive credential shared across tabs in this browser; it survives refresh and a new tab until it expires. */
 export function readDriveSessionToken(): Token | undefined {
@@ -56,8 +71,14 @@ export function readDriveSessionToken(): Token | undefined {
     if (!value || typeof value !== 'object') throw new Error('Invalid Drive token cache.');
     const record = value as { accessToken?: unknown; expiresAt?: unknown };
     if (typeof record.accessToken !== 'string' || !record.accessToken
-      || typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt)
-      || record.expiresAt <= Date.now()) throw new Error('Expired Drive token cache.');
+      || typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt)) throw new Error('Invalid Drive token cache.');
+    if (record.expiresAt <= Date.now()) {
+      // Consent remains so requestAccessToken({ prompt: '' }) can mint a fresh token.
+      markDriveConsent();
+      clearAuthRecord(DRIVE_TOKEN_SESSION_KEY);
+      return undefined;
+    }
+    markDriveConsent();
     cachedDriveToken = { accessToken: record.accessToken, expiresAt: record.expiresAt };
     return cachedDriveToken;
   } catch {
@@ -70,12 +91,14 @@ export function saveDriveSessionToken(token: Token): void {
   if (!token.accessToken || token.expiresAt <= Date.now()) return;
   cachedDriveToken = token;
   writeAuthRecord(DRIVE_TOKEN_SESSION_KEY, JSON.stringify(token));
+  markDriveConsent();
   announceGoogleAuthStateChanged();
 }
 
 export function clearDriveSessionToken(): void {
   cachedDriveToken = undefined;
   clearAuthRecord(DRIVE_TOKEN_SESSION_KEY);
+  clearDriveConsent();
   announceGoogleAuthStateChanged();
 }
 
@@ -100,6 +123,48 @@ export function requestToken(clientId: string, opts: { prompt?: '' | 'consent' |
   });
   client.requestAccessToken({ prompt: opts.prompt ?? '' });
 }
+
+/**
+ * Mint a fresh Drive access token with prompt: '' when the user previously granted
+ * consent. Returns undefined when Google requires a visible re-authorization.
+ */
+export function refreshDriveSessionTokenSilently(): Promise<Token | undefined> {
+  const saved = readDriveSessionToken();
+  if (saved && saved.expiresAt > Date.now() + DRIVE_REFRESH_SKEW_MS) return Promise.resolve(saved);
+  if (!saved && !hasDriveConsent()) return Promise.resolve(undefined);
+  if (driveRefreshFlight) return driveRefreshFlight;
+
+  driveRefreshFlight = (async () => {
+    try {
+      await loadIdentity();
+      return await new Promise<Token | undefined>(resolve => {
+        requestToken(GOOGLE_CLIENT_ID, { prompt: '' }, result => {
+          if (result.token) {
+            saveDriveSessionToken(result.token);
+            resolve(result.token);
+          } else {
+            resolve(undefined);
+          }
+        });
+      });
+    } catch {
+      return undefined;
+    } finally {
+      driveRefreshFlight = undefined;
+    }
+  })();
+  return driveRefreshFlight;
+}
+
+/** Return a usable Drive token, attempting a silent GIS refresh when the saved one is expired or near expiry. */
+export async function ensureDriveSessionToken(): Promise<Token | undefined> {
+  const saved = readDriveSessionToken();
+  if (saved && saved.expiresAt > Date.now() + DRIVE_REFRESH_SKEW_MS) return saved;
+  if (!saved && !hasDriveConsent()) return undefined;
+  const refreshed = await refreshDriveSessionTokenSilently();
+  return refreshed ?? readDriveSessionToken();
+}
+
 /** Opens Google Picker so the user grants this app (drive.file) access to just the chosen file. */
 export function pickFile(cfg: DriveConfig, token: string, done: (r: { id?: string; name?: string; error?: string }) => void) {
   const p = window.google?.picker;
