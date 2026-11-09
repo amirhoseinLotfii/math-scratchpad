@@ -30,6 +30,10 @@ export function ReadingPositionProvider({ children }: { children: React.ReactNod
   const [isRestored, setIsRestored] = useState(false);
 
   useEffect(() => {
+    if (position) setIsRestored(true);
+  }, [position]);
+
+  useEffect(() => {
     const stop = startReadingPositionPersistence();
     const restore = async () => {
       setIsLoading(true);
@@ -126,23 +130,23 @@ export function useOptionalReadingPositionContext() {
   return useContext(ReadingPositionContext);
 }
 
-export function ContinueLearningButton() {
-  const { position, isLoading, isRestored } = useReadingPositionContext();
+export function ContinueLearningButton({ onClick }: { onClick: () => void }) {
+  const { position, isLoading } = useReadingPositionContext();
 
-  if (isLoading || !isRestored || !position) return null;
-  if (!position.chapterId && !position.lessonId) return null;
+  if (isLoading || !position?.lessonId) return null;
 
   return (
     <div className="continue-learning-container">
       <button
         type="button"
         className="continue-learning-button"
-        aria-label="Continue from where you left off"
+        aria-label={`Continue from lesson ${position.lessonId}`}
+        onClick={onClick}
       >
-        Continue Learning
-        {position.lessonId ? (
-          <span className="continue-learning-details" dir="ltr">{position.lessonId}</span>
-        ) : null}
+        Continue learning
+        <span className="continue-learning-details" dir="ltr">
+          {position.lessonId}{position.sectionId ? ` · ${position.sectionId}` : ''}
+        </span>
       </button>
     </div>
   );
