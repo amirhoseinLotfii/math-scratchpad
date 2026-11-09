@@ -13,8 +13,20 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   // Isolated test identity: no account, token, or real Drive is used.
   await page.addInitScript(() => {
     const hash = '5722e9ceb3077a549643b3e349b6b44058f422818edfddec115e9703a07fc024';
-    const digest = new Uint8Array(hash.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
-    Object.defineProperty(crypto.subtle, 'digest', { configurable: true, value: async () => digest.slice().buffer });
+    const testEmail = 'qa-fixture@example.test';
+    const encoded = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: testEmail }))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const fakeToken = `head.${encoded}.signature`;
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    Object.defineProperty(crypto.subtle, 'digest', {
+      configurable: true,
+      value: (algorithm: AlgorithmIdentifier, data: BufferSource) => {
+        if (algorithm === 'SHA-256' && new TextDecoder().decode(data) === testEmail) {
+          return Promise.resolve(Uint8Array.from(hash.match(/../g)!, byte => Number.parseInt(byte, 16)).buffer);
+        }
+        return originalDigest(algorithm, data);
+      },
+    });
     class DocsView {
       constructor(_viewId: unknown) {}
       setMimeTypes() { return this; }
@@ -33,11 +45,18 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
       setCallback(callback: (data: unknown) => void) { this.callback = callback; return this; }
       build() { return { setVisible: () => this.callback({ action: 'picked', docs: [{ id: 'qa-file-id-12345', name: 'QA-bank.json' }] }) }; }
     }
+    const handlers: { signIn?: (credential: { credential: string }) => void } = {};
     const google = {
-      accounts: { oauth2: {
-        hasGrantedAllScopes: () => true,
-        initTokenClient: (config: { callback: (token: unknown) => void }) => ({ requestAccessToken: () => config.callback({ access_token: 'isolated-test-token', expires_in: 3600 }) }),
-      } },
+      accounts: {
+        oauth2: {
+          hasGrantedAllScopes: () => true,
+          initTokenClient: (config: { callback: (token: unknown) => void }) => ({ requestAccessToken: () => config.callback({ access_token: 'isolated-test-token', expires_in: 3600 }) }),
+        },
+        id: {
+          initialize: (config: { callback: typeof handlers.signIn }) => { handlers.signIn = config.callback; },
+          prompt: () => handlers.signIn?.({ credential: fakeToken }),
+        },
+      },
       picker: { ViewId: { DOCS: 'docs' }, DocsViewMode: { LIST: 'list' }, Action: { PICKED: 'picked', CANCEL: 'cancel' }, DocsView, PickerBuilder },
     };
     Object.assign(window, { google, gapi: {} });
@@ -54,7 +73,7 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: /Google Drive/ }).click();
-  await page.getByRole('button', { name: 'Connect Google Drive' }).click();
+  await page.getByRole('button', { name: 'Connect Google account + Drive' }).click();
   const drive = page.getByRole('dialog', { name: 'Google Drive question bank' });
   const openBatch = drive.getByRole('button', { name: 'Open received batch' });
   await expect(openBatch).toBeVisible();
@@ -70,6 +89,10 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   await page.getByRole('dialog', { name: 'Open a new question batch?' }).getByRole('button', { name: 'Open batch' }).click();
   const wellbeing = page.getByRole('dialog', { name: 'Before you start this batch' });
   if (await wellbeing.isVisible().catch(() => false)) await wellbeing.getByRole('button', { name: 'Skip for now' }).click();
+  await expect(drive).toBeHidden();
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: /Google Drive/ }).click();
+  await expect(drive).toBeVisible();
   await expect(drive.getByText(/Saved sessions \(1\)/)).toBeVisible();
   await drive.getByText(/Saved sessions \(1\)/).click();
   const resume = drive.getByRole('button', { name: 'Resume' });
@@ -79,7 +102,11 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   await expect(resume).toBeFocused();
   await resume.click();
   await page.getByRole('dialog', { name: 'Restore this saved session?' }).getByRole('button', { name: 'Restore session' }).click();
-  await expect(drive.getByRole('status')).toContainText('The saved session was restored.');
+  await expect(drive).toBeHidden();
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: /Google Drive/ }).click();
+  await expect(drive).toBeVisible();
+  await expect(drive.getByRole('status').filter({ hasText: 'The saved session was restored.' })).toBeVisible();
   expect(nativeDialogs).toEqual([]);
 });
 

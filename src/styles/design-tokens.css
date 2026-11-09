@@ -185,6 +185,7 @@
   --color-border: var(--color-neutral-700); /* #404040 */
   --color-border-strong: var(--color-neutral-600); /* #525252 */
   --color-border-subtle: var(--color-neutral-800); /* #262626 */
+  --color-border-form: var(--color-neutral-500); /* #8c8c8c; readable against dark form surfaces */
   
   /* Focus and Ring Colors */
   --color-ring: var(--color-primary-400); /* #34d399 */

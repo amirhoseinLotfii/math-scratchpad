@@ -17,7 +17,7 @@ test('Persian lesson content stays RTL and long titles wrap in Learn and the rea
     await page.setViewportSize(viewport);
     await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1&bidi=1');
 
-    await page.getByRole('button', { name: 'Lesson' }).click();
+    await page.getByRole('button', { name: 'Lesson', exact: true }).click();
     const reference = page.getByRole('dialog', { name: persianTitle });
     await expect(reference).toBeVisible();
     const referenceTitle = reference.locator('> h2');

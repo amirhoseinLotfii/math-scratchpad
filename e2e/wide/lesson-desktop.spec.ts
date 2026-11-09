@@ -4,7 +4,7 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?image=1&no-wellbeing=1&bidi=1');
   await expect(page.getByText('Sample practice 1.')).toBeVisible();
 
-  const lessonButton = page.getByRole('button', { name: 'Lesson' });
+  const lessonButton = page.getByRole('button', { name: 'Lesson', exact: true });
   await lessonButton.click();
   const reference = page.getByRole('dialog', { name: /^توابع و تابع‌نما/ });
   await expect(reference.getByRole('heading', { name: 'تعریف تابع' })).toBeVisible();

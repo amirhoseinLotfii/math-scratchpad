@@ -23,7 +23,7 @@ test('desktop lesson reference keeps section navigation clear, collapsible and k
   test.setTimeout(60_000);
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?no-wellbeing=1');
   await expect(page.getByText('Sample practice 1.')).toBeVisible();
-  await page.getByRole('button', { name: 'Lesson' }).click();
+  await page.getByRole('button', { name: 'Lesson', exact: true }).click();
 
   const reference = page.getByRole('dialog', { name: 'Sample lesson' });
   const infoToggle = reference.getByRole('button', { name: 'Lesson information' });

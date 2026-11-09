@@ -72,7 +72,7 @@ test('keyboard-only route reaches Learn, summary, Practice and its lesson refere
     await tabUntil(page, skip, 8);
     await pressFocused(page, skip, 'Enter');
   }
-  const lessonButton = page.getByRole('button', { name: 'Lesson' });
+  const lessonButton = page.getByRole('button', { name: 'Lesson', exact: true });
   await tabUntil(page, lessonButton, 20);
   await pressFocused(page, lessonButton, 'Enter');
   await expect(page.getByRole('dialog', { name: 'Sample lesson' })).toBeVisible();

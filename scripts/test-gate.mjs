@@ -15,7 +15,8 @@ record('running');
 for (const [name, command, args] of commands) {
  console.log(`\nRunning gate: ${name}`);
  const startedAt = Date.now();
- const result = spawnSync(command, args, { stdio: 'inherit', shell: false });
+ // npm and npx are .cmd shims on Windows, so Node needs the command shell to resolve them.
+ const result = spawnSync(command, args, { stdio: 'inherit', shell: process.platform === 'win32' });
  const stage = { name, status: result.status, signal: result.signal, error: result.error?.message, durationMs: Date.now() - startedAt };
  results.push(stage);
  record('running');

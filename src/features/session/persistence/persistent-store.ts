@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { example, isoLocal, stepLatex, uid } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
+import { clampRestoredTimers } from '../timer-continuity';
 import type { PersistOptions } from 'zustand/middleware';
 import { flushLearningStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from '../../../sync/browser-db';
 export const SESSION_KEY = 'math-scratchpad-session-v3';
@@ -115,6 +116,9 @@ export function createPersistentStore() {
   protectedDraft = true; bootError = 'Saved draft could not be restored. Import a backup or copy your current work before recovery.'; initial = initialState(); initial.keyboardOpen = false;
  }
  if (!protectedDraft || bootError !== 'Saved draft could not be restored. Import a backup or copy your current work before recovery.') initial.keyboardOpen = initialKeyboardOpen(initial.keyboardOpen);
+ // A restored open timer segment is credited only up to the last time this app
+ // was actually open; a closed browser must not add itself as study time.
+ initial.doc = clampRestoredTimers(initial.doc, Date.now());
  if (bootError) initial.storageState = { kind: 'error', message: bootError };
  let revision = saved?.state.sync.revision ?? 0, lastWriter = saved?.state.sync.writerId ?? writerId;
  let lastSignature = saved ? fullSignature(saved.state.session) : '', lastWork = saved ? workSignature(saved.state.session) : '';
@@ -177,9 +181,13 @@ export function createPersistentStore() {
    removeItem: () => { /* Destructive storage clearing requires explicit recovery. */ },
   },
   partialize: value => ({ session: { doc: value.doc, prefs: value.prefs, keyboardOpen: value.keyboardOpen }, sync: { revision, writerId: lastWriter } }),
+  // Rehydration is the single place restored work enters the store, so the
+  // timer continuity rule must be applied here: a segment that stayed open
+  // while the browser was closed is credited only up to the last live moment.
   merge: (value, current) => {
    const persisted = value as PersistedSession | undefined;
-   return persisted ? { ...current, ...persisted.session, keyboardOpen: current.keyboardOpen } : current;
+   if (!persisted) return current;
+   return { ...current, ...persisted.session, doc: clampRestoredTimers(persisted.session.doc), keyboardOpen: current.keyboardOpen };
   },
  };
  store = makeStore(initial, options);

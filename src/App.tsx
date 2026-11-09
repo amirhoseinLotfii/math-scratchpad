@@ -79,12 +79,29 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false), [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
+ const [compactMenu, setCompactMenu] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 599px)').matches);
+ const [inlineMenuSubmenu, setInlineMenuSubmenu] = useState<'practice' | 'data' | null>(null);
+ const inlineMenuHover = useRef<'practice' | 'data' | null>(null);
+ useEffect(() => {
+  if (typeof window.matchMedia !== 'function') return;
+  const compactQuery = window.matchMedia('(max-width: 599px)');
+  const updateCompactMenu = () => {
+   setCompactMenu(compactQuery.matches);
+   setInlineMenuSubmenu(null);
+   inlineMenuHover.current = null;
+  };
+  updateCompactMenu();
+  compactQuery.addEventListener('change', updateCompactMenu);
+  return () => compactQuery.removeEventListener('change', updateCompactMenu);
+ }, []);
  useEffect(() => {
   if (menu) return;
   // Menu actions also close the controlled root directly with setMenu(false);
   // reset disclosures here because Radix onOpenChange is not guaranteed for those closes.
   setMenuMore(false);
   setSessionDetailsOpen(false);
+  setInlineMenuSubmenu(null);
+  inlineMenuHover.current = null;
  }, [menu]);
  const [driveBankOpen, setDriveBankOpen] = useState(false);
  const [chapterTransitioning, setChapterTransitioning] = useState(false);
@@ -925,6 +942,19 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const canUndo = !!activeMathfield?.canUndo() || state.past.some(d => d.exerciseId === ex.id);
  const canRedo = !!activeMathfield?.canRedo() || state.future.some(d => d.exerciseId === ex.id);
  const mathTools = <MathTools wide={wide} canUndo={canUndo} canRedo={canRedo} onUndo={() => { if (!undoMathfield(state.doc.cursor.stepId)) dispatch(actions.undo()); focusEditor(); }} onRedo={() => { if (!redoMathfield(state.doc.cursor.stepId)) dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
+ const practiceMenuActions = <>
+  <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('fractions'); }}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('diagnostic'); }}>Start 30-question diagnostic</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })); }}>Use example</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newProblem' })); }}>Use current expression as new problem</DropdownMenuItem>
+ </>;
+ const dataMenuActions = <>
+  <DropdownMenuItem onSelect={() => { setMenu(false); void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); downloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); fileInput.current?.click(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(true); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
+ </>;
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-busy={chapterTransitioning} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
    <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
@@ -954,26 +984,33 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
        <DropdownMenuItem onSelect={() => dispatch(actions.setSessionMeta({ endedAt: isoLocal() }))}>End session (record end time)</DropdownMenuItem>
        <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('session')}><RotateCcw aria-hidden="true" />Reset current session</DropdownMenuItem>
 
-       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Practice<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
-        <DropdownMenuSubContent aria-label="Practice actions">
-         <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('fractions'); }}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('diagnostic'); }}>Start 30-question diagnostic</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })); }}>Use example</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newProblem' })); }}>Use current expression as new problem</DropdownMenuItem>
-        </DropdownMenuSubContent>
-       </DropdownMenuSub>
-
-       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Data<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
-        <DropdownMenuSubContent aria-label="Data actions">
-         <DropdownMenuItem onSelect={() => { setMenu(false); void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); downloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); fileInput.current?.click(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(value => !value); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
-        </DropdownMenuSubContent>
-       </DropdownMenuSub>
+       {compactMenu ? <>
+        <DropdownMenuItem className="menu-disclosure" aria-expanded={inlineMenuSubmenu === 'practice'} aria-controls={inlineMenuSubmenu === 'practice' ? 'mobile-practice-actions' : undefined}
+         onPointerMove={event => { if (event.pointerType === 'mouse') { inlineMenuHover.current = 'practice'; setInlineMenuSubmenu('practice'); } else inlineMenuHover.current = null; }}
+         onPointerLeave={event => { if (event.pointerType === 'mouse' && inlineMenuHover.current === 'practice') inlineMenuHover.current = null; }}
+         onKeyDown={event => { if (event.key === 'ArrowRight') { event.preventDefault(); setInlineMenuSubmenu('practice'); } else if (event.key === 'ArrowLeft' && inlineMenuSubmenu === 'practice') { event.preventDefault(); inlineMenuHover.current = null; setInlineMenuSubmenu(null); } }}
+         onSelect={event => { event.preventDefault(); if (inlineMenuHover.current === 'practice') { inlineMenuHover.current = null; setInlineMenuSubmenu('practice'); } else { inlineMenuHover.current = null; setInlineMenuSubmenu(value => value === 'practice' ? null : 'practice'); } }}>
+         <span>Practice</span><ChevronDown className={inlineMenuSubmenu === 'practice' ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" />
+        </DropdownMenuItem>
+        {inlineMenuSubmenu === 'practice' && <div id="mobile-practice-actions" role="group" aria-label="Practice actions" className="dropdown-sub-content-inline">{practiceMenuActions}</div>}
+        <DropdownMenuItem className="menu-disclosure" aria-expanded={inlineMenuSubmenu === 'data'} aria-controls={inlineMenuSubmenu === 'data' ? 'mobile-data-actions' : undefined}
+         onPointerMove={event => { if (event.pointerType === 'mouse') { inlineMenuHover.current = 'data'; setInlineMenuSubmenu('data'); } else inlineMenuHover.current = null; }}
+         onPointerLeave={event => { if (event.pointerType === 'mouse' && inlineMenuHover.current === 'data') inlineMenuHover.current = null; }}
+         onKeyDown={event => { if (event.key === 'ArrowRight') { event.preventDefault(); setInlineMenuSubmenu('data'); } else if (event.key === 'ArrowLeft' && inlineMenuSubmenu === 'data') { event.preventDefault(); inlineMenuHover.current = null; setInlineMenuSubmenu(null); } }}
+         onSelect={event => { event.preventDefault(); if (inlineMenuHover.current === 'data') { inlineMenuHover.current = null; setInlineMenuSubmenu('data'); } else { inlineMenuHover.current = null; setInlineMenuSubmenu(value => value === 'data' ? null : 'data'); } }}>
+         <span>Data</span><ChevronDown className={inlineMenuSubmenu === 'data' ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" />
+        </DropdownMenuItem>
+        {inlineMenuSubmenu === 'data' && <div id="mobile-data-actions" role="group" aria-label="Data actions" className="dropdown-sub-content-inline">{dataMenuActions}</div>}
+       </> : <>
+        <DropdownMenuSub>
+         <DropdownMenuSubTrigger>Practice<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
+         <DropdownMenuSubContent aria-label="Practice actions">{practiceMenuActions}</DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+         <DropdownMenuSubTrigger>Data<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
+         <DropdownMenuSubContent aria-label="Data actions">{dataMenuActions}</DropdownMenuSubContent>
+        </DropdownMenuSub>
+       </>}
 
        <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
        <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>

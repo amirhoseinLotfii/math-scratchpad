@@ -48,6 +48,27 @@ test('menu stays within viewport and does not push the page horizontally', async
  expect(box!.x).toBeGreaterThanOrEqual(0);
  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
+test('mobile data actions expand on touch and stay inside the menu', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
+ await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).tap();
+ const importAction = page.getByRole('menuitem', { name: 'Import session JSON' });
+ await importAction.scrollIntoViewIfNeeded();
+ await expect(importAction).toBeVisible();
+ const box = await importAction.boundingBox();
+ expect(box!.x).toBeGreaterThanOrEqual(0);
+ expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+ expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+ await importAction.tap();
+ await expect(page.getByRole('textbox', { name: 'Copy or paste session JSON' })).toBeVisible();
+});
+test('mobile data actions stay open when the trigger is clicked with a mouse', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
+ await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+ await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
+ await expect(page.getByRole('group', { name: 'Data actions' })).toBeVisible();
+ await expect(page.getByRole('menuitem', { name: 'Import session JSON' })).toBeVisible();
+});
 test('batch progress and question selector stay readable at narrow phone widths', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
  await startBatch(page);
  const title = page.locator('.app-header .brand'), progress = page.locator('.header-progress'), actions = page.locator('.header-actions');
@@ -70,7 +91,8 @@ test('long formula uses local scrolling without page overflow', async ({ page })
  await page.goto('/');
  const field = mathField(page);
  await expect(field).toBeVisible();
- await typeWithAppKeys(page, '123456789012345678901234567890123456789012345678901234567890');
+ await field.click();
+ await page.keyboard.type('123456789012345678901234567890123456789012345678901234567890');
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
  expect(await readLatex(field)).toContain('12345678901234567890');
  await expect(field).toBeVisible();

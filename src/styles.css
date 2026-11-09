@@ -491,7 +491,7 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .question-timer { background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
 #math-scratchpad-redux .question-timer output { color: var(--success); font-variant-numeric: tabular-nums; }
 #math-scratchpad-redux .question-timer button { background: var(--secondary); border-color: var(--border); }
-#math-scratchpad-redux .step { background: var(--card); border-color: var(--border); border-radius: 10px; }
+#math-scratchpad-redux .step { background: var(--card); border-color: var(--color-border-form); border-radius: 10px; }
 #math-scratchpad-redux .step.current-step { border-color: var(--primary); }
 #math-scratchpad-redux .current-step { scroll-margin-block: 10px; }
 #math-scratchpad-redux .math-token.token-active { color: var(--foreground); background: transparent; box-shadow: none; }
@@ -560,9 +560,12 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 .dropdown-item.menu-disclosure { justify-content: space-between; color: var(--muted-foreground); text-align: start; }
 .menu-disclosure .menu-chevron { width: 16px; height: 16px; transition: transform 140ms ease; }
 .menu-disclosure .menu-chevron-open { transform: rotate(180deg); }
+.dropdown-sub-content-inline { margin-block: 2px 8px; margin-inline-start: 12px; padding-inline-start: 8px; border-inline-start: 1px solid var(--border); }
+.dropdown-sub-content-inline > .dropdown-item { width: 100%; min-width: 0; }
 .dropdown-item.menu-danger { color: var(--destructive); }
 .dropdown-item.menu-danger[data-highlighted] { background: var(--color-surface); outline-color: var(--destructive); }
 .dropdown-item.menu-danger svg { color: var(--destructive); }
+#math-scratchpad-redux .setup-panel :is(textarea, select) { border-color: var(--color-border-form); }
 
 #math-scratchpad-redux .math-tools-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; width: 100%; min-width: 0; margin: 10px 0 8px; padding: 0; border: 0; background: transparent; }
 #math-scratchpad-redux .quick-math-tools { min-width: 0; }
