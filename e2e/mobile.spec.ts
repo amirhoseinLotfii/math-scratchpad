@@ -40,7 +40,12 @@ test('quick tools have approved order and editing never exposes inline confidenc
 test('full session export is reachable during editing', async ({ page }) => {
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+ const data = page.getByRole('menuitem', { name: 'Data', exact: true });
+ if ((page.viewportSize()?.width ?? 0) < 600) {
+  await data.press('Enter');
+  await expect(data).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('group', { name: 'Data actions' })).toBeVisible();
+ } else await data.hover();
  await expect(page.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeVisible();
 });
 test('only question prose is Persian and the app interface stays English', async ({ page }) => {
@@ -52,7 +57,12 @@ test('only question prose is Persian and the app interface stays English', async
 test('confidence modal supports keyboard cancellation without losing focus', async ({ page }) => {
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+ const practice = page.getByRole('menuitem', { name: 'Practice', exact: true });
+ if ((page.viewportSize()?.width ?? 0) < 600) {
+  await practice.press('Enter');
+  await expect(practice).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('group', { name: 'Practice actions' })).toBeVisible();
+ } else await practice.hover();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
