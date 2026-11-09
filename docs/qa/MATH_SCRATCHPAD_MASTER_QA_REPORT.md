@@ -206,16 +206,16 @@ User Action → Store (Zustand, AST) → Learning Storage (IndexedDB, allowliste
 
 | پرسش | پاسخ |
 |---|---|
-| آیا برنچ push شد؟ | بله — `origin/feat/resume-learning-a11y` روی `5c20c5f` |
-| آیا merge به `main` شد؟ | خیر — بدون تأیید و بدون CI این کار انجام نمی‌شود |
-| آیا تغییرات منتشر شد؟ | **خیر**؛ انتشار فقط از `main` انجام می‌شود |
-| آیا سایت Production زنده است؟ | بله: `https://amirhoseinlotfii.github.io/math-scratchpad/` |
-| Production چه نسخه‌ای دارد؟ | بایت‌به‌بایت برابر `main` @ `f670e01`؛ اسم فایل‌های ساخته‌شده از همان کامیت (`index-Bmtf3SEp.js` / `index-CwtOYLQU.css`) با فایل‌های سرو‌شده یکسان است |
-| آیا نشانه‌های تغییرات این برنچ در Production هست؟ | خیر — `continue-learning` و `lesson-split-size-controls` در JS/CSS منتشرشده وجود ندارند |
+| آیا برنچ push شد؟ | بله — `origin/feat/resume-learning-a11y` روی `477091c` |
+| آیا merge به `main` شد؟ | بله — merge commit `30c8416` (با تأیید صریح کارفرما) و push به `origin/main` |
+| آیا تغییرات منتشر شد؟ | بله — Pages در ساعت ۱۲:۳۶:۱۹ نسخهٔ جدید را سرو کرد |
+| Production چه نسخه‌ای دارد؟ | `index-5H0ZUv2G.js` + `index-5M5PTG1A.css` — دقیقاً همان خروجی build کامیت `30c8416` |
+| آیا کد جدید در باندل منتشرشده هست؟ | بله — `Continue learning`، `.continue-learning`، `Narrower lesson panel`، `.lesson-split-size-controls`، `lesson-panel-lesson` همه در JS/CSS سرو‌شده یافت شدند |
+| آیا کارت ادامهٔ مطالعه در Production دیده می‌شود؟ | نه — چون بانکی بارگذاری نشده و موقعیت ذخیره‌شده‌ای نیست؛ شرط نمایش درست کار می‌کند |
 
-**Smoke test روی Production فعلی (بدون تغییرات این برنچ):** بارگذاری بدون خطای کنسول و بدون درخواست ناموفق، TTFB ۲۴۴ms، CLS ۰.۰۱۲، باز/بسته شدن کیبورد ریاضی کار می‌کند، منوی تمرین با ۷ آیتم باز می‌شود.
+**Smoke test روی Production جدید:** بارگذاری بدون خطای کنسول و بدون درخواست ناموفق، TTFB ۲۲۱ms، CLS ۰٫۰۰۱، منوی تمرین با ۷ آیتم، Escape فوکوس را به دکمهٔ منو برمی‌گرداند، دیالوگ «Lessons» با پیام «No question bank is loaded…» باز می‌شود و `Escape` فوکوس را بازمی‌گرداند.
 
-**نتیجه:** «تست نسخهٔ پابلیش‌شدهٔ حاوی این تغییرات» انجام نشده، چون چنین نسخه‌ای وجود ندارد. پس از merge و deploy، همان مسیر Continue-learning باید روی Production دوباره اجرا شود.
+**آنچه روی Production قابل آزمون نبود:** مسیر کامل «درس → بازگشت → کارت Continue → Resume» به بانک سؤال نیاز دارد که فقط با ورود حساب Google و انتخاب فایل Drive ممکن است؛ در این محیط حساب کاربری وجود ندارد. این مورد `BLOCKED` است و تستش با حساب شخصی خودِ کارفرما لازم است.
 
 ### فایل‌های تغییر‌یافته
 
