@@ -36,10 +36,12 @@ export function getPracticeQuestions(bank: Pick<DriveBank, 'questions'>, lessonI
     .map(({ question }) => question);
 }
 
-export function getPracticeQuestionOrigin(question: BankQuestion, lessonId: string): 'textbook' | 'generated' | 'unspecified' {
+export function getPracticeQuestionOrigin(question: BankQuestion, _lessonId?: string): 'textbook' | 'generated' | 'unspecified' {
   if (question.origin) return question.origin;
-  if (lessonId === 'PC-1.1' && /-X\d+$/.test(question.id)) return 'textbook';
-  if (lessonId === 'PC-1.1' && /-\d{2}$/.test(question.id)) return 'generated';
+  // Legacy ID heuristics for banks that omit `origin`. Apply to the current lesson's
+  // questions, not a hard-coded lesson id such as PC-1.1.
+  if (/-X\d+$/.test(question.id)) return 'textbook';
+  if (/-\d{2}$/.test(question.id)) return 'generated';
   return 'unspecified';
 }
 
@@ -62,26 +64,49 @@ function comparePracticeOrder(a: BankQuestion, b: BankQuestion, lessonId: string
   return (a.difficulty ?? Number.POSITIVE_INFINITY) - (b.difficulty ?? Number.POSITIVE_INFINITY);
 }
 
-function legacyTextbookConcept(question: BankQuestion, lessonId: string): string | undefined {
-  if (lessonId !== 'PC-1.1') return undefined;
-  const match = question.id.match(/-X(\d+)$/);
-  if (!match) return undefined;
-  const number = Number(match[1]);
-  if (number === 1 || (number >= 6 && number <= 26) || (number >= 60 && number <= 62)) return 'PC-1.1-C02';
-  if (number === 2) return 'PC-1.1-C05';
-  if (number === 3) return 'PC-1.1-C11';
-  if (number === 4 || number === 92) return 'PC-1.1-C10';
-  if (number === 5) return 'PC-1.1-C12';
-  if (number >= 27 && number <= 38) return 'PC-1.1-C06';
-  if (number >= 68 && number <= 75) return 'PC-1.1-C13';
-  if (number === 39 || (number >= 88 && number <= 91)) return 'PC-1.1-C03';
-  if (number >= 63 && number <= 65) return 'PC-1.1-C04';
-  if (number === 66 || number === 67) return 'PC-1.1-C08';
+/** OpenStax Precalculus §1.1 textbook exercise numbers → concept suffix (C02, …). */
+function textbookConceptSuffix(questionNumber: number): string | undefined {
+  if (questionNumber === 1 || (questionNumber >= 6 && questionNumber <= 26) || (questionNumber >= 60 && questionNumber <= 62)) return 'C02';
+  if (questionNumber === 2) return 'C05';
+  if (questionNumber === 3) return 'C11';
+  if (questionNumber === 4 || questionNumber === 92) return 'C10';
+  if (questionNumber === 5) return 'C12';
+  if (questionNumber >= 27 && questionNumber <= 38) return 'C06';
+  if (questionNumber >= 68 && questionNumber <= 75) return 'C13';
+  if (questionNumber === 39 || (questionNumber >= 88 && questionNumber <= 91)) return 'C03';
+  if (questionNumber >= 63 && questionNumber <= 65) return 'C04';
+  if (questionNumber === 66 || questionNumber === 67) return 'C08';
   return undefined;
 }
 
-export function getPracticeQuestionConceptId(question: BankQuestion, lessonId: string): string | undefined {
-  return question.conceptId ?? legacyTextbookConcept(question, lessonId);
+/**
+ * Legacy fallback when a textbook practice item omits `conceptId`.
+ * Builds `${lessonId}-${suffix}` for the *current* lesson and only returns it when
+ * that concept actually exists on the lesson (when conceptIds are provided).
+ */
+function legacyTextbookConcept(
+  question: BankQuestion,
+  lessonId: string,
+  conceptIds?: ReadonlySet<string> | readonly string[],
+): string | undefined {
+  const match = question.id.match(/-X(\d+)$/);
+  if (!match) return undefined;
+  const suffix = textbookConceptSuffix(Number(match[1]));
+  if (!suffix) return undefined;
+  const conceptId = `${lessonId}-${suffix}`;
+  if (conceptIds) {
+    const available = conceptIds instanceof Set ? conceptIds : new Set(conceptIds);
+    if (!available.has(conceptId)) return undefined;
+  }
+  return conceptId;
+}
+
+export function getPracticeQuestionConceptId(
+  question: BankQuestion,
+  lessonId: string,
+  conceptIds?: readonly string[],
+): string | undefined {
+  return question.conceptId ?? legacyTextbookConcept(question, lessonId, conceptIds);
 }
 
 export function getSectionLearnChecks(
@@ -138,7 +163,7 @@ export function getSectionPracticeQuestions(
 
   for (const item of lessonQuestions) {
     if (item.question.sectionId) continue;
-    const conceptId = getPracticeQuestionConceptId(item.question, lesson.id);
+    const conceptId = getPracticeQuestionConceptId(item.question, lesson.id, lesson.concepts.map(concept => concept.id));
     if (!conceptId) continue;
     const key = `${conceptId}:${getPracticeQuestionOrigin(item.question, lesson.id)}`;
     const group = byConceptAndOrigin.get(key) ?? { conceptId, items: [] };

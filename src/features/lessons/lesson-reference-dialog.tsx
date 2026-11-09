@@ -47,7 +47,7 @@ export function LessonReferenceDialog({ lesson, bank, question, onSelectPractice
     if (!lesson || !question) return 0;
     const matchingQuestion = sections.findIndex((_, index) => getSectionPracticeQuestions(bank, lesson, sections, index).some(item => item.id === question.id));
     if (matchingQuestion >= 0) return matchingQuestion;
-    const conceptId = question.conceptId ?? getPracticeQuestionConceptId(question, lesson.id);
+    const conceptId = question.conceptId ?? getPracticeQuestionConceptId(question, lesson.id, lesson.concepts.map(concept => concept.id));
     const matchingConcept = sections.findIndex(section => section.concepts.some(entry => entry.concept.id === conceptId));
     return Math.max(0, matchingConcept);
   }, [bank, lesson, question, sections]);

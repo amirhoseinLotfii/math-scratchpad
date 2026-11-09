@@ -121,4 +121,33 @@ describe('page-sized lesson sections', () => {
     expect(getSectionPracticeQuestions(bank, lesson, sections, 0).map(item => item.id)).toEqual(['PC-1.1-X01', 'PC-1.1-X06', 'PC-1.1-01']);
     expect(getSectionPracticeQuestions(bank, lesson, sections, 1).map(item => item.id)).toEqual(['PC-1.1-X60']);
   });
+
+  it('applies textbook ID heuristics for the current lesson, not a hard-coded PC-1.1 id', () => {
+    const question = (id: string, fields: Record<string, unknown> = {}) => ({ id, mode: 'text', source: 'x+1', ...fields });
+    const raw = {
+      schema_version: BANK_SCHEMA,
+      bank_id: 'OTHER-LESSON',
+      version: 'v1',
+      questions: [
+        question('PC-2.3-X01', { prompt: 'تمرین کتاب', lessonId: 'PC-2.3', stage: 'practice' }),
+        question('PC-2.3-01', { prompt: 'تمرین تکمیلی', lessonId: 'PC-2.3', stage: 'practice' }),
+        question('PC-2.3-X02', { prompt: 'بدون مفهوم هم‌نام', lessonId: 'PC-2.3', stage: 'practice' }),
+      ],
+      lessons: [{
+        id: 'PC-2.3', book: 'OpenStax Precalculus 2e', section: '2.3', title: 'درس دیگر', pages: '100-101', concepts: [{
+          id: 'PC-2.3-C02', title: 'مفهوم هم‌نام', pages: '100-101', checkQuestionIds: [],
+          blocks: [{ type: 'paragraph', page: 100, text: 'متن' }],
+        }],
+      }],
+    };
+    const bank = validateBank(raw);
+    const lesson = bank.lessons![0];
+    const conceptIds = lesson.concepts.map(concept => concept.id);
+    expect(getPracticeQuestionOrigin(bank.questions[0], lesson.id)).toBe('textbook');
+    expect(getPracticeQuestionOrigin(bank.questions[1], lesson.id)).toBe('generated');
+    expect(getPracticeQuestionConceptId(bank.questions[0], lesson.id, conceptIds)).toBe('PC-2.3-C02');
+    // X02 maps to C05 in the §1.1 number table; that concept is absent here, so no invented id.
+    expect(getPracticeQuestionConceptId(bank.questions[2], lesson.id, conceptIds)).toBeUndefined();
+    expect(getPracticeQuestionConceptId(bank.questions[0], 'PC-1.1', conceptIds)).toBeUndefined();
+  });
 });
