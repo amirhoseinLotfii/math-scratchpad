@@ -21,10 +21,10 @@
 - **TITLE:** RestorePosition observes anchors that lesson renderer never emits
 - **MODULE:** lessons + progress
 - **SEVERITY:** P1
-- **STATUS:** PARTIAL — anchors added; RestorePosition not yet wired into lesson screen
-- **ROOT CAUSE:** `data-anchor-id` missing on section/concept DOM
-- **FIX:** `sectionAnchorId` / `conceptAnchorId` on lesson section/concept nodes
-- **REGRESSION:** `tests/unit/reading-position-anchors.test.ts`
+- **STATUS:** VERIFIED FIXED (unit) — anchors emitted; `LessonScreen` accepts an explicit restore target and scrolls to it once
+- **ROOT CAUSE:** `data-anchor-id` missing on section/concept DOM, and no wiring from a saved position into the lesson
+- **FIX:** `sectionAnchorId` / `conceptAnchorId` on lesson section/concept nodes; `restore` prop restores section and anchor without focusing the editor
+- **REGRESSION:** `tests/unit/reading-position-anchors.test.ts`, `tests/integration/lesson-resume-a11y.test.tsx`
 
 ## BUG-004
 - **TITLE:** Invalid IntersectionObserver rootMargin
@@ -36,10 +36,27 @@
 
 ## BUG-005
 - **TITLE:** Continue Learning has no navigation / not rendered
-- **MODULE:** `ContinueLearningButton`
+- **MODULE:** `ContinueLearningButton`, `App`
 - **SEVERITY:** P1
-- **STATUS:** OPEN
-- **NEXT:** wire click → lesson route; render in resume surface; persist via existing learning storage
+- **STATUS:** VERIFIED FIXED (unit) — button is a presentational control with `onResume`; `App` renders it from the stored position and opens the lesson/section
+- **ROOT CAUSE:** component had no handler and no render site
+- **FIX:** `ContinueLearningButton({ title, section, meta, onResume })`; `App.continueLearning()` opens the lesson and passes a `LessonRestoreTarget`
+- **REGRESSION:** `tests/integration/lesson-resume-a11y.test.tsx`
+
+## BUG-009
+- **TITLE:** Reading position provider re-rendered consumers on every save (render loop)
+- **MODULE:** `src/features/progress/reading-position-context.tsx`, `lesson-screen.tsx`
+- **SEVERITY:** P0 when a lesson is open inside the production provider
+- **STATUS:** VERIFIED FIXED (browser) — preview with the production provider no longer hangs
+- **ROOT CAUSE:** the provider built a new context object per render and the lesson tracking effect depended on that object; each save re-ran the effect
+- **FIX:** Zustand selector subscriptions, `useCallback` writers, `useMemo` context value, and a stable-writer dependency in the lesson effect
+
+## BUG-010
+- **TITLE:** Focused lesson section heading hidden behind the sticky tab strip
+- **MODULE:** `src/styles.css`
+- **SEVERITY:** P2 (WCAG 2.2 / 2.4.11 Focus Not Obscured)
+- **STATUS:** FIXED (code); device evidence pending
+- **FIX:** `scroll-margin-block-start` on `#lesson-concept-title` inside the tab layout
 
 ## BUG-006
 - **TITLE:** last-open-lesson key excluded from server sync allowlist
@@ -54,7 +71,7 @@
 - **TITLE:** Reading position never updated from live lesson navigation
 - **MODULE:** `lesson-screen.tsx`
 - **SEVERITY:** P1
-- **STATUS:** PARTIAL — section changes now call `trackPosition`; RestorePosition wrapper still pending
+- **STATUS:** VERIFIED FIXED (unit) — section changes call `trackPosition`, and an explicit continue request restores section + anchor
 - **FIX:** track chapter/lesson/section + contentAnchorId on section change
 
 ## BUG-008

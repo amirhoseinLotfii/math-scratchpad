@@ -17,7 +17,7 @@ For a bug report, include device, host, viewport width, expression, actions and 
 
 ## Implementation rules
 
-1. Edit the AST through Redux commands; keep rendering declarative.
+1. Edit the AST through store commands; keep rendering declarative.
 2. Preserve IDs for existing nodes and create unique IDs for copies.
 3. Keep math ASCII digits and LTR, even with a Persian source problem.
 4. Never replace the editable expression with a display clone.
