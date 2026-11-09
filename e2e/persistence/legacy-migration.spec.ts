@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { openMenuSubmenu } from '../../support/menu';
 import { readLegacyMigration, readOutboxCount } from '../support/indexeddb';
 import { seedMockGoogleSession } from '../support/mock-google-session';
 
@@ -46,7 +47,7 @@ test('legacy lesson progress stays intact until server chunks are verified and D
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await openMenuSubmenu(page, 'Data');
   await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
 
   const syncPanel = page.locator('section[aria-labelledby="sync-panel-title"]');
