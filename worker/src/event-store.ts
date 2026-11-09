@@ -4,6 +4,7 @@ import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
 import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode, type DriveSnapshotRef } from './google-drive';
 import { snapshotName } from './immutable-snapshot';
+import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from './session';
 import {
   applyConceptEvent,
   applyDailyEvent,
@@ -154,6 +155,7 @@ function integerQuery(url: URL, name: string, fallback: number): number | null {
 export class LearningEventStore extends DurableObject<WorkerEnv> {
   private readonly rateLimit: number;
   private driveClient: GoogleDriveClient | undefined;
+  private bankClient: GoogleDriveClient | undefined;
   private driveSyncPromise: Promise<DriveMirrorStatus> | undefined;
   private weeklyBackupPromise: Promise<DriveMirrorStatus['weeklyBackup']> | undefined;
   private driveOperationQueue: Promise<void> = Promise.resolve();
@@ -198,6 +200,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         event_ts TEXT NOT NULL
       )
     `);
+    // Worker sessions: only SHA-256 digests of the bearer values are stored.
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, sub TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)');
+    // The question-bank file the owner picked once with Google Picker (drive.file grant for this OAuth app).
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS bank_source (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), file_id TEXT NOT NULL, file_name TEXT NOT NULL, registered_at TEXT NOT NULL)');
     ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS rate_windows (
         window_start INTEGER PRIMARY KEY,
@@ -208,6 +214,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === 'POST' && url.pathname.startsWith('/internal/session/')) return this.handleSession(url.pathname, request);
+    if ((request.method === 'GET' && (url.pathname === '/bank/meta' || url.pathname === '/bank/content'))
+      || (request.method === 'POST' && url.pathname === '/bank/source')) {
+      const rate = this.consumeRateLimit();
+      if (rate) return rate;
+      if (url.pathname === '/bank/source') return this.registerBankSource(request);
+      return this.readBank(url.pathname === '/bank/content');
+    }
     const supported = (request.method === 'POST' && url.pathname === '/events')
       || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status' || url.pathname === '/state' || url.pathname === '/reset/preview'))
       || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup' || url.pathname === '/state' || url.pathname === '/internal/sync-all'));
@@ -243,6 +257,122 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return this.readPage(url, url.pathname === '/snapshot');
   }
 
+
+  /** Internal session bookkeeping; reachable only through the Worker's stub, never from the public router. */
+  private async handleSession(pathname: string, request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, 4_096);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let input: { tokenHash?: unknown; email?: unknown; sub?: unknown; all?: unknown };
+    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
+    catch { return json({ error: 'invalid_session_request' }, 400); }
+    const now = Date.now();
+    const tokenHash = typeof input.tokenHash === 'string' && SESSION_HASH_PATTERN.test(input.tokenHash) ? input.tokenHash : undefined;
+
+    if (pathname === '/internal/session/issue') {
+      const rate = this.consumeRateLimit();
+      if (rate) return rate;
+      if (!tokenHash || typeof input.email !== 'string' || !input.email || input.email.length > 320
+        || typeof input.sub !== 'string' || !input.sub || input.sub.length > 255) {
+        return json({ error: 'invalid_session_request' }, 400);
+      }
+      const expiresAt = now + SESSION_TTL_MS;
+      this.ctx.storage.transactionSync(() => {
+        this.ctx.storage.sql.exec('DELETE FROM auth_sessions WHERE expires_at <= ? OR (revoked_at IS NOT NULL AND revoked_at <= ?)', now, now - SESSION_TTL_MS);
+        this.ctx.storage.sql.exec(
+          'INSERT INTO auth_sessions (token_hash, email, sub, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)',
+          tokenHash, input.email, input.sub, now, expiresAt,
+        );
+        this.ctx.storage.sql.exec(
+          `UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL AND token_hash NOT IN (
+             SELECT token_hash FROM auth_sessions WHERE revoked_at IS NULL ORDER BY created_at DESC, token_hash LIMIT ?)`,
+          now, MAX_ACTIVE_SESSIONS,
+        );
+      });
+      return json({ expiresAt }, 201);
+    }
+
+    if (pathname === '/internal/session/verify') {
+      if (!tokenHash) return json({ error: 'session_invalid' }, 401);
+      const row = this.ctx.storage.sql.exec<{ email: string; sub: string; expires_at: number; revoked_at: number | null }>(
+        'SELECT email, sub, expires_at, revoked_at FROM auth_sessions WHERE token_hash = ?', tokenHash,
+      ).toArray()[0];
+      if (!row || row.revoked_at !== null || Number(row.expires_at) <= now) return json({ error: 'session_invalid' }, 401);
+      return json({ email: row.email, sub: row.sub, expiresAt: Number(row.expires_at) });
+    }
+
+    if (pathname === '/internal/session/revoke') {
+      const rate = this.consumeRateLimit();
+      if (rate) return rate;
+      if (input.all === true) {
+        const revoked = this.ctx.storage.sql.exec('UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL', now).rowsWritten;
+        return json({ revoked });
+      }
+      if (!tokenHash) return json({ error: 'invalid_session_request' }, 400);
+      const revoked = this.ctx.storage.sql.exec('UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL', now, tokenHash).rowsWritten;
+      return json({ revoked });
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+
+  /** Separate from the mirror client so bank reads never overwrite mirror diagnostics. */
+  private bankDriveClient(): GoogleDriveClient {
+    this.bankClient ??= new GoogleDriveClient(this.env);
+    return this.bankClient;
+  }
+
+  private bankErrorResponse(error: unknown): Response {
+    if (error instanceof BankTooLargeError) return json({ error: 'bank_too_large' }, 413);
+    if (error instanceof BankFileTypeError) return json({ error: error.message }, 422);
+    const code = error instanceof DriveMirrorError ? error.code : 'internal_error';
+    if (code === 'not_configured') return json({ error: 'drive_not_configured' }, 503);
+    if (code === 'permission_denied') return json({ error: 'bank_not_accessible' }, 403);
+    if (code === 'reauthorization_required' || code === 'account_mismatch') return json({ error: 'drive_reauthorization_required', code }, 502);
+    if (code === 'quota_exceeded') return json({ error: 'drive_rate_limited' }, 429);
+    return json({ error: 'drive_unavailable', code }, 502);
+  }
+
+  /** Register the picked bank file after confirming the server Drive credential can read it. */
+  private async registerBankSource(request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, 4_096);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let input: { fileId?: unknown; fileName?: unknown };
+    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
+    catch { return json({ error: 'invalid_bank_source' }, 400); }
+    if (typeof input.fileId !== 'string' || !isValidDriveFileId(input.fileId)
+      || (input.fileName !== undefined && (typeof input.fileName !== 'string' || input.fileName.length > 255))) {
+      return json({ error: 'invalid_bank_source' }, 400);
+    }
+    const client = this.bankDriveClient();
+    if (!client.isConfigured) return json({ error: 'drive_not_configured' }, 503);
+    let meta: BankFileMeta;
+    try { meta = await readBankMetadata(client, input.fileId); }
+    catch (error) { return this.bankErrorResponse(error); }
+    const fileName = typeof input.fileName === 'string' && input.fileName ? input.fileName : meta.name;
+    this.ctx.storage.sql.exec(
+      'INSERT INTO bank_source (singleton, file_id, file_name, registered_at) VALUES (1, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET file_id=excluded.file_id, file_name=excluded.file_name, registered_at=excluded.registered_at',
+      input.fileId, fileName, new Date().toISOString(),
+    );
+    return json({ fileId: input.fileId, fileName, meta });
+  }
+
+  /** Read only the registered bank file, with the Worker's own Drive credential. */
+  private async readBank(includeContent: boolean): Promise<Response> {
+    const source = this.ctx.storage.sql.exec<{ file_id: string; file_name: string }>(
+      'SELECT file_id, file_name FROM bank_source WHERE singleton = 1',
+    ).toArray()[0];
+    if (!source) return json({ error: 'bank_source_not_registered' }, 404);
+    const client = this.bankDriveClient();
+    if (!client.isConfigured) return json({ error: 'drive_not_configured' }, 503);
+    try {
+      const meta = await readBankMetadata(client, source.file_id);
+      if (!includeContent) return json({ fileId: source.file_id, fileName: source.file_name, meta });
+      const text = await client.readTextContent(source.file_id);
+      if (new TextEncoder().encode(text).byteLength > MAX_BANK_BYTES) return json({ error: 'bank_too_large' }, 413);
+      return json({ fileId: source.file_id, fileName: source.file_name, meta, text });
+    } catch (error) {
+      return this.bankErrorResponse(error);
+    }
+  }
 
   /** Read-only, owner-authenticated preflight. Never deletes or mutates learning data. */
   private resetPreview(url: URL): Response {
@@ -1249,6 +1379,31 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 }
 
 class EventConflictError extends Error {}
+class BankTooLargeError extends Error {}
+class BankFileTypeError extends Error {}
+
+/** Same limit as the browser's bank parser. */
+const MAX_BANK_BYTES = 1_000_000;
+const BANK_META_FIELDS = 'id,name,mimeType,size,md5Checksum,modifiedTime,headRevisionId,version,trashed';
+type BankFileMeta = { id: string; name: string; mimeType: string; size?: string; md5Checksum?: string; modifiedTime?: string; headRevisionId?: string; version?: string; trashed?: boolean };
+
+function isValidDriveFileId(id: string): boolean {
+  return /^[A-Za-z0-9_-]{10,150}$/.test(id);
+}
+
+async function readBankMetadata(client: GoogleDriveClient, fileId: string): Promise<BankFileMeta> {
+  const raw = await client.readFileMetadata(fileId, BANK_META_FIELDS);
+  if (raw.id !== fileId || typeof raw.name !== 'string' || typeof raw.mimeType !== 'string') throw new DriveMirrorError('invalid_response');
+  const meta: BankFileMeta = { id: fileId, name: raw.name, mimeType: raw.mimeType };
+  for (const key of ['size', 'md5Checksum', 'modifiedTime', 'headRevisionId', 'version'] as const) {
+    if (typeof raw[key] === 'string') meta[key] = raw[key] as string;
+  }
+  if (typeof raw.trashed === 'boolean') meta.trashed = raw.trashed;
+  if (meta.trashed) throw new BankFileTypeError('bank_trashed');
+  if (meta.mimeType.startsWith('application/vnd.google-apps.')) throw new BankFileTypeError('bank_not_json_file');
+  if (meta.size !== undefined && Number(meta.size) > MAX_BANK_BYTES) throw new BankTooLargeError();
+  return meta;
+}
 
 function mergeProgressContent(remote: string, desired: string): string {
   const previous = parseJsonContent(remote);

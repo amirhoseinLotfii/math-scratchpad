@@ -27,7 +27,7 @@ Cloudflare account authentication is required for that command. Do not put Cloud
 
 ## API
 
-The browser sends a Google **ID token** as `Authorization: Bearer <id-token>`. The Worker verifies the signature against Google's rotating JWKS, the RS256 algorithm, issuer, audience, expiry, authorized party, and verified email. Only `amirhoseinlotfalizadeprogramer@gmail.com` is accepted. Tokens and event payloads are never logged. Requests with an `Origin` header are accepted only from `https://amirhoseinlotfii.github.io`; CORS does not allow credentials.
+The browser sends a Google **ID token** as `Authorization: Bearer <id-token>`, or a Worker session minted from one (see below). The Worker verifies the signature against Google's rotating JWKS, the RS256 algorithm, issuer, audience, expiry, authorized party, and verified email. Only `amirhoseinlotfalizadeprogramer@gmail.com` is accepted. Tokens and event payloads are never logged. Requests with an `Origin` header are accepted only from `https://amirhoseinlotfii.github.io`; CORS does not allow credentials.
 
 All data routes require that bearer token:
 
@@ -71,6 +71,35 @@ Returns events with `seq > cursor`, in sequence order. `through` is a high-water
 ### `GET /snapshot?limit=100`
 
 Returns a paginated replay snapshot of the append-only event log, with a fixed `snapshotCursor` high-water mark. When continuing, send both the returned `cursor` and `snapshotCursor` as `cursor` and `through`. Events appended after the first page are excluded from that snapshot and can be fetched later through `/sync`.
+
+### Worker sessions: `POST /session`, `POST /session/revoke`
+
+A Google ID token from GIS lives about one hour. After a request with a verified owner ID token, `POST /session` returns a Worker session:
+
+```json
+{ "sessionToken": "mss1.<43 random base64url chars>", "expiresAt": 1767225600000 }
+```
+
+- The session lasts 7 days (absolute, not sliding). It can be sent as `Authorization: Bearer mss1.…` to every data route instead of an ID token.
+- Only a verified Google ID token can mint a session; a session cannot mint or extend another session.
+- The Durable Object stores only the SHA-256 digest of the token, with its owner email, expiry, and revocation time. Every request re-checks expiry, revocation, and that the stored email still equals `OWNER_EMAIL`.
+- At most 10 sessions are active; issuing an 11th revokes the oldest.
+- `POST /session/revoke` with a session token revokes that session (logout on one device). `POST /session/revoke?all=1` revokes every session of the owner.
+- An expired or revoked session gets `401 {"error":"session_invalid"}`.
+
+The browser keeps the session in its own IndexedDB database (`math-scratchpad-auth-v1`), separate from the learning database that goes into backups. It renews the session from a fresh GIS token when less than one day remains.
+
+### Question bank through the Worker: `POST /bank/source`, `GET /bank/meta`, `GET /bank/content`
+
+The owner still picks `MATH_QUESTION_BANK.json` once with Google Picker. That gives the `drive.file` grant to this OAuth app. The browser then registers the file ID:
+
+```json
+{ "fileId": "<Drive file id>", "fileName": "MATH_QUESTION_BANK.json" }
+```
+
+The Worker reads the file metadata with its own `GOOGLE_DRIVE_REFRESH_TOKEN` (the same OAuth client and owner checks as the Drive mirror). It stores the file ID only if that read succeeds. `GET /bank/meta` returns `{ fileId, fileName, meta }` for change detection. `GET /bank/content` returns the same fields plus `text`, the raw bank JSON (limit 1,000,000 bytes). Only the registered file can be read; there is no arbitrary file-ID read.
+
+Errors: `404 bank_source_not_registered`, `503 drive_not_configured`, `403 bank_not_accessible` (the server credential cannot read the file), `422 bank_trashed` / `bank_not_json_file`, `413 bank_too_large`, `502 drive_reauthorization_required` / `drive_unavailable`. When the Worker path fails for any reason other than a file problem, the browser falls back to its own short-lived Drive token.
 
 ### `GET /health`
 
