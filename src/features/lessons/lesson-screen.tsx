@@ -15,6 +15,7 @@ import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
 import { MAX_SESSION_EXERCISES, stepIsBlank, stepLatex, type Step } from '../../model';
 import { conceptAnchorId, sectionAnchorId } from '../progress/reading-position-anchors';
 import { useOptionalReadingPositionContext } from '../progress/reading-position-context';
+import { RestorePosition } from '../progress/restore-position';
 import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
 import { ActivityTracker } from '../../sync/activity-tracker';
@@ -94,7 +95,10 @@ function ReviewQuestionContent({ question }: { question: BankQuestion }) {
 function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage, activityTracker, eventContext }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
-  const trackPosition = useOptionalReadingPositionContext()?.trackPosition;
+  const readingPositionContext = useOptionalReadingPositionContext();
+  const trackPosition = readingPositionContext?.trackPosition;
+  const readingPosition = readingPositionContext?.position ?? null;
+  const readingPositionLoading = readingPositionContext?.isLoading ?? false;
   const sections = useMemo(() => buildLessonSections(lesson), [lesson]);
   const [lessonInfoOpen, setLessonInfoOpen] = useState(false);
   const practiceQuestions = useMemo(() => getPracticeQuestions(bank, lesson.id), [bank, lesson.id]);
@@ -127,6 +131,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     Object.keys(initialProgress?.workAnswers ?? {}).at(-1));
   const workStores = useRef(new Map<string, ScratchStore>());
   const splitRef = useRef<HTMLDivElement>(null);
+  const lessonScrollRef = useRef<HTMLDivElement>(null);
   const focusedCheckScope = useRef<string | null>(null);
   const focusedWorkScope = useRef<string | null>(null);
   const attemptCounts = useRef(new Map<string, number>());
@@ -141,16 +146,28 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
 
   const currentSection = sections[sectionIndex];
   useEffect(() => {
-    if (!trackPosition) return;
+    if (!trackPosition || readingPositionLoading) return;
+    const chapterId = bank.chapter?.number != null ? String(bank.chapter.number) : bank.chapter?.id ?? bank.bank_id;
+    const sameLocation = readingPosition?.chapterId === chapterId
+      && readingPosition.lessonId === lesson.id
+      && readingPosition.sectionId === currentSection?.id
+      && readingPosition.contentVersion === bank.version;
     void trackPosition({
-      chapterId: bank.chapter?.number != null ? String(bank.chapter.number) : bank.chapter?.id ?? bank.bank_id,
+      chapterId,
       lessonId: lesson.id,
       sectionId: currentSection?.id,
-      contentAnchorId: currentSection ? sectionAnchorId(currentSection.id) : undefined,
+      contentAnchorId: sameLocation && readingPosition.contentAnchorId
+        ? readingPosition.contentAnchorId
+        : currentSection ? sectionAnchorId(currentSection.id) : undefined,
       contentVersion: bank.version,
       lastActivity: 'reading',
-    });
-  }, [bank.bank_id, bank.chapter?.id, bank.chapter?.number, bank.version, currentSection, lesson.id, trackPosition]);
+    }).catch(() => {});
+  }, [
+    bank.bank_id, bank.chapter?.id, bank.chapter?.number, bank.version,
+    currentSection, lesson.id, trackPosition, readingPositionLoading,
+    readingPosition?.chapterId, readingPosition?.lessonId, readingPosition?.sectionId,
+    readingPosition?.contentVersion, readingPosition?.contentAnchorId,
+  ]);
   const checks = useMemo(() => currentSection ? getSectionLearnChecks(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
   const sectionPracticeQuestions = useMemo(() => currentSection ? getSectionPracticeQuestions(bank, lesson, sections, sectionIndex) : [], [bank, lesson, sections, sectionIndex, currentSection]);
   const workItems = useMemo(() => buildSectionWorkItems(currentSection, checks, sectionPracticeQuestions), [currentSection, checks, sectionPracticeQuestions]);
@@ -694,14 +711,21 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
         <button type="button" role="tab" id="lesson-tab-work" aria-controls="lesson-panel-work" aria-selected={paneTab === 'work'} className="lesson-pane-tab" onClick={() => setPaneTab('work')}>{fa ? 'کار من' : 'Your work'}{workItems.length ? ` · ${localizeLessonDigits(workItems.length, uiLang)}` : ''}</button>
       </div>}
       <div ref={splitRef} className={`lesson-split ${split ? 'lesson-split-wide' : 'lesson-split-tabs'}`} data-pane-mode={paneMode} style={split ? { ['--lesson-split' as string]: `${splitRatio}%` } : undefined}>
-      {(split || paneTab === 'lesson') && <div className="lesson-split-lesson" id="lesson-panel-lesson" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-lesson' })}>
+      {(split || paneTab === 'lesson') && <RestorePosition
+        chapterId={bank.chapter?.number != null ? String(bank.chapter.number) : bank.chapter?.id ?? bank.bank_id}
+        lessonId={lesson.id}
+        sectionId={currentSection.id}
+        contentVersion={bank.version}
+        scrollContainerRef={split ? lessonScrollRef : undefined}
+      >
+      <div className="lesson-split-lesson" id="lesson-panel-lesson" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-lesson' })}>
       {split && <div className="lesson-split-lesson-header">
         <section className="lesson-concept lesson-pane-fixed-heading" aria-labelledby="lesson-concept-title">
           <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
           <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
         </section>
       </div>}
-      <div className={split ? 'lesson-split-lesson-scroll' : 'lesson-split-lesson-flow'} {...(split ? { role: 'region', 'aria-label': fa ? 'محتوای درس‌نامه' : 'Lesson content', tabIndex: 0 } : {})}>
+      <div ref={split ? lessonScrollRef : undefined} className={split ? 'lesson-split-lesson-scroll' : 'lesson-split-lesson-flow'} {...(split ? { role: 'region', 'aria-label': fa ? 'محتوای درس‌نامه' : 'Lesson content', tabIndex: 0 } : {})}>
       <section className="lesson-concept" data-anchor-id={sectionAnchorId(currentSection.id)} aria-labelledby="lesson-concept-title">
         {!split && <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>}
         {!split && <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>}
@@ -735,7 +759,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
         : `Answer or skip the ${checks.filter(question => !isCheckComplete(question.id)).length} remaining quick check(s) to unlock the next section.`}</p>}
       {practiceQuestions.length > 0 && <Button ref={skipPracticeInvoker} className="lesson-skip-practice" variant="ghost" onClick={() => setSkipPracticeOpen(true)}>{fa ? 'رفتن به تمرین پایانی کل درس' : 'Skip to practice'}</Button>}
       </div>
-      </div>}
+      </div>
+      </RestorePosition>}
       {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
       {(split || paneTab === 'work') && <div className="lesson-split-work" id="lesson-panel-work" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-work' })}>
         <LessonWorkPane items={workItems} selected={selectedWorkItem} onSelect={selectWorkItem} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={renderCheck} savedSteps={key => progress.workAnswers?.[key]?.steps} onFocusItem={engageWorkItem} onBlurItem={leaveWorkItem} onRevealSolution={revealWorkSolution} />

@@ -1057,6 +1057,9 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 }
 #math-scratchpad-redux .question-statement[dir="rtl"] { text-align: right; }
 
+/* Restore-position wrapper preserves the lesson pane's existing grid layout. */
+#math-scratchpad-redux .restore-position-container { display: contents; }
+
 /* Lesson + work split view (wide) and Lesson / Work tabs (narrow) */
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) { width: 100%; max-width: none; }
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) .lesson-screen { max-width: none; padding-inline: 16px; }
