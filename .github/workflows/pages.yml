@@ -33,6 +33,14 @@ jobs:
             echo "is_current=false" >> "$GITHUB_OUTPUT"
             echo "Skipping stale validation result: $VALIDATED_SHA is no longer main."
           fi
+      - name: Check out the validated commit
+        if: steps.current.outputs.is_current == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Verify physical-device acceptance
+        if: steps.current.outputs.is_current == 'true'
+        run: node scripts/test-manual-gate.mjs
       - name: Download validated Pages build
         if: steps.current.outputs.is_current == 'true'
         uses: actions/download-artifact@v4
