@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import { openMenuSubmenu } from '../../support/menu';
+import { openMenuSubmenu } from '../support/menu';
 import { readLegacyMigration, readOutboxCount } from '../support/indexeddb';
 import { seedMockGoogleSession } from '../support/mock-google-session';
 
