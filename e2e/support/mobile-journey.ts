@@ -6,7 +6,13 @@ export const storageKey = 'math-scratchpad-session-v3';
 export async function startBatch(page: Page) {
  await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+ const practice = page.getByRole('menuitem', { name: 'Practice', exact: true });
+ if (page.viewportSize()!.width < 600) {
+  // Mobile uses an inline disclosure, not a desktop hover submenu.
+  await practice.press('Enter');
+  await expect(practice).toHaveAttribute('aria-expanded', 'true');
+ } else await practice.hover();
+ await expect(page.getByRole('menuitem', { name: /Start Round 1/ })).toBeVisible();
  await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
  await dismissWellbeing(page);
