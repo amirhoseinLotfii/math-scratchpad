@@ -30,6 +30,16 @@ jobs:
       - name: Build app and worker
         if: always() && steps.install.outcome == 'success'
         run: npm run build
+      - name: Prepare GitHub Pages artifact
+        if: success()
+        run: cp dist/index.html dist/404.html && touch dist/.nojekyll
+      - name: Upload validated GitHub Pages build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-dist
+          path: dist/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
