@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { openMenuSubmenu } from '../../support/menu';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
@@ -9,7 +10,7 @@ async function openSyncPanel(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await openMenuSubmenu(page, 'Data');
   await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
   const panel = page.locator('section[aria-labelledby="sync-panel-title"]');
   await expect(panel).toBeVisible();
