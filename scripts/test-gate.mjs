@@ -4,7 +4,7 @@ const commands = [
  ['types', 'npm', ['run','test:typecheck']],
  ['worker-integration', 'npm', ['run','test:worker']],
  ['unit-dom-coverage', 'npm', ['run','test:coverage','--','--reporter=default','--reporter=json','--outputFile.json=test-results/vitest.json']],
- ['browser', 'npx', ['playwright','test','--max-failures=1',`--workers=${process.env.CI ? 1 : 2}`,...(process.env.CI ? ['--retries=1'] : [])]],
+ ['browser', 'npx', ['playwright','test',`--workers=${process.env.CI ? 1 : 2}`]],
  ['sync-cross-browser', 'npm', ['run','test:e2e:p0-3-cross-browser']],
 ];
 const results = [];
@@ -20,7 +20,7 @@ for (const [name, command, args] of commands) {
  results.push(stage);
  record('running');
  console.log(`Gate stage ${name}: ${stage.status === 0 && !stage.error ? 'PASS' : 'FAIL'} (${Math.round(stage.durationMs / 1000)}s)`);
- if (stage.status !== 0 || stage.error) break; // Preserve evidence; do not rerun expensive downstream suites on a known failure.
+ // Continue through every independent gate so one red suite does not hide unrelated regressions.
 }
 mkdirSync('test-results', { recursive: true });
 process.exitCode = results.every(x => x.status === 0 && !x.error) ? 0 : 1;
