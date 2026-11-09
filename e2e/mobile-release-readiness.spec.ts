@@ -1,4 +1,5 @@
 import { expect, test } from './support/test';
+import { openMenuSubmenu } from './support/menu';
 
 test.use({ autoDismissWellbeing: false });
 
@@ -23,7 +24,7 @@ test('practice completion tells learner how many answers remain unverified', { t
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+  await openMenuSubmenu(page, 'Practice');
   await page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' }).press('Enter');
   await page.getByRole('button', { name: 'Start 20 Questions' }).click();
   await page.getByRole('button', { name: 'Skip for now' }).click();
