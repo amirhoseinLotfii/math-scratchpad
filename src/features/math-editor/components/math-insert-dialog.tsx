@@ -18,7 +18,7 @@ const INSERT_OPTIONS = [
 
 export const INSERT_VISIBLE = 8;
 
-type MathInsertDialogProps = {
+export type MathInsertDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onInsert: (kind: string) => void;
