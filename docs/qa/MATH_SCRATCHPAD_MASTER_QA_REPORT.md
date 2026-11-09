@@ -187,3 +187,36 @@ User Action → Store (Zustand, AST) → Learning Storage (IndexedDB, allowliste
 | Cross-device واقعی | NOT ATTEMPTED |
 
 **بیانیهٔ صراحت:** این گزارش ادعای انتشار یا سبز بودن CI کامل ندارد. هیچ اسکرین‌شات ساختگی تولید نشده و هر عدد از اجرای واقعی در همین محیط آمده است.
+
+---
+
+## ۱۱. تحویل
+
+| مورد | مقدار |
+|---|---|
+| برنچ | `feat/resume-learning-a11y` (از `origin/main` @ `f670e01`) |
+| کامیت | `b87a7d4` — ۱۹ فایل، ۱٬۱۱۱ افزوده، ۴۷ حذف |
+| Push | انجام شد؛ برنچ روی `origin` ساخته شد |
+| PR | ساخته نشد (نیازمند توکن GitHub در این محیط) — لینک ساخت: `https://github.com/amirhoseinLotfii/math-scratchpad/pull/new/feat/resume-learning-a11y` |
+| CI روی برنچ | **BLOCKED** — اجرای Actions در این محیط قابل مشاهده نیست |
+| Deploy | **NOT ATTEMPTED** |
+| Rollback | `git checkout main` یا بستن PR؛ هیچ داده‌ای از IndexedDB/Drive/Notion در این نشست حذف نشد |
+
+### فایل‌های تغییر‌یافته
+
+```
+src/App.tsx
+src/features/lessons/lesson-screen.tsx
+src/features/progress/reading-position-context.tsx
+src/styles.css
+vitest.config.ts
+tests/integration/lesson-resume-a11y.test.tsx      (جدید)
+tests/integration/lesson-phase4.test.tsx          (سقف زمانی)
+e2e/fixtures/lesson-connected-preview.tsx         (Provider هم‌سطح main.tsx)
+e2e/lessons/resume-learning.spec.ts               (جدید)
+e2e/wide/split-resize-controls.spec.ts            (جدید)
+docs/architecture.md · CONTRIBUTING.md · README.md
+docs/qa/MATH_SCRATCHPAD_MASTER_QA_REPORT.md · interaction-matrix.json
+docs/qa/DESIGN_SYSTEM_AUDIT.md · DATA_SYNC_ARCHITECTURE.md
+docs/qa/RESUME_AND_A11Y_2026-11-09.md · LOGIC_BUG_REGISTER.md
+```
