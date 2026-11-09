@@ -206,16 +206,17 @@ export class BrowserSyncRuntime {
         await this.syncAllNow();
         await this.refreshMirrorStatuses();
         const { driveMirror, notionMirror, pending } = this.current;
-        if (driveMirror?.status === 'not_configured' || notionMirror?.status === 'not_configured') {
-          throw new Error('برای تغییر فصل، هر دو مقصد Google Drive و Notion باید پیکربندی شده باشند.');
+        const configured = [driveMirror, notionMirror].filter(
+          (mirror): mirror is NonNullable<typeof mirror> => !!mirror && mirror.status !== 'not_configured',
+        );
+        if (configured.length === 0) {
+          throw new Error('برای تغییر فصل، دست‌کم یکی از مقصدهای Google Drive یا Notion باید پیکربندی شده باشد.');
         }
-        if (pending === 0
-          && driveMirror?.status === 'synced' && driveMirror.pendingCount === 0
-          && notionMirror?.status === 'synced' && notionMirror.pendingCount === 0) return;
+        if (pending === 0 && configured.every(mirror => mirror.status === 'synced' && mirror.pendingCount === 0)) return;
       } catch (error) {
         lastError = error instanceof Error ? error.message : 'تأیید مقصدهای همگام‌سازی ناموفق بود.';
         if (!this.token) throw new Error(lastError);
-        if (lastError.includes('هر دو مقصد')) throw error;
+        if (lastError.includes('دست‌کم یکی از مقصد')) throw error;
         const permanentError = [this.current.driveMirror?.lastError, this.current.notionMirror?.lastError]
           .find(code => code === 'token_invalid' || code === 'database_not_shared' || code === 'schema_mismatch');
         if (permanentError) throw new Error(`پیکربندی همگام‌سازی نیاز به اصلاح دارد: ${permanentError}`);
@@ -223,7 +224,7 @@ export class BrowserSyncRuntime {
       }
       await new Promise(resolve => setTimeout(resolve, retryDelayMs));
     }
-    throw new Error(`ذخیرهٔ فصل در Drive و Notion تا پایان زمان انتظار تأیید نشد${lastError ? `: ${lastError}` : '.'}`);
+    throw new Error(`ذخیرهٔ فصل در مقصدهای همگام‌سازی تا پایان زمان انتظار تأیید نشد${lastError ? `: ${lastError}` : '.'}`);
   }
 
   /** Server backup always reads the canonical log; browser IndexedDB is not used. */

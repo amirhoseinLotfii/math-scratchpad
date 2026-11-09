@@ -1,6 +1,6 @@
 import { GOOGLE_CLIENT_ID } from '../features/drive-bank/drive-config';
 import { loadIdentity } from '../features/drive-bank/google';
-import { announceGoogleAuthStateChanged } from './google-auth-state';
+import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from './google-auth-state';
 
 type GoogleCredential = { credential?: string };
 type PromptMomentNotification = {
@@ -24,7 +24,7 @@ const SESSION_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
 
 function restoreSessionToken(): { token: string; expiresAt: number } | undefined {
   try {
-    const raw = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    const raw = readAuthRecord(SESSION_TOKEN_KEY);
     if (!raw) return undefined;
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object') throw new Error('invalid session token');
@@ -32,19 +32,18 @@ function restoreSessionToken(): { token: string; expiresAt: number } | undefined
     if (typeof record.token !== 'string' || typeof record.expiresAt !== 'number') throw new Error('invalid session token');
     const expiresAt = Math.min(record.expiresAt, tokenExpiry(record.token));
     if (!expiresAt || expiresAt <= Date.now() + 60_000) {
-      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      clearAuthRecord(SESSION_TOKEN_KEY);
       return undefined;
     }
     return { token: record.token, expiresAt };
   } catch {
-    try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch { /* Storage may be blocked. */ }
+    clearAuthRecord(SESSION_TOKEN_KEY);
     return undefined;
   }
 }
 
 function persistSessionToken(value: { token: string; expiresAt: number }): void {
-  try { sessionStorage.setItem(SESSION_TOKEN_KEY, JSON.stringify(value)); }
-  catch { /* The in-memory credential still works for this page. */ }
+  writeAuthRecord(SESSION_TOKEN_KEY, JSON.stringify(value));
 }
 
 function tokenExpiry(token: string): number {
@@ -178,8 +177,14 @@ export function commitGoogleIdToken(token: string): void {
 
 export function clearGoogleIdToken(): void {
   cached = undefined;
-  try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch { /* Storage may be blocked. */ }
+  clearAuthRecord(SESSION_TOKEN_KEY);
   announceGoogleAuthStateChanged();
 }
 
 export function googleIdTokenReady(): boolean { return !!getGoogleIdTokenRecord(); }
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(GOOGLE_AUTH_STATE_EVENT, () => {
+    cached = restoreSessionToken();
+  });
+}

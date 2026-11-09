@@ -52,7 +52,7 @@ describe('Google Identity Services ID-token session', () => {
     expect(firstListener).toHaveBeenCalledWith(token, expect.any(Number));
     expect(googleIdTokenReady()).toBe(true);
     expect(getGoogleIdToken()).toBe(token);
-    expect(sessionStorage.getItem('math-scratchpad-google-id-token-v1')).toBeTruthy();
+    expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeTruthy();
 
     const secondButton = document.createElement('div');
     const secondListener = vi.fn();
@@ -81,12 +81,43 @@ describe('Google Identity Services ID-token session', () => {
 
     clearGoogleIdToken();
     expect(googleIdTokenReady()).toBe(false);
-    expect(sessionStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
+    expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
   });
 
   it('reports when the identity script loaded without the ID-token button API', async () => {
     installGoogleApi({ accounts: { oauth2: {} } });
     await expect(mountGoogleIdButton(document.createElement('div'), vi.fn())).rejects.toThrow(/ورود امن گوگل/);
+  });
+
+  it('restores a saved credential in a new tab from shared browser storage', async () => {
+    const token = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
+    localStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({
+      token,
+      expiresAt: Date.now() + 3_600_000,
+    }));
+    sessionStorage.removeItem('math-scratchpad-google-id-token-v1');
+    vi.resetModules();
+    const otherTab = await import('../../src/sync/google-id-token');
+    expect(otherTab.getGoogleIdToken()).toBe(token);
+    expect(otherTab.googleIdTokenReady()).toBe(true);
+    otherTab.clearGoogleIdToken();
+    expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
+    expect(sessionStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
+  });
+
+  it('migrates an older tab-only session into shared browser storage', async () => {
+    const token = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
+    sessionStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({
+      token,
+      expiresAt: Date.now() + 3_600_000,
+    }));
+    localStorage.removeItem('math-scratchpad-google-id-token-v1');
+    vi.resetModules();
+    const migrated = await import('../../src/sync/google-id-token');
+    expect(migrated.getGoogleIdToken()).toBe(token);
+    expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeTruthy();
+    expect(sessionStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
+    migrated.clearGoogleIdToken();
   });
 
   it('requests a Google ID credential through One Tap after client preparation', async () => {

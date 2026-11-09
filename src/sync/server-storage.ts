@@ -91,17 +91,31 @@ export class ServerBackedStorage implements Storage {
   private enqueue(key: string, value: string | null) {
     this.queued += 1;
     const operation = this.tail.then(async () => {
-      const revision = this.revisions.get(key) ?? 0;
       let response: Response | undefined;
       let lastNetworkError: Error | undefined;
-      // Fast, bounded retries for transient Cloudflare/network errors.
+      // Fast, bounded retries for transient Cloudflare/network errors and stale revisions.
       for (let attempt = 0; attempt < 4; attempt++) {
+        const revision = this.revisions.get(key) ?? 0;
         try {
           response = await fetch(`${SYNC_API_ORIGIN}/state`, {
             method: 'POST', cache: 'no-store',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
             body: JSON.stringify({ key, value, revision }),
           });
+          if (response.status === 409) {
+            if (attempt < 3) {
+              try {
+                const conflict: unknown = await response.json();
+                const remoteRevision = conflict && typeof conflict === 'object'
+                  ? (conflict as { revision?: unknown }).revision
+                  : undefined;
+                if (Number.isSafeInteger(remoteRevision)) this.revisions.set(key, Number(remoteRevision));
+              } catch { /* The next attempt still uses the latest known revision. */ }
+              await new Promise(resolve => setTimeout(resolve, 250 * (2 ** attempt)));
+              continue;
+            }
+            break;
+          }
           if (response.status !== 429 && response.status < 500) break;
         } catch (error) {
           lastNetworkError = error instanceof Error ? error : new Error('Network request failed.');

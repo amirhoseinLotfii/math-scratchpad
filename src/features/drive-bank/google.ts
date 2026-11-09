@@ -2,7 +2,7 @@
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from './drive-config';
 import { getLearningStorage } from '../../sync/browser-db';
-import { announceGoogleAuthStateChanged } from '../../sync/google-auth-state';
+import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from '../../sync/google-auth-state';
 export const SCOPES = `openid email ${DRIVE_SCOPE}`;
 export const DRIVE_CONFIG_KEY = 'math-scratchpad-drive-config-v1';
 /** Built-in public identifiers (see drive-config.ts) plus the picked file, which stays in this browser. */
@@ -45,12 +45,12 @@ export type Token = { accessToken: string; expiresAt: number };
 const DRIVE_TOKEN_SESSION_KEY = 'math-scratchpad-drive-token-v1';
 let cachedDriveToken: Token | undefined;
 
-/** Short-lived Drive credential for this tab only; it survives refresh but not a new browser session. */
+/** Short-lived Drive credential shared across tabs in this browser; it survives refresh and a new tab until it expires. */
 export function readDriveSessionToken(): Token | undefined {
   if (cachedDriveToken && cachedDriveToken.expiresAt > Date.now()) return cachedDriveToken;
   cachedDriveToken = undefined;
   try {
-    const raw = sessionStorage.getItem(DRIVE_TOKEN_SESSION_KEY);
+    const raw = readAuthRecord(DRIVE_TOKEN_SESSION_KEY);
     if (!raw) return undefined;
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object') throw new Error('Invalid Drive token cache.');
@@ -61,7 +61,7 @@ export function readDriveSessionToken(): Token | undefined {
     cachedDriveToken = { accessToken: record.accessToken, expiresAt: record.expiresAt };
     return cachedDriveToken;
   } catch {
-    try { sessionStorage.removeItem(DRIVE_TOKEN_SESSION_KEY); } catch { /* Storage may be blocked. */ }
+    clearAuthRecord(DRIVE_TOKEN_SESSION_KEY);
     return undefined;
   }
 }
@@ -69,15 +69,21 @@ export function readDriveSessionToken(): Token | undefined {
 export function saveDriveSessionToken(token: Token): void {
   if (!token.accessToken || token.expiresAt <= Date.now()) return;
   cachedDriveToken = token;
-  try { sessionStorage.setItem(DRIVE_TOKEN_SESSION_KEY, JSON.stringify(token)); }
-  catch { /* The active in-memory token can still be used until it expires. */ }
+  writeAuthRecord(DRIVE_TOKEN_SESSION_KEY, JSON.stringify(token));
   announceGoogleAuthStateChanged();
 }
 
 export function clearDriveSessionToken(): void {
   cachedDriveToken = undefined;
-  try { sessionStorage.removeItem(DRIVE_TOKEN_SESSION_KEY); } catch { /* Storage may be blocked. */ }
+  clearAuthRecord(DRIVE_TOKEN_SESSION_KEY);
   announceGoogleAuthStateChanged();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(GOOGLE_AUTH_STATE_EVENT, () => {
+    cachedDriveToken = undefined;
+    readDriveSessionToken();
+  });
 }
 /** Must be called directly inside a tap handler, otherwise Android Chrome blocks the popup. */
 export function requestToken(clientId: string, opts: { prompt?: '' | 'consent' | 'select_account'; hint?: string }, done: (r: { token?: Token; error?: string }) => void) {
