@@ -1,4 +1,5 @@
-import { expect, test, type BrowserContext, type Page } from '../support/test';
+import type { BrowserContext } from '@playwright/test';
+import { expect, test, type Page } from '../support/test';
 
 const AUTH_ID_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
 const AUTH_ID_HINT_KEY = 'math-scratchpad-google-id-session-v1';

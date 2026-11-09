@@ -3,7 +3,7 @@ import { Provider } from './app/store-provider';
 import { App } from './App';
 import { createPersistentStore } from './features/session/persistence/persistent-store';
 import { initializeLearningStorage, initializeAuthenticatedServerStorage, refreshAuthenticatedServerStorage, getAuthenticatedServerStorage, updateAuthenticatedServerToken } from './sync/browser-db';
-import { getGoogleIdToken } from './sync/google-id-token';
+import { getApiToken, hydrateWorkerSession } from './sync/worker-session';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
 import { ReadingPositionProvider } from './features/progress/reading-position-context';
@@ -68,7 +68,7 @@ function launchApp(showConnectionStatus = false) {
   
   createRoot(root!).render(showConnectionStatus
     ? <ServerConnectionGate
-        tokenProvider={getGoogleIdToken}
+        tokenProvider={getApiToken}
         onAuthenticated={connectAuthenticatedStorage}
         flushPendingDraft={flushAppDraft}
       >{app}</ServerConnectionGate>
@@ -86,7 +86,9 @@ void (async () => {
   syncRuntime = new BrowserSyncRuntime();
   setDefaultSyncRuntime(syncRuntime);
   await syncRuntime.start();
-  const token = getGoogleIdToken();
+  // A stored Worker session keeps sync working after the one-hour GIS ID token expires.
+  await hydrateWorkerSession();
+  const token = getApiToken();
   syncRuntime.setIdToken(token ?? null);
 
   // Render from local data immediately. Sign-in is only needed to sync the

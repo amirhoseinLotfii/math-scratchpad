@@ -1,6 +1,7 @@
-import { ensureDriveSessionToken, getConfig, requestToken, saveDriveSessionToken, type Token } from '../features/drive-bank/google';
+import { clearDriveSessionToken, ensureDriveSessionToken, getConfig, requestToken, saveDriveSessionToken, type Token } from '../features/drive-bank/google';
 import { permittedAccount } from '../features/drive-bank/identity';
-import { commitGoogleIdToken, getGoogleIdToken, requestGoogleIdCredential } from './google-id-token';
+import { clearGoogleIdToken, commitGoogleIdToken, getGoogleIdToken, requestGoogleIdCredential } from './google-id-token';
+import { revokeWorkerSession } from './worker-session';
 
 export type GoogleAuthCredentials = { idToken: string; driveToken: Token };
 
@@ -67,4 +68,13 @@ export async function requestCombinedGoogleAuth(): Promise<GoogleAuthCredentials
   saveDriveSessionToken(driveResult.value.token);
   commitGoogleIdToken(idToken);
   return { idToken, driveToken: driveResult.value.token };
+}
+
+/** Logout on this device: revoke the Worker session server-side and drop every saved Google credential. */
+export async function signOutGoogle(): Promise<void> {
+  try { await revokeWorkerSession(); }
+  finally {
+    clearGoogleIdToken();
+    clearDriveSessionToken();
+  }
 }

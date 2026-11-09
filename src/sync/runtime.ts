@@ -14,6 +14,7 @@ import {
 } from './browser-db';
 
 import { SYNC_API_ORIGIN } from './sync-config';
+import { reportApiUnauthorized } from './api-unauthorized';
 export { SYNC_API_ORIGIN } from './sync-config';
 const PAGE_LIMIT = 100;
 const MAX_PULL_PAGES_PER_RUN = 100;
@@ -288,7 +289,11 @@ export class BrowserSyncRuntime {
         headers: { ...(init.headers ?? {}), Authorization: `Bearer ${this.token}` },
       });
     } catch { throw new SyncRequestError('شبکه در دسترس نیست؛ داده‌ها در صف آفلاین می‌مانند.'); }
-    if (response.status === 401) throw new SyncRequestError('ورود گوگل منقضی شده است؛ دوباره متصل شو.', 401, false);
+    if (response.status === 401) {
+      // An expired or revoked Worker session is forgotten so a fresh GIS login can mint a new one.
+      reportApiUnauthorized(this.token);
+      throw new SyncRequestError('ورود گوگل منقضی شده است؛ دوباره متصل شو.', 401, false);
+    }
     if (response.status === 429) {
       const seconds = Number(response.headers.get('Retry-After'));
       throw new SyncRequestError('درخواست‌های همگام‌سازی زیاد شده؛ ارسال دوباره زمان‌بندی می‌شود.', 429, true, Number.isFinite(seconds) ? seconds * 1_000 : undefined);

@@ -7,9 +7,10 @@ import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { GoogleLoginButton } from '../../sync/google-login-button';
 import { GOOGLE_AUTH_STATE_EVENT } from '../../sync/google-auth-state';
-import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank } from './drive-bank';
+import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank, type DriveMeta } from './drive-bank';
 import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, refreshDriveSessionTokenSilently, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
 import { permittedAccount } from './identity';
+import { readBankViaWorker } from './worker-bank';
 
 export const POLL_MS = 30000;
 export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBeforeBankLoad, onResumeBank }: { close: () => void; open: boolean; onAvailable: (available: boolean) => void; onBankReady?: (bank: DriveBank | null, version: string) => void; onBeforeBankLoad?: (bank: DriveBank, version: string) => Promise<void>; onResumeBank?: (bank: DriveBank, version: string) => void }) {
@@ -129,7 +130,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     };
   }, [open, confirmation]);
 
-  useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (!active.current) return; setReady(true); const savedToken = cfg.current.fileId ? readDriveSessionToken() : undefined; if (savedToken) { setBusy(true); void afterToken(savedToken).catch(() => undefined); } }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
+  useEffect(() => { if (!open || ready) return; void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)]).then(() => { if (!active.current) return; setReady(true); const savedToken = cfg.current.fileId ? readDriveSessionToken() : undefined; if (savedToken) { setBusy(true); void afterToken(savedToken).catch(() => undefined); } else if (cfg.current.fileId) { void sync(true); } }).catch(e => { if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.'); }); }, [open, ready]);
   function expire(text: string) { token.current = null; clearDriveSessionToken(); setConnected(false); setMessage(text); }
   const announce = (bank: DriveBank | null, version = '') => {
     const current = store.getState().doc.session;
@@ -139,6 +140,23 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     if (syncing.current) return;
     let t = token.current;
     const fileId = cfg.current.fileId;
+    // Prefer the Worker: it reads the registered bank with the server Drive credential,
+    // so polling continues after the one-hour browser Drive token expires.
+    if (fileId) {
+      syncing.current = true;
+      try {
+        const viaWorker = await readBankViaWorker(fileId, cfg.current.fileName, false);
+        if (viaWorker && active.current) {
+          setConnected(true);
+          await applyBank(fileId, viaWorker.meta, force, async () => (await readBankViaWorker(fileId, cfg.current.fileName, true))?.text);
+          return;
+        }
+      } catch (e) {
+        if (active.current) setMessage(`${e instanceof Error ? e.message : 'The bank could not be loaded.'} The previously loaded bank and current session were preserved.`);
+        return;
+      } finally { syncing.current = false; }
+      if (!active.current) return;
+    }
     if (!t || Date.now() >= t.expiresAt) {
       const refreshed = await refreshDriveSessionTokenSilently();
       if (!active.current) return;
@@ -154,34 +172,40 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     if (!fileId) { setMessage('No question bank file is selected.'); return; }
     syncing.current = true;
     try {
-      const meta = await readDriveMeta(fileId, t.accessToken), fp = metaFingerprint(meta);
-      if (!active.current) return;
-      setCheckedAt(new Date().toLocaleTimeString('en-GB'));
-      if (!force && fp === fingerprint.current) return; // unchanged: no download
-      const parsed = parseBankText(await readPrivateBankText(fileId, t.accessToken));
-      if (!active.current) return;
-      fingerprint.current = fp;
-      if (parsed === EMPTY_BANK) { setAvailable(null); announce(null); onBankReady?.(null, ''); setMessage('Connected. The selected bank file is empty.'); return; }
-      const version = await snapshotVersion(parsed);
-      const cache = await saveBankCache(fileId, parsed, version, fp);
-      setAvailable({ bank: parsed, version }); announce(parsed, version);
-      onBankReady?.(parsed, version);
-      // Opening an existing bank is safe only when it matches the active session.
-      // Other bank versions still require an explicit "Open received batch" confirmation.
-      if (selectedFileByUser.current) {
-        selectedFileByUser.current = false;
-        onResumeBank?.(parsed, version);
-      }
-      const readyMessage = parsed.questions.length ? `Bank ${parsed.bank_id} (version ${parsed.version}) loaded; ${parsed.questions.length} questions ready.` : 'Connected. The bank has no questions yet.';
-      const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
-      const current = store.getState().doc.session;
-      const changed = current?.bankId === parsed.bank_id && !!current.bankVersion && current.bankVersion !== version;
-      setMessage(`${readyMessage}${cache.saved ? ' A verified local copy is ready for offline use.' : ` ${cache.message}`}${hasLessonWarnings ? ' Some lesson content could not be read. You can continue with the bank questions.' : ''}${changed ? ' This bank version differs from the current session; the current session was not changed.' : ''}${parsed.lessons?.length ? ' Lesson progress is kept separately for each bank version.' : ''}`);
+      const accessToken = t.accessToken;
+      await applyBank(fileId, await readDriveMeta(fileId, accessToken), force, () => readPrivateBankText(fileId, accessToken));
     } catch (e) {
       if (!active.current) return;
       const text = e instanceof Error ? e.message : 'The bank could not be loaded.';
       if (text.includes('expired')) expire(text); else setMessage(`${text} The previously loaded bank and current session were preserved.`);
     } finally { syncing.current = false; }
+  }
+  async function applyBank(fileId: string, meta: DriveMeta, force: boolean, readText: () => Promise<string | undefined>) {
+    const fp = metaFingerprint(meta);
+    if (!active.current) return;
+    setCheckedAt(new Date().toLocaleTimeString('en-GB'));
+    if (!force && fp === fingerprint.current) return; // unchanged: no download
+    const text = await readText();
+    if (text === undefined) throw Error('The question bank could not be read. The app will retry later.');
+    const parsed = parseBankText(text);
+    if (!active.current) return;
+    fingerprint.current = fp;
+    if (parsed === EMPTY_BANK) { setAvailable(null); announce(null); onBankReady?.(null, ''); setMessage('Connected. The selected bank file is empty.'); return; }
+    const version = await snapshotVersion(parsed);
+    const cache = await saveBankCache(fileId, parsed, version, fp);
+    setAvailable({ bank: parsed, version }); announce(parsed, version);
+    onBankReady?.(parsed, version);
+    // Opening an existing bank is safe only when it matches the active session.
+    // Other bank versions still require an explicit "Open received batch" confirmation.
+    if (selectedFileByUser.current) {
+      selectedFileByUser.current = false;
+      onResumeBank?.(parsed, version);
+    }
+    const readyMessage = parsed.questions.length ? `Bank ${parsed.bank_id} (version ${parsed.version}) loaded; ${parsed.questions.length} questions ready.` : 'Connected. The bank has no questions yet.';
+    const hasLessonWarnings = parsed.parseWarnings?.some(item => item.startsWith('lessons'));
+    const current = store.getState().doc.session;
+    const changed = current?.bankId === parsed.bank_id && !!current.bankVersion && current.bankVersion !== version;
+    setMessage(`${readyMessage}${cache.saved ? ' A verified local copy is ready for offline use.' : ` ${cache.message}`}${hasLessonWarnings ? ' Some lesson content could not be read. You can continue with the bank questions.' : ''}${changed ? ' This bank version differs from the current session; the current session was not changed.' : ''}${parsed.lessons?.length ? ' Lesson progress is kept separately for each bank version.' : ''}`);
   }
   useEffect(() => {
     if (!connected || !open) return;

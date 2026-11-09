@@ -23,6 +23,7 @@ import {
 } from '../../src/sync/browser-db';
 import { legacyMigrationBackupContents, markLegacyMigrationDriveVerified, queueLegacyMigration, verifyLegacyMigrationOnServer } from '../../src/sync/legacy-migration';
 import { permittedAccount } from '../../src/features/drive-bank/identity';
+import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
 
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: vi.fn() }));
 
@@ -101,6 +102,8 @@ beforeEach(async () => {
   await resetLearningDbForTests();
   vi.mocked(permittedAccount).mockResolvedValue(true);
   setDefaultSyncRuntime(new BrowserSyncRuntime());
+  // Keep Worker session exchange out of the Drive request counts asserted below.
+  await resetWorkerSessionForTests({ fetcher: (async () => new Response('{}', { status: 503 })) as unknown as typeof fetch });
 });
 
 afterEach(async () => {
@@ -111,6 +114,7 @@ afterEach(async () => {
   delete (window as Window & { gapi?: unknown }).gapi;
   setDefaultSyncRuntime(new BrowserSyncRuntime());
   await resetLearningDbForTests();
+  await resetWorkerSessionForTests();
   localStorage.clear();
 });
 
