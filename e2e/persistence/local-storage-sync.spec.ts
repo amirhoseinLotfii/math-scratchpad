@@ -1,4 +1,5 @@
 import { expect, test, type Page, mathField, mathValue, clickMathKeys } from '../support/test';
+import { openMenuSubmenu } from '../support/menu';
 import { actions, initialState, makeStore } from '../../src/store';
 import { serialize } from '../../src/persistence';
 import { parse } from '../../src/parser';
@@ -98,6 +99,6 @@ test('SYNC-07: IndexedDB write failure keeps editing usable and exposes export r
  await expect.poll(() => mathValue(first)).toContain('987');
  await page.getByRole('button', { name: 'Exercise menu' }).click();
  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+ await openMenuSubmenu(page, 'Data');
  await expect(page.getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
 });
