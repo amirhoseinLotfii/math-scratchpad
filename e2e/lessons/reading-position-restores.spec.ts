@@ -18,8 +18,14 @@ test('lesson reading anchor and relative scroll restore after reload at a differ
   await page.goto('/e2e/fixtures/lesson-connected-preview.html?sections&no-wellbeing=1');
   await openSampleLesson(page);
 
-  await expect(page.locator('[data-anchor-id]').first()).toBeVisible();
-  await page.evaluate(() => window.scrollTo(0, 400));
+  const targetAnchor = page.locator('[data-anchor-id^="concept:"]').first();
+  await expect(targetAnchor).toBeVisible();
+  const targetAnchorId = await targetAnchor.getAttribute('data-anchor-id');
+  expect(targetAnchorId).toBeTruthy();
+  await targetAnchor.evaluate(element => {
+    const top = element.getBoundingClientRect().top;
+    window.scrollTo(0, window.scrollY + top + 180);
+  });
   await expect.poll(async () => {
     const raw = await readLearningCache(page, READING_POSITION_STORAGE_KEY);
     if (!raw) return 0;
@@ -31,7 +37,7 @@ test('lesson reading anchor and relative scroll restore after reload at a differ
   expect(raw).not.toBeNull();
   const saved = JSON.parse(raw!);
   expect(saved.lessonId).toBe('SAMPLE-1.1');
-  expect(saved.contentAnchorId).toBeTruthy();
+  expect(saved.contentAnchorId).toBe(targetAnchorId);
   expect(saved.relativeOffset).toBeGreaterThan(0);
 
   await page.setViewportSize({ width: 1440, height: 900 });
