@@ -14,22 +14,34 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
   await page.addInitScript(({ key, value }) => {
     // Emulate Google Identity Services without authenticating a real account.
     const handlers: { signIn?: (credential: { credential: string }) => void } = {};
-    const encoded = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }))
+    const testEmail = 'qa-fixture@example.test';
+    const encoded = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: testEmail }))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     const fakeToken = 'head.' + encoded + '.signature';
+    const expectedAccountHash = '5722e9ceb3077a549643b3e349b6b44058f422818edfddec115e9703a07fc024';
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    Object.defineProperty(crypto.subtle, 'digest', {
+      configurable: true,
+      value: (algorithm: AlgorithmIdentifier, data: BufferSource) => {
+        if (algorithm === 'SHA-256' && new TextDecoder().decode(data) === testEmail) {
+          return Promise.resolve(Uint8Array.from(expectedAccountHash.match(/../g)!, byte => Number.parseInt(byte, 16)).buffer);
+        }
+        return originalDigest(algorithm, data);
+      },
+    });
     Object.defineProperty(window, 'google', {
       configurable: true,
       value: {
         accounts: {
-          oauth2: {},
+          oauth2: {
+            initTokenClient: (options: { callback: (response: { access_token: string; expires_in: number }) => void }) => ({
+              requestAccessToken: () => options.callback({ access_token: 'test-drive-token', expires_in: 3600 }),
+            }),
+            hasGrantedAllScopes: () => true,
+          },
           id: {
             initialize: (args: { callback: typeof handlers.signIn }) => { handlers.signIn = args.callback; },
-            renderButton: (node: HTMLElement) => {
-              const button = document.createElement('button');
-              button.textContent = 'Test owner login';
-              button.onclick = () => handlers.signIn?.({ credential: fakeToken });
-              node.appendChild(button);
-            },
+            prompt: () => handlers.signIn?.({ credential: fakeToken }),
           },
         },
       },
@@ -97,6 +109,12 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
   });
+  await page.route('https://www.googleapis.com/oauth2/v3/userinfo', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify({ email: 'qa-fixture@example.test', email_verified: true }),
+  }));
 
   const readFirstStep = async () => {
     const raw = await readLearningCache(page, storageKey);
@@ -119,7 +137,7 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
   await expect.poll(() => mathValue(mathField(page))).toContain('321');
 
   const connectionCard = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
-  await connectionCard.getByRole('button', { name: 'Test owner login' }).click();
+  await connectionCard.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' }).click();
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
   await expect.poll(() => records.has('math-scratchpad-session-v3')).toBeTruthy();
   expect(bankCachePosts).toBe(0);

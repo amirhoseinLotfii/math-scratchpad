@@ -1,112 +1,84 @@
-/**
- * Phase A - Step 6: Capture real before/after screenshots for PR #71 keyboard placement
- * 
- * This test captures screenshots of the math keyboard before and after interaction
- * to verify the keyboard placement fixes from PR #71.
- */
+import { expect, test, type Page } from '@playwright/test';
 
-import { test, expect } from '@playwright/test';
+const keyboard = (page: Page) => page.locator('.math-keyboard');
+const stepField = (page: Page) => page.locator('math-field[aria-label="Step 1 expression"]');
 
-test.describe('PR #71 - Math Keyboard Placement Screenshots', () => {
+async function expectKeyboardClosed(page: Page) {
+  await expect(page.getByRole('button', { name: 'Show Keyboard' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(keyboard(page)).toHaveCount(0);
+}
+
+async function openKeyboard(page: Page) {
+  await page.getByRole('button', { name: 'Show Keyboard' }).click();
+  await expect(page.getByRole('button', { name: 'Hide Keyboard' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(keyboard(page)).toBeVisible();
+}
+
+async function expectKeyboardBelowActiveField(page: Page) {
+  const field = await stepField(page).boundingBox();
+  const keypad = await keyboard(page).boundingBox();
+  if (!field || !keypad) throw new Error('Expected the active math field and keyboard to have layout bounds');
+  expect(keypad.y).toBeGreaterThanOrEqual(field.y + field.height - 2);
+  expect(keypad.x).toBeGreaterThanOrEqual(0);
+  expect(keypad.x + keypad.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth) + 1);
+}
+
+test.describe('Math keyboard placement', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/lessons/1.1');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/');
+    await expect(stepField(page)).toBeVisible();
   });
 
   test.describe('Mobile - 390px', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('Keyboard before interaction - mobile', async ({ page }) => {
-      await page.waitForSelector('.math-keyboard');
-      await expect(page).toHaveScreenshot('pr71-keyboard-before-mobile.png', {
-        animations: 'disabled',
-        mask: [page.locator('.lesson-navigation')],
-        fullPage: false
-      });
+    test('keeps the keyboard closed until requested', async ({ page }) => {
+      await expectKeyboardClosed(page);
     });
 
-    test('Keyboard after clicking math field - mobile', async ({ page }) => {
-      await page.click('.math-field');
-      await page.waitForSelector('.math-keyboard:visible');
-      await expect(page).toHaveScreenshot('pr71-keyboard-after-click-mobile.png', {
-        animations: 'disabled',
-        mask: [page.locator('.lesson-navigation')],
-        fullPage: false
-      });
+    test('opens the keypad from the visible keyboard control', async ({ page }) => {
+      await openKeyboard(page);
+      await expectKeyboardBelowActiveField(page);
     });
 
-    test('Keyboard position relative to active field - mobile', async ({ page }) => {
-      await page.click('.math-field');
-      await page.waitForSelector('.math-keyboard:visible');
-      
-      const fieldRect = await page.locator('.math-field').boundingBox();
-      const keyboardRect = await page.locator('.math-keyboard').boundingBox();
-      if (!fieldRect || !keyboardRect) {
-        throw new Error('Expected the math field and keyboard to have layout bounds');
-      }
-
-      const fieldBottom = fieldRect.y + fieldRect.height;
-      expect(keyboardRect.y).toBeGreaterThan(fieldBottom - 50);
-      expect(keyboardRect.y).toBeLessThan(fieldBottom + 100);
-      expect(Math.abs(keyboardRect.width - fieldRect.width)).toBeLessThan(50);
+    test('keeps the keypad directly below the active step', async ({ page }) => {
+      await openKeyboard(page);
+      await stepField(page).click();
+      await expectKeyboardBelowActiveField(page);
+      await expect(keyboard(page).getByRole('group', { name: 'Numeric keys' }).getByRole('button').first()).toBeVisible();
     });
   });
 
   test.describe('Desktop - 1024px', () => {
     test.use({ viewport: { width: 1024, height: 768 } });
 
-    test('Keyboard before interaction - desktop', async ({ page }) => {
-      await page.waitForSelector('.math-keyboard');
-      await expect(page).toHaveScreenshot('pr71-keyboard-before-desktop.png', {
-        animations: 'disabled',
-        fullPage: false
-      });
+    test('keeps the keyboard closed until requested', async ({ page }) => {
+      await expectKeyboardClosed(page);
     });
 
-    test('Keyboard after clicking math field - desktop', async ({ page }) => {
-      await page.click('.math-field');
-      await page.waitForSelector('.math-keyboard:visible');
-      await expect(page).toHaveScreenshot('pr71-keyboard-after-click-desktop.png', {
-        animations: 'disabled',
-        fullPage: false
-      });
+    test('opens the keypad from the visible keyboard control', async ({ page }) => {
+      await openKeyboard(page);
+      await expectKeyboardBelowActiveField(page);
     });
 
-    test('Keyboard position relative to active field - desktop', async ({ page }) => {
-      await page.click('.math-field');
-      await page.waitForSelector('.math-keyboard:visible');
-      
-      const fieldRect = await page.locator('.math-field').boundingBox();
-      const keyboardRect = await page.locator('.math-keyboard').boundingBox();
-      if (!fieldRect || !keyboardRect) {
-        throw new Error('Expected the math field and keyboard to have layout bounds');
-      }
-
-      const fieldBottom = fieldRect.y + fieldRect.height;
-      expect(keyboardRect.y).toBeGreaterThan(fieldBottom - 50);
-      expect(keyboardRect.y).toBeLessThan(fieldBottom + 100);
-      expect(Math.abs(keyboardRect.width - fieldRect.width)).toBeLessThan(50);
+    test('keeps the keypad directly below the active step', async ({ page }) => {
+      await openKeyboard(page);
+      await stepField(page).click();
+      await expectKeyboardBelowActiveField(page);
+      await expect(keyboard(page).getByRole('group', { name: 'Numeric keys' }).getByRole('button').first()).toBeVisible();
     });
   });
 
   test.describe('Desktop - 1440px', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
-    test('Keyboard before interaction - wide desktop', async ({ page }) => {
-      await page.waitForSelector('.math-keyboard');
-      await expect(page).toHaveScreenshot('pr71-keyboard-before-wide.png', {
-        animations: 'disabled',
-        fullPage: false
-      });
+    test('keeps the keyboard closed until requested', async ({ page }) => {
+      await expectKeyboardClosed(page);
     });
 
-    test('Keyboard after clicking math field - wide desktop', async ({ page }) => {
-      await page.click('.math-field');
-      await page.waitForSelector('.math-keyboard:visible');
-      await expect(page).toHaveScreenshot('pr71-keyboard-after-click-wide.png', {
-        animations: 'disabled',
-        fullPage: false
-      });
+    test('opens the keypad from the visible keyboard control', async ({ page }) => {
+      await openKeyboard(page);
+      await expectKeyboardBelowActiveField(page);
     });
   });
 });

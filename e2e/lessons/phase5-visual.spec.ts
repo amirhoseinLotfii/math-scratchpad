@@ -52,7 +52,7 @@ test('captures Phase 5 Learn and connected Practice views at desktop width', { t
     await page.goto('/e2e/fixtures/lesson-connected-preview.html');
     await dismissWellbeing(page);
     await expect(page.getByText('Sample practice 1.')).toBeVisible();
-    await page.getByRole('button', { name: 'Lesson' }).click();
+    await page.getByRole('button', { name: 'Lesson', exact: true }).click();
     const reference = page.getByRole('dialog', { name: 'Sample lesson' });
     await expect(reference).toBeVisible();
     await expect(reference.getByText('Another sample concept')).toHaveCount(0);

@@ -125,6 +125,15 @@ export class GoogleDriveClient {
     return this.findFile(name, parentId, mimeType);
   }
 
+  /** Read selected metadata fields of one file the app is authorized for (drive.file). */
+  async readFileMetadata(id: string, fields: string): Promise<Record<string, unknown>> {
+    const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?fields=${encodeURIComponent(fields)}`, { method: 'GET' }, 'drive_file_lookup');
+    if (!response.ok) throw errorForStatus(response.status);
+    const data = await readJson<unknown>(response);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new DriveMirrorError('invalid_response');
+    return data as Record<string, unknown>;
+  }
+
   /** Read media bytes without relying on an ETag header, which Drive omits for media downloads. */
   async readTextContent(id: string): Promise<string> {
     const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?alt=media`, { method: 'GET' }, 'drive_file_read');

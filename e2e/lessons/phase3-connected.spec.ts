@@ -32,7 +32,7 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
     const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
     expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
 
-    const lessonButton = page.getByRole('button', { name: 'Lesson' });
+    const lessonButton = page.getByRole('button', { name: 'Lesson', exact: true });
     await expect(lessonButton).toBeVisible();
     await lessonButton.click();
     const reference = page.getByRole('dialog', { name: 'Sample lesson' });
@@ -157,7 +157,7 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
   await expect(page.getByText('Sample practice 2.')).toHaveCount(0);
   const practiceStart = page.getByRole('dialog', { name: 'Before you start this batch' });
   if (await practiceStart.isVisible().catch(() => false)) await practiceStart.getByRole('button', { name: 'Skip for now' }).click();
-  await page.getByRole('button', { name: 'Lesson' }).click();
+  await page.getByRole('button', { name: 'Lesson', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Sample lesson' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Exercise menu' }).click();

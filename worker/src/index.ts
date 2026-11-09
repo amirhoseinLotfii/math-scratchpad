@@ -3,12 +3,14 @@ import type { Context, Next } from 'hono';
 import { verifyGoogleIdToken } from './auth';
 import { readBoundedBody } from './body';
 import type { GoogleIdentity, WorkerEnv } from './env';
+import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSessionToken } from './session';
 
 const MAX_BODY_BYTES = 250_000;
 const PAGES_ORIGIN = 'https://amirhoseinlotfii.github.io';
 
 export type IdTokenVerifier = (token: string, clientId: string) => Promise<GoogleIdentity>;
-type AppEnv = { Bindings: WorkerEnv; Variables: { identity: GoogleIdentity } };
+type AuthKind = 'google' | 'session';
+type AppEnv = { Bindings: WorkerEnv; Variables: { identity: GoogleIdentity; authKind: AuthKind; sessionHash?: string } };
 type AppContext = Context<AppEnv>;
 
 function jsonError(error: string, status: number): Response {
@@ -67,22 +69,53 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
 
   app.get('/health', c => finalizeResponse(c.json({ ok: true, service: 'math-scratchpad-sync' }), c));
 
-  const authorize = async (c: AppContext, next: Next) => {
-    const header = c.req.header('Authorization');
-    const match = header?.match(/^Bearer ([^\s]+)$/i);
-    if (!match || match[1].length > 10_000) return finalizeResponse(jsonError('unauthorized', 401), c);
+  const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase()));
+
+  const internalJson = (path: string, body: unknown, env: WorkerEnv) => ownerStub(env).fetch(new Request(
+    `https://event-store.internal${path}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+  ));
+
+  const isOwner = (identity: GoogleIdentity, env: WorkerEnv) => identity.email_verified === true
+    && !!env.OWNER_EMAIL.trim()
+    && identity.email.trim().toLowerCase() === env.OWNER_EMAIL.trim().toLowerCase();
+
+  const bearer = (c: AppContext): string | undefined => {
+    const match = c.req.header('Authorization')?.match(/^Bearer ([^\s]+)$/i);
+    return match && match[1].length <= 10_000 ? match[1] : undefined;
+  };
+
+  /** Accepts a fresh Google ID token, or a Worker session that was minted from one. */
+  const authorizeWith = (allowSession: boolean) => async (c: AppContext, next: Next) => {
+    const token = bearer(c);
+    if (!token) return finalizeResponse(jsonError('unauthorized', 401), c);
     try {
-      const identity = await verifyToken(match[1], c.env.GOOGLE_CLIENT_ID);
-      if (identity.email_verified !== true
-        || identity.email.trim().toLowerCase() !== c.env.OWNER_EMAIL.trim().toLowerCase()) {
-        return finalizeResponse(jsonError('unauthorized', 401), c);
+      if (isSessionToken(token)) {
+        if (!allowSession || !isWellFormedSessionToken(token)) return finalizeResponse(jsonError('unauthorized', 401), c);
+        const tokenHash = await hashSessionToken(token);
+        const verified = await internalJson('/internal/session/verify', { tokenHash }, c.env);
+        if (!verified.ok) return finalizeResponse(jsonError(verified.status === 401 ? 'session_invalid' : 'unauthorized', 401), c);
+        const record = await verified.json() as { email?: unknown; sub?: unknown };
+        if (typeof record.email !== 'string' || typeof record.sub !== 'string') return finalizeResponse(jsonError('unauthorized', 401), c);
+        const identity: GoogleIdentity = { sub: record.sub, email: record.email, email_verified: true };
+        // Re-check the configured owner on every request so changing OWNER_EMAIL invalidates old sessions.
+        if (!isOwner(identity, c.env)) return finalizeResponse(jsonError('unauthorized', 401), c);
+        c.set('identity', identity);
+        c.set('authKind', 'session');
+        c.set('sessionHash', tokenHash);
+      } else {
+        const identity = await verifyToken(token, c.env.GOOGLE_CLIENT_ID);
+        if (!isOwner(identity, c.env)) return finalizeResponse(jsonError('unauthorized', 401), c);
+        c.set('identity', identity);
+        c.set('authKind', 'google');
       }
-      c.set('identity', identity);
       await next();
     } catch {
       return finalizeResponse(jsonError('unauthorized', 401), c);
     }
   };
+  const authorize = authorizeWith(true);
+  const authorizeGoogleOnly = authorizeWith(false);
 
   const proxy = async (c: AppContext, path: string, method: 'GET' | 'POST', expectsBody = method === 'POST') => {
     let body: ArrayBuffer | undefined;
@@ -104,6 +137,28 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     return finalizeResponse(response, c);
   };
 
+  // A session can only be minted from a verified Google ID token, never extended by another session.
+  app.post('/session', authorizeGoogleOnly, async c => {
+    const identity = c.get('identity');
+    const sessionToken = generateSessionToken();
+    const response = await internalJson('/internal/session/issue', {
+      tokenHash: await hashSessionToken(sessionToken),
+      email: identity.email.trim().toLowerCase(),
+      sub: identity.sub,
+    }, c.env);
+    if (!response.ok) return finalizeResponse(response, c);
+    const issued = await response.json() as { expiresAt: number };
+    return finalizeResponse(Response.json({ sessionToken, expiresAt: issued.expiresAt }, { status: 201 }), c);
+  });
+  // Logout: revoke the presented session; `?all=1` revokes every session of the owner.
+  app.post('/session/revoke', authorize, async c => {
+    const all = new URL(c.req.url).searchParams.get('all') === '1';
+    const tokenHash = c.get('sessionHash');
+    if (!all && !tokenHash) return finalizeResponse(Response.json({ revoked: 0 }), c);
+    const response = await internalJson('/internal/session/revoke', all ? { all: true } : { tokenHash }, c.env);
+    return finalizeResponse(response, c);
+  });
+
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
   app.get('/reset/preview', authorize, c => proxy(c, '/reset/preview', 'GET'));
   app.get('/state', authorize, c => proxy(c, '/state', 'GET'));
@@ -114,6 +169,9 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   app.post('/drive/sync', authorize, c => proxy(c, '/drive/sync', 'POST', false));
   app.get('/notion/status', authorize, c => proxy(c, '/notion/status', 'GET'));
   app.post('/notion/sync', authorize, c => proxy(c, '/notion/sync', 'POST', false));
+  app.post('/bank/source', authorize, c => proxy(c, '/bank/source', 'POST'));
+  app.get('/bank/meta', authorize, c => proxy(c, '/bank/meta', 'GET'));
+  app.get('/bank/content', authorize, c => proxy(c, '/bank/content', 'GET'));
 
   app.notFound(c => finalizeResponse(jsonError('not_found', 404), c));
   app.onError((_error, c) => finalizeResponse(jsonError('internal_error', 500), c));

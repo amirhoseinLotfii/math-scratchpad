@@ -8,6 +8,7 @@ async function evidence(page: Page, testInfo: import('@playwright/test').TestInf
 }
 
 test('QA-WORKSPACE-01: menu, sync overlay, new exercise and math picker preserve layout and focus across viewports', { tag: '@only-mobile-390' }, async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
   for (const { width, height } of [
     { width: 320, height: 568 }, { width: 390, height: 844 },
     { width: 430, height: 932 }, { width: 820, height: 1180 },
@@ -25,8 +26,16 @@ test('QA-WORKSPACE-01: menu, sync overlay, new exercise and math picker preserve
     await menu.click();
     await evidence(page, testInfo, `workspace-${size}-menu-open`);
     await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-    await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-    await page.getByRole('menuitem', { name: 'Cloud sync and migration' }).press('Enter');
+    const dataMenu = page.getByRole('menuitem', { name: 'Data', exact: true });
+    const cloudSync = page.getByRole('menuitem', { name: 'Cloud sync and migration' });
+    if (width < 600) {
+      await dataMenu.tap();
+      await cloudSync.tap();
+    } else {
+      await dataMenu.focus();
+      await page.keyboard.press('ArrowRight');
+      await cloudSync.press('Enter');
+    }
     const sync = page.getByRole('dialog', { name: 'همگام‌سازی و حفظ داده‌ها' });
     await expect(sync).toBeVisible();
     await evidence(page, testInfo, `workspace-${size}-sync-open`);

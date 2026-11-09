@@ -9,7 +9,14 @@ test('PERSIST-QUICK-01: added/final steps survive an immediate reload', async ({
  await page.goto('/?serverMode');
  await page.getByRole('button', { name: 'Add step' }).click();
  await page.getByRole('button', { name: 'Mark Step 2 as final' }).click();
- expect(await draftKeys(page)).toHaveLength(1);
+ // The sync journal may already be cleared if IndexedDB finished its 800 ms flush.
+ // Either copy is safe to reload from, so wait for one authoritative recovery path.
+ await expect.poll(async () => {
+  const journal = await draftKeys(page);
+  const raw = await readLearningCache(page, savedKey);
+  const savedSteps = raw ? JSON.parse(raw).state.session.doc.exercises[0].steps.length : 0;
+  return journal.length > 0 || savedSteps === 2;
+ }).toBe(true);
  await page.reload();
  await expect(page.getByRole('button', { name: 'Step 2', exact: true })).toBeVisible();
  await expect(page.getByRole('button', { name: 'Mark Step 2 as final' })).toHaveAttribute('aria-pressed', 'true');

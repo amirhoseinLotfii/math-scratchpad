@@ -58,7 +58,8 @@ test('A11Y-VIS-03: WCAG text spacing preserves labels and localizes overflow', a
  for (const name of ['Add step','Reset Step 1']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
 });
 test('A11Y-VIS-04: popup content fits a short landscape viewport', async ({ page }) => {
- await page.setViewportSize({ width: 844, height: 390 }); const dialog = await openConfidence(page);
+ await page.setViewportSize({ width: 390, height: 844 }); const dialog = await openConfidence(page);
+ await page.setViewportSize({ width: 844, height: 390 });
  const cancel = dialog.getByRole('button', { name: /Cancel/i }); await cancel.scrollIntoViewIfNeeded(); await expectUnobscured(cancel);
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

@@ -5,6 +5,7 @@
  * learning records through the authenticated Worker endpoint.
  */
 import { SYNC_API_ORIGIN } from './sync-config';
+import { reportApiUnauthorized } from './api-unauthorized';
 
 export type ServerStateRecord = { key: string; value: string | null; revision: number; updatedAt?: string };
 type ServerSnapshot = { records: ServerStateRecord[]; revision: number };
@@ -24,6 +25,7 @@ export async function readServerSnapshot(token: string, signal?: AbortSignal): P
     cache: 'no-store',
     ...(signal ? { signal } : {}),
   });
+  if (response.status === 401) reportApiUnauthorized(token);
   if (!response.ok) throw new Error(response.status === 401
     ? 'برای خواندن اطلاعات از سرور باید دوباره با Google وارد شوی.'
     : `دریافت وضعیت ذخیره‌شدهٔ سرور ناموفق بود (HTTP ${response.status}).`);
@@ -37,6 +39,7 @@ export async function verifyOwnerServerConnection(token: string, signal?: AbortS
   const response = await fetch(`${SYNC_API_ORIGIN}/drive/status`, {
     headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', ...(signal ? { signal } : {}),
   });
+  if (response.status === 401) reportApiUnauthorized(token);
   if (!response.ok) throw new Error(response.status === 401
     ? 'ورود Google منقضی شده است؛ برای ادامه دوباره وارد شو.'
     : `دسترسی احراز هویت‌شده به سرور تأیید نشد (HTTP ${response.status}).`);
@@ -91,17 +94,31 @@ export class ServerBackedStorage implements Storage {
   private enqueue(key: string, value: string | null) {
     this.queued += 1;
     const operation = this.tail.then(async () => {
-      const revision = this.revisions.get(key) ?? 0;
       let response: Response | undefined;
       let lastNetworkError: Error | undefined;
-      // Fast, bounded retries for transient Cloudflare/network errors.
+      // Fast, bounded retries for transient Cloudflare/network errors and stale revisions.
       for (let attempt = 0; attempt < 4; attempt++) {
+        const revision = this.revisions.get(key) ?? 0;
         try {
           response = await fetch(`${SYNC_API_ORIGIN}/state`, {
             method: 'POST', cache: 'no-store',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
             body: JSON.stringify({ key, value, revision }),
           });
+          if (response.status === 409) {
+            if (attempt < 3) {
+              try {
+                const conflict: unknown = await response.json();
+                const remoteRevision = conflict && typeof conflict === 'object'
+                  ? (conflict as { revision?: unknown }).revision
+                  : undefined;
+                if (Number.isSafeInteger(remoteRevision)) this.revisions.set(key, Number(remoteRevision));
+              } catch { /* The next attempt still uses the latest known revision. */ }
+              await new Promise(resolve => setTimeout(resolve, 250 * (2 ** attempt)));
+              continue;
+            }
+            break;
+          }
           if (response.status !== 429 && response.status < 500) break;
         } catch (error) {
           lastNetworkError = error instanceof Error ? error : new Error('Network request failed.');
@@ -109,6 +126,7 @@ export class ServerBackedStorage implements Storage {
         if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 250 * (2 ** attempt)));
       }
       if (!response) throw lastNetworkError ?? new Error('دسترسی به سرور ذخیره‌سازی برقرار نشد.');
+      if (response.status === 401) reportApiUnauthorized(this.token);
       if (!response.ok) throw new Error(response.status === 409
         ? 'این داده در دستگاه دیگری تغییر کرده است؛ پیش از ادامه صفحه را دوباره بارگذاری کن.'
         : response.status === 401

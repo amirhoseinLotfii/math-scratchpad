@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { MoreVertical, RotateCcw, Trash2, Plus, Copy, Keyboard as KeyboardIcon, ChevronDown, ChevronRight, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { RotateCcw, Trash2, Plus, BookOpen } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
-import { ascii, example, leaves, stepIsBlank, stepLatex } from './model';
-import { parse } from './parser';
+import { example, leaves, stepIsBlank, stepLatex } from './model';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
 import { diagnosticQuestions } from './diagnostic';
@@ -15,27 +12,19 @@ import { migrateChatDiagnosticSession } from './legacyDiagnostic';
 import { Keyboard } from './Keyboard';
 import { QuestionTimer } from './QuestionTimer';
 import { Button } from './shared/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from './shared/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './shared/ui/dropdown-menu';
-import { ConfidenceDialog } from './features/session/components/confidence-dialog';
-import { CompletionDialog } from './features/session/components/completion-dialog';
-import { problemSchema, jsonInputSchema } from './features/session/schemas/session-schema';
 
 import { useWorkspaceLayout } from './shared/hooks/use-workspace-layout';
 import { QuestionNavigator } from './features/workspace/components/question-navigator';
 import { MathTools } from './features/workspace/components/math-tools';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from './features/math-editor/mathlive-adapter';
 import { MathLiveStepInput } from './features/math-editor/components/mathlive-step-input';
-import { MathInsertDialog } from './features/math-editor/components/math-insert-dialog';
 export { INSERT_VISIBLE } from './features/math-editor/components/math-insert-dialog';
 import { questionStatus } from './features/workspace/model/workspace-layout';
-import { ShortcutHelp } from './features/workspace/components/shortcut-help';
-import { SessionScales } from './features/session/components/session-panel';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
-import { clearAppStorage, flushPersistedSession, SESSION_KEY } from './features/session/persistence/persistent-store';
+import { clearAppStorage } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
-import { ARCHIVE_KEY, archiveSession, bankDocument, readArchive, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
+import { archiveSession, bankDocument, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
 import { getLesson, getPracticeQuestions } from './features/lessons/selectors';
 import type { Lesson, LessonProgress } from './features/lessons/types';
@@ -44,16 +33,22 @@ import { LessonPicker } from './features/lessons/lesson-picker';
 import { LessonReferenceDialog } from './features/lessons/lesson-reference-dialog';
 import { buildLessonSections } from './features/lessons/lesson-sections';
 import { contentDirection, languageForText, LessonSourceAttribution, LessonText, QuestionChoice, QuestionSource } from './features/lessons/lesson-content';
-import { emptyLessonProgressState, lessonExportDataFromState, lessonProgressStorageKey, LESSON_PROGRESS_PREFIX, readLessonExportData, readLessonProgress, saveLessonProgress, type LessonExportData, type LessonProgressState } from './features/lessons/lesson-progress-store';
-import { initialKeyboardOpen, wellbeingAsked, markWellbeingAsked, writeKeyboardChoice } from './shared/lib/ui-prefs';
+import { lessonExportDataFromState, readLessonExportData, readLessonProgress, type LessonExportData } from './features/lessons/lesson-progress-store';
+import { initialKeyboardOpen, writeKeyboardChoice } from './shared/lib/ui-prefs';
 import { ActivityTracker } from './sync/activity-tracker';
 import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
 import { SyncPanel } from './sync/sync-panel';
-import { flushLearningStorage, getAuthenticatedServerStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from './sync/browser-db';
+import { getLearningStorage } from './sync/browser-db';
 import { getDefaultSyncRuntime } from './sync/runtime';
 import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
-import { queueChapterSnapshot } from './sync/chapter-snapshot';
 import { ContinueLearningButton, useOptionalReadingPositionContext } from './features/progress/reading-position-context';
+import { AppHeader } from './app/app-header';
+import { ExerciseMenu } from './app/exercise-menu';
+import { DialogsHost, type ResetKind } from './app/dialogs-host';
+import { PracticeLauncher, usePracticeLauncher } from './app/practice-launcher';
+import { useBankSession } from './app/use-bank-session';
+import { usePracticeEditEvents } from './app/use-practice-edit-events';
+import { useWellbeing } from './app/use-wellbeing';
 
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
@@ -68,51 +63,31 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const syncStatus = useSyncExternalStore(syncRuntime?.subscribe ?? NO_SYNC_SUBSCRIBE, syncRuntime?.getSnapshot ?? (() => EMPTY_SYNC_STATUS), () => EMPTY_SYNC_STATUS);
  const [shortcutsOpen, setShortcutsOpen] = useState(false);
  const [guidanceOpen, setGuidanceOpen] = useState(false);
- const [wellbeingDismissed, setWellbeingDismissed] = useState<string | null>(null);
- const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<'session' | 'all' | null>(null);
+ const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<ResetKind | null>(null);
  const [cloudPreviewOpen, setCloudPreviewOpen] = useState(false);
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
- const menuKeyboardActivation = useRef(false);
- const resetCancelRef = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
- const [setup, setSetup] = useState(false), [backup, setBackup] = useState(false), [menu, setMenu] = useState(false), [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
- useEffect(() => {
-  if (menu) return;
-  // Menu actions also close the controlled root directly with setMenu(false);
-  // reset disclosures here because Radix onOpenChange is not guaranteed for those closes.
-  setMenuMore(false);
-  setSessionDetailsOpen(false);
- }, [menu]);
+ const [menu, setMenu] = useState(false);
+ const launcher = usePracticeLauncher(), { setup, backup, confirmExam, confirmFractions, jsonForm, openInlinePanel } = launcher;
+ const bankSession = useBankSession({ initialBank, store, setTimerPaused: setTrackedTimerPaused });
+ const { loadedBank, loadedBankRef, bankTransitionRef, chapterTransitioning, lessonProgressRef, lessonProgressById, lessonRemoteRevision, lessonPersistenceMessage, bankReady, prepareBankTransition, updateLessonProgressState, rememberLessonProgress } = bankSession;
  const [driveBankOpen, setDriveBankOpen] = useState(false);
- const [chapterTransitioning, setChapterTransitioning] = useState(false);
  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [, setDriveBankAvailable] = useState(false);
- const [loadedBank, setLoadedBank] = useState<{ bank: DriveBank; version: string } | null>(initialBank ?? null);
- const loadedBankRef = useRef(loadedBank); loadedBankRef.current = loadedBank;
- const bankTransitionRef = useRef<string | null>(null);
  const [lessonPickerOpen, setLessonPickerOpen] = useState(false), [lessonScreen, setLessonScreen] = useState<Lesson | null>(null);
  const [referenceLesson, setReferenceLesson] = useState<Lesson | null>(null), [referenceWasRunning, setReferenceWasRunning] = useState(false);
- const [lessonProgressState, setLessonProgressState] = useState<LessonProgressState>(() => initialBank ? readLessonProgress(initialBank.bank, initialBank.version) : emptyLessonProgressState('', ''));
- const [lessonRemoteRevision, setLessonRemoteRevision] = useState(0);
- const lessonProgressRef = useRef(lessonProgressState); lessonProgressRef.current = lessonProgressState;
- const [lessonPersistenceMessage, setLessonPersistenceMessage] = useState(lessonProgressState.warning);
- const lessonProgressById = lessonProgressState.progressById;
  const [practiceLessonId, setPracticeLessonId] = useState<string | null>(null), [practiceStartError, setPracticeStartError] = useState('');
  const lessonButton = useRef<HTMLButtonElement>(null);
- const [confirmExam, setConfirmExam] = useState(false), [confirmFractions, setConfirmFractions] = useState(false);
  const [insertOpen, setInsertOpen] = useState(false);
  const [decision, setDecision] = useState<Decision | null>(null), [complete, setComplete] = useState(false);
  const [manual, setManual] = useState(''), [busy, setBusy] = useState(false), [showResults, setShowResults] = useState(false);
  const editorRoot = useRef<HTMLElement>(null), manualRef = useRef<HTMLTextAreaElement>(null);
  const invoker = useRef<HTMLElement | null>(null), insertInvoker = useRef<HTMLElement | null>(null), restoreInsert = useRef(true);
  const decisionRef = useRef<Decision | null>(null), copyBusy = useRef(false);
- const problemForm = useForm({ resolver: zodResolver(problemSchema), defaultValues: { source: '', mode: 'math' as 'math' | 'text' } });
- const jsonForm = useForm({ resolver: zodResolver(jsonInputSchema), defaultValues: { json: '' } });
- const mode = problemForm.watch('mode');
  const fractions = ex.assessment === 'fractions-round-1', questionBank = fractions ? fractionRoundOne : diagnosticQuestions;
  const exam = !!ex.diagnosticId && state.doc.exercises.some(x => x.diagnosticId === questionBank.length);
  const answeredCount = state.doc.exercises.filter(x => questionStatus(x) === 'Answered').length, skippedCount = state.doc.exercises.filter(x => x.skipped).length;
@@ -145,10 +120,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const activityTracker = activityTrackerRef.current;
  activityTracker.setBaseContext(practiceEventContext);
  const practiceAttemptCounts = useRef(new Map<string, number>());
- const pendingAppEvents = useRef(new Map<string, ReturnType<typeof setTimeout>>());
  const referenceScopeId = useRef<string | null>(null);
  const reportedDiagnosticAttempts = useRef(new Set<string>());
- const appStoreStateRef = useRef(store.getState());
  useEffect(() => activityTracker.listen(), [activityTracker]);
  useEffect(() => {
   if (!sessionId) return;
@@ -177,56 +150,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   } });
   return () => activityTracker.stopScope(scopeId);
  }, [activityTracker, answerType, currentBankQuestion, ex.id, ex.prompt, ex.source, lessonScreen, loadedBank?.version, matchingBank?.bank.chapter?.number, referenceLesson, sessionId]);
- useEffect(() => {
-  const unsubscribe = store.subscribe(next => {
-   const previous = appStoreStateRef.current;
-   appStoreStateRef.current = next;
-   const before = exerciseOf(previous.doc), after = exerciseOf(next.doc);
-   if (before.id !== after.id) return;
-   const bank = loadedBankRef.current;
-   const question = bank?.bank.questions.find(item => item.id === after.bankQuestionId);
-   const context = contextForQuestion({
-    bankVersion: bank?.version ?? 'unknown', session: next.doc.session?.id ?? 'unknown', chapter: bank?.bank.chapter?.number,
-    lesson: question?.lessonId, section: question?.sectionId, concept: question?.conceptId, question,
-   });
-   const itemId = question?.id ?? after.id;
-   const questionText = (after.prompt || after.source).slice(0, 8_000);
-   if (before.answerText !== after.answerText) {
-    const key = `answer:${after.id}`;
-    const previousTimer = pendingAppEvents.current.get(key);
-    if (previousTimer) clearTimeout(previousTimer);
-    pendingAppEvents.current.set(key, setTimeout(() => {
-     pendingAppEvents.current.delete(key);
-     emitLearnEvent(context, { type: 'answer_edited', itemId, itemType: after.answerType === 'choice' ? 'mcq' : after.answerType === 'text' ? 'typed' : 'step_by_step', questionText, userAnswer: (after.answerText ?? '').slice(0, 8_000) });
-    }, 650));
-   }
-   const beforeIds = new Set(before.steps.map(step => step.id));
-   const added = after.steps.filter(step => !beforeIds.has(step.id));
-   const steps = after.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
-   if (added.length) {
-    for (const step of added) emitLearnEvent(context, { type: 'step_added', itemId: step.id, itemType: 'step_by_step', questionText, steps });
-   } else if (before.steps.map(step => `${step.id}:${stepLatex(step)}:${step.final}`).join('|') !== after.steps.map(step => `${step.id}:${stepLatex(step)}:${step.final}`).join('|')) {
-    const key = `steps:${after.id}`;
-    const previousTimer = pendingAppEvents.current.get(key);
-    if (previousTimer) clearTimeout(previousTimer);
-    pendingAppEvents.current.set(key, setTimeout(() => {
-     pendingAppEvents.current.delete(key);
-     emitLearnEvent(context, { type: 'step_edited', itemId: after.steps.find(step => step.id === next.doc.cursor.stepId)?.id ?? itemId, itemType: 'step_by_step', questionText, steps });
-    }, 650));
-   }
-   if (before.confidence !== after.confidence && after.confidence) emitLearnEvent(context, { type: 'confidence_set', itemId, itemType: 'step_by_step', questionText, confidence: after.confidence });
-   if (!before.skipped && after.skipped) emitLearnEvent(context, { type: 'check_skipped', itemId, questionText });
-   if (!before.guidanceOpenedAt && after.guidanceOpenedAt) emitLearnEvent(context, { type: 'hint_used', itemId, questionText, hintLevel: 1 });
-  });
-  return () => {
-   unsubscribe();
-   for (const timer of pendingAppEvents.current.values()) clearTimeout(timer);
-   pendingAppEvents.current.clear();
-  };
- }, [store]);
- const needWellbeing = multipleQuestions && !!sessionId && state.doc.session?.anxiety === undefined && state.doc.session?.energy === undefined && wellbeingDismissed !== sessionId && !wellbeingAsked(sessionId) && state.storageState?.kind !== 'conflict';
- const [askingFor, setAskingFor] = useState<string | null>(null), [editingScales, setEditingScales] = useState(false), askWellbeing = !!askingFor && askingFor === sessionId && wellbeingDismissed !== sessionId;
- useEffect(() => { if (needWellbeing) { setEditingScales(false); setAskingFor(sessionId); } }, [needWellbeing, sessionId]);
+ usePracticeEditEvents(store, loadedBankRef);
+ const wellbeing = useWellbeing({ multipleQuestions, sessionId, session: state.doc.session, storageConflict: state.storageState?.kind === 'conflict' }), askWellbeing = wellbeing.askWellbeing;
  const lessons = loadedBank?.bank.lessons ?? [];
  const readingPosition = useOptionalReadingPositionContext();
  const [restoreTarget, setRestoreTarget] = useState<LessonRestoreTarget | null>(null);
@@ -270,200 +195,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  }, [menu, modalOpen]);
  useEffect(() => { editorRoot.current?.focus({ preventScroll: true }); setGuidanceOpen(false); }, [ex.id]);
  function switchQuestion(id: string) { dispatch(actions.switchExercise(id)); setShowResults(false); setManual(''); }
- function rememberMenuKeyboardActivation(event: KeyboardEvent<HTMLButtonElement>) {
-  if (event.key === 'Enter' || event.key === ' ') menuKeyboardActivation.current = true;
- }
- function toggleMenuFromClick(event: MouseEvent<HTMLButtonElement>) {
-  // Radix already toggled on keydown; ignore the native click generated by that same activation.
-  const keyboardClickHandledByRadix = event.detail === 0 && event.nativeEvent.isTrusted && menuKeyboardActivation.current;
-  menuKeyboardActivation.current = false;
-  if (keyboardClickHandledByRadix) return;
-  // Keep pointer clicks and click-only assistive/test activations working.
-  setMenu(value => !value);
- }
- function bankReady(bank: DriveBank | null, version: string) {
-  if (!bank) {
-   setLoadedBank(null);
-   const empty = emptyLessonProgressState('', ''); lessonProgressRef.current = empty; setLessonProgressState(empty); setLessonPersistenceMessage('');
-   return;
-  }
-  const sessionMeta = store.getState().doc.session;
-  if (sessionMeta?.bankId && (sessionMeta.bankId !== bank.bank_id || sessionMeta.bankVersion !== version)) return;
-  const current = loadedBankRef.current;
-  if (current?.bank.bank_id === bank.bank_id && current.version === version) { setLoadedBank({ bank, version }); return; }
-  const restored = readLessonProgress(bank, version);
-  loadedBankRef.current = { bank, version };
-  setLoadedBank({ bank, version }); lessonProgressRef.current = restored; setLessonProgressState(restored); setLessonPersistenceMessage(restored.warning);
- }
- async function prepareBankTransition(bank: DriveBank, version: string) {
-  const previous = store.getState();
-  const activeSession = previous.doc.session;
-  if (!activeSession?.bankId) return;
-  const activeBankId = activeSession.bankId;
-  const current = loadedBankRef.current;
-  const previousChapter = activeSession.chapter ?? (current?.bank.bank_id === activeBankId ? current.bank.chapter?.number : undefined);
-  const nextChapter = bank.chapter?.number;
-  const chapterChanged = previousChapter !== undefined && nextChapter !== undefined
-   ? previousChapter !== nextChapter
-   : activeBankId !== bank.bank_id;
-  if (!chapterChanged) return;
-
-  const transitionKey = `${activeBankId}:${activeSession.bankVersion ?? 'unknown'}->${bank.bank_id}:${version}`;
-  if (bankTransitionRef.current) throw new Error('یک انتقال فصل دیگر هنوز در حال انجام است.');
-  bankTransitionRef.current = transitionKey;
-  setChapterTransitioning(true);
-  setLessonPersistenceMessage('فصل قبلی در حال ذخیره و تأیید در Google Drive و Notion است…');
-  const storage = getLearningStorage();
-  const runtime = getDefaultSyncRuntime();
-  let cleanupBackup: { archiveRaw: string | null; progress: Array<{ key: string; value: string }> } | undefined;
-  let transitionState = previous;
-  const timerExercise = exerciseOf(previous.doc);
-  const resumeTimerAfterFailure = !timerExercise.timerPaused;
-  try {
-   if (previousChapter === undefined) throw new Error('شمارهٔ فصل فعال از بانک فعلی قابل تشخیص نیست؛ داده پاک نشد.');
-   if (!runtime) throw new Error('موتور همگام‌سازی آماده نیست.');
-   if (previous.storageState) throw new Error('وضعیت ذخیره‌سازی جلسه نیاز به رسیدگی دارد.');
-   if (resumeTimerAfterFailure) {
-    dispatch(actions.timerPause({ exerciseId: timerExercise.id, now: Date.now(), paused: true }));
-    manualTimerPause.current = true;
-    activityTracker.setPaused(true);
-   }
-   transitionState = store.getState();
-   await archiveSession(transitionState);
-   await flushPersistedSession();
-   if (store.getState().storageState) throw new Error('ذخیرهٔ محلی جلسه تأیید نشد؛ داده پاک نشد.');
-   await flushLearningStorage();
-   const serverStorage = getAuthenticatedServerStorage();
-   if (!serverStorage) throw new Error('برای آرشیو امن، اتصال سرور برقرار نیست.');
-   await serverStorage.flush();
-   await runtime.syncAllUntilComplete();
-
-   // The transition overlay blocks editing, but take the export from the latest
-   // durable state after remote sync instead of the stale entry-state snapshot.
-   await flushPersistedSession();
-   await flushLearningStorage();
-   await serverStorage.flush();
-   const snapshotState = store.getState();
-   if (snapshotState.storageState) throw new Error('ذخیرهٔ محلی جلسه تأیید نشد؛ داده پاک نشد.');
-
-   const archives = readArchive();
-   const currentSessionId = activeSession.id;
-   const belongsToBank = (entry: { id: string; data: string }) => {
-    if (entry.id === currentSessionId) return true;
-    try {
-     const parsed = JSON.parse(entry.data) as { doc?: { session?: { bankId?: string } } };
-     return parsed.doc?.session?.bankId === activeBankId;
-    } catch { return false; }
-   };
-   // The current session is captured below as the authoritative live document;
-   // an earlier archive copy with the same session ID would only duplicate it.
-   const chapterArchives = archives.filter(entry => entry.id !== currentSessionId && belongsToBank(entry));
-   const chapterSessionIds = new Set([currentSessionId, ...chapterArchives.map(entry => entry.id)]);
-   const progressPrefix = `${LESSON_PROGRESS_PREFIX}:${encodeURIComponent(activeBankId)}:`;
-   const progressRecords: Array<{ key: string; value: string }> = [];
-   for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index);
-    if (!key?.startsWith(progressPrefix)) continue;
-    const value = storage.getItem(key);
-    if (value !== null) progressRecords.push({ key, value });
-   }
-   const serverEvents = await runtime.readAllServerEvents();
-   const chapter = previousChapter;
-   const chapterEvents = serverEvents
-    .filter(record => record.event.type !== 'chapter_snapshot'
-     && chapterSessionIds.has(record.event.session) && record.event.chapter === chapter)
-    .map(record => ({ seq: record.seq, event: record.event }));
-   const rawSession = storage.getItem(SESSION_KEY);
-   const snapshot = {
-    format: 'math-scratchpad.chapter-snapshot/v1',
-    bank: { id: activeBankId, version: activeSession.bankVersion ?? current?.version ?? 'unknown', chapter, title: current?.bank.chapter?.title },
-    activeSession: { sessionId: currentSessionId, appStateRaw: rawSession, sessionExport: serialize(snapshotState) },
-    archivedSessions: chapterArchives,
-    lessonProgressRecords: progressRecords,
-    chapterEvents,
-   };
-   await queueChapterSnapshot({
-    bankId: activeBankId,
-    bankVersion: activeSession.bankVersion ?? current?.version ?? 'unknown',
-    chapter,
-    sessionId: currentSessionId,
-    payload: snapshot,
-   });
-   // The immutable snapshot must exist in both remote destinations before any
-   // chapter-specific browser data is removed.
-   await runtime.syncAllUntilComplete();
-
-   cleanupBackup = { archiveRaw: storage.getItem(ARCHIVE_KEY), progress: progressRecords };
-   const remainingArchives = archives.filter(entry => !belongsToBank(entry));
-   if (remainingArchives.length) storage.setItem(ARCHIVE_KEY, JSON.stringify(remainingArchives));
-   else storage.removeItem(ARCHIVE_KEY);
-   for (const record of progressRecords) storage.removeItem(record.key);
-   await flushLearningStorage();
-   await serverStorage.flush();
-   dispatch(actions.resetSession());
-   await flushPersistedSession();
-   await flushLearningStorage();
-   await serverStorage.flush();
-   await runtime.syncAllUntilComplete();
-   setLessonPersistenceMessage('آرشیو فصل قبلی در Drive و Notion تأیید شد؛ دادهٔ محلی آن پاک شد.');
-  } catch (error) {
-   if (cleanupBackup) {
-    try {
-     if (cleanupBackup.archiveRaw === null) storage.removeItem(ARCHIVE_KEY);
-     else storage.setItem(ARCHIVE_KEY, cleanupBackup.archiveRaw);
-     for (const record of cleanupBackup.progress) storage.setItem(record.key, record.value);
-     store.setState(transitionState);
-     await flushPersistedSession();
-     await flushLearningStorage();
-     await getAuthenticatedServerStorage()?.flush();
-    } catch { /* Keep the original failure visible; the snapshot is already remote-verified. */ }
-   }
-   if (resumeTimerAfterFailure && store.getState().doc.session?.id === activeSession.id) {
-    dispatch(actions.timerPause({ exerciseId: timerExercise.id, now: Date.now(), paused: false }));
-    manualTimerPause.current = false;
-    activityTracker.setPaused(false);
-   }
-   const message = error instanceof Error ? error.message : 'همگام‌سازی فصل قبلی ناموفق بود.';
-   setLessonPersistenceMessage(`فصل جدید بارگیری نشد؛ اطلاعات فصل قبلی حفظ شد. ${message}`);
-   throw error;
-  } finally {
-   setChapterTransitioning(false);
-   if (bankTransitionRef.current === transitionKey) bankTransitionRef.current = null;
-  }
- }
- const updateLessonProgressState = useCallback((next: LessonProgressState) => {
-  lessonProgressRef.current = next; setLessonProgressState(next);
-  const activeBank = loadedBankRef.current;
-  if (!activeBank || activeBank.bank.bank_id !== next.bankId || activeBank.version !== next.bankVersion) return;
-  const result = saveLessonProgress(activeBank.bank, activeBank.version, next);
-  setLessonPersistenceMessage(result.saved ? (next.persistenceBlocked ? next.warning : '') : result.message);
-  if (result.saved) void flushLearningStorage().catch(() => setLessonPersistenceMessage('IndexedDB could not confirm the lesson save; old browser data remains protected.'));
- }, []);
- useEffect(() => {
-  if (!loadedBank) return;
-  const bankForSync: DriveBank = loadedBank.bank;
-  const versionForSync: string = loadedBank.version;
-  const key = lessonProgressStorageKey(bankForSync.bank_id, versionForSync);
-  function onLessonStorage(event: { key: string | null; newValue: string | null }) {
-   if (event.key !== key) return;
-   if (event.newValue === null) {
-    const cleared = emptyLessonProgressState(bankForSync.bank_id, versionForSync);
-    lessonProgressRef.current = cleared; setLessonProgressState(cleared); setLessonPersistenceMessage(''); setLessonRemoteRevision(value => value + 1);
-    return;
-   }
-   const restored = readLessonProgress(bankForSync, versionForSync);
-   if (restored.persistenceBlocked) { setLessonPersistenceMessage(restored.warning); return; }
-   lessonProgressRef.current = restored; setLessonProgressState(restored); setLessonPersistenceMessage(''); setLessonRemoteRevision(value => value + 1);
-  }
-  const unsubscribeLearningStorage = subscribeLearningStorage(onLessonStorage);
-  const nativeStorageEvent = (event: StorageEvent) => onLessonStorage(event);
-  window.addEventListener('storage', nativeStorageEvent);
-  return () => { unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); };
- }, [loadedBank]);
- const rememberLessonProgress = useCallback((progress: LessonProgress) => {
-  const current = lessonProgressRef.current;
-  updateLessonProgressState({ ...current, progressById: { ...current.progressById, [progress.lessonId]: progress } });
- }, [updateLessonProgressState]);
+ function setTrackedTimerPaused(paused: boolean) { manualTimerPause.current = paused; activityTracker.setPaused(paused); }
  const lastOpenedLessonKey = (bankId: string, version: string) => `math-scratchpad-last-open-lesson-v1:${encodeURIComponent(bankId)}:${encodeURIComponent(version)}`;
  function resumeBankLesson(bank: DriveBank, version: string) {
   // Banks without lessons stay in the Drive panel so their question batch can be opened explicitly.
@@ -612,23 +344,6 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   const existing = store.getState().doc.exercises.find(item => item.bankQuestionId === questionId);
   if (existing) closeReference(existing.id);
   else await startReferencePracticeQuestion(questionId);
- }
- // New Problem is an inline form: move keyboard focus into the input after
- // the menu closes, rather than leaving focus on the background menu button.
- useEffect(() => {
-  if (!setup) return;
-  const frame = requestAnimationFrame(() => {
-   document.getElementById('problem-input')?.focus({ preventScroll: true });
-  });
-  return () => cancelAnimationFrame(frame);
- }, [setup]);
- // Inline setup panels are alternatives, not independently stackable cards.
- // Switching workflows preserves form state but keeps the workspace readable.
- function openInlinePanel(panel: 'new' | 'backup' | 'fractions' | 'diagnostic') {
-  setSetup(panel === 'new');
-  setBackup(panel === 'backup');
-  setConfirmFractions(panel === 'fractions');
-  setConfirmExam(panel === 'diagnostic');
  }
  function openDriveBank() { setDriveBankInitialized(true); setDriveBankOpen(true); }
  function loadBankFromLessons() { setLessonPickerOpen(false); openDriveBank(); }
@@ -833,17 +548,6 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function addStep() { dispatch(actions.command({ type: 'newStep' })); focusCurrentMathControl(); }
  function resetStep(id: string) { dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'clear' })); focusCurrentMathControl(); }
  function deleteStep(id: string) { if (id === ex.steps[0].id) return; dispatch(actions.select({ stepId: id, nodeId: leaves(ex.steps.find(s => s.id === id)!.expression)[0].node.id })); dispatch(actions.command({ type: 'deleteStep' })); focusCurrentMathControl(); }
- const start = problemForm.handleSubmit(value => {
-  try {
-   if (value.mode === 'math') parse(value.source);
-   dispatch(actions.command({ type: 'newExercise', source: value.mode === 'math' ? ascii(value.source) : value.source, mode: value.mode }));
-   setSetup(false); problemForm.reset(); setShowResults(false);
-  } catch (error) { problemForm.setError('source', { message: error instanceof Error ? error.message : 'Invalid problem.' }, { shouldFocus: true }); }
- });
- const loadBackup = jsonForm.handleSubmit(value => {
-  try { const raw = JSON.parse(value.json); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); emitLearnEvent(sessionEventContext, { type: 'backup_restored', itemId: 'session-json' }); setBackup(false); setShowResults(false); }
-  catch (error) { jsonForm.setError('json', { message: error instanceof Error ? error.message : 'Invalid session JSON.' }, { shouldFocus: true }); }
- });
  function keyboard(event: KeyboardEvent<HTMLElement>) {
   if (chapterTransitioning || bankTransitionRef.current) { event.preventDefault(); event.stopPropagation(); return; }
   const key = event.key, target = event.target as HTMLElement;
@@ -927,75 +631,38 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const mathTools = <MathTools wide={wide} canUndo={canUndo} canRedo={canRedo} onUndo={() => { if (!undoMathfield(state.doc.cursor.stepId)) dispatch(actions.undo()); focusEditor(); }} onRedo={() => { if (!redoMathfield(state.doc.cursor.stepId)) dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-busy={chapterTransitioning} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
-   <header className="app-header"><div className="brand"><h1>Math Scratchpad</h1></div>
-    {batch && <p className="header-progress small" role="status" aria-live="polite" aria-label={`${answeredCount} of ${state.doc.exercises.length} practice questions answered${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`}><span className="header-progress-copy">{answeredCount} of {state.doc.exercises.length} practice questions answered{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}</span><span className="header-progress-track" role="progressbar" aria-label="Practice questions answered" aria-valuemin={0} aria-valuemax={state.doc.exercises.length} aria-valuenow={answeredCount}><span style={{ width: `${answeredCount / state.doc.exercises.length * 100}%` }} /></span></p>}<div className="header-actions"><span className="local-draft-label save-indicator" role="status" aria-live="polite" title={state.savedAt ? `Browser cache updated at ${state.savedAt}` : undefined}>{state.storageState ? state.storageState.kind === 'error' ? 'Storage unavailable' : 'Draft conflict' : syncStatus.pending > 0 ? `Queued ${syncStatus.pending}` : syncStatus.phase === 'syncing' ? 'Syncing…' : syncStatus.phase === 'synced' && (!state.savedAt || Date.parse(syncStatus.lastSyncedAt ?? '') >= Date.parse(state.savedAt)) ? 'Synced ✓' : state.savedAt ? 'Browser cache' : 'Waiting for sync'}</span>
-     {isMathAnswer && <Button className="keyboard-toggle" aria-label={state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; writeKeyboardChoice(open); dispatch(actions.keyboard(open)); if (open) requestAnimationFrame(focusEditor); }}><KeyboardIcon aria-hidden="true" /><span>{state.keyboardOpen ? 'Hide Keyboard' : 'Show Keyboard'}</span></Button>}
-     <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onKeyDown={rememberMenuKeyboardActivation} onClick={toggleMenuFromClick}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu" onCloseAutoFocus={event => {
-       if (syncPanelOpen || setup || backup) event.preventDefault();
-       if (setup || backup) requestAnimationFrame(() =>
-         document.getElementById(setup ? 'problem-input' : 'session-json')?.focus({ preventScroll: true }));
-      }}>
-      <DropdownMenuItem className="menu-primary-action" onSelect={() => request('copy')}><ClipboardCheck aria-hidden="true" />Check · Copy for Review</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => { void exportTutor(); }}><FileJson2 aria-hidden="true" />Export for tutor (JSON)</DropdownMenuItem>
-      <DropdownMenuItem onSelect={openDriveBank}><HardDrive aria-hidden="true" />Google Drive · Question bank</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => openInlinePanel('new')}><NotebookPen aria-hidden="true" />New Problem</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => dispatch(actions.setSkipped(!ex.skipped))}>{ex.skipped ? <RotateCcw aria-hidden="true" /> : <SkipForward aria-hidden="true" />}{ex.skipped ? 'Unskip question' : 'Skip question'}</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setLessonPickerOpen(true)}><BookOpen aria-hidden="true" />Lessons</DropdownMenuItem>
-      <DropdownMenuItem className="menu-disclosure" aria-expanded={menuMore} aria-controls={menuMore ? 'more-notebook-actions' : undefined} onSelect={event => { event.preventDefault(); setMenuMore(value => !value); }}><span>Show more</span><ChevronDown className={menuMore ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" /></DropdownMenuItem>
-      {menuMore && <div id="more-notebook-actions" className="menu-more-content">
-       <DropdownMenuLabel className="menu-section-heading">Session</DropdownMenuLabel>
-       <DropdownMenuItem className="menu-disclosure" aria-expanded={sessionDetailsOpen} aria-controls={sessionDetailsOpen ? 'session-details-info' : undefined} onSelect={event => { event.preventDefault(); setSessionDetailsOpen(value => !value); }}><BookOpen aria-hidden="true" /><span>Session details</span><ChevronDown className={sessionDetailsOpen ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" /></DropdownMenuItem>
-       {sessionDetailsOpen && <div id="session-details-info" role="group" aria-label="Session details" className="session-details-panel">
-        <p className="menu-info-value"><span>Session ID</span><span dir="ltr">{state.doc.session?.id ?? '—'}</span></p>
-        <p className="menu-info-value"><span>Math anxiety</span><span>{state.doc.session?.anxiety ?? 'Not set'}</span></p>
-        <p className="menu-info-value"><span>Energy</span><span>{state.doc.session?.energy ?? 'Not set'}</span></p>
-        <DropdownMenuItem onSelect={() => { setEditingScales(true); setWellbeingDismissed(null); setAskingFor(sessionId); }}>Change</DropdownMenuItem>
-       </div>}
-       <DropdownMenuItem onSelect={() => dispatch(actions.setSessionMeta({ endedAt: isoLocal() }))}>End session (record end time)</DropdownMenuItem>
-       <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('session')}><RotateCcw aria-hidden="true" />Reset current session</DropdownMenuItem>
-
-       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Practice<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
-        <DropdownMenuSubContent aria-label="Practice actions">
-         <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('fractions'); }}>Start Round 1 · 20 fraction questions</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); openInlinePanel('diagnostic'); }}>Start 30-question diagnostic</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })); }}>Use example</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); dispatch(actions.command({ type: 'newProblem' })); }}>Use current expression as new problem</DropdownMenuItem>
-        </DropdownMenuSubContent>
-       </DropdownMenuSub>
-
-       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Data<ChevronRight aria-hidden="true" /></DropdownMenuSubTrigger>
-        <DropdownMenuSubContent aria-label="Data actions">
-         <DropdownMenuItem onSelect={() => { setMenu(false); void copySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); downloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); fileInput.current?.click(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); jsonForm.reset({ json: '' }); openInlinePanel('backup'); }}>Import session JSON</DropdownMenuItem>
-         <DropdownMenuItem onSelect={() => { setMenu(false); setSyncPanelOpen(value => !value); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
-        </DropdownMenuSubContent>
-       </DropdownMenuSub>
-
-       <DropdownMenuLabel className="menu-section-heading">Help</DropdownMenuLabel>
-       <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}><HelpCircle aria-hidden="true" />Keyboard shortcuts</DropdownMenuItem>
-
-       <DropdownMenuLabel className="menu-section-heading danger-heading">Danger zone</DropdownMenuLabel>
-       {isServerStorageActive() ? <DropdownMenuItem className="menu-danger" onSelect={() => setCloudPreviewOpen(true)}><Trash2 aria-hidden="true" /><span>Preview cloud reset impact<span className="small menu-description">Read-only verification; no data is deleted and the question bank is protected.</span></span></DropdownMenuItem> : <DropdownMenuItem className="menu-danger" onSelect={() => setResetKind('all')}><Trash2 aria-hidden="true" />Reset all local storage</DropdownMenuItem>}
-      </div>}
-     </DropdownMenuContent></DropdownMenu>
-    </div></header>
+  <AppHeader batch={batch} answeredCount={answeredCount} skippedCount={skippedCount} totalQuestions={state.doc.exercises.length} savedAt={state.savedAt} storageState={state.storageState} syncStatus={syncStatus} showKeyboardToggle={isMathAnswer} keyboardOpen={state.keyboardOpen} onToggleKeyboard={() => { const open = !state.keyboardOpen; writeKeyboardChoice(open); dispatch(actions.keyboard(open)); if (open) requestAnimationFrame(focusEditor); }}>
+   <ExerciseMenu open={menu} setOpen={setMenu} invokerRef={menuInvoker} skipped={!!ex.skipped} session={state.doc.session} syncPanelOpen={syncPanelOpen} setup={setup} backup={backup} actions={{
+    onCheckCopy: () => request('copy'),
+    onExportTutor: () => { void exportTutor(); },
+    onOpenDriveBank: () => openDriveBank(),
+    onNewProblem: () => openInlinePanel('new'),
+    onToggleSkip: () => dispatch(actions.setSkipped(!ex.skipped)),
+    onLessons: () => setLessonPickerOpen(true),
+    onEditScales: wellbeing.editScales,
+    onEndSession: () => dispatch(actions.setSessionMeta({ endedAt: isoLocal() })),
+    onResetSession: () => setResetKind('session'),
+    onShortcuts: () => setShortcutsOpen(true),
+    onCloudPreview: () => setCloudPreviewOpen(true),
+    onResetAll: () => setResetKind('all'),
+    onStartFractions: () => openInlinePanel('fractions'),
+    onStartDiagnostic: () => openInlinePanel('diagnostic'),
+    onUseExample: () => dispatch(actions.command({ type: 'newExercise', source: example, mode: 'math' })),
+    onUseCurrentExpression: () => dispatch(actions.command({ type: 'newProblem' })),
+    onCopySession: () => { void copySession(); },
+    onDownloadBackup: downloadBackup,
+    onImportFile: () => fileInput.current?.click(),
+    onImportJson: () => { jsonForm.reset({ json: '' }); openInlinePanel('backup'); },
+    onOpenSync: () => setSyncPanelOpen(true),
+   }} />
+  </AppHeader>
 
    {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} />}
    {syncPanelOpen && <SyncPanel onClose={() => { setSyncPanelOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} />}
    <CloudResetPreviewDialog open={cloudPreviewOpen} onOpenChange={setCloudPreviewOpen} runtime={syncRuntime} />
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
-   {(confirmExam || confirmFractions) && <section className="setup-panel" aria-label={confirmFractions ? 'Confirm fraction round start' : 'Confirm diagnostic start'}><h2>Start {confirmFractions ? 'Round 1 · 20 fraction questions' : 'diagnostic'}?</h2><p>Export Session JSON first to keep your current work.</p><div className="toolbar"><Button variant="default" onClick={() => { dispatch(confirmFractions ? actions.startFractionRound() : actions.startDiagnostic()); if (!wide) dispatch(actions.keyboard(true)); setConfirmExam(false); setConfirmFractions(false); setShowResults(false); }}>{confirmFractions ? 'Start 20 Questions' : 'Start 30 Questions'}</Button><Button onClick={() => { setConfirmExam(false); setConfirmFractions(false); }}>Cancel</Button></div></section>}
-   {setup && <section className="setup-panel" aria-label="New exercise"><h2>New exercise</h2><form onSubmit={start} noValidate>
-    <label htmlFor="problem-format">Problem format</label><select id="problem-format" {...problemForm.register('mode')}><option value="math">Math / LaTeX</option><option value="text">Persian text</option></select>
-    <label htmlFor="problem-input">Problem</label><textarea id="problem-input" {...problemForm.register('source')} maxLength={4000} dir={mode === 'text' ? 'auto' : 'ltr'} aria-invalid={!!problemForm.formState.errors.source} aria-describedby={problemForm.formState.errors.source ? 'problem-error' : undefined} placeholder={mode === 'math' ? example : 'Describe the question'} />
-    {problemForm.formState.errors.source && <p id="problem-error" role="alert">{problemForm.formState.errors.source.message}</p>}
-    <div className="toolbar"><Button type="submit" variant="default">Start</Button><Button onClick={() => setSetup(false)}>Cancel</Button></div></form></section>}
-   {backup && <section className="setup-panel" aria-label="Session backup"><h2>Session backup</h2><form onSubmit={loadBackup} noValidate><label htmlFor="session-json">Copy or paste session JSON</label><textarea id="session-json" {...jsonForm.register('json')} spellCheck={false} aria-invalid={!!jsonForm.formState.errors.json} aria-describedby={jsonForm.formState.errors.json ? 'json-error' : undefined} /><div className="toolbar"><Button onClick={async () => dispatch(actions.notice(await writeClipboard(jsonForm.getValues('json')) ? 'Session copied.' : 'Select the text and copy manually.'))}>Copy Session</Button><Button type="submit">Restore</Button><Button onClick={() => setBackup(false)}>Close</Button></div>{jsonForm.formState.errors.json && <p id="json-error" role="alert">{jsonForm.formState.errors.json.message}</p>}</form></section>}
+   <PracticeLauncher launcher={launcher} wide={wide} sessionEventContext={sessionEventContext} onSessionChanged={() => setShowResults(false)} />
    {resumeCandidate && <ContinueLearningButton
     title={<span lang={languageForText(resumeCandidate.lesson.title)} dir={contentDirection(resumeCandidate.lesson.title)}><LessonText text={resumeCandidate.lesson.title} /></span>}
     section={resumeCandidate.sectionTitle}
@@ -1053,23 +720,26 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} restore={restoreTarget ?? undefined} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} activityTracker={activityTracker} eventContext={lessonEventContext} /></div>}
   <LessonPicker open={lessonPickerOpen} lessons={lessons} progressByLesson={lessonProgressById} hasBank={!!matchingBank} onLoadBank={loadBankFromLessons} onOpenChange={setLessonPickerOpen} onChoose={openLesson} onCloseAutoFocus={event => { event.preventDefault(); if (!lessonScreen) menuInvoker.current?.focus({ preventScroll: true }); }} />
   {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} question={currentBankQuestion} onSelectPracticeQuestion={openQuestionFromReference} onOpenInteractiveLesson={openInteractiveLessonFromReference} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
-  <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>
   <input ref={fileInput} type="file" accept="application/json,.json" hidden aria-label="Import backup file" onChange={e => { void importFile(e.target.files?.[0]); }} />
-  <Dialog open={!!exportWarning} onOpenChange={value => { if (!value) setExportWarning(null); }}><DialogContent><DialogTitle>Final answer missing</DialogTitle><DialogDescription>These questions have work but no marked final answer: {exportWarning?.map(n => `Q${n}`).join(', ')}. Mark a final step so your tutor can verify the result.</DialogDescription><div className="dialog-actions"><Button variant="default" onClick={() => setExportWarning(null)}>Go back and mark</Button><Button onClick={() => { void exportTutor(true); }}>Export anyway</Button></div></DialogContent></Dialog>
-  <Dialog open={!!resetKind} onOpenChange={value => { if (!value) setResetKind(null); }}><DialogContent onOpenAutoFocus={event => { event.preventDefault(); resetCancelRef.current?.focus({ preventScroll: true }); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }}><DialogTitle>{resetKind === 'all' ? 'Reset all local storage?' : 'Reset current session?'}</DialogTitle><DialogDescription>{resetKind === 'all' ? 'This deletes every saved draft, preference and session of this app in this browser. Download a backup first.' : 'This clears all questions and answers of the current session and starts a new one. Download a backup first.'}</DialogDescription><div className="dialog-actions"><Button ref={resetCancelRef} onClick={() => setResetKind(null)}>Cancel</Button><Button onClick={downloadBackup}>Download backup</Button><Button variant="danger" onClick={confirmReset}>{resetKind === 'all' ? 'Delete everything' : 'Reset session'}</Button></div></DialogContent></Dialog>
-  <Dialog open={askWellbeing} onOpenChange={value => { if (!value) { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); setEditingScales(false); } }}><DialogContent className="wellbeing-dialog" aria-describedby="wellbeing-desc" onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { if (editingScales) menuInvoker.current?.focus({ preventScroll: true }); else focusEditor(); }); }}><DialogTitle>{editingScales ? 'Change session ratings' : 'Before you start this batch'}</DialogTitle><DialogDescription id="wellbeing-desc">Optional. You can change this later.</DialogDescription>
-   <SessionScales meta={state.doc.session} onMeta={value => dispatch(actions.setSessionMeta(value))} />
-   <div className="dialog-actions"><Button onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Skip for now</Button><Button variant="default" onClick={() => { markWellbeingAsked(sessionId); setWellbeingDismissed(sessionId); }}>Start</Button></div></DialogContent></Dialog>
-  <ConfidenceDialog open={!!decision} initial={ex.confidence} onCancel={cancelDecision} onConfirm={confirmDecision} invoker={invoker.current} />
-  <CompletionDialog totalQuestions={state.doc.exercises.length} answeredQuestions={answeredCount} skippedQuestions={skippedCount} draftQuestions={state.doc.exercises.filter(question => questionStatus(question) === "Draft").length} open={complete} onClose={() => setComplete(false)} onReview={() => { setComplete(false); void copyReview(); }} onCopy={() => { setComplete(false); void copySession(); }} onAnalyze={() => { setComplete(false); setShowResults(true); }} />
-  <MathInsertDialog
-   open={insertOpen}
-   onOpenChange={value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } else setInsertOpen(true); }}
-   wide={wide}
-   onInsert={insert}
-   onCloseAutoFocus={event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); }}
+  <DialogsHost
+   menuInvokerRef={menuInvoker}
+   focusEditor={focusEditor}
+   session={state.doc.session}
+   shortcuts={{ open: shortcutsOpen, setOpen: setShortcutsOpen }}
+   exportWarning={{ questions: exportWarning, dismiss: () => setExportWarning(null), exportAnyway: () => { void exportTutor(true); } }}
+   reset={{ kind: resetKind, cancel: () => setResetKind(null), downloadBackup, confirm: confirmReset }}
+   wellbeing={wellbeing}
+   confidence={{ open: !!decision, initial: ex.confidence, invoker: invoker.current, onCancel: cancelDecision, onConfirm: confirmDecision }}
+   completion={{ open: complete, totalQuestions: state.doc.exercises.length, answeredQuestions: answeredCount, skippedQuestions: skippedCount, draftQuestions: state.doc.exercises.filter(question => questionStatus(question) === "Draft").length, onClose: () => setComplete(false), onReview: () => { setComplete(false); void copyReview(); }, onCopy: () => { setComplete(false); void copySession(); }, onAnalyze: () => { setComplete(false); setShowResults(true); } }}
+   insert={{
+    open: insertOpen,
+    onOpenChange: value => { if (!value) { if (restoreInsert.current) closeInsert(); else setInsertOpen(false); } else setInsertOpen(true); },
+    wide,
+    onInsert: insert,
+    onCloseAutoFocus: event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); },
+   }}
+   storageConflict={state.storageState?.kind === 'conflict'}
   />
-  <Dialog open={state.storageState?.kind === 'conflict'}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
   {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" className="chapter-transition-overlay" >
    <div><strong >در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
   </div>}

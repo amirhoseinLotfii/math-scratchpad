@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { actions } from './store';
 import { elapsedAt } from './model';
+import { TIMER_HEARTBEAT_INTERVAL_MS, writeTimerHeartbeat } from './features/session/timer-continuity';
 
 /**
  * Question time from persisted wall-clock timestamps: closed segments (elapsedMs) plus the open
@@ -21,11 +22,21 @@ export function QuestionTimer({ exerciseId, onPauseChange }: { exerciseId: strin
     document.addEventListener('visibilitychange', refresh); window.addEventListener('focus', refresh);
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh); };
   }, [paused]);
+  // Liveness marker: on the next launch the restored segment is credited only up
+  // to the last moment this app was open, so a closed browser adds no study time.
+  useEffect(() => {
+    writeTimerHeartbeat(Date.now());
+    if (paused) return;
+    const beat = () => writeTimerHeartbeat(Date.now());
+    const interval = setInterval(beat, TIMER_HEARTBEAT_INTERVAL_MS);
+    document.addEventListener('visibilitychange', beat); window.addEventListener('pagehide', beat); window.addEventListener('focus', beat);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', beat); window.removeEventListener('pagehide', beat); window.removeEventListener('focus', beat); };
+  }, [paused]);
   const seconds = Math.floor((ex ? elapsedAt(ex, now) : 0) / 1000);
   const formatted = `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
   return <div className="question-timer" lang="en" dir="ltr">
     <span>Question time <output aria-label="Question elapsed time" aria-live="off" dir="ltr">{formatted}</output></span>
     <button type="button" aria-pressed={paused} onClick={() => { const t = Date.now(), nextPaused = !paused; dispatch(actions.timerPause({ exerciseId, now: t, paused: nextPaused })); onPauseChange?.(nextPaused); setNow(t); }}>{paused ? 'Resume' : 'Pause'}</button>
-    <span className="small">{paused ? 'Paused' : 'Recording'} · Keeps counting while away; pause for breaks.</span>
+    <span className="small">{paused ? 'Paused' : 'Recording'} · Counts while the app is open; time with it closed is not added.</span>
   </div>;
 }

@@ -182,9 +182,10 @@
   --color-error-foreground: var(--color-neutral-50); /* #fafafa */
   
   /* Border Colors */
-  --color-border: var(--color-neutral-700); /* #404040 */
-  --color-border-strong: var(--color-neutral-600); /* #525252 */
+  --color-border: var(--color-neutral-500); /* #8c8c8c; at least 3:1 on surface and elevated surfaces */
+  --color-border-strong: var(--color-neutral-400); /* #a3a3a3 */
   --color-border-subtle: var(--color-neutral-800); /* #262626 */
+  --color-border-form: var(--color-neutral-500); /* #8c8c8c; readable against dark form surfaces */
   
   /* Focus and Ring Colors */
   --color-ring: var(--color-primary-400); /* #34d399 */
@@ -197,7 +198,7 @@
   /* Math Editor Colors */
   --color-math-background: var(--color-neutral-800); /* #262626 */
   --color-math-surface: var(--color-neutral-700); /* #404040 */
-  --color-math-border: var(--color-neutral-600); /* #525252 */
+  --color-math-border: var(--color-neutral-500); /* #8c8c8c; 3:1 on the math editor surface */
   --color-math-placeholder: var(--color-neutral-500); /* #8c8c8c */
 }
 

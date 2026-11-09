@@ -147,6 +147,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
   const focusedCheckScope = useRef<string | null>(null);
   const focusedWorkScope = useRef<string | null>(null);
   const attemptCounts = useRef(new Map<string, number>());
+  const gateAttemptedSections = useRef(new Set<string>());
   const pendingAnswerEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingWorkEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const lessonScrollRef = useRef<HTMLDivElement>(null);
@@ -206,6 +207,17 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
     attemptCounts.current.set(itemId, next);
     return next;
   }, []);
+
+  /** Section quick-checks are the unlock gate; mirror that for Drive/Notion projections. */
+  const markSectionGateAttempt = useCallback((section: LessonSection | undefined, question?: BankQuestion) => {
+    if (!section || gateAttemptedSections.current.has(section.id)) return;
+    gateAttemptedSections.current.add(section.id);
+    emitLearnEvent(makeEventContext(question, section), {
+      type: 'gate_attempt',
+      itemId: section.id,
+      questionText: section.title ?? section.id,
+    });
+  }, [makeEventContext]);
 
   useEffect(() => {
     const context = lessonEventContext;
@@ -485,6 +497,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
     if (answered && !before.answeredCheckIds.includes(questionId)) {
       const attemptNo = nextAttemptNo(questionId);
       emitLearnEvent(context, { ...baseFields, type: 'check_answer', attemptNo });
+      markSectionGateAttempt(currentSection, question);
     } else {
       const existing = pendingAnswerEdits.current.get(questionId);
       if (existing) clearTimeout(existing);
@@ -494,7 +507,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
       }, 700);
       pendingAnswerEdits.current.set(questionId, timer);
     }
-  }, [allQuestions, commitProgress, makeEventContext, nextAttemptNo]);
+  }, [allQuestions, commitProgress, currentSection, makeEventContext, markSectionGateAttempt, nextAttemptNo]);
 
   const setConfidence = useCallback((questionId: string, value: 1 | 2 | 3 | 4 | 5) => {
     const before = progressRef.current;
@@ -515,6 +528,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
       itemType: skipQuestion.answerType === 'choice' ? 'mcq' : skipQuestion.answerType === 'text' || skipQuestion.mode === 'text' ? 'typed' : 'step_by_step',
       questionText: (skipQuestion.prompt || skipQuestion.source).slice(0, 8_000),
     });
+    markSectionGateAttempt(currentSection, skipQuestion);
     setSkipQuestion(null);
   }
 
@@ -559,6 +573,12 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
         emitLearnEvent(makeEventContext(undefined, currentSection, concept.id), { type: 'concept_complete', itemId: concept.id, questionText: concept.title });
       }
     }
+    emitLearnEvent(makeEventContext(undefined, currentSection), {
+      type: 'gate_passed',
+      itemId: currentSection.id,
+      questionText: currentSection.title ?? '',
+      note: 'Section quick-checks answered or skipped; next section unlocked.',
+    });
     emitLearnEvent(makeEventContext(undefined, currentSection), { type: 'section_complete', itemId: currentSection.id, questionText: currentSection.title ?? '' });
     const nextIndex = sectionIndex + 1;
     const nextSection = sections[nextIndex];

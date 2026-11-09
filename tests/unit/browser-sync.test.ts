@@ -703,6 +703,26 @@ describe('browser sync runtime', () => {
     expect(runtime.getSnapshot().notionMirror).toMatchObject({ status: 'not_configured', pendingCount: 4 });
     runtime.stop();
   });
+
+  it('completes a chapter sync barrier when only Drive is configured', async () => {
+    await initializeLearningStorage();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input)), method = init?.method ?? 'GET';
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      if (url.pathname === '/drive/status' || (url.pathname === '/drive/sync' && method === 'POST')) {
+        return Response.json({ status: 'synced', pendingCount: 0, lastSyncedAt: null, lastError: null, drive: { status: 'synced', pendingCount: 0, lastSyncedAt: null, lastError: null } });
+      }
+      if (url.pathname === '/notion/status') return Response.json({ status: 'not_configured', pendingCount: 0, lastSyncedAt: null, lastError: null });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    await expect(runtime.syncAllUntilComplete(2_000)).resolves.toBeUndefined();
+    runtime.stop();
+  });
 });
 
 describe('owner-only read-only cloud reset preview', () => {

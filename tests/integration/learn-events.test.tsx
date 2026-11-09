@@ -81,4 +81,21 @@ describe('learning UI event integration', () => {
     tracker.stop();
     unsubscribe();
   });
+
+  it('emits gate_attempt on first check engagement and gate_passed when unlocking the next section', async () => {
+    const events: Array<{ type: string; itemId?: string }> = [];
+    const unsubscribe = subscribeToLearnEvents(event => events.push(event));
+    const bank = validateBank(JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as unknown) as DriveBank;
+    const lesson = bank.lessons!.find(item => item.id === 'SAMPLE-1.1')!;
+    render(<Provider store={makeStore(initialState())}><LessonScreen bank={bank} lesson={lesson} onBack={() => undefined} onStartPractice={() => undefined} eventContext={{ bankVersion: 'sample-v1', session: 'S001', chapter: 1 }} /></Provider>);
+
+    await userEvent.click(screen.getAllByRole('radio')[0]);
+    expect(events.some(event => event.type === 'gate_attempt')).toBe(true);
+    expect(events.filter(event => event.type === 'gate_attempt')).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next section →' }));
+    expect(events.some(event => event.type === 'gate_passed')).toBe(true);
+    expect(events.some(event => event.type === 'section_complete')).toBe(true);
+    unsubscribe();
+  });
 });

@@ -41,7 +41,7 @@ describe('server-only editor persistence', () => {
     expect(storage.getItem('math-scratchpad-session-v3')).toBe('{"step":"2/3"}');
   });
 
-  it('automatically retries transient failures but never conceals a version conflict', async () => {
+  it('automatically retries transient failures and version conflicts', async () => {
     let calls = 0;
     vi.stubGlobal('fetch', vi.fn(async () => {
       calls += 1;
@@ -53,9 +53,17 @@ describe('server-only editor persistence', () => {
     await storage.flush();
     expect(calls).toBe(2);
 
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'state_conflict', revision: 2 }, { status: 409 })));
+    const revisions: number[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { revision: number };
+      revisions.push(body.revision);
+      if (body.revision !== 2) return Response.json({ error: 'state_conflict', revision: 2 }, { status: 409 });
+      return Response.json({ key: 'math-scratchpad-session-v3', revision: body.revision + 1 });
+    }));
     storage.setItem('math-scratchpad-session-v3', '{"step":2}');
-    await expect(storage.flush()).rejects.toThrow(/دستگاه دیگری/);
+    await storage.flush();
+    expect(revisions).toEqual([1, 2]);
+    expect(storage.getItem('math-scratchpad-session-v3')).toBe('{"step":2}');
   });
 
   it('retries only the latest queued value after an earlier write fails', async () => {

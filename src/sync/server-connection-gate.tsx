@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage } from './browser-db';
-import { subscribeGoogleIdToken } from './google-id-token';
+import { ensureApiToken, subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
 
@@ -34,7 +34,8 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       setState({ kind: 'blocked', message: 'اینترنت قطع است؛ تمرین‌ها همچنان روی این دستگاه ذخیره می‌شوند.' });
       return;
     }
-    const token = tokenProvider();
+    let token = tokenProvider();
+    if (!token) token = await ensureApiToken();
     if (!token) {
       setState({ kind: 'blocked', message: 'برای همگام‌سازی با سرور وارد Google شو. تمرین‌ها روی این دستگاه ذخیره می‌شوند.' });
       return;
@@ -99,7 +100,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     if (state.kind === 'online') return;
     let active = true;
     let unsubscribe: (() => void) | undefined;
-    void subscribeGoogleIdToken(token => {
+    void subscribeApiToken(token => {
       if (!active) return;
       void onAuthenticated(token).then(check).catch(problem => {
         if (!active) return;

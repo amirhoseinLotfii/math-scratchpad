@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { X } from 'lucide-react';
 import { getConfig, loadPicker, pickBackupFolder } from '../features/drive-bank/google';
 import { createVerifiedDriveBackup } from './drive-backup';
-import { subscribeGoogleIdToken } from './google-id-token';
+import { subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
-import { requestCombinedGoogleAuth } from './google-auth';
+import { requestCombinedGoogleAuth, signOutGoogle } from './google-auth';
 import { backupAndFinishLegacyMigration, finishLegacyMigration, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
 import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
 import { queueLearnEvent, readLegacyMigration, type LegacyMigration } from './browser-db';
@@ -174,13 +174,23 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     let active = true;
     let unsubscribe: (() => void) | undefined;
-    void subscribeGoogleIdToken(token => runtime?.setIdToken(token)).then(removeListener => {
+    void subscribeApiToken(token => runtime?.setIdToken(token)).then(removeListener => {
       if (!active) removeListener();
       else unsubscribe = removeListener;
     }).catch(problem => {
       if (active) setError(problem instanceof Error ? problem.message : 'ورود گوگل بارگیری نشد.');
     });
     return () => { active = false; unsubscribe?.(); };
+  }, [runtime]);
+
+  const signOut = useCallback(async () => {
+    setError(''); setMessage(''); setBusy(true);
+    try {
+      await signOutGoogle();
+      runtime?.setIdToken(null);
+      setMessage('از حساب خارج شدی؛ نشست سرور این دستگاه باطل شد. داده‌های این دستگاه محفوظ‌اند.');
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'خروج انجام نشد.'); }
+    finally { setBusy(false); }
   }, [runtime]);
 
   const syncNow = useCallback(async () => {
@@ -361,6 +371,9 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     </details>
     <div className="mt-3 flex flex-wrap items-center gap-3">
       <GoogleLoginButton disabled={busy || status.phase === 'syncing'} showPrepareError={false} />
+      <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={() => void signOut()}>
+        خروج از حساب Google در این دستگاه
+      </button>
       <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50" disabled={busy || status.phase === 'syncing'} onClick={() => void syncNow()}>
         همگام‌سازی الان
       </button>
