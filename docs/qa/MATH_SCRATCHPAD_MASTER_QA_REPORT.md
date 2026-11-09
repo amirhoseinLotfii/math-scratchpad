@@ -202,6 +202,21 @@ User Action → Store (Zustand, AST) → Learning Storage (IndexedDB, allowliste
 | Deploy | **NOT ATTEMPTED** |
 | Rollback | `git checkout main` یا بستن PR؛ هیچ داده‌ای از IndexedDB/Drive/Notion در این نشست حذف نشد |
 
+### وضعیت Publish و Production (اندازه‌گیری‌شده)
+
+| پرسش | پاسخ |
+|---|---|
+| آیا برنچ push شد؟ | بله — `origin/feat/resume-learning-a11y` روی `5c20c5f` |
+| آیا merge به `main` شد؟ | خیر — بدون تأیید و بدون CI این کار انجام نمی‌شود |
+| آیا تغییرات منتشر شد؟ | **خیر**؛ انتشار فقط از `main` انجام می‌شود |
+| آیا سایت Production زنده است؟ | بله: `https://amirhoseinlotfii.github.io/math-scratchpad/` |
+| Production چه نسخه‌ای دارد؟ | بایت‌به‌بایت برابر `main` @ `f670e01`؛ اسم فایل‌های ساخته‌شده از همان کامیت (`index-Bmtf3SEp.js` / `index-CwtOYLQU.css`) با فایل‌های سرو‌شده یکسان است |
+| آیا نشانه‌های تغییرات این برنچ در Production هست؟ | خیر — `continue-learning` و `lesson-split-size-controls` در JS/CSS منتشرشده وجود ندارند |
+
+**Smoke test روی Production فعلی (بدون تغییرات این برنچ):** بارگذاری بدون خطای کنسول و بدون درخواست ناموفق، TTFB ۲۴۴ms، CLS ۰.۰۱۲، باز/بسته شدن کیبورد ریاضی کار می‌کند، منوی تمرین با ۷ آیتم باز می‌شود.
+
+**نتیجه:** «تست نسخهٔ پابلیش‌شدهٔ حاوی این تغییرات» انجام نشده، چون چنین نسخه‌ای وجود ندارد. پس از merge و deploy، همان مسیر Continue-learning باید روی Production دوباره اجرا شود.
+
 ### فایل‌های تغییر‌یافته
 
 ```
