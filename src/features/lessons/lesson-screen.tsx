@@ -143,7 +143,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   useEffect(() => {
     if (!trackPosition) return;
     void trackPosition({
-      chapterId: bank.chapter?.id ?? (bank.chapter?.number != null ? String(bank.chapter.number) : bank.bank_id),
+      chapterId: bank.chapter?.number != null ? String(bank.chapter.number) : bank.chapter?.id ?? bank.bank_id,
       lessonId: lesson.id,
       sectionId: currentSection?.id,
       contentAnchorId: currentSection ? sectionAnchorId(currentSection.id) : undefined,

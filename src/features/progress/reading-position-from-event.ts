@@ -1,13 +1,21 @@
 import type { LearnEvent, LearnEventType } from '../../sync/events';
 import type { ReadingActivityType, ReadingPosition } from './reading-position-types';
+import { conceptAnchorId, sectionAnchorId } from './reading-position-anchors';
 
 /** Event types that represent a meaningful learning location change. */
 const LOCATION_EVENT_TYPES = new Set<LearnEventType>([
-  'lesson_open', 'lesson_close', 'chunk_open', 'chunk_read', 'section_open', 'section_close',
+  'lesson_open', 'chunk_open', 'chunk_read', 'section_open', 'section_close',
   'question_open', 'question_close', 'check_answer', 'check_skipped',
   'example_attempt', 'example_revealed', 'content_revealed', 'tryit_attempt', 'exercise_attempt',
   'step_open', 'step_close', 'step_added', 'step_edited', 'answer_edited',
   'concept_complete', 'lesson_complete', 'section_complete', 'practice_started', 'lesson_skip',
+]);
+
+/** Only these event types carry an actual exercise/question identifier in itemId. */
+const EXERCISE_EVENT_TYPES = new Set<LearnEventType>([
+  'question_open', 'question_close', 'check_answer', 'check_skipped',
+  'tryit_attempt', 'exercise_attempt', 'step_open', 'step_close',
+  'step_added', 'step_edited', 'answer_edited',
 ]);
 
 export function isLocationLearnEvent(type: LearnEventType): boolean {
@@ -50,12 +58,16 @@ export function readingPositionFromLearnEvent(event: LearnEvent): ReadingPositio
   if (!isLocationLearnEvent(event.type)) return null;
   const lessonId = cleanId(event.lesson);
   if (!lessonId) return null;
+  const sectionId = cleanId(event.section);
+  const conceptId = cleanId(event.concept);
   return {
     userId: event.deviceId,
     chapterId: event.chapter > 0 ? String(event.chapter) : undefined,
     lessonId,
-    sectionId: cleanId(event.section),
-    exerciseId: event.itemId,
+    sectionId,
+    // itemId is generic: on section/chunk events it is not an exercise id.
+    contentAnchorId: conceptId ? conceptAnchorId(conceptId) : sectionId ? sectionAnchorId(sectionId) : undefined,
+    exerciseId: EXERCISE_EVENT_TYPES.has(event.type) ? cleanId(event.itemId) : undefined,
     contentVersion: event.bankVersion,
     lastActivity: activityFromLearnEvent(event.type),
     updatedAt: new Date(event.ts),
@@ -76,10 +88,11 @@ export function mergeLatestReadingPosition(
   if (!current) return incoming;
   if (positionTimestamp(incoming) < positionTimestamp(current)) return current;
 
+  const hasIncoming = (field: keyof ReadingPosition) => Object.prototype.hasOwnProperty.call(incoming, field);
   const chapterChanged = incoming.chapterId !== undefined && incoming.chapterId !== current.chapterId;
   const lessonChanged = chapterChanged || (incoming.lessonId !== undefined && incoming.lessonId !== current.lessonId);
   const sectionChanged = lessonChanged || (incoming.sectionId !== undefined && incoming.sectionId !== current.sectionId);
-  const exerciseChanged = sectionChanged || (incoming.exerciseId !== undefined && incoming.exerciseId !== current.exerciseId);
+  const exerciseChanged = sectionChanged || (hasIncoming('exerciseId') && incoming.exerciseId !== current.exerciseId);
   const versionChanged = !!incoming.contentVersion && incoming.contentVersion !== current.contentVersion;
   const clearSectionPosition = sectionChanged || versionChanged;
   const definedIncoming = Object.fromEntries(
@@ -93,8 +106,12 @@ export function mergeLatestReadingPosition(
     chapterId: incoming.chapterId ?? current.chapterId,
     lessonId: incoming.lessonId ?? (chapterChanged ? undefined : current.lessonId),
     sectionId: incoming.sectionId ?? (lessonChanged ? undefined : current.sectionId),
-    contentAnchorId: incoming.contentAnchorId ?? (clearSectionPosition ? undefined : current.contentAnchorId),
-    exerciseId: incoming.exerciseId ?? (sectionChanged ? undefined : current.exerciseId),
+    contentAnchorId: hasIncoming('contentAnchorId')
+      ? incoming.contentAnchorId
+      : clearSectionPosition ? undefined : current.contentAnchorId,
+    exerciseId: hasIncoming('exerciseId')
+      ? incoming.exerciseId
+      : sectionChanged ? undefined : current.exerciseId,
     stepId: incoming.stepId ?? (exerciseChanged ? undefined : current.stepId),
     scrollOffset: incoming.scrollOffset ?? (clearSectionPosition ? undefined : current.scrollOffset),
     relativeOffset: incoming.relativeOffset ?? (clearSectionPosition ? undefined : current.relativeOffset),
