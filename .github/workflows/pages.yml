@@ -1,9 +1,11 @@
 name: Deploy GitHub Pages
 on:
-  push:
+  workflow_run:
+    workflows: ["Validate editor"]
+    types: [completed]
     branches: [main]
-  workflow_dispatch:
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -11,28 +13,51 @@ concurrency:
   group: pages
   cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-      - run: npm ci
-      - run: npx vitest run
-      - run: npm run build
-      - run: cp dist/index.html dist/404.html && touch dist/.nojekyll
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
   deploy:
-    needs: build
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Ensure validated commit is still current main
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          latest_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
+          if [ "$latest_sha" = "$VALIDATED_SHA" ]; then
+            echo "is_current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_current=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping stale validation result: $VALIDATED_SHA is no longer main."
+          fi
+      - name: Check out the validated commit
+        if: steps.current.outputs.is_current == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Verify physical-device acceptance
+        if: steps.current.outputs.is_current == 'true'
+        run: node scripts/test-manual-gate.mjs
+      - name: Download validated Pages build
+        if: steps.current.outputs.is_current == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: dist
+      - name: Configure GitHub Pages
+        if: steps.current.outputs.is_current == 'true'
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        if: steps.current.outputs.is_current == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: Deploy validated site
+        id: deployment
+        if: steps.current.outputs.is_current == 'true'
         uses: actions/deploy-pages@v4

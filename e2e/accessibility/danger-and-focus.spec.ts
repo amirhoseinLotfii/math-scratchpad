@@ -1,4 +1,5 @@
 import { expect, test, mathField } from '../support/test';
+import { openMenuSubmenu } from '../support/menu';
 
 // This file includes a test of the batch wellbeing dialog itself; keep it visible.
 test.use({ autoDismissWellbeing: false });
@@ -57,7 +58,7 @@ test('batch wellbeing Skip for now returns focus to the practice editor', { tag:
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+  await openMenuSubmenu(page, 'Practice');
   await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
   await page.getByRole('button', { name: 'Start 20 Questions' }).click();
 

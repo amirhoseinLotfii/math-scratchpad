@@ -19,11 +19,27 @@ jobs:
           cache: npm
       - name: Verify vendored UI/UX Pro Max skill
         run: node scripts/verify-vendored-ui-skill.mjs
-      - run: npm ci
+      - name: Install dependencies
+        id: install
+        run: npm ci
       - run: npm run test:browser:prepare
       - run: npx playwright install --with-deps firefox webkit
-      - run: npm run test:gate
-      - run: npm run build
+      - name: Run complete automated gate
+        id: gate
+        run: npm run test:gate
+      - name: Build app and worker
+        if: always() && steps.install.outcome == 'success'
+        run: npm run build
+      - name: Prepare GitHub Pages artifact
+        if: success()
+        run: cp dist/index.html dist/404.html && touch dist/.nojekyll
+      - name: Upload validated GitHub Pages build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-dist
+          path: dist/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:

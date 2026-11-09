@@ -1,215 +1,202 @@
-/**
- * RestorePosition Component
- * Handles semantic scroll restoration and position recovery
- */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useOptionalReadingPositionContext } from './reading-position-context';
+import type { ReadingPosition } from './reading-position-types';
 
-import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useReadingPositionContext } from './reading-position-context';
-import { ReadingPosition } from './reading-position-types';
-
-/** Props for RestorePosition component */
-export interface RestorePositionProps {
-  /** Identifier for the current chapter */
-  chapterId?: string;
-  
-  /** Identifier for the current lesson */
-  lessonId?: string;
-  
-  /** Identifier for the current section */
-  sectionId?: string;
-  
-  /** Identifier for the current exercise */
-  exerciseId?: string;
-  
-  /** Identifier for the current step */
-  stepId?: string;
-  
-  /** Content version for cache invalidation */
-  contentVersion?: string;
-  
-  /** Children to wrap */
+interface RestorePositionProps {
   children: React.ReactNode;
-  
-  /** Custom scroll container ref */
+  chapterId?: string;
+  lessonId?: string;
+  sectionId?: string;
+  exerciseId?: string;
+  stepId?: string;
+  contentVersion?: string;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
-  
-  /** Callback when position is restored */
   onPositionRestored?: (position: ReadingPosition) => void;
-  
-  /** Callback when position fails to restore */
   onRestoreFailed?: (error: Error) => void;
 }
 
-/** RestorePosition Component
- * Wraps content and automatically restores scroll position
+function clampOffset(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function positionKey(position: ReadingPosition): string {
+  const updatedAt = position.updatedAt instanceof Date
+    ? position.updatedAt.toISOString()
+    : String(position.updatedAt ?? '');
+  return [
+    position.userId, position.chapterId, position.lessonId, position.sectionId,
+    position.exerciseId, position.stepId, position.contentAnchorId,
+    position.scrollOffset, position.relativeOffset, position.contentVersion, updatedAt,
+  ].join('|');
+}
+
+/**
+ * Restores and records a semantic lesson position. Scroll writes are debounced,
+ * anchor offsets are viewport-relative, and remote updates never yank the page
+ * after the learner has started interacting.
  */
 export function RestorePosition({
+  children,
   chapterId,
   lessonId,
   sectionId,
   exerciseId,
   stepId,
   contentVersion,
-  children,
   scrollContainerRef,
   onPositionRestored,
   onRestoreFailed,
 }: RestorePositionProps) {
-  const { position, isRestored, restorePosition, trackPosition } = useReadingPositionContext();
-  const [isRestoring, setIsRestoring] = useState(false);
-  const containerRef = useRef<HTMLElement>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  const context = useOptionalReadingPositionContext();
+  const position = context?.position ?? null;
+  const isRestored = context?.isRestored ?? false;
+  const trackPosition = context?.trackPosition;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPositionRef = useRef<Partial<ReadingPosition> | null>(null);
+  const isRestoringRef = useRef(false);
+  const userInteractedRef = useRef(false);
+  const lastRestoredKeyRef = useRef<string | null>(null);
 
-  /** Check if current content matches the stored position */
-  const matchesStoredPosition = useCallback(() => {
-    if (!position) return false;
-    return position.chapterId === chapterId &&
-           position.lessonId === lessonId &&
-           position.sectionId === sectionId &&
-           position.exerciseId === exerciseId &&
-           position.stepId === stepId;
-  }, [position, chapterId, lessonId, sectionId, exerciseId, stepId]);
+  const matchesStoredPosition = useCallback((stored: ReadingPosition) => (
+    (chapterId === undefined || stored.chapterId === chapterId) &&
+    (lessonId === undefined || stored.lessonId === lessonId) &&
+    (sectionId === undefined || stored.sectionId === sectionId) &&
+    (exerciseId === undefined || stored.exerciseId === exerciseId) &&
+    (stepId === undefined || stored.stepId === stepId) &&
+    (contentVersion === undefined || stored.contentVersion === contentVersion)
+  ), [chapterId, lessonId, sectionId, exerciseId, stepId, contentVersion]);
 
-  /** Check if content version matches */
-  const versionMatches = useCallback(() => {
-    if (!position) return true;
-    return position.contentVersion === contentVersion;
-  }, [position, contentVersion]);
+  const snapshotScrollPosition = useCallback((): Partial<ReadingPosition> => {
+    const scrollContainer = scrollContainerRef?.current ?? null;
+    const rootTop = scrollContainer?.getBoundingClientRect().top ?? 0;
+    const anchors = Array.from(
+      containerRef.current?.querySelectorAll<HTMLElement>('[data-anchor-id]') ?? [],
+    );
+    const measured = anchors.map(anchor => ({ anchor, rect: anchor.getBoundingClientRect() }));
+    const visible = measured.filter(({ rect }) => rect.bottom > rootTop + 8);
+    const active = visible.filter(({ rect }) => rect.top <= rootTop + 48).at(-1) ?? visible[0];
+    const relativeOffset = active
+      ? clampOffset((rootTop - active.rect.top) / Math.max(active.rect.height, 1))
+      : undefined;
 
-  /** Restore scroll position */
-  const restoreScrollPosition = useCallback(async () => {
-    if (!position || !matchesStoredPosition() || !versionMatches()) {
-      return;
-    }
-
-    setIsRestoring(true);
-    
-    try {
-      // Wait for content to be ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const scrollContainer = scrollContainerRef?.current || containerRef.current || window;
-      
-      if (position.scrollOffset !== undefined) {
-        const scrollTarget = scrollContainer === window 
-          ? window
-          : scrollContainer as HTMLElement;
-        
-        scrollTarget.scrollTo({
-          top: position.scrollOffset,
-          behavior: 'auto', // Use auto to avoid smooth scroll jank
-        });
-      }
-
-      // Find and focus the specific element if available
-      if (position.contentAnchorId) {
-        const anchor = document.querySelector(`[data-anchor-id="${position.contentAnchorId}"]`);
-        if (anchor) {
-          anchor.scrollIntoView({ behavior: 'auto', block: 'start' });
-        }
-      }
-
-      // Notify that position was restored
-      onPositionRestored?.(position);
-    } catch (error) {
-      onRestoreFailed?.(error as Error);
-    } finally {
-      setIsRestoring(false);
-    }
-  }, [position, matchesStoredPosition, versionMatches, scrollContainerRef, onPositionRestored, onRestoreFailed]);
-
-  /** Track scroll position */
-  const handleScroll = useCallback(() => {
-    const scrollContainer = scrollContainerRef?.current || containerRef.current || window;
-    const scrollOffset = scrollContainer === window 
-      ? window.scrollY
-      : (scrollContainer as HTMLElement).scrollTop;
-    
-    trackPosition({
+    return {
       chapterId,
       lessonId,
       sectionId,
-      exerciseId,
-      stepId,
-      scrollOffset,
-      contentVersion: contentVersion || '1.0',
-    });
-  }, [chapterId, lessonId, sectionId, exerciseId, stepId, contentVersion, trackPosition, scrollContainerRef]);
-
-  /** Setup scroll listener */
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef?.current || containerRef.current || window;
-    
-    const container = scrollContainer === window ? window : scrollContainer as HTMLElement;
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    
-    return () => {
-      container.removeEventListener('scroll', handleScroll);
+      ...(exerciseId === undefined ? {} : { exerciseId }),
+      ...(stepId === undefined ? {} : { stepId }),
+      contentVersion,
+      scrollOffset: scrollContainer ? scrollContainer.scrollTop : window.scrollY,
+      ...(active?.anchor.dataset.anchorId ? { contentAnchorId: active.anchor.dataset.anchorId } : {}),
+      ...(relativeOffset === undefined ? {} : { relativeOffset }),
+      lastActivity: 'reading',
     };
-  }, [handleScroll, scrollContainerRef]);
+  }, [chapterId, lessonId, sectionId, exerciseId, stepId, contentVersion, scrollContainerRef]);
 
-  /** Restore position when component mounts or content changes */
-  useEffect(() => {
-    if (isRestored && !isRestoring) {
-      restoreScrollPosition();
+  const flushPendingPosition = useCallback(() => {
+    if (scrollTimerRef.current !== null) {
+      clearTimeout(scrollTimerRef.current);
+      scrollTimerRef.current = null;
     }
-  }, [isRestored, isRestoring, restoreScrollPosition]);
+    const pending = pendingPositionRef.current;
+    pendingPositionRef.current = null;
+    if (pending && trackPosition) void trackPosition(pending).catch(() => {});
+  }, [trackPosition]);
 
-  /** Track element visibility for semantic anchors */
-  useEffect(() => {
-    // Setup intersection observer for content anchors
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting && entry.target.hasAttribute('data-anchor-id')) {
-            const anchorId = entry.target.getAttribute('data-anchor-id');
-            if (anchorId) {
-              trackPosition({
-                chapterId,
-                lessonId,
-                sectionId,
-                exerciseId,
-                stepId,
-                contentAnchorId: anchorId,
-                contentVersion: contentVersion || '1.0',
-              });
-            }
-          }
-        });
-      },
-      {
-        // CSS margin syntax requires units; bare 0 is invalid for IntersectionObserver.
-        rootMargin: '0px 0px -45% 0px',
-        threshold: 0.1,
-      }
-    );
+  const schedulePositionWrite = useCallback((next: Partial<ReadingPosition>) => {
+    pendingPositionRef.current = next;
+    if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(flushPendingPosition, 350);
+  }, [flushPendingPosition]);
 
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [chapterId, lessonId, sectionId, exerciseId, stepId, contentVersion, trackPosition]);
+  const handleScroll = useCallback(() => {
+    if (!trackPosition || isRestoringRef.current) return;
+    schedulePositionWrite(snapshotScrollPosition());
+  }, [trackPosition, schedulePositionWrite, snapshotScrollPosition]);
 
-  /** Ref callback for container */
-  const containerRefCallback = useCallback((node: HTMLDivElement | null) => {
-    containerRef.current = node;
-    
-    // Observe all anchor elements within the container
-    if (node && observerRef.current) {
-      const anchors = node.querySelectorAll('[data-anchor-id]');
-      anchors.forEach(anchor => observerRef.current?.observe(anchor));
-    }
+  const handleUserInteraction = useCallback(() => {
+    if (!isRestoringRef.current) userInteractedRef.current = true;
   }, []);
 
-  return (
-    <div ref={containerRefCallback} className="restore-position-container">
-      {children}
-    </div>
-  );
+  useEffect(() => {
+    userInteractedRef.current = false;
+    lastRestoredKeyRef.current = null;
+  }, [chapterId, lessonId, sectionId, contentVersion, scrollContainerRef]);
+
+  useEffect(() => {
+    const target: EventTarget = scrollContainerRef?.current ?? window;
+    target.addEventListener('scroll', handleScroll, { passive: true });
+    target.addEventListener('wheel', handleUserInteraction, { passive: true });
+    target.addEventListener('touchstart', handleUserInteraction, { passive: true });
+    target.addEventListener('pointerdown', handleUserInteraction, { passive: true });
+    target.addEventListener('keydown', handleUserInteraction);
+    const handlePageHide = () => flushPendingPosition();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushPendingPosition();
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      target.removeEventListener('scroll', handleScroll);
+      target.removeEventListener('wheel', handleUserInteraction);
+      target.removeEventListener('touchstart', handleUserInteraction);
+      target.removeEventListener('pointerdown', handleUserInteraction);
+      target.removeEventListener('keydown', handleUserInteraction);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      flushPendingPosition();
+    };
+  }, [scrollContainerRef, handleScroll, handleUserInteraction, flushPendingPosition]);
+
+  useEffect(() => {
+    if (!isRestored || !position || !matchesStoredPosition(position) || userInteractedRef.current) return;
+    const key = positionKey(position);
+    if (lastRestoredKeyRef.current === key) return;
+    lastRestoredKeyRef.current = key;
+    isRestoringRef.current = true;
+
+    let releaseFrame: number | null = null;
+    const frame = requestAnimationFrame(() => {
+      try {
+        const scrollContainer = scrollContainerRef?.current ?? null;
+        const rootTop = scrollContainer?.getBoundingClientRect().top ?? 0;
+        const anchor = position.contentAnchorId
+          ? Array.from(containerRef.current?.querySelectorAll<HTMLElement>('[data-anchor-id]') ?? [])
+              .find(element => element.dataset.anchorId === position.contentAnchorId)
+          : undefined;
+
+        if (anchor) {
+          const relativeOffset = clampOffset(position.relativeOffset ?? 0);
+          const desiredTop = rootTop - relativeOffset * anchor.getBoundingClientRect().height;
+          const delta = anchor.getBoundingClientRect().top - desiredTop;
+          if (Math.abs(delta) > 1) {
+            if (scrollContainer) scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
+            else window.scrollBy({ top: delta, behavior: 'auto' });
+          }
+        } else if (position.scrollOffset !== undefined) {
+          if (scrollContainer) scrollContainer.scrollTo({ top: position.scrollOffset, behavior: 'auto' });
+          else window.scrollTo({ top: position.scrollOffset, behavior: 'auto' });
+        }
+        onPositionRestored?.(position);
+      } catch (error) {
+        onRestoreFailed?.(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        releaseFrame = requestAnimationFrame(() => { isRestoringRef.current = false; });
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (releaseFrame !== null) cancelAnimationFrame(releaseFrame);
+      isRestoringRef.current = false;
+    };
+  }, [isRestored, position, matchesStoredPosition, scrollContainerRef, onPositionRestored, onRestoreFailed]);
+
+  return <div ref={containerRef} className="restore-position-container">{children}</div>;
 }
 
-/** Hook for semantic scroll restoration */
 export function useSemanticScrollRestoration(
   containerRef: React.RefObject<HTMLElement | null>,
   anchors: string[]

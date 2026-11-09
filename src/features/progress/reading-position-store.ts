@@ -29,20 +29,27 @@ let eventUnsubscribe: (() => void) | undefined;
 let storageUnsubscribe: (() => void) | undefined;
 
 function buildPosition(partial: Partial<ReadingPosition>, current: ReadingPosition | null): ReadingPosition {
+  const chapterChanged = !!current && partial.chapterId !== undefined && partial.chapterId !== current.chapterId;
+  const lessonChanged = chapterChanged || (!!current && partial.lessonId !== undefined && partial.lessonId !== current.lessonId);
+  const sectionChanged = lessonChanged || (!!current && partial.sectionId !== undefined && partial.sectionId !== current.sectionId);
+  const exerciseChanged = sectionChanged || (!!current && partial.exerciseId !== undefined && partial.exerciseId !== current.exerciseId);
+  const versionChanged = !!current && partial.contentVersion !== undefined && partial.contentVersion !== current.contentVersion;
+  const clearSectionPosition = sectionChanged || versionChanged;
+
   return {
     userId: partial.userId ?? current?.userId ?? getDeviceId(),
     chapterId: partial.chapterId ?? current?.chapterId,
-    lessonId: partial.lessonId ?? current?.lessonId,
-    sectionId: partial.sectionId ?? current?.sectionId,
-    contentAnchorId: partial.contentAnchorId ?? current?.contentAnchorId,
-    exerciseId: partial.exerciseId ?? current?.exerciseId,
-    stepId: partial.stepId ?? current?.stepId,
-    scrollOffset: partial.scrollOffset ?? current?.scrollOffset,
-    relativeOffset: partial.relativeOffset ?? current?.relativeOffset,
+    lessonId: partial.lessonId ?? (chapterChanged ? undefined : current?.lessonId),
+    sectionId: partial.sectionId ?? (lessonChanged ? undefined : current?.sectionId),
+    contentAnchorId: partial.contentAnchorId ?? (clearSectionPosition ? undefined : current?.contentAnchorId),
+    exerciseId: partial.exerciseId ?? (sectionChanged ? undefined : current?.exerciseId),
+    stepId: partial.stepId ?? (exerciseChanged ? undefined : current?.stepId),
+    scrollOffset: partial.scrollOffset ?? (clearSectionPosition ? undefined : current?.scrollOffset),
+    relativeOffset: partial.relativeOffset ?? (clearSectionPosition ? undefined : current?.relativeOffset),
     contentVersion: partial.contentVersion ?? current?.contentVersion ?? 'unknown',
     lastActivity: partial.lastActivity ?? current?.lastActivity ?? 'reading',
     updatedAt: partial.updatedAt ?? new Date(),
-    deviceMetadata: partial.deviceMetadata ?? current?.deviceMetadata,
+    deviceMetadata: partial.deviceMetadata ?? (clearSectionPosition ? undefined : current?.deviceMetadata),
   };
 }
 
@@ -58,10 +65,9 @@ export const useReadingPositionStore = create<ReadingPositionStore>((set, get) =
 
   upsertPosition: async (partial) => {
     const next = buildPosition(partial, get().position);
-    const merged = mergeLatestReadingPosition(get().position, next);
-    writeReadingPositionToLearningStorage(merged);
-    set({ position: merged });
-    return merged;
+    writeReadingPositionToLearningStorage(next);
+    set({ position: next });
+    return next;
   },
 
   updatePosition: async (partial) => {

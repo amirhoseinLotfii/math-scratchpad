@@ -27,28 +27,76 @@ function event(partial: Partial<LearnEvent> & Pick<LearnEvent, 'type' | 'ts'>): 
 }
 
 describe('reading position from latest learn event', () => {
-  it('maps a location event into a reading position', () => {
+  it('maps a section event to its semantic anchor, not to an exercise id', () => {
     const position = readingPositionFromLearnEvent(event({
       type: 'section_open',
       ts: '2026-11-08T12:00:00.000Z',
-      itemId: 'q1',
+      itemId: 'sec-a',
     }));
     expect(position).toMatchObject({
       userId: '22222222-2222-4222-8222-222222222222',
       chapterId: '2',
       lessonId: 'L1',
       sectionId: 'sec-a',
-      exerciseId: 'q1',
+      contentAnchorId: 'concept:c1',
       contentVersion: 'bank-v3',
       lastActivity: 'reading',
     });
+    expect(position?.exerciseId).toBeUndefined();
+  });
+
+  it('maps question events to an exercise id while keeping the concept anchor', () => {
+    const position = readingPositionFromLearnEvent(event({
+      type: 'question_open',
+      ts: '2026-11-08T12:01:00.000Z',
+      itemId: 'q1',
+    }));
+    expect(position?.exerciseId).toBe('q1');
+    expect(position?.contentAnchorId).toBe('concept:c1');
+  });
+
+  it('does not let lesson_close overwrite the last reading location', () => {
+    expect(readingPositionFromLearnEvent(event({
+      type: 'lesson_close',
+      ts: '2026-11-08T12:02:00.000Z',
+      itemId: 'L1',
+    }))).toBeNull();
   });
 
   it('ignores non-location events', () => {
     expect(readingPositionFromLearnEvent(event({
       type: 'tab_hidden',
-      ts: '2026-11-08T12:00:00.000Z',
+      ts: '2026-11-08T12:03:00.000Z',
     }))).toBeNull();
+  });
+
+  it('clears exercise and scroll state when the learner moves to another section', () => {
+    const older: ReadingPosition = {
+      userId: 'u',
+      lessonId: 'L1',
+      sectionId: 'sec-a',
+      exerciseId: 'q1',
+      stepId: 'step-2',
+      contentAnchorId: 'concept:c1',
+      scrollOffset: 480,
+      relativeOffset: 0.4,
+      contentVersion: 'bank-v3',
+      lastActivity: 'exercise_started',
+      updatedAt: new Date('2026-11-08T12:00:00.000Z'),
+    };
+    const incoming = readingPositionFromLearnEvent(event({
+      type: 'section_open',
+      ts: '2026-11-08T12:01:00.000Z',
+      section: 'sec-b',
+      concept: 'c2',
+      itemId: 'sec-b',
+    }))!;
+    const merged = mergeLatestReadingPosition(older, incoming);
+    expect(merged).toMatchObject({ sectionId: 'sec-b', contentAnchorId: 'concept:c2' });
+    expect(merged.exerciseId).toBeUndefined();
+    expect(merged.stepId).toBeUndefined();
+    expect(merged.scrollOffset).toBeUndefined();
+    expect(merged.relativeOffset).toBeUndefined();
   });
 
   it('keeps the newest activity when merging', () => {

@@ -81,6 +81,20 @@ test('UI-AUDIT-05: legal pages wrap long contact links at narrow sizes', async (
  }
 });
 
+test('UI-AUDIT-06a: narrow Practice disclosure survives mouse hover before click', async ({ page }) => {
+ await page.setViewportSize({ width: 320, height: 568 });
+ await page.goto('/?serverMode');
+ await menu(page).click();
+ await page.getByRole('menuitem', { name: 'Show more' }).click();
+ const practice = page.getByRole('menuitem', { name: 'Practice', exact: true });
+ // Playwright click moves the mouse over the item before pressing it.
+ await practice.click();
+ await expect(practice).toHaveAttribute('aria-expanded', 'true');
+ await expect(page.getByRole('menuitem', { name: 'Start Round 1 · 20 fraction questions' })).toBeVisible();
+ await practice.click();
+ await expect(practice).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('UI-AUDIT-06: fraction batch confirmation stays clickable with sync active', async ({ page }) => {
  await page.goto('/?serverMode');
  await menu(page).click();

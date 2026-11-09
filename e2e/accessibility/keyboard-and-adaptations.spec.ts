@@ -70,7 +70,14 @@ test('A11Y-STAT-02: copy success is announced without unexpectedly moving focus'
  await context.grantPermissions(['clipboard-read','clipboard-write']); await startBatch(page);
  const trigger = page.getByRole('button', { name: 'Exercise menu' }); await trigger.click();
  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+ const data = page.getByRole('menuitem', { name: 'Data', exact: true });
+ if (page.viewportSize()!.width < 600) {
+  await data.press('Enter');
+  await expect(data).toHaveAttribute('aria-expanded', 'true');
+ } else {
+  await data.hover();
+ }
+ await expect(page.getByRole('menuitem', { name: /Copy full session JSON/i })).toBeVisible();
  await page.getByRole('menuitem', { name: /Copy full session JSON/i }).press('Enter');
  await expect(page.getByRole('status').filter({ hasText: /copied/i })).toBeVisible();
  await expect(trigger).toBeFocused();
