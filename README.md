@@ -17,7 +17,7 @@ Built with **React 19, strict TypeScript, Zustand, React Hook Form, Zod and Vite
 
 The phone layout now uses required confidence dialogs, protected first steps, reset/delete icons, ordered quick symbols, a 1–9 keypad, per-question timing and full-session JSON export from the overflow menu. Batch navigation opens confidence before advancing; the last question exposes completion actions. Source-owned Radix components and semantic design tokens implement the shared UI.
 
-Drafts are validated, versioned and synchronized through localStorage within the same browser profile and origin. Conflicting unsaved work asks which draft to keep; unavailable storage leaves work in memory and exposes JSON backup. This is not cross-device cloud sync.
+Drafts are validated and versioned in IndexedDB, with a per-tab recovery journal for edits made immediately before a reload. When you sign in, queued learning events and the revisioned session state are sent to the app's Cloudflare Worker, which also writes verified one-way snapshots to Google Drive and Notion. Conflicting unsaved work asks which draft to keep; unavailable storage leaves work in memory and exposes a JSON backup. Local browsing works without an account, and cross-device continuation depends on that signed-in sync path.
 
 ```sh
 npm ci

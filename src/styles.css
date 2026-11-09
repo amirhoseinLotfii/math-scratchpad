@@ -1037,6 +1037,15 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 }
 #math-scratchpad-redux .question-statement[dir="rtl"] { text-align: right; }
 
+/* Continue learning: the landing offer to resume the saved lesson section */
+#math-scratchpad-redux .continue-learning { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin: 12px 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+#math-scratchpad-redux .continue-learning-copy { display: grid; gap: 4px; min-width: 0; }
+#math-scratchpad-redux .continue-learning-label { margin: 0; color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
+#math-scratchpad-redux .continue-learning h2 { margin: 0; font-size: 18px; line-height: 1.5; }
+#math-scratchpad-redux .continue-learning-section { margin: 0; color: var(--foreground); font-size: 14px; line-height: 1.5; }
+#math-scratchpad-redux .continue-learning-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; color: var(--muted-foreground); font-size: 12px; }
+#math-scratchpad-redux .continue-learning-action { flex: 0 0 auto; }
+
 /* Lesson + work split view (wide) and Lesson / Work tabs (narrow) */
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) { width: 100%; max-width: none; }
 #math-scratchpad-redux .learn-workspace:has(.lesson-split-wide) .lesson-screen { max-width: none; padding-inline: 16px; }
@@ -1071,11 +1080,19 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
   padding-inline-end: 12px;
 }
 #math-scratchpad-redux .lesson-split-lesson-header {
+  position: relative;
   min-width: 0;
   padding-block-end: 10px;
+  padding-inline-end: 100px;
   border-bottom: 1px solid var(--border);
   background: var(--background);
 }
+/* Pointer-operable alternative to dragging the split handle (WCAG 2.2 / 2.5.7).
+   Kept in its own corner so it is not read as page or section navigation. */
+#math-scratchpad-redux .lesson-split-size-controls { position: absolute; top: 6px; inset-inline-end: 0; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+/* Keep the page range beside the section label so the corner control is not read as paging. */
+#math-scratchpad-redux .lesson-split-lesson-header .lesson-concept-heading { justify-content: flex-start; gap: 12px; }
+#math-scratchpad-redux .lesson-split-size-controls .ui-button.button-icon { border-radius: 10px; }
 #math-scratchpad-redux .lesson-split-lesson-header .lesson-pane-fixed-heading { padding-block: 8px 0; }
 #math-scratchpad-redux .lesson-split-lesson-header .lesson-concept h2 { margin-bottom: 0; }
 #math-scratchpad-redux .lesson-split-lesson-scroll {
@@ -1110,6 +1127,10 @@ body:has(#math-scratchpad-redux) { color: var(--foreground); font-family: var(--
 #math-scratchpad-redux .lesson-pane-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-block: 8px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 #math-scratchpad-redux .lesson-pane-tab { min-height: 40px; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); font: inherit; font-weight: 600; cursor: pointer; }
 #math-scratchpad-redux .lesson-pane-tab[aria-selected="true"] { background: var(--raised); color: var(--foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+#math-scratchpad-redux .lesson-pane-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* The tab strip is sticky, so a focused section heading must clear it (WCAG 2.2 / 2.4.11). */
+#math-scratchpad-redux .lesson-split-tabs #lesson-concept-title,
+#math-scratchpad-redux .lesson-split-tabs [data-anchor-id] { scroll-margin-block-start: 64px; }
 #math-scratchpad-redux .lesson-work-pane { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 #math-scratchpad-redux .lesson-work-title { margin: 0; font-size: 18px; }
 #math-scratchpad-redux .lesson-work-select-label { color: var(--muted-foreground); font-size: 13px; }

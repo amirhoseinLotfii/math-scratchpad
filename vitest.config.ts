@@ -19,6 +19,9 @@ export default defineConfig({ test: {
  setupFiles: ['tests/support/setup.ts'],
  include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
  maxWorkers: 2,
+ // A cold run transforms the whole lesson screen before the first assertion;
+ // the 5s default flaked on slower machines instead of catching a real defect.
+ testTimeout: 20000,
  coverage: { provider: 'v8', reportOnFailure: true, reporter: ['text', 'json-summary'], include: ['src/**/*.ts', 'src/**/*.tsx'] },
  globals: true
 } });

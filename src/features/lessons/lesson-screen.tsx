@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
@@ -15,7 +15,7 @@ import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
 import { MAX_SESSION_EXERCISES, stepIsBlank, stepLatex, type Step } from '../../model';
 import { conceptAnchorId, sectionAnchorId } from '../progress/reading-position-anchors';
 import { useOptionalReadingPositionContext } from '../progress/reading-position-context';
-import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MEDIA_QUERY, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
+import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MAX, SPLIT_MEDIA_QUERY, SPLIT_MIN, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
 import { ActivityTracker } from '../../sync/activity-tracker';
 import { getLearningStorage } from '../../sync/browser-db';
@@ -31,11 +31,22 @@ function splitSnapshot() { return typeof window.matchMedia === 'function' && win
 function readSplitRatio() { try { return clampSplitRatio(getLearningStorage().getItem(SPLIT_RATIO_STORAGE_KEY) ?? undefined); } catch { return clampSplitRatio(undefined); } }
 function writeSplitRatio(value: number) { try { getLearningStorage().setItem(SPLIT_RATIO_STORAGE_KEY, String(value)); } catch { /* preference only */ } }
 
+/**
+ * Where the learner stopped, handed over only when they ask to continue.
+ * Restoration scrolls the lesson pane; it never focuses an editor or opens the keyboard.
+ */
+export type LessonRestoreTarget = {
+  sectionId?: string;
+  contentAnchorId?: string;
+  scrollOffset?: number;
+};
+
 type Props = {
   bank: DriveBank | null;
   lesson: Lesson | null;
   loading?: boolean;
   initialProgress?: LessonProgress;
+  restore?: LessonRestoreTarget;
   onBack: () => void;
   onProgress?: (progress: LessonProgress) => void;
   onStartPractice: (lesson: Lesson, progress: LessonProgress, questions: BankQuestion[], sectionId?: string) => void;
@@ -91,7 +102,7 @@ function ReviewQuestionContent({ question }: { question: BankQuestion }) {
   return <span lang={languageForText(question.source)} dir={contentDirection(question.source)}><LessonText text={question.source} /></span>;
 }
 
-function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, onStartPractice, practiceError, progressMessage, activityTracker, eventContext }: ReadyProps) {
+function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onProgress, onStartPractice, practiceError, progressMessage, activityTracker, eventContext }: ReadyProps) {
   const layout = useWorkspaceLayout(), phone = layout === 'phone';
   const uiLang = lessonUiLanguage(lesson), fa = uiLang === 'fa';
   const trackPosition = useOptionalReadingPositionContext()?.trackPosition;
@@ -99,12 +110,18 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const [lessonInfoOpen, setLessonInfoOpen] = useState(false);
   const practiceQuestions = useMemo(() => getPracticeQuestions(bank, lesson.id), [bank, lesson.id]);
   const initialSectionIndex = useMemo(() => {
+    // An explicit continue request wins over stored lesson progress: the learner
+    // asked for the section they were reading, not the first unfinished one.
+    if (restore?.sectionId) {
+      const restored = sections.findIndex(section => section.id === restore.sectionId);
+      if (restored >= 0) return restored;
+    }
     const saved = initialProgress?.currentSectionIndex;
     if (Number.isInteger(saved) && saved! >= 0 && saved! < sections.length) return saved!;
     const conceptId = lesson.concepts[initialProgress?.currentConceptIndex ?? 0]?.id;
     const found = sections.findIndex(section => section.concepts.some(entry => entry.concept.id === conceptId));
     return Math.max(0, found);
-  }, [initialProgress, lesson.concepts, sections]);
+  }, [initialProgress, lesson.concepts, restore?.sectionId, sections]);
   const [progress, setProgress] = useState<LessonProgress>(() => initialProgress ?? newProgress(lesson.id));
   const progressRef = useRef(progress);
   const [sectionIndex, setSectionIndex] = useState(initialSectionIndex);
@@ -132,6 +149,9 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   const attemptCounts = useRef(new Map<string, number>());
   const pendingAnswerEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingWorkEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const lessonScrollRef = useRef<HTMLDivElement>(null);
+  const restoredScrollRef = useRef(false);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const commitProgress = useCallback((next: LessonProgress) => {
     progressRef.current = next;
@@ -140,6 +160,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
   }, [onProgress]);
 
   const currentSection = sections[sectionIndex];
+  // Depend on the stable writer, not the context object: the provider re-renders
+  // whenever a position is saved, and an object dependency would loop.
   useEffect(() => {
     if (!trackPosition) return;
     void trackPosition({
@@ -240,6 +262,46 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
     if (split && !summary) document.querySelector<HTMLElement>('.lesson-split-lesson-scroll')?.scrollTo?.({ top: 0, behavior: 'auto' });
     else target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
   }, [sectionIndex, summary, split]);
+
+  // One-shot restoration for an explicit continue request. It runs after the
+  // section heading effect above, so scrolling to the stored anchor wins. It
+  // never focuses the math field or opens the keyboard.
+  useEffect(() => {
+    if (!restore || summary || restoredScrollRef.current) return;
+    restoredScrollRef.current = true;
+    const frame = requestAnimationFrame(() => {
+      const container = lessonScrollRef.current;
+      const anchorId = restore.contentAnchorId;
+      if (anchorId) {
+        const anchors = Array.from(document.querySelectorAll<HTMLElement>('[data-anchor-id]'));
+        const anchor = anchors.find(element => element.dataset.anchorId === anchorId);
+        if (anchor) { anchor.scrollIntoView?.({ block: 'start', behavior: 'auto' }); return; }
+      }
+      if (typeof restore.scrollOffset !== 'number') return;
+      if (container) container.scrollTop = restore.scrollOffset;
+      else window.scrollTo?.({ top: restore.scrollOffset, behavior: 'auto' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [restore, summary]);
+
+  const selectPaneTab = useCallback((next: 'lesson' | 'work', moveFocus = false) => {
+    setPaneTab(next);
+    if (moveFocus) requestAnimationFrame(() => tabRefs.current[next === 'lesson' ? 0 : 1]?.focus());
+  }, []);
+
+  // WAI-ARIA tabs pattern: one tab stop for the whole tab list, arrows move
+  // between tabs, Home/End jump to the first/last tab. Direction follows the UI language.
+  const handleTabKeys = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    const forward = fa ? 'ArrowLeft' : 'ArrowRight';
+    const backward = fa ? 'ArrowRight' : 'ArrowLeft';
+    let next: number | null = null;
+    if (event.key === forward || event.key === backward) next = index === 0 ? 1 : 0;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = 1;
+    if (next === null) return;
+    event.preventDefault();
+    selectPaneTab(next === 0 ? 'lesson' : 'work', true);
+  }, [fa, selectPaneTab]);
 
   useEffect(() => {
     if (lesson.concepts.length !== 0 || autoStartedLesson.current === lesson.id) return;
@@ -690,8 +752,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
       <Button className="lesson-review-action" onClick={reviewLesson}>{fa ? 'مرور دوبارهٔ درس' : 'Review lesson'}</Button>
     </section> : currentSection ? <>
       {!split && <div className="lesson-pane-tabs" role="tablist" aria-label={fa ? 'درس‌نامه یا کار من' : 'Lesson or your work'}>
-        <button type="button" role="tab" id="lesson-tab-lesson" aria-controls="lesson-panel-lesson" aria-selected={paneTab === 'lesson'} className="lesson-pane-tab" onClick={() => setPaneTab('lesson')}>{fa ? 'درس‌نامه' : 'Lesson'}</button>
-        <button type="button" role="tab" id="lesson-tab-work" aria-controls="lesson-panel-work" aria-selected={paneTab === 'work'} className="lesson-pane-tab" onClick={() => setPaneTab('work')}>{fa ? 'کار من' : 'Your work'}{workItems.length ? ` · ${localizeLessonDigits(workItems.length, uiLang)}` : ''}</button>
+        <button type="button" role="tab" id="lesson-tab-lesson" ref={node => { tabRefs.current[0] = node; }} aria-controls={paneTab === 'lesson' ? 'lesson-panel-lesson' : undefined} aria-selected={paneTab === 'lesson'} tabIndex={paneTab === 'lesson' ? 0 : -1} className="lesson-pane-tab" onClick={() => selectPaneTab('lesson')} onKeyDown={event => handleTabKeys(event, 0)}>{fa ? 'درس‌نامه' : 'Lesson'}</button>
+        <button type="button" role="tab" id="lesson-tab-work" ref={node => { tabRefs.current[1] = node; }} aria-controls={paneTab === 'work' ? 'lesson-panel-work' : undefined} aria-selected={paneTab === 'work'} tabIndex={paneTab === 'work' ? 0 : -1} className="lesson-pane-tab" onClick={() => selectPaneTab('work')} onKeyDown={event => handleTabKeys(event, 1)}>{fa ? 'کار من' : 'Your work'}{workItems.length ? ` · ${localizeLessonDigits(workItems.length, uiLang)}` : ''}</button>
       </div>}
       <div ref={splitRef} className={`lesson-split ${split ? 'lesson-split-wide' : 'lesson-split-tabs'}`} data-pane-mode={paneMode} style={split ? { ['--lesson-split' as string]: `${splitRatio}%` } : undefined}>
       {(split || paneTab === 'lesson') && <div className="lesson-split-lesson" id="lesson-panel-lesson" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-lesson' })}>
@@ -700,8 +762,12 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, onBack, onProgress, 
           <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>
           <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>
         </section>
+        <div className="lesson-split-size-controls" role="group" aria-label={fa ? 'عرض پنل درس‌نامه' : 'Lesson panel width'}>
+          <Button size="icon" variant="ghost" disabled={splitRatio <= SPLIT_MIN} aria-label={fa ? 'باریک‌تر کردن درس‌نامه' : 'Narrower lesson panel'} title={fa ? 'باریک‌تر کردن درس‌نامه' : 'Narrower lesson panel'} onClick={() => updateSplitRatio(splitRatio - 5)}><ChevronsLeft aria-hidden="true" /></Button>
+          <Button size="icon" variant="ghost" disabled={splitRatio >= SPLIT_MAX} aria-label={fa ? 'پهن‌تر کردن درس‌نامه' : 'Wider lesson panel'} title={fa ? 'پهن‌تر کردن درس‌نامه' : 'Wider lesson panel'} onClick={() => updateSplitRatio(splitRatio + 5)}><ChevronsRight aria-hidden="true" /></Button>
+        </div>
       </div>}
-      <div className={split ? 'lesson-split-lesson-scroll' : 'lesson-split-lesson-flow'} {...(split ? { role: 'region', 'aria-label': fa ? 'محتوای درس‌نامه' : 'Lesson content', tabIndex: 0 } : {})}>
+      <div ref={lessonScrollRef} className={split ? 'lesson-split-lesson-scroll' : 'lesson-split-lesson-flow'} {...(split ? { role: 'region', 'aria-label': fa ? 'محتوای درس‌نامه' : 'Lesson content', tabIndex: 0 } : {})}>
       <section className="lesson-concept" data-anchor-id={sectionAnchorId(currentSection.id)} aria-labelledby="lesson-concept-title">
         {!split && <div className="lesson-concept-heading" aria-live="polite"><p className="lesson-section-label">{fa ? 'بخش' : 'Section'} {localizeLessonDigits(sectionIndex + 1, uiLang)} {fa ? 'از' : 'of'} {localizeLessonDigits(sections.length, uiLang)}</p>{currentSectionPages && <span className="lesson-pages">{fa ? 'صفحه‌های' : 'Pages'} {currentSectionPages}</span>}</div>}
         {!split && <h2 id="lesson-concept-title" ref={headingRef} tabIndex={-1} lang={currentSection.title ? languageForText(currentSection.title) : currentSection.concepts.length === 1 ? languageForText(currentSection.concepts[0].concept.title) : uiLang} dir={currentSection.title ? contentDirection(currentSection.title) : currentSection.concepts.length === 1 ? contentDirection(currentSection.concepts[0].concept.title) : fa ? 'rtl' : 'ltr'}>{currentSection.title ? <LessonText text={displayEducationalHeading(currentSection.title)} /> : currentSection.concepts.length === 1 ? <LessonText text={displayEducationalHeading(currentSection.concepts[0].concept.title)} /> : fa ? 'درس این بخش' : 'This section'}</h2>}

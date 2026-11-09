@@ -4,6 +4,7 @@ import { App } from '../../src/App';
 import { bankDocument, type DriveBank } from '../../src/features/drive-bank/drive-bank';
 import { actions, initialState, makeStore } from '../../src/store';
 import { initializeLearningStorage } from '../../src/sync/browser-db';
+import { ReadingPositionProvider } from '../../src/features/progress/reading-position-context';
 import sample from '../../examples/MATH_QUESTION_BANK.sample.json';
 import '../../src/fonts.css';
 import '../../src/styles/tokens.css';
@@ -63,7 +64,8 @@ root.textContent = 'Preparing lesson preview…';
 void initializeLearningStorage().then(() => {
   root.removeAttribute('role');
   root.textContent = '';
-  createRoot(root).render(<Provider store={store}><App initialBank={{ bank, version }} /></Provider>);
+  // Mirror the production shell in main.tsx so previews exercise the same resume affordance.
+  createRoot(root).render(<ReadingPositionProvider><Provider store={store}><App initialBank={{ bank, version }} /></Provider></ReadingPositionProvider>);
 }).catch(() => {
   root.setAttribute('role', 'alert');
   root.textContent = 'Lesson preview storage could not be initialized.';

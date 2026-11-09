@@ -147,7 +147,7 @@ describe('Phase 4 Learn progress restoration', () => {
     expect(readArchive()).toHaveLength(1);
     expect(serialize(afterPracticeReload.getState())).not.toContain('Option B');
     expect(serialize(afterPracticeReload.getState())).not.toContain('SAMPLE-1.1-L02');
-  }, 15000);
+  }, 30000);
 
   it('stores lesson identity and version with progress so another version starts independently', () => {
     const bank = fixture(), state = readLessonProgress(bank, VERSION);

@@ -39,7 +39,7 @@ import { ARCHIVE_KEY, archiveSession, bankDocument, readArchive, type BankQuesti
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
 import { getLesson, getPracticeQuestions } from './features/lessons/selectors';
 import type { Lesson, LessonProgress } from './features/lessons/types';
-import { LessonScreen } from './features/lessons/lesson-screen';
+import { LessonScreen, type LessonRestoreTarget } from './features/lessons/lesson-screen';
 import { LessonPicker } from './features/lessons/lesson-picker';
 import { LessonReferenceDialog } from './features/lessons/lesson-reference-dialog';
 import { buildLessonSections } from './features/lessons/lesson-sections';
@@ -53,6 +53,7 @@ import { flushLearningStorage, getAuthenticatedServerStorage, getLearningStorage
 import { getDefaultSyncRuntime } from './sync/runtime';
 import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
 import { queueChapterSnapshot } from './sync/chapter-snapshot';
+import { ContinueLearningButton, useOptionalReadingPositionContext } from './features/progress/reading-position-context';
 
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
@@ -227,6 +228,31 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [askingFor, setAskingFor] = useState<string | null>(null), [editingScales, setEditingScales] = useState(false), askWellbeing = !!askingFor && askingFor === sessionId && wellbeingDismissed !== sessionId;
  useEffect(() => { if (needWellbeing) { setEditingScales(false); setAskingFor(sessionId); } }, [needWellbeing, sessionId]);
  const lessons = loadedBank?.bank.lessons ?? [];
+ const readingPosition = useOptionalReadingPositionContext();
+ const [restoreTarget, setRestoreTarget] = useState<LessonRestoreTarget | null>(null);
+ // The landing-screen offer to resume. Only a position recorded against the
+ // loaded bank version is trusted; a stale bank must not send the learner to a
+ // lesson that no longer matches the content. Suppressed during a timed
+ // diagnostic and during lesson practice, where the learner is mid-flow.
+ const resumeCandidate = useMemo(() => {
+  const saved = readingPosition?.position;
+  if (!loadedBank || !saved?.lessonId || lessonScreen || exam || activePracticeLessonId) return null;
+  if (saved.contentVersion !== loadedBank.version) return null;
+  const lesson = loadedBank.bank.lessons?.find(item => item.id === saved.lessonId);
+  if (!lesson) return null;
+  const sections = buildLessonSections(lesson);
+  const sectionIndex = saved.sectionId ? sections.findIndex(item => item.id === saved.sectionId) : -1;
+  const section = sectionIndex >= 0 ? sections[sectionIndex] : undefined;
+  return {
+   lesson,
+   saved,
+   sectionIndex: sectionIndex >= 0 ? sectionIndex : undefined,
+   sectionTitle: section?.title || section?.concepts[0]?.concept.title,
+   chapterLabel: loadedBank.bank.chapter?.title ?? (loadedBank.bank.chapter?.number != null ? `Chapter ${loadedBank.bank.chapter.number}` : undefined),
+   sectionCount: sections.length,
+   completedSections: lessonProgressById[lesson.id]?.completedSectionIds?.length ?? 0,
+  };
+ }, [activePracticeLessonId, exam, lessonProgressById, lessonScreen, loadedBank, readingPosition?.position]);
  const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
  useEffect(() => {
   if (!menu && !modalOpen) return;
@@ -472,6 +498,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   }
  }
  function openLesson(lesson: Lesson) {
+  setRestoreTarget(null);
   const before = lessonProgressById[lesson.id];
   if (!before) rememberLessonProgress({ lessonId: lesson.id, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedSectionIds: [], completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() });
   if (loadedBank) {
@@ -482,8 +509,20 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   setLessonScreen(lesson);
  }
  function closeLesson() {
+  setRestoreTarget(null);
   setLessonScreen(null);
   requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true }));
+ }
+ /** Opens the saved lesson/section and asks the lesson screen to scroll to it once. */
+ function continueLearning() {
+  const candidate = resumeCandidate;
+  if (!candidate) return;
+  openLesson(candidate.lesson);
+  setRestoreTarget({
+   sectionId: candidate.saved.sectionId,
+   contentAnchorId: candidate.saved.contentAnchorId,
+   scrollOffset: candidate.saved.scrollOffset,
+  });
  }
  function openReference(lesson: Lesson) {
   const current = store.getState().doc.exercises.find(item => item.id === store.getState().doc.exerciseId);
@@ -957,6 +996,16 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     {problemForm.formState.errors.source && <p id="problem-error" role="alert">{problemForm.formState.errors.source.message}</p>}
     <div className="toolbar"><Button type="submit" variant="default">Start</Button><Button onClick={() => setSetup(false)}>Cancel</Button></div></form></section>}
    {backup && <section className="setup-panel" aria-label="Session backup"><h2>Session backup</h2><form onSubmit={loadBackup} noValidate><label htmlFor="session-json">Copy or paste session JSON</label><textarea id="session-json" {...jsonForm.register('json')} spellCheck={false} aria-invalid={!!jsonForm.formState.errors.json} aria-describedby={jsonForm.formState.errors.json ? 'json-error' : undefined} /><div className="toolbar"><Button onClick={async () => dispatch(actions.notice(await writeClipboard(jsonForm.getValues('json')) ? 'Session copied.' : 'Select the text and copy manually.'))}>Copy Session</Button><Button type="submit">Restore</Button><Button onClick={() => setBackup(false)}>Close</Button></div>{jsonForm.formState.errors.json && <p id="json-error" role="alert">{jsonForm.formState.errors.json.message}</p>}</form></section>}
+   {resumeCandidate && <ContinueLearningButton
+    title={<span lang={languageForText(resumeCandidate.lesson.title)} dir={contentDirection(resumeCandidate.lesson.title)}><LessonText text={resumeCandidate.lesson.title} /></span>}
+    section={resumeCandidate.sectionTitle}
+    meta={[
+     resumeCandidate.chapterLabel,
+     resumeCandidate.sectionCount > 0 ? (resumeCandidate.sectionIndex !== undefined ? `Section ${resumeCandidate.sectionIndex + 1} of ${resumeCandidate.sectionCount}` : `${resumeCandidate.sectionCount} sections`) : undefined,
+     resumeCandidate.completedSections > 0 ? `${resumeCandidate.completedSections} of ${resumeCandidate.sectionCount} sections complete` : undefined,
+    ]}
+    onResume={continueLearning}
+   />}
    <div className="workspace">{layout !== 'phone' && batch && <QuestionNavigator doc={state.doc} onSelect={switchQuestion} />}
     <div className="question-context" role={wide ? 'region' : undefined} aria-label={wide ? 'Question context' : undefined}>
    {batch && <section className="exercise-bar" hidden={layout !== 'phone'} aria-label="Question navigation"><label>Current question<select aria-label="Select question" value={ex.id} onChange={e => switchQuestion(e.target.value)}>{state.doc.exercises.map((entry, i) => <option value={entry.id} key={entry.id}>Question {i + 1} · {questionStatus(entry)}</option>)}</select></label></section>}
@@ -1001,7 +1050,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    </div></div>
    </div>
   </div>
-  {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} activityTracker={activityTracker} eventContext={lessonEventContext} /></div>}
+  {lessonScreen && <div className="learn-workspace"><LessonScreen key={`${lessonScreen.id}:${lessonRemoteRevision}`} bank={loadedBank?.bank ?? null} lesson={loadedBank?.bank.lessons?.find(lesson => lesson.id === lessonScreen.id) ?? null} initialProgress={lessonProgressById[lessonScreen.id]} restore={restoreTarget ?? undefined} onBack={closeLesson} onProgress={rememberLessonProgress} onStartPractice={(lesson, progress, questions, sectionId) => startLessonPractice(lesson, progress, questions, sectionId)} practiceError={practiceStartError} progressMessage={lessonPersistenceMessage} activityTracker={activityTracker} eventContext={lessonEventContext} /></div>}
   <LessonPicker open={lessonPickerOpen} lessons={lessons} progressByLesson={lessonProgressById} hasBank={!!matchingBank} onLoadBank={loadBankFromLessons} onOpenChange={setLessonPickerOpen} onChoose={openLesson} onCloseAutoFocus={event => { event.preventDefault(); if (!lessonScreen) menuInvoker.current?.focus({ preventScroll: true }); }} />
   {matchingBank && <LessonReferenceDialog lesson={referenceLesson} bank={matchingBank.bank} question={currentBankQuestion} onSelectPracticeQuestion={openQuestionFromReference} onOpenInteractiveLesson={openInteractiveLessonFromReference} onOpenChange={open => { if (!open) closeReference(); }} onCloseAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => lessonButton.current?.focus({ preventScroll: true })); }} />}
   <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}><DialogContent onCloseAutoFocus={event => { event.preventDefault(); menuInvoker.current?.focus({preventScroll:true}); }}><DialogTitle>Keyboard shortcuts</DialogTitle><DialogDescription>Use your physical keyboard in the math editor. Tab moves between controls; arrow keys edit within numbers and fields.</DialogDescription><ShortcutHelp /><Button onClick={() => setShortcutsOpen(false)}>Close</Button></DialogContent></Dialog>

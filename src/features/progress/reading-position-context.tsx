@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Button } from '../../shared/ui/button';
 import { getDeviceId } from '../../sync/events';
 import { ReadingPosition, MinimalReadingPosition } from './reading-position-types';
 import { startReadingPositionPersistence, useReadingPositionStore } from './reading-position-store';
@@ -126,24 +127,41 @@ export function useOptionalReadingPositionContext() {
   return useContext(ReadingPositionContext);
 }
 
-export function ContinueLearningButton() {
-  const { position, isLoading, isRestored } = useReadingPositionContext();
+export type ContinueLearningButtonProps = {
+  /** Lesson title, already language/direction isolated by the caller. */
+  title: ReactNode;
+  /** The section the learner stopped in. */
+  section?: ReactNode;
+  /** Chapter, section count and progress facts shown under the title. */
+  meta?: ReactNode[];
+  label?: string;
+  actionLabel?: string;
+  onResume: () => void;
+};
 
-  if (isLoading || !isRestored || !position) return null;
-  if (!position.chapterId && !position.lessonId) return null;
-
+/**
+ * Landing-screen offer to resume the saved lesson. Navigation is owned by the
+ * caller, so this stays a presentational control built from the shared Button
+ * and the existing design tokens.
+ */
+export function ContinueLearningButton({
+  title,
+  section,
+  meta = [],
+  label = 'Continue learning',
+  actionLabel = 'Resume lesson',
+  onResume,
+}: ContinueLearningButtonProps) {
+  const details = meta.filter(item => item !== null && item !== undefined && item !== '');
   return (
-    <div className="continue-learning-container">
-      <button
-        type="button"
-        className="continue-learning-button"
-        aria-label="Continue from where you left off"
-      >
-        Continue Learning
-        {position.lessonId ? (
-          <span className="continue-learning-details" dir="ltr">{position.lessonId}</span>
-        ) : null}
-      </button>
-    </div>
+    <section className="continue-learning" aria-labelledby="continue-learning-title">
+      <div className="continue-learning-copy">
+        <p className="continue-learning-label">{label}</p>
+        <h2 id="continue-learning-title">{title}</h2>
+        {section && <p className="continue-learning-section">{section}</p>}
+        {details.length > 0 && <p className="continue-learning-meta">{details.map((item, index) => <span key={index}>{item}</span>)}</p>}
+      </div>
+      <Button variant="default" className="continue-learning-action" onClick={onResume}>{actionLabel}</Button>
+    </section>
   );
 }
