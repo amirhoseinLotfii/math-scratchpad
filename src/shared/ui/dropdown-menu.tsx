@@ -54,7 +54,8 @@ export function ResponsiveDropdownMenuSub({ label, children }: { label: string; 
  }
  return <>
   <DropdownMenuItem className="menu-disclosure" aria-expanded={expanded} aria-controls={expanded ? contentId : undefined}
-   onPointerEnter={event => { if (event.pointerType === 'mouse') setExpanded(true); }}
+   // Do not expand on pointer enter: desktop mouse emulation fires this before
+   // click, causing onSelect to immediately toggle the disclosure closed.
    onSelect={event => { event.preventDefault(); setExpanded(value => !value); }}>
    <span>{label}</span><ChevronDown className={expanded ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" />
   </DropdownMenuItem>
