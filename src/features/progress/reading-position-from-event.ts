@@ -59,7 +59,6 @@ export function readingPositionFromLearnEvent(event: LearnEvent): ReadingPositio
     contentVersion: event.bankVersion,
     lastActivity: activityFromLearnEvent(event.type),
     updatedAt: new Date(event.ts),
-    deviceMetadata: undefined,
   };
 }
 
@@ -76,10 +75,30 @@ export function mergeLatestReadingPosition(
 ): ReadingPosition {
   if (!current) return incoming;
   if (positionTimestamp(incoming) < positionTimestamp(current)) return current;
+
+  const chapterChanged = incoming.chapterId !== undefined && incoming.chapterId !== current.chapterId;
+  const lessonChanged = chapterChanged || (incoming.lessonId !== undefined && incoming.lessonId !== current.lessonId);
+  const sectionChanged = lessonChanged || (incoming.sectionId !== undefined && incoming.sectionId !== current.sectionId);
+  const exerciseChanged = sectionChanged || (incoming.exerciseId !== undefined && incoming.exerciseId !== current.exerciseId);
+  const versionChanged = !!incoming.contentVersion && incoming.contentVersion !== current.contentVersion;
+  const clearSectionPosition = sectionChanged || versionChanged;
+  const definedIncoming = Object.fromEntries(
+    Object.entries(incoming).filter(([, value]) => value !== undefined),
+  ) as Partial<ReadingPosition>;
+
   return {
     ...current,
-    ...incoming,
+    ...definedIncoming,
     userId: incoming.userId || current.userId,
+    chapterId: incoming.chapterId ?? current.chapterId,
+    lessonId: incoming.lessonId ?? (chapterChanged ? undefined : current.lessonId),
+    sectionId: incoming.sectionId ?? (lessonChanged ? undefined : current.sectionId),
+    contentAnchorId: incoming.contentAnchorId ?? (clearSectionPosition ? undefined : current.contentAnchorId),
+    exerciseId: incoming.exerciseId ?? (sectionChanged ? undefined : current.exerciseId),
+    stepId: incoming.stepId ?? (exerciseChanged ? undefined : current.stepId),
+    scrollOffset: incoming.scrollOffset ?? (clearSectionPosition ? undefined : current.scrollOffset),
+    relativeOffset: incoming.relativeOffset ?? (clearSectionPosition ? undefined : current.relativeOffset),
+    deviceMetadata: incoming.deviceMetadata ?? (clearSectionPosition ? undefined : current.deviceMetadata),
     contentVersion: incoming.contentVersion || current.contentVersion,
     lastActivity: incoming.lastActivity,
     updatedAt: incoming.updatedAt,
