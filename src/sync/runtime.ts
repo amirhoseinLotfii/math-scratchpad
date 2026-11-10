@@ -5,6 +5,7 @@ import {
   flushLearningStorage,
   getAuthenticatedServerStorage,
   getSyncMeta,
+  isLearningStorageKey,
   queueLearnEvent,
   readOutboxBatch,
   readOutboxCount,
@@ -136,8 +137,8 @@ export class BrowserSyncRuntime {
   }
 
   /** Owner-authenticated read-only preflight; it cannot execute deletion. */
-  async previewAllReset(): Promise<ResetPreview> {
-    const response = await this.request('/reset/preview?scope=all', { method: 'GET' });
+  async previewAllReset(token?: string): Promise<ResetPreview> {
+    const response = await this.request('/reset/preview?scope=all', { method: 'GET' }, token);
     const value: unknown = await response.json();
     if (!isRecord(value) || value.readOnly !== true || value.canExecute !== false
       || value.scope !== 'all' || value.requiresCloudReconciliation !== true
@@ -151,6 +152,16 @@ export class BrowserSyncRuntime {
       throw new Error('پاسخ پیش‌نمایش ریست معتبر نبود؛ هیچ داده‌ای حذف نشده است.');
     }
     return value as ResetPreview;
+  }
+
+  /** Check that no cloud learning state remains before allowing a freshly reset browser to sync. */
+  async hasCloudLearningData(token?: string): Promise<boolean> {
+    const preview = await this.previewAllReset(token);
+    if (preview.matchingEvents > 0 || preview.totalEvents > 0 || preview.sharedStateKeysRequiringSelectiveMerge > 0) return true;
+    const response = await this.request('/state', { method: 'GET' }, token);
+    const value: unknown = await response.json();
+    if (!isRecord(value) || !Array.isArray(value.records)) throw new Error('پاسخ وضعیت ذخیره‌سازی سرور معتبر نبود؛ همگام‌سازی متوقف ماند.');
+    return value.records.some(record => isRecord(record) && typeof record.key === 'string' && isLearningStorageKey(record.key));
   }
 
   observeMirrorStatuses(): () => void {
@@ -280,18 +291,19 @@ export class BrowserSyncRuntime {
   private onVisibilityChange = () => { if (document.visibilityState === 'visible') this.onWake(); };
   private onPageHide = () => { /* IndexedDB transactions are already submitted as each event is queued. */ };
 
-  private async request(path: string, init: RequestInit): Promise<Response> {
-    if (!this.token) throw new SyncRequestError('Google sign-in is required.', 401, false);
+  private async request(path: string, init: RequestInit, tokenOverride?: string): Promise<Response> {
+    const token = tokenOverride ?? this.token;
+    if (!token) throw new SyncRequestError('Google sign-in is required.', 401, false);
     let response: Response;
     try {
       response = await this.fetcher(`${this.apiOrigin}${path}`, {
         ...init,
-        headers: { ...(init.headers ?? {}), Authorization: `Bearer ${this.token}` },
+        headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
       });
     } catch { throw new SyncRequestError('شبکه در دسترس نیست؛ داده‌ها در صف آفلاین می‌مانند.'); }
     if (response.status === 401) {
       // An expired or revoked Worker session is forgotten so a fresh GIS login can mint a new one.
-      reportApiUnauthorized(this.token);
+      reportApiUnauthorized(token);
       throw new SyncRequestError('ورود گوگل منقضی شده است؛ دوباره متصل شو.', 401, false);
     }
     if (response.status === 429) {
