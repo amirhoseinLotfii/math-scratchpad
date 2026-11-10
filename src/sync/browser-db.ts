@@ -2,13 +2,17 @@ import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
 import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
 
-export const LEARNING_DB_NAME = 'math-scratchpad-sync-v1';
+export const LEARNING_DB_NAME = 'math-scratchpad-sync-v2';
 export const LEARNING_DB_VERSION = 1;
+const LEGACY_LEARNING_DB_NAMES = ['math-scratchpad-sync-v1'] as const;
 export const LEARNING_CACHE_STORE = 'cache';
 export const LEARNING_OUTBOX_STORE = 'outbox';
 export const LEARNING_SERVER_EVENTS_STORE = 'serverEvents';
 export const LEARNING_META_STORE = 'meta';
 export const LEGACY_MIGRATION_META_KEY = 'legacy-migration-v1';
+const LOCAL_RESET_EPOCH_KEY = 'math-scratchpad-local-learning-reset-epoch-v1';
+const LOCAL_RESET_PENDING_KEY = 'math-scratchpad-local-learning-reset-pending-v1';
+const LOCAL_RESET_EPOCH = '2026-11-10-v1';
 const LEGACY_MIGRATION_LOCK_NAME = 'math-scratchpad-legacy-migration-v1';
 const LEGACY_MIGRATION_LOCK_KEY = 'legacy-migration-lock-v1';
 const LEGACY_MIGRATION_LOCK_LEASE_MS = 120_000;
@@ -55,6 +59,17 @@ const SESSION_KEYS = new Set([
   'math-scratchpad-reading-position-v1',
 ]);
 const DEVICE_ID_KEY = 'math-scratchpad-device-id-v1';
+const DRIVE_CONFIG_KEY = 'math-scratchpad-drive-config-v1';
+const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1:';
+const LEGACY_LOCAL_LEARNING_KEYS = new Set(['lastReadingPosition', 'currentSession']);
+const AUTH_STORAGE_KEYS = new Set([
+  'math-scratchpad-google-id-token-v1',
+  'math-scratchpad-google-id-session-v1',
+  'math-scratchpad-drive-token-v1',
+  'math-scratchpad-drive-consent-v1',
+  LOCAL_RESET_EPOCH_KEY,
+  LOCAL_RESET_PENDING_KEY,
+]);
 
 export function isLearningStorageKey(key: string): boolean {
   return SESSION_KEYS.has(key)
@@ -63,7 +78,137 @@ export function isLearningStorageKey(key: string): boolean {
     || key.startsWith('math-scratchpad-reading-position-v1:');
 }
 function isIndexedDbCacheKey(key: string): boolean {
-  return isLearningStorageKey(key) || key === DEVICE_ID_KEY || key.startsWith('math-scratchpad-drive-bank-cache-v1:');
+  return isLearningStorageKey(key) || key === DEVICE_ID_KEY || key.startsWith(BANK_CACHE_PREFIX);
+}
+
+function isProtectedLocalDataKey(key: string): boolean {
+  return key === DEVICE_ID_KEY || key === DRIVE_CONFIG_KEY || key.startsWith(BANK_CACHE_PREFIX) || AUTH_STORAGE_KEYS.has(key);
+}
+
+function isResettableLocalDataKey(key: string): boolean {
+  return (key.startsWith('math-scratchpad') || key.startsWith('math-scratchpad_position') || LEGACY_LOCAL_LEARNING_KEYS.has(key))
+    && !isProtectedLocalDataKey(key);
+}
+
+/** True after this browser has cleared learning data and is waiting for the cloud copy to be cleared. */
+export function isLocalLearningResetPending(): boolean {
+  try { return localStorageIfAvailable()?.getItem(LOCAL_RESET_PENDING_KEY) === '1'; }
+  catch { return true; }
+}
+
+/** Clear old learning data once per browser before any storage hydration or sync begins. */
+export async function prepareLocalLearningReset(): Promise<boolean> {
+  const storage = localStorageIfAvailable();
+  if (!storage) throw new Error('Local browser storage is unavailable; old learning data was left untouched and sync is paused.');
+  return withLegacyMigrationLock(async () => {
+    if (storage.getItem(LOCAL_RESET_EPOCH_KEY) === LOCAL_RESET_EPOCH) return isLocalLearningResetPending();
+
+    // Write the guard first so a failed or interrupted deletion can never hydrate old work.
+    storage.setItem(LOCAL_RESET_PENDING_KEY, '1');
+    await clearLocalLearningData();
+    storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
+    return true;
+  });
+}
+
+/** Release the local sync guard only after the authenticated cloud preflight is empty. */
+export function completeLocalLearningReset(): void {
+  const storage = localStorageIfAvailable();
+  if (!storage) throw new Error('Local browser storage is unavailable; sync remains paused.');
+  storage.removeItem(LOCAL_RESET_PENDING_KEY);
+  if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== null) throw new Error('The local reset guard could not be cleared; sync remains paused.');
+}
+
+async function clearLocalLearningData(): Promise<void> {
+  if (serverStorage) throw new Error('Server storage is already active; local reset must run before cloud hydration.');
+  await flushLearningStorage();
+
+  const removeMatching = (storage: Storage) => {
+    for (let index = storage.length - 1; index >= 0; index--) {
+      const key = storage.key(index);
+      if (key && isResettableLocalDataKey(key)) storage.removeItem(key);
+    }
+  };
+  try { removeMatching(localStorage); }
+  catch { throw new Error('Local learning data could not be cleared from localStorage; sync is paused.'); }
+  try { removeMatching(sessionStorage); }
+  catch { throw new Error('Local learning data could not be cleared from sessionStorage; sync is paused.'); }
+
+  const protectedLegacyCache = await readProtectedLegacyCache();
+  const db = await database();
+  if (protectedLegacyCache.length) {
+    const tx = db.transaction(LEARNING_CACHE_STORE, 'readwrite');
+    await Promise.all(protectedLegacyCache.map(async record => {
+      if (!(await tx.store.get(record.key))) await tx.store.put(record);
+    }));
+    await tx.done;
+  }
+  const cacheRecords = await db.getAll(LEARNING_CACHE_STORE);
+  const metaRecords = await db.getAll(LEARNING_META_STORE);
+  const tx = db.transaction([LEARNING_CACHE_STORE, LEARNING_OUTBOX_STORE, LEARNING_SERVER_EVENTS_STORE, LEARNING_META_STORE], 'readwrite');
+  const cacheStore = tx.objectStore(LEARNING_CACHE_STORE);
+  await Promise.all([
+    ...cacheRecords.filter(record => isResettableLocalDataKey(record.key)).map(record => cacheStore.delete(record.key)),
+    tx.objectStore(LEARNING_OUTBOX_STORE).clear(),
+    tx.objectStore(LEARNING_SERVER_EVENTS_STORE).clear(),
+    ...metaRecords.filter(record => record.key !== LEGACY_MIGRATION_LOCK_KEY)
+      .map(record => tx.objectStore(LEARNING_META_STORE).delete(record.key)),
+  ]);
+  await tx.done;
+
+  for (const key of values.keys()) if (isResettableLocalDataKey(key)) values.delete(key);
+  memoryOutbox.clear();
+  memoryServerEvents.clear();
+  memoryMeta.clear();
+
+  const [remainingCache, outboxCount, serverEventCount, metaCount] = await Promise.all([
+    db.getAll(LEARNING_CACHE_STORE),
+    db.count(LEARNING_OUTBOX_STORE),
+    db.count(LEARNING_SERVER_EVENTS_STORE),
+    db.count(LEARNING_META_STORE),
+  ]);
+  const remainingLocalData = [localStorage, sessionStorage].some(storage => {
+    for (let index = 0; index < storage.length; index++) {
+      const key = storage.key(index);
+      if (key && isResettableLocalDataKey(key)) return true;
+    }
+    return false;
+  });
+  const remainingMeta = await db.getAll(LEARNING_META_STORE);
+  if (remainingCache.some(record => isResettableLocalDataKey(record.key))
+    || outboxCount !== 0 || serverEventCount !== 0 || remainingMeta.some(record => record.key !== LEGACY_MIGRATION_LOCK_KEY) || metaCount > 1 || remainingLocalData) {
+    throw new Error('The browser could not verify removal of all old learning data; sync remains paused.');
+  }
+  for (const legacyName of LEGACY_LEARNING_DB_NAMES) await deleteIndexedDbDatabase(legacyName);
+}
+
+async function readProtectedLegacyCache(): Promise<CacheRecord[]> {
+  const preserved: CacheRecord[] = [];
+  for (const name of LEGACY_LEARNING_DB_NAMES) {
+    let legacy: IDBPDatabase<LearningDb> | undefined;
+    try {
+      legacy = await openDB<LearningDb>(name, LEARNING_DB_VERSION);
+      if (!legacy.objectStoreNames.contains(LEARNING_CACHE_STORE)) continue;
+      preserved.push(...(await legacy.getAll(LEARNING_CACHE_STORE)).filter(record => isProtectedLocalDataKey(record.key)));
+    } catch {
+      throw new Error('The previous browser database could not be read safely; sync is paused.');
+    } finally {
+      legacy?.close();
+    }
+  }
+  return [...new Map(preserved.map(record => [record.key, record])).values()];
+}
+
+function deleteIndexedDbDatabase(name: string): Promise<void> {
+  if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB is unavailable; old local data could not be deleted.'));
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    const timeout = setTimeout(() => reject(new Error('An older tab is still using the previous browser database; close it and reload this page.')), 15_000);
+    request.onsuccess = () => { clearTimeout(timeout); resolve(); };
+    request.onerror = () => { clearTimeout(timeout); reject(request.error ?? new Error('The previous browser database could not be deleted.')); };
+    // Existing tabs receive versionchange and close their DB. Keep waiting for the delete to finish.
+    request.onblocked = () => undefined;
+  });
 }
 
 let dbPromise: Promise<IDBPDatabase<LearningDb>> | undefined;
@@ -163,17 +308,10 @@ export async function clearLegacyBrowserLearningData(): Promise<void> {
       if (key?.startsWith('math-scratchpad')) sessionStorage.removeItem(key);
     }
   } catch { /* May be disabled by browser privacy settings. */ }
-  // Never open or create an IndexedDB database during production initialization.
-  try {
-    if ('indexedDB' in globalThis) {
-      await new Promise<void>(resolve => {
-        const request = indexedDB.deleteDatabase(LEARNING_DB_NAME);
-        request.onsuccess = () => resolve();
-        request.onerror = () => resolve();
-        request.onblocked = () => resolve(); // Another tab is still using the old DB.
-      });
-    }
-  } catch { /* No local storage is required for the server-first editor. */ }
+  for (const name of [LEARNING_DB_NAME, ...LEGACY_LEARNING_DB_NAMES]) {
+    try { await deleteIndexedDbDatabase(name); }
+    catch { /* A blocked browser database remains a failed best-effort legacy cleanup. */ }
+  }
 }
 
 

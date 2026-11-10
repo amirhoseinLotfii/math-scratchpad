@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { getAuthenticatedServerStorage } from './browser-db';
+import { getAuthenticatedServerStorage, isLocalLearningResetPending } from './browser-db';
 import { ensureApiToken, subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
@@ -8,6 +8,12 @@ type GateState = { kind: 'checking' | 'online' | 'blocked'; message: string };
 const INITIAL: GateState = { kind: 'checking', message: 'در حال بررسی همگام‌سازی…' };
 const TIMEOUT_MS = 7_000;
 const PING_INTERVAL_MS = 30_000;
+
+function localStorageMessage(): string {
+  return isLocalLearningResetPending()
+    ? 'داده‌های قدیمی این مرورگر پاک شده‌اند؛ تا پایان پاک‌سازی ابر، داده‌های تازه فقط روی همین دستگاه می‌مانند.'
+    : 'تمرین‌ها روی این دستگاه ذخیره می‌شوند.';
+}
 
 /** Keeps the editor usable from durable local data while the server is unavailable. */
 export function ServerConnectionGate({ children, tokenProvider, onAuthenticated, flushPendingDraft }: {
@@ -31,13 +37,13 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     }
     const id = ++epoch.current;
     if (navigator.onLine === false) {
-      setState({ kind: 'blocked', message: 'اینترنت قطع است؛ تمرین‌ها همچنان روی این دستگاه ذخیره می‌شوند.' });
+      setState({ kind: 'blocked', message: `اینترنت قطع است؛ ${localStorageMessage()}` });
       return;
     }
     let token = tokenProvider();
     if (!token) token = await ensureApiToken();
     if (!token) {
-      setState({ kind: 'blocked', message: 'برای همگام‌سازی با سرور وارد Google شو. تمرین‌ها روی این دستگاه ذخیره می‌شوند.' });
+      setState({ kind: 'blocked', message: `برای همگام‌سازی با سرور وارد Google شو. ${localStorageMessage()}` });
       return;
     }
     checking.current = true;
@@ -54,7 +60,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
         const message = problem instanceof Error && problem.name !== 'AbortError'
           ? problem.message
           : 'پاسخ سرور در زمان مجاز دریافت نشد.';
-        setState({ kind: 'blocked', message: `همگام‌سازی سرور موقتاً برقرار نیست: ${message} داده‌های این دستگاه محفوظ‌اند.` });
+        setState({ kind: 'blocked', message: `همگام‌سازی سرور موقتاً برقرار نیست: ${message} ${localStorageMessage()}` });
       }
     } finally {
       checking.current = false;
@@ -106,7 +112,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
         if (!active) return;
         setState({
           kind: 'blocked',
-          message: `اتصال Google تأیید نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. داده‌های این دستگاه محفوظ‌اند.`,
+          message: `اتصال Google تأیید نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. ${localStorageMessage()}`,
         });
       });
     }).then(removeListener => {
@@ -115,7 +121,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     }).catch(problem => {
       if (active) setState({
         kind: 'blocked',
-        message: `ورود گوگل بارگیری نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. داده‌های این دستگاه محفوظ‌اند.`,
+        message: `ورود گوگل بارگیری نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. ${localStorageMessage()}`,
       });
     });
     return () => { active = false; unsubscribe?.(); };
