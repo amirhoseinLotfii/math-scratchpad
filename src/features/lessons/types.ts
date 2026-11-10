@@ -1,4 +1,5 @@
-import type { Step } from '../../model';
+import type { Step, TrueFalseChoice } from '../../model';
+import { stepIsBlank } from '../../model';
 
 export type Lang = 'fa' | 'en';
 export type BlockType = 'heading' | 'paragraph' | 'definition' | 'example' | 'note' | 'math' | 'image' | 'image-description';
@@ -39,7 +40,15 @@ export interface QuestionLessonFields {
 export type LessonStatus = 'not_started' | 'learning' | 'practising' | 'done';
 export type LessonCheckAnswer =
   | { type: 'text' | 'choice'; value: string }
+  | { type: 'find_mistake'; value: string }
+  | { type: 'true_false_why'; choice?: TrueFalseChoice; reason: string }
   | { type: 'math'; steps: Step[] };
+export function lessonCheckAnswerComplete(answer: LessonCheckAnswer | undefined): boolean {
+  if (!answer) return false;
+  if (answer.type === 'math') return answer.steps.some(step => !stepIsBlank(step));
+  if (answer.type === 'true_false_why') return !!answer.choice && !!answer.reason.trim();
+  return !!answer.value.trim();
+}
 export interface LessonProgress {
   lessonId: string;
   status: LessonStatus;

@@ -32,17 +32,24 @@ export function itemStatus(ex: Exercise): ItemStatus {
 /** Help = tutor help checkbox OR in-app guidance opened (opening is permanent). */
 export const helped = (ex: Exercise) => ex.hintUsed === true || !!ex.guidanceOpenedAt;
 export function exportItem(ex: Exercise, index: number): TutorItem {
-  const isTextResponse = ex.answerType === 'text' || ex.answerType === 'choice';
+  const isTextResponse = ex.answerType === 'text' || ex.answerType === 'choice' || ex.answerType === 'find_mistake' || ex.answerType === 'true_false_why';
   const steps = isTextResponse ? [] : ex.steps.map((s, i) => ({ step_id: s.id, number: i + 1, latex: stepLatex(s), is_final: s.final }));
   const final = steps.find(s => s.is_final) ?? null;
+  const textAnswer = ex.answerType === 'true_false_why'
+    ? [ex.answerChoice ? (ex.answerChoice === 'true' ? 'True' : 'False') : '', ex.answerReason?.trim() ? ex.answerReason : ''].filter(Boolean).join(' — ')
+    : ex.answerText ?? '';
+  const completeTextAnswer = ex.answerType === 'true_false_why'
+    ? !!ex.answerChoice && !!ex.answerReason?.trim()
+    : !!textAnswer.trim();
+  const finalTextAnswer = completeTextAnswer ? textAnswer : null;
   const confidence = ex.confidence ?? 'high';
   const status = itemStatus(ex);
   return {
     item_id: ex.id, index: index + 1, question_id: ex.bankQuestionId ?? ex.diagnosticId ?? null, assessment: ex.assessment ?? null,
     prompt: ex.prompt ?? null, problem: ex.mode === 'math' ? ascii(ex.source) : ex.source, problem_format: ex.mode === 'text' ? 'persian-text' : 'math-or-latex',
     status,
-    student_answer: isTextResponse ? ex.answerText?.trim() ? ex.answerText : null : final && !blankStep(final.latex) ? final.latex : null,
-    final_answer: isTextResponse ? ex.answerText?.trim() ? ex.answerText : null : final && !blankStep(final.latex) ? final.latex : null,
+    student_answer: isTextResponse ? textAnswer.trim() ? textAnswer : null : final && !blankStep(final.latex) ? final.latex : null,
+    final_answer: isTextResponse ? finalTextAnswer : final && !blankStep(final.latex) ? final.latex : null,
     final_step_id: isTextResponse ? null : final?.step_id ?? null, final_step_number: isTextResponse ? null : final?.number ?? null,
     steps: status === 'unanswered' ? [] : steps.filter(s => !blankStep(s.latex) || s.is_final),
     started_at: ex.startedAt ?? null, submitted_at: ex.submittedAt ?? null,

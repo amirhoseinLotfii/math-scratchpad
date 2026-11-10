@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type MouseEvent, type RefObject, type SetStateAction } from 'react';
-import { MoreVertical, RotateCcw, Trash2, Copy, ChevronDown, ChevronRight, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud } from 'lucide-react';
+import { MoreVertical, RotateCcw, Trash2, Copy, ChevronDown, ChevronRight, ClipboardCheck, FileJson2, HardDrive, Download, Upload, HelpCircle, SkipForward, BookOpen, NotebookPen, Cloud, Sun, Moon } from 'lucide-react';
 import type { SessionMeta } from '../model';
 import { Button } from '../shared/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '../shared/ui/dropdown-menu';
 import { isServerStorageActive } from '../sync/browser-db';
+import { applyThemePreference, readThemePreference, THEME_STORAGE_KEY, type ThemePreference, writeThemePreference } from '../shared/lib/ui-prefs';
+import { BREAKPOINT_MEDIA } from '../shared/lib/breakpoints';
 
 export type ExerciseMenuActions = {
  onCheckCopy: () => void; onExportTutor: () => void; onOpenDriveBank: () => void; onNewProblem: () => void; onToggleSkip: () => void; onLessons: () => void;
@@ -19,12 +21,13 @@ export function ExerciseMenu({ open: menu, setOpen: setMenu, invokerRef: menuInv
 }) {
  const menuKeyboardActivation = useRef(false);
  const [menuMore, setMenuMore] = useState(false), [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
- const [compactMenu, setCompactMenu] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 599px)').matches);
+ const [compactMenu, setCompactMenu] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(BREAKPOINT_MEDIA.compact).matches);
+ const [theme, setTheme] = useState<ThemePreference>(() => readThemePreference());
  const [inlineMenuSubmenu, setInlineMenuSubmenu] = useState<'practice' | 'data' | null>(null);
  const inlineMenuHover = useRef<'practice' | 'data' | null>(null);
  useEffect(() => {
   if (typeof window.matchMedia !== 'function') return;
-  const compactQuery = window.matchMedia('(max-width: 599px)');
+  const compactQuery = window.matchMedia(BREAKPOINT_MEDIA.compact);
   const updateCompactMenu = () => {
    setCompactMenu(compactQuery.matches);
    setInlineMenuSubmenu(null);
@@ -34,6 +37,22 @@ export function ExerciseMenu({ open: menu, setOpen: setMenu, invokerRef: menuInv
   compactQuery.addEventListener('change', updateCompactMenu);
   return () => compactQuery.removeEventListener('change', updateCompactMenu);
  }, []);
+ useEffect(() => {
+  const syncTheme = (event: StorageEvent) => {
+   if (event.key !== THEME_STORAGE_KEY) return;
+   const next = event.newValue === 'light' ? 'light' : 'dark';
+   setTheme(next);
+   applyThemePreference(next);
+  };
+  window.addEventListener('storage', syncTheme);
+  return () => window.removeEventListener('storage', syncTheme);
+ }, []);
+ function toggleTheme() {
+  const next: ThemePreference = theme === 'dark' ? 'light' : 'dark';
+  writeThemePreference(next);
+  applyThemePreference(next);
+  setTheme(next);
+ }
  useEffect(() => {
   if (menu) return;
   // Menu actions also close the controlled root directly with setMenu(false);
@@ -78,6 +97,7 @@ export function ExerciseMenu({ open: menu, setOpen: setMenu, invokerRef: menuInv
    <DropdownMenuItem onSelect={a.onNewProblem}><NotebookPen aria-hidden="true" />New Problem</DropdownMenuItem>
    <DropdownMenuItem onSelect={a.onToggleSkip}>{skipped ? <RotateCcw aria-hidden="true" /> : <SkipForward aria-hidden="true" />}{skipped ? 'Unskip question' : 'Skip question'}</DropdownMenuItem>
    <DropdownMenuItem onSelect={a.onLessons}><BookOpen aria-hidden="true" />Lessons</DropdownMenuItem>
+   <DropdownMenuItem onSelect={toggleTheme}>{theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}Switch to {theme === 'dark' ? 'light' : 'dark'} theme</DropdownMenuItem>
    <DropdownMenuItem className="menu-disclosure" aria-expanded={menuMore} aria-controls={menuMore ? 'more-notebook-actions' : undefined} onSelect={event => { event.preventDefault(); setMenuMore(value => !value); }}><span>Show more</span><ChevronDown className={menuMore ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" /></DropdownMenuItem>
    {menuMore && <div id="more-notebook-actions" className="menu-more-content">
     <DropdownMenuLabel className="menu-section-heading">Session</DropdownMenuLabel>

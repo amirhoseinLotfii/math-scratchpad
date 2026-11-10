@@ -3,7 +3,7 @@ import { ArrowLeft, BookOpen, ChevronDown, ChevronsLeft, ChevronsRight } from 'l
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
-import type { Lesson, LessonCheckAnswer, LessonProgress } from './types';
+import { lessonCheckAnswerComplete, type Lesson, type LessonCheckAnswer, type LessonProgress } from './types';
 import { getLearnChecks, getPracticeQuestionOrigin, getPracticeQuestions, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import { LessonCheck } from './lesson-check';
 import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits } from './lesson-content';
@@ -148,6 +148,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
   const focusedWorkScope = useRef<string | null>(null);
   const attemptCounts = useRef(new Map<string, number>());
   const gateAttemptedSections = useRef(new Set<string>());
+  const gateFailedSections = useRef(new Set<string>());
   const pendingAnswerEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingWorkEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const lessonScrollRef = useRef<HTMLDivElement>(null);
@@ -361,7 +362,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
       id, openType: 'question_open', closeType: 'question_close', context: makeEventContext(question),
       fields: {
         itemId: question.id,
-        itemType: question.answerType === 'choice' ? 'mcq' : question.answerType === 'text' || question.mode === 'text' ? 'typed' : 'step_by_step',
+        itemType: question.answerType === 'choice' ? 'mcq' : question.answerType === 'true_false_why' ? 'true_false_why' : question.answerType === 'find_mistake' ? 'find_mistake' : question.answerType === 'text' || question.mode === 'text' ? 'typed' : 'step_by_step',
         questionText: question.prompt || question.source,
       },
     });
@@ -465,9 +466,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
   const conceptComplete = checks.every(question => isCheckComplete(question.id));
 
   const setAnswer = useCallback((questionId: string, value: LessonCheckAnswer | null) => {
-    const answered = value === null ? false : value.type === 'math'
-      ? value.steps.some(step => !stepIsBlank(step))
-      : !!value.value.trim();
+    const answered = lessonCheckAnswerComplete(value ?? undefined);
     const before = progressRef.current;
     const question = allQuestions.get(questionId);
     const previousAnswer = before.checkAnswers?.[questionId];
@@ -479,15 +478,17 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
     const answeredCheckIds = answered
       ? [...new Set([...before.answeredCheckIds, questionId])]
       : before.answeredCheckIds.filter(id => id !== questionId);
-    const skippedChecks = answered ? before.skippedChecks.filter(item => item.questionId !== questionId) : before.skippedChecks;
+    const skippedChecks = value !== null ? before.skippedChecks.filter(item => item.questionId !== questionId) : before.skippedChecks;
     commitProgress({ ...before, answeredCheckIds, skippedChecks, ...(Object.keys(checkAnswers).length ? { checkAnswers } : { checkAnswers: undefined }) });
     if (!question || currentSignature === previousSignature) return;
     const context = makeEventContext(question);
     const steps = value?.type === 'math' ? value.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40) : undefined;
-    const answerText = value?.type === 'math' ? steps?.join('\n') ?? '' : value?.value ?? '';
+    const answerText = value?.type === 'math' ? steps?.join('\n') ?? ''
+      : value?.type === 'true_false_why' ? [value.choice ? value.choice === 'true' ? 'True' : 'False' : '', value.reason].filter(Boolean).join(' — ')
+      : value?.value ?? '';
     const baseFields = {
       itemId: question.id,
-      itemType: question.answerType === 'choice' ? 'mcq' as const : question.answerType === 'text' || question.mode === 'text' ? 'typed' as const : 'step_by_step' as const,
+      itemType: question.answerType === 'choice' ? 'mcq' as const : question.answerType === 'true_false_why' ? 'true_false_why' as const : question.answerType === 'find_mistake' ? 'find_mistake' as const : question.answerType === 'text' || question.mode === 'text' ? 'typed' as const : 'step_by_step' as const,
       questionText: (question.prompt || question.source).slice(0, 8_000),
       userAnswer: answerText.slice(0, 8_000),
       ...(steps ? { steps } : {}),
@@ -525,10 +526,18 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
     commitProgress({ ...before, skippedChecks });
     emitLearnEvent(makeEventContext(skipQuestion), {
       type: 'check_skipped', itemId: skipQuestion.id,
-      itemType: skipQuestion.answerType === 'choice' ? 'mcq' : skipQuestion.answerType === 'text' || skipQuestion.mode === 'text' ? 'typed' : 'step_by_step',
+      itemType: skipQuestion.answerType === 'choice' ? 'mcq' : skipQuestion.answerType === 'true_false_why' ? 'true_false_why' : skipQuestion.answerType === 'find_mistake' ? 'find_mistake' : skipQuestion.answerType === 'text' || skipQuestion.mode === 'text' ? 'typed' : 'step_by_step',
       questionText: (skipQuestion.prompt || skipQuestion.source).slice(0, 8_000),
     });
     markSectionGateAttempt(currentSection, skipQuestion);
+    if (currentSection && !gateFailedSections.current.has(currentSection.id)) {
+      gateFailedSections.current.add(currentSection.id);
+      emitLearnEvent(makeEventContext(skipQuestion, currentSection), {
+        type: 'gate_failed', itemId: currentSection.id,
+        questionText: currentSection.title ?? currentSection.id,
+        note: 'A quick check was skipped; section navigation remains available after the remaining checks are answered or skipped.',
+      });
+    }
     setSkipQuestion(null);
   }
 

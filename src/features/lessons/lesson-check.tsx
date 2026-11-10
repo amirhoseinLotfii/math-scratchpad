@@ -49,10 +49,25 @@ export function LessonCheck({ question, mathStore, answer, answered, confidence,
     <QuestionSource source={question.source} mode={question.mode} label={fa ? 'عبارت سؤال' : 'Question expression'} mathLabel={fa ? 'عبارت ریاضی سؤال' : 'Question math expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />
 
     {!skipped && answerType === 'math' && mathStore && <LessonMathCheck question={question} store={mathStore} onAnswered={onAnswer} uiLang={uiLang} />}
-    {!skipped && answerType === 'text' && <div className="lesson-check-text-answer">
+    {!skipped && (answerType === 'text' || answerType === 'find_mistake') && <div className="lesson-check-text-answer">
       <label htmlFor={`${id}-answer`}>{fa ? 'پاسخ شما' : 'Your answer'}</label>
-      <textarea id={`${id}-answer`} aria-label={`${fa ? 'پاسخ تمرین' : 'Answer for check'} ${question.id}`} value={answer?.type === 'text' ? answer.value : ''} dir="auto" onChange={event => onAnswer(question.id, { type: 'text', value: event.currentTarget.value })} />
+      <textarea id={`${id}-answer`} aria-label={`${fa ? 'پاسخ تمرین' : 'Answer for check'} ${question.id}`} maxLength={4000} value={answer?.type === 'text' || answer?.type === 'find_mistake' ? answer.value : ''} dir="auto" onChange={event => onAnswer(question.id, { type: answerType, value: event.currentTarget.value })} />
     </div>}
+    {!skipped && answerType === 'true_false_why' && <>
+      <fieldset className="lesson-check-choice">
+        <legend>{fa ? 'درست یا نادرست؟' : 'True or false?'}</legend>
+        <div className="lesson-choice-options" role="radiogroup" aria-label={`${fa ? 'درست یا نادرست' : 'True or false'} ${question.id}`}>
+          {(['true', 'false'] as const).map(choice => <label className={answer?.type === 'true_false_why' && answer.choice === choice ? 'lesson-choice-selected' : ''} key={choice}>
+            <input type="radio" name={`${id}-true-false`} value={choice} checked={answer?.type === 'true_false_why' && answer.choice === choice} onChange={() => onAnswer(question.id, { type: 'true_false_why', choice, reason: answer?.type === 'true_false_why' ? answer.reason : '' })} />
+            <span>{choice === 'true' ? 'True' : 'False'}</span>
+          </label>)}
+        </div>
+      </fieldset>
+      <div className="lesson-check-text-answer">
+        <label htmlFor={`${id}-reason`}>{fa ? 'دلیل خود را توضیح دهید' : 'Explain your choice'}</label>
+        <textarea id={`${id}-reason`} aria-label={`${fa ? 'دلیل پاسخ' : 'Reason for answer'} ${question.id}`} maxLength={4000} value={answer?.type === 'true_false_why' ? answer.reason : ''} dir="auto" onChange={event => onAnswer(question.id, { type: 'true_false_why', choice: answer?.type === 'true_false_why' ? answer.choice : undefined, reason: event.currentTarget.value })} />
+      </div>
+    </>}
     {!skipped && answerType === 'choice' && <fieldset className="lesson-check-choice">
       <legend>{fa ? 'یک گزینه را انتخاب کنید' : 'Choose one answer'}</legend>
       <div className="lesson-choice-options" role="radiogroup" aria-label={`${fa ? 'گزینه‌های تمرین' : 'Answer choices for'} ${question.id}`}>

@@ -8,11 +8,12 @@ import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
 import { ReadingPositionProvider } from './features/progress/reading-position-context';
 import { initializeReadingPositionSync } from './features/progress/reading-position-sync';
+import { initializeThemePreference } from './shared/lib/ui-prefs';
 import './fonts.css';
-import './styles/design-tokens.css';
-import './styles/tokens.css';
 import './styles/globals.css';
 import './styles.css';
+
+initializeThemePreference();
 
 const root = document.getElementById('math-scratchpad-redux');
 if (!root) throw Error('Math Scratchpad root is missing.');

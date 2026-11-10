@@ -13,6 +13,7 @@ import { displayEducationalHeading, isMathQuestionSource, LessonBlockView, Lesso
 import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
 import { MathDisplay } from '../../src/MathDisplay';
 import type { LessonProgress } from '../../src/features/lessons/types';
+import { subscribeToLearnEvents, type LearnEvent } from '../../src/sync/events';
 
 afterEach(cleanup);
 
@@ -281,6 +282,44 @@ describe('lesson learning screen', () => {
         expect.objectContaining({ id: 'SAMPLE-1.1-P03' }),
       ]),
     );
+  });
+
+  it('requires both parts of a true_false_why check before unlocking the next section', async () => {
+    const raw = JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as { questions: Array<Record<string, unknown>> };
+    raw.questions[0] = { ...raw.questions[0], answerType: 'true_false_why', choices: ['ignored-a', 'ignored-b'] };
+    const bank = validateBank(raw), { onProgress } = mount(bank);
+    const next = screen.getByRole('button', { name: 'Next section →' });
+    expect(next).toBeDisabled();
+    await userEvent.click(screen.getByRole('radio', { name: 'True' }));
+    expect(next).toBeDisabled();
+    await userEvent.type(screen.getByRole('textbox', { name: 'Reason for answer SAMPLE-1.1-L01' }), 'The statement follows from the definition.');
+    expect(next).toBeEnabled();
+    expect(onProgress.mock.lastCall?.[0]).toMatchObject({
+      answeredCheckIds: ['SAMPLE-1.1-L01'],
+      checkAnswers: { 'SAMPLE-1.1-L01': { type: 'true_false_why', choice: 'true', reason: 'The statement follows from the definition.' } },
+    });
+  });
+
+  it('logs a confirmed section-check skip while keeping section navigation available', async () => {
+    const user = userEvent.setup();
+    const events: LearnEvent[] = [];
+    const unsubscribe = subscribeToLearnEvents(event => events.push(event));
+    try {
+      mount();
+      await user.click(screen.getByRole('radio', { name: 'Option B' }));
+      await user.click(screen.getByRole('button', { name: 'Next section →' }));
+      await user.click(screen.getByRole('button', { name: 'Skip check' }));
+      const dialog = screen.getByRole('dialog', { name: 'Skip this check?' });
+      await user.click(within(dialog).getByRole('button', { name: 'Skip check' }));
+      const failedGate = events.find(event => event.type === 'gate_failed');
+      expect(failedGate).toBeDefined();
+      const next = screen.getByRole('button', { name: 'Next section →' });
+      expect(next).toBeEnabled();
+      await user.click(next);
+      expect(events.some(event => event.type === 'gate_passed' && event.itemId === failedGate?.itemId)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('reveals example steps progressively and retains the revealed count across concept navigation', async () => {

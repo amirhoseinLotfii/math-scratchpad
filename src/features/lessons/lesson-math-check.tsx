@@ -66,14 +66,17 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
   useEffect(() => onAnswered(question.id, { type: 'math', steps: exercise.steps }), [answered, exercise.steps, onAnswered, question.id]);
 
   function focusEditor() {
-    root.current?.focus({ preventScroll: true });
+    const stepId = store.getState().doc.cursor.stepId;
+    const active = mathfieldForStep(stepId);
+    if (active) active.focus();
+    else root.current?.focus({ preventScroll: true });
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const active = mathfieldForStep(store.getState().doc.cursor.stepId);
-      if (!active) return;
-      active.focus();
+      const current = mathfieldForStep(store.getState().doc.cursor.stepId);
+      if (!current) return;
+      if (!current.hasFocus()) current.focus();
       // Unlike the page, the wide lesson's work pane has its own scroll container.
-      active.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-      const rect = active.getBoundingClientRect();
+      current.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      const rect = current.getBoundingClientRect();
       const source = root.current?.closest('.lesson-check')?.querySelector<HTMLElement>('.lesson-check-source');
       const sourceRect = source?.getBoundingClientRect();
       const stickyTop = source ? Number.parseFloat(getComputedStyle(source).top) || 0 : 0;
@@ -127,7 +130,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       if (attempt < 8) requestAnimationFrame(() => restore(attempt + 1));
       else focusEditor();
     };
-    requestAnimationFrame(() => requestAnimationFrame(() => restore()));
+    restore();
   }
   function handleKey(event: KeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;

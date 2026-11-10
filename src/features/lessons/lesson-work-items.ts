@@ -2,6 +2,7 @@ import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { Step } from '../../model';
 import type { LessonSection } from './lesson-sections';
 import type { Lesson, LessonBlock } from './types';
+import { BREAKPOINT_MEDIA } from '../../shared/lib/breakpoints';
 
 /** One thing in the current lesson section the learner can work on beside the lesson text. */
 export type LessonWorkItem = (
@@ -21,8 +22,7 @@ export type LessonWorkAnswers = Record<string, { type: 'math'; steps: Step[] }>;
 export const SPLIT_MIN = 30;
 export const SPLIT_MAX = 70;
 export const SPLIT_DEFAULT = 50;
-// matchMedia cannot resolve CSS custom properties; keep in sync with --breakpoint-split.
-export const SPLIT_MEDIA_QUERY = '(min-width: 1100px)';
+export const SPLIT_MEDIA_QUERY = BREAKPOINT_MEDIA.split;
 export const SPLIT_RATIO_STORAGE_KEY = 'math-scratchpad:lesson-split-ratio';
 
 const GUIDED = /^\s*مثال\s+هدایت|^\s*guided\s+example/i;

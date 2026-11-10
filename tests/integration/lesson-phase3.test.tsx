@@ -38,7 +38,7 @@ describe('Phase 3 Learn integration', () => {
     expect(within(picker).getByRole('status')).toHaveTextContent('No question bank is loaded');
     await userEvent.click(within(picker).getByRole('button', { name: 'Load bank' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Lessons' })).not.toBeInTheDocument());
-    expect(screen.getByRole('dialog', { name: 'Google Drive question bank' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Google Drive question bank' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Google Drive question bank' })).toBeVisible();
   });
 
