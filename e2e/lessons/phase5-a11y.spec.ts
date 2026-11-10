@@ -35,8 +35,18 @@ test('Learn concept, checks, summary and recovery states have no serious or crit
   await page.keyboard.press('Enter');
   const conceptHeading = page.getByRole('heading', { name: 'First sample concept' });
   await expect(conceptHeading).toBeFocused();
-  const ring = await conceptHeading.evaluate(element => ({ style: getComputedStyle(element).outlineStyle, color: getComputedStyle(element).outlineColor }));
-  expect(ring).toMatchObject({ style: 'solid', color: 'rgb(140, 191, 255)' });
+  const ring = await conceptHeading.evaluate(element => {
+    const style = getComputedStyle(element);
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-ring)';
+    document.body.append(probe);
+    const tokenColor = getComputedStyle(probe).color;
+    probe.remove();
+    return { style: style.outlineStyle, width: style.outlineWidth, color: style.outlineColor, tokenColor };
+  });
+  expect(ring.style).toBe('solid');
+  expect(Number.parseFloat(ring.width)).toBeGreaterThan(0);
+  expect(ring.color).toBe(ring.tokenColor);
   const learnA11y = await new AxeBuilder({ page }).include('.lesson-screen').withTags(tags).analyze();
   expect(learnA11y.violations.filter(item => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
 

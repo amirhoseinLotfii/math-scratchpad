@@ -51,8 +51,8 @@
   
   /* Text colors RGB */
   --color-text-primary-rgb: var(--color-neutral-50-rgb);
-  --color-text-secondary-rgb: var(--color-neutral-400-rgb);
-  --color-text-muted-rgb: var(--color-neutral-500-rgb);
+  --color-text-secondary-rgb: var(--color-neutral-300-rgb);
+  --color-text-muted-rgb: 178, 185, 181;
   
   /* Primary colors RGB */
   --color-primary-50-rgb: 236, 253, 245;
@@ -156,8 +156,8 @@
   
   /* Text Colors */
   --color-text-primary: var(--color-neutral-50); /* #fafafa */
-  --color-text-secondary: var(--color-neutral-400); /* #a3a3a3 */
-  --color-text-muted: var(--color-neutral-500); /* #8c8c8c */
+  --color-text-secondary: var(--color-neutral-300); /* #d4d4d4; readable on elevated surfaces */
+  --color-text-muted: #b2b9b5; /* at least 4.5:1 on the #404040 elevated surface */
   --color-text-disabled: var(--color-neutral-600); /* #525252 */
   
   /* Primary Colors */
