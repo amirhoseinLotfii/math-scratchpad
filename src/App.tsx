@@ -38,7 +38,8 @@ import { initialKeyboardOpen, writeKeyboardChoice } from './shared/lib/ui-prefs'
 import { ActivityTracker } from './sync/activity-tracker';
 import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
 import { SyncPanel } from './sync/sync-panel';
-import { getLearningStorage } from './sync/browser-db';
+import { getAuthenticatedServerStorage, getLearningStorage } from './sync/browser-db';
+import { SERVER_STORAGE_CONFLICT_EVENT, type ServerStorageConflict, type ServerStorageConflictChoice } from './sync/server-storage';
 import { getDefaultSyncRuntime } from './sync/runtime';
 import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
 import { ContinueLearningButton, useOptionalReadingPositionContext } from './features/progress/reading-position-context';
@@ -65,9 +66,17 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [guidanceOpen, setGuidanceOpen] = useState(false);
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<ResetKind | null>(null);
  const [cloudPreviewOpen, setCloudPreviewOpen] = useState(false);
+ const [serverConflict, setServerConflict] = useState<ServerStorageConflict | null>(null);
+ const [serverConflictBusy, setServerConflictBusy] = useState(false), [serverConflictError, setServerConflictError] = useState('');
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
+ useEffect(() => {
+  const refreshConflict = () => setServerConflict(getAuthenticatedServerStorage()?.getConflicts()[0] ?? null);
+  window.addEventListener(SERVER_STORAGE_CONFLICT_EVENT, refreshConflict);
+  refreshConflict();
+  return () => window.removeEventListener(SERVER_STORAGE_CONFLICT_EVENT, refreshConflict);
+ }, []);
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [menu, setMenu] = useState(false);
@@ -151,7 +160,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   return () => activityTracker.stopScope(scopeId);
  }, [activityTracker, answerType, currentBankQuestion, ex.id, ex.prompt, ex.source, lessonScreen, loadedBank?.version, matchingBank?.bank.chapter?.number, referenceLesson, sessionId]);
  usePracticeEditEvents(store, loadedBankRef);
- const wellbeing = useWellbeing({ multipleQuestions, sessionId, session: state.doc.session, storageConflict: state.storageState?.kind === 'conflict' }), askWellbeing = wellbeing.askWellbeing;
+ const wellbeing = useWellbeing({ multipleQuestions, sessionId, session: state.doc.session, storageConflict: state.storageState?.kind === 'conflict' || !!serverConflict }), askWellbeing = wellbeing.askWellbeing;
  const lessons = loadedBank?.bank.lessons ?? [];
  const readingPosition = useOptionalReadingPositionContext();
  const [restoreTarget, setRestoreTarget] = useState<LessonRestoreTarget | null>(null);
@@ -178,7 +187,22 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    completedSections: lessonProgressById[lesson.id]?.completedSectionIds?.length ?? 0,
   };
  }, [activePracticeLessonId, exam, lessonProgressById, lessonScreen, loadedBank, readingPosition?.position]);
- const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
+ const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict' || !!serverConflict;
+ async function resolveServerConflict(choice: ServerStorageConflictChoice) {
+  const storage = getAuthenticatedServerStorage();
+  if (!storage || !serverConflict || serverConflictBusy) return;
+  setServerConflictBusy(true);
+  setServerConflictError('');
+  try {
+   await storage.resolveConflict(serverConflict.key, choice);
+   setServerConflict(storage.getConflicts()[0] ?? null);
+  } catch (problem) {
+   setServerConflictError(problem instanceof Error ? problem.message : 'The saved version could not be resolved. Try again.');
+   setServerConflict(storage.getConflicts()[0] ?? serverConflict);
+  } finally {
+   setServerConflictBusy(false);
+  }
+ }
  useEffect(() => {
   if (!menu && !modalOpen) return;
   const policyFooter = document.querySelector('body > footer');
@@ -739,6 +763,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     onCloseAutoFocus: event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); },
    }}
    storageConflict={state.storageState?.kind === 'conflict'}
+   serverConflict={{ conflict: serverConflict, busy: serverConflictBusy, error: serverConflictError, onResolve: choice => { void resolveServerConflict(choice); } }}
   />
   {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" className="chapter-transition-overlay" >
    <div><strong >در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>
