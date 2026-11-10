@@ -85,7 +85,7 @@ function launchApp(showConnectionStatus = false) {
 
 void (async () => {
   // This one-time versioned cleanup runs on each browser before legacy data can hydrate or sync.
-  localResetPending = await prepareLocalLearningReset();
+  localResetPending = import.meta.env.PROD ? await prepareLocalLearningReset() : false;
   initializeThemePreference();
   // Keep the durable browser database as the primary store in every environment.
   const persistence = await initializeLearningStorage();
@@ -114,3 +114,4 @@ void (async () => {
 });
 
 if (import.meta.hot) import.meta.hot.dispose(() => { appRuntime?.dispose(); syncRuntime?.stop(); });
+
