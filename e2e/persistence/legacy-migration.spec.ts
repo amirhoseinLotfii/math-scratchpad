@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { readLegacyMigration, readOutboxCount } from '../support/indexeddb';
+import { GOOGLE_AUTH_BUTTON_NAME, installFakeGoogleAuth, openSyncPanel } from '../support/sync-panel';
 
 const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
 const LEGACY_KEY = 'math-scratchpad-lesson-progress-v1:bank%2F1:v21';
@@ -9,21 +10,6 @@ const LEGACY_VALUE = JSON.stringify({
   bankVersion: 'v21',
   lessons: { '1.1': { status: 'learning', checkAnswers: { 'PC-1.1-C01-Q01': 'تابع' } } },
 });
-
-async function installGoogleSignIn(page: Page) {
-  await page.route('https://accounts.google.com/gsi/client', route => route.fulfill({
-    status: 200,
-    contentType: 'text/javascript',
-    body: `window.google = { accounts: { oauth2: {}, id: {
-      initialize(options) { window.__testGoogleCallback = options.callback; },
-      renderButton(element) {
-        const button = document.createElement('button'); button.type='button'; button.textContent='Sign in with Google'; button.setAttribute('aria-label','Sign in with Google');
-        button.addEventListener('click', () => { const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now()/1000)+3600 })).replace(/=/g,''); window.__testGoogleCallback({ credential: 'header.'+payload+'.signature' }); });
-        element.replaceChildren(button);
-      }
-    } } };`,
-  }));
-}
 
 async function installWorker(page: Page) {
   const events: Array<{ seq: number; event: Record<string, any> }> = [];
@@ -55,18 +41,11 @@ async function installWorker(page: Page) {
 test('legacy lesson progress stays intact until server chunks are verified and Drive backup is still required', { tag: '@only-laptop-1440' }, async ({ page }, testInfo: TestInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: LEGACY_KEY, value: LEGACY_VALUE });
-  await installGoogleSignIn(page);
+  await installFakeGoogleAuth(page);
   const serverEvents = await installWorker(page);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
-
-  const syncPanel = page.locator('section[aria-labelledby="sync-panel-title"]');
-  await expect(syncPanel).toBeVisible();
+  const syncPanel = await openSyncPanel(page);
   await expect(syncPanel).toHaveAttribute('lang', 'fa');
-  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await page.getByRole('button', { name: GOOGLE_AUTH_BUTTON_NAME }).click();
   await page.getByRole('button', { name: 'ارسال و راستی‌آزمایی داده‌های قدیمی' }).click();
 
   await expect(syncPanel.getByText(/تعداد بخش‌ها و هش هر داده با نسخهٔ سرور تطبیق داده شد/)).toBeVisible({ timeout: 15_000 });

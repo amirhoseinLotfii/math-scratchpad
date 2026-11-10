@@ -18,7 +18,7 @@ test('slash opens the shared math picker in a lesson answer step and restores Ma
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
+  await expect.poll(() => field.evaluate(element => document.activeElement === element && (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
 
   await page.keyboard.press('/');
   await expect(dialog).toBeVisible();

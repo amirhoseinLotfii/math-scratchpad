@@ -31,6 +31,7 @@
 
 /* RGB values for color tokens to use with rgba() */
 :root {
+  color-scheme: dark;
   /* Neutral colors RGB */
   --color-neutral-50-rgb: 250, 250, 250;
   --color-neutral-100-rgb: 245, 245, 245;
@@ -51,8 +52,8 @@
   
   /* Text colors RGB */
   --color-text-primary-rgb: var(--color-neutral-50-rgb);
-  --color-text-secondary-rgb: var(--color-neutral-400-rgb);
-  --color-text-muted-rgb: var(--color-neutral-500-rgb);
+  --color-text-secondary-rgb: var(--color-neutral-300-rgb);
+  --color-text-muted-rgb: 178, 185, 181;
   
   /* Primary colors RGB */
   --color-primary-50-rgb: 236, 253, 245;
@@ -156,8 +157,8 @@
   
   /* Text Colors */
   --color-text-primary: var(--color-neutral-50); /* #fafafa */
-  --color-text-secondary: var(--color-neutral-400); /* #a3a3a3 */
-  --color-text-muted: var(--color-neutral-500); /* #8c8c8c */
+  --color-text-secondary: var(--color-neutral-300); /* #d4d4d4; readable on elevated surfaces */
+  --color-text-muted: #b2b9b5; /* at least 4.5:1 on the #404040 elevated surface */
   --color-text-disabled: var(--color-neutral-600); /* #525252 */
   
   /* Primary Colors */
@@ -200,6 +201,66 @@
   --color-math-surface: var(--color-neutral-700); /* #404040 */
   --color-math-border: var(--color-neutral-500); /* #8c8c8c; 3:1 on the math editor surface */
   --color-math-placeholder: var(--color-neutral-500); /* #8c8c8c */
+}
+
+/* Light palette is applied only when the learner explicitly selects it. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-background: #f5f7f5;
+  --color-background-secondary: #e9eeea;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #f0f4f1;
+  --color-surface-sunken: #edf2ee;
+
+  --color-text-primary: #17211b;
+  --color-text-secondary: #2c3931;
+  --color-text-muted: #43534a;
+  --color-text-disabled: #647169;
+
+  --color-primary: #087a54;
+  --color-primary-hover: #066644;
+  --color-primary-active: #0d5e43;
+  --color-primary-foreground: #ffffff;
+  --color-primary-300: #066644;
+  --color-primary-400: #087a54;
+  --color-primary-500: #0d5e43;
+  --color-primary-900: #d9efe3;
+
+  --color-success: #176b3a;
+  --color-success-hover: #12572f;
+  --color-warning: #765000;
+  --color-warning-hover: #624100;
+  --color-error: #b42318;
+  --color-error-hover: #941d14;
+  --color-error-400: #a32118;
+  --color-success-foreground: #ffffff;
+  --color-warning-foreground: #17211b;
+  --color-error-foreground: #ffffff;
+
+  --color-border: #65756b;
+  --color-border-strong: #506056;
+  --color-border-subtle: #dce4de;
+  --color-border-form: #65756b;
+  --color-ring: #125faa;
+  --color-ring-hover: #0e4f91;
+  --color-highlight: #e3f3e9;
+  --color-highlight-foreground: #d9efe3;
+
+  --color-math-background: #ffffff;
+  --color-math-surface: #f0f4f1;
+  --color-math-border: #65756b;
+  --color-math-placeholder: #43534a;
+
+  --color-background-rgb: 245, 247, 245;
+  --color-surface-rgb: 255, 255, 255;
+  --color-surface-elevated-rgb: 240, 244, 241;
+  --color-text-primary-rgb: 23, 33, 27;
+  --color-text-secondary-rgb: 44, 57, 49;
+  --color-text-muted-rgb: 67, 83, 74;
+}
+
+:root[data-theme='light'] #math-scratchpad-redux {
+  color-scheme: light;
 }
 
 /* ============================================================================
@@ -387,20 +448,15 @@
    ============================================================================ */
 
 :root {
-  /* Mobile breakpoints */
-  --breakpoint-sm: 320px;
-  --breakpoint-md: 390px;
-  --breakpoint-lg: 430px;
-  
-  /* Tablet breakpoints */
+  /* Canonical viewport thresholds; CSS media queries use the same values. */
+  --breakpoint-tiny-phone: 360px;
+  --breakpoint-phone: 480px;
+  --breakpoint-compact: 600px;
   --breakpoint-tablet: 768px;
-  
-  /* Desktop breakpoints */
-  --breakpoint-laptop: 1024px;
-  --breakpoint-desktop: 1100px;
-  --breakpoint-wide: 1440px;
-  --breakpoint-ultrawide: 1920px;
-  
-  /* Split view breakpoint (from lesson-work-items.ts) */
+  --breakpoint-workspace: 900px;
+  --breakpoint-desktop-input: 1024px;
   --breakpoint-split: 1100px;
+  --breakpoint-wide: 1600px;
+  /* Compatibility alias used by the app root's max-width rule. */
+  --breakpoint-desktop: var(--breakpoint-split);
 }

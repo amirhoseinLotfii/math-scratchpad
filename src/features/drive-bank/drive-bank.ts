@@ -1,4 +1,4 @@
-import { ascii, blankStep, leaves, MAX_SESSION_EXERCISES, uid, type Document, type Exercise } from '../../model';
+import { ascii, blankStep, leaves, MAX_SESSION_EXERCISES, uid, type AnswerType, type Document, type Exercise } from '../../model';
 import { newSessionMeta, type ScratchState } from '../../store';
 import { parse } from '../../parser';
 import { serialize, validateSession } from '../../persistence';
@@ -13,7 +13,7 @@ export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
 export const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1';
 const BANK_CACHE_SCHEMA = 1;
 const MAX_BANK_CACHE_LENGTH = 2_000_000;
-export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string; answerType?: 'math' | 'text' | 'choice'; choices?: string[] } & QuestionLessonFields;
+export type BankQuestion = { id: string; mode: 'math' | 'text'; source: string; prompt?: string; /** Optional (bank 1.0 backward-compatible extension): hint-only guidance, never a solution. */ guidance?: string; answerType?: AnswerType; choices?: string[] } & QuestionLessonFields;
 export type BankChapter = { id: string; number: number; title: string; source: string; pdfPages: string; lessonIds: string[] };
 export type DriveBank = { schema_version: string; bank_id: string; version: string; questions: BankQuestion[]; lessons?: Lesson[]; chapter?: BankChapter; parseWarnings?: string[] };
 export type CachedBank = { fileId: string; bank: DriveBank; version: string; fingerprint: string; savedAt: string };
@@ -88,9 +88,11 @@ export function validateBank(input: unknown): DriveBank {
       catch (error) { throw Error(`${questionRef}: invalid math source. ${error instanceof Error ? error.message : 'Check the expression.'}`); }
     }
     const question: BankQuestion = { id: q.id, mode: q.mode as 'math' | 'text', source: q.source, ...(typeof q.prompt === 'string' ? { prompt: q.prompt } : {}), ...(typeof q.guidance === 'string' ? { guidance: q.guidance } : {}) };
-    if (q.answerType === 'math' || q.answerType === 'text' || q.answerType === 'choice') question.answerType = q.answerType;
+    if (['math', 'text', 'choice', 'true_false_why', 'find_mistake'].includes(String(q.answerType))) question.answerType = q.answerType as AnswerType;
     else if (q.answerType !== undefined) warnings.push(`questions[${index}].answerType: unsupported answer type was ignored`);
-    if (q.choices !== undefined) {
+    if (q.choices !== undefined && question.answerType === 'true_false_why') {
+      warnings.push(`questions[${index}].choices: true_false_why uses the built-in True/False options; custom choices were ignored`);
+    } else if (q.choices !== undefined) {
       if (Array.isArray(q.choices) && q.choices.length >= 2 && q.choices.length <= 12 && q.choices.every(choice => typeof choice === 'string' && choice.trim().length > 0 && choice.length <= 500)) question.choices = q.choices as string[];
       else warnings.push(`questions[${index}].choices: invalid choices were ignored`);
     }

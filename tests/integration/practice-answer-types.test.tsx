@@ -18,6 +18,8 @@ const bank = validateBank({
     { id: 'CHOICE-1', mode: 'math', source: 'x+1', prompt: 'Choose one.', answerType: 'choice', choices: ['<', '>'] },
     { id: 'MATH-1', mode: 'math', source: '2+3' },
     { id: 'MATH-CHOICE-1', mode: 'math', source: 'x+1', prompt: 'یک عبارت هم‌ارز را انتخاب کنید.', answerType: 'choice', choices: [String.raw`x^2`, String.raw`\frac{1}{2}`] },
+    { id: 'TRUE-FALSE-WHY-1', mode: 'math', source: 'x^2 ≥ 0', prompt: 'برای همهٔ xها درست است؟', answerType: 'true_false_why', choices: ['not-used', 'not-used-either'] },
+    { id: 'FIND-MISTAKE-1', mode: 'text', source: 'یک خطای محاسباتی را پیدا کن و اصلاح کن.', answerType: 'find_mistake' },
   ],
 });
 const VERSION = 'answer-types-v1';
@@ -36,8 +38,10 @@ function mount() {
 describe('Practice question answer types', () => {
   it('maps answer types and options into a backward-compatible session document', () => {
     const doc = bankDocument(bank, VERSION);
-    expect(doc.exercises.map(exercise => exercise.answerType)).toEqual(['text', 'choice', 'math', 'choice']);
+    expect(doc.exercises.map(exercise => exercise.answerType)).toEqual(['text', 'choice', 'math', 'choice', 'true_false_why', 'find_mistake']);
     expect(doc.exercises[1].choices).toEqual(['<', '>']);
+    expect(doc.exercises[4]).not.toHaveProperty('choices');
+    expect(bank.parseWarnings?.join(' ')).toContain('true_false_why uses the built-in True/False options');
 
     const legacy = validateBank({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'legacy-text', version: 'v1', questions: [{ id: 'OLD-1', mode: 'math', source: '1+2' }, { id: 'OLD-2', mode: 'text', source: 'Describe the pattern.' }] });
     expect(bankDocument(legacy, 'legacy-v1').exercises.map(exercise => exercise.answerType)).toEqual(['math', 'text']);
@@ -92,6 +96,30 @@ describe('Practice question answer types', () => {
     act(() => store.dispatch(actions.adjacentExercise(1)));
     expect(screen.getByRole('button', { name: 'Add step' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Mark Step 1 as final' })).toBeVisible();
+  });
+
+  it('records a find-mistake response as free text without grading it', async () => {
+    const user = userEvent.setup();
+    const store = mount();
+    act(() => store.dispatch(actions.switchExercise(store.getState().doc.exercises[5].id)));
+    expect(screen.getByRole('textbox', { name: 'Your answer' })).toBeVisible();
+    await user.type(screen.getByRole('textbox', { name: 'Your answer' }), 'علامت منفی در گام دوم اشتباه است.');
+    expect(store.getState().doc.exercises[5]).toMatchObject({ answerType: 'find_mistake', answerText: 'علامت منفی در گام دوم اشتباه است.' });
+  });
+
+  it('collects both parts of true_false_why and round-trips the combined response', async () => {
+    const user = userEvent.setup();
+    const store = mount();
+    act(() => store.dispatch(actions.switchExercise(store.getState().doc.exercises[4].id)));
+    await user.click(screen.getByRole('radio', { name: 'True' }));
+    await user.type(screen.getByRole('textbox', { name: 'Reason for answer' }), 'زیرا مربع هر عدد نامنفی است.');
+    expect(store.getState().doc.exercises[4]).toMatchObject({ answerType: 'true_false_why', answerChoice: 'true', answerReason: 'زیرا مربع هر عدد نامنفی است.' });
+
+    const restored = validateSession(JSON.parse(serialize(store.getState())));
+    expect(restored.doc.exercises[4]).toMatchObject({ answerType: 'true_false_why', answerChoice: 'true', answerReason: 'زیرا مربع هر عدد نامنفی است.' });
+    const exported = buildTutorExport(restored.doc);
+    expect(exported.items[4]).toMatchObject({ student_answer: 'True — زیرا مربع هر عدد نامنفی است.', final_answer: 'True — زیرا مربع هر عدد نامنفی است.', steps: [] });
+    expect(missingFinalAnswers(restored.doc)).toEqual([]);
   });
 
   it('round-trips typed responses through session storage and tutor export without changing its schema', async () => {

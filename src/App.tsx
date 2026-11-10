@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { RotateCcw, Trash2, Plus, BookOpen } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
@@ -23,7 +23,6 @@ import { questionStatus } from './features/workspace/model/workspace-layout';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
 import { clearAppStorage } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
-import { DriveBankPanel } from './features/drive-bank/drive-bank-panel';
 import { archiveSession, bankDocument, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
 import { getLesson, getPracticeQuestions } from './features/lessons/selectors';
@@ -37,8 +36,8 @@ import { lessonExportDataFromState, readLessonExportData, readLessonProgress, ty
 import { initialKeyboardOpen, writeKeyboardChoice } from './shared/lib/ui-prefs';
 import { ActivityTracker } from './sync/activity-tracker';
 import { contextForQuestion, emitLearnEvent, type LearnEventContext, type LearnEventDraft } from './sync/events';
-import { SyncPanel } from './sync/sync-panel';
-import { getLearningStorage } from './sync/browser-db';
+import { getAuthenticatedServerStorage, getLearningStorage } from './sync/browser-db';
+import { SERVER_STORAGE_CONFLICT_EVENT, type ServerStorageConflict, type ServerStorageConflictChoice } from './sync/server-storage';
 import { getDefaultSyncRuntime } from './sync/runtime';
 import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
 import { ContinueLearningButton, useOptionalReadingPositionContext } from './features/progress/reading-position-context';
@@ -49,6 +48,9 @@ import { PracticeLauncher, usePracticeLauncher } from './app/practice-launcher';
 import { useBankSession } from './app/use-bank-session';
 import { usePracticeEditEvents } from './app/use-practice-edit-events';
 import { useWellbeing } from './app/use-wellbeing';
+
+const DriveBankPanel = lazy(() => import('./features/drive-bank/drive-bank-panel').then(({ DriveBankPanel: panel }) => ({ default: panel })));
+const SyncPanel = lazy(() => import('./sync/sync-panel').then(({ SyncPanel: panel }) => ({ default: panel })));
 
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
@@ -65,9 +67,17 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const [guidanceOpen, setGuidanceOpen] = useState(false);
  const [exportWarning, setExportWarning] = useState<number[] | null>(null), [resetKind, setResetKind] = useState<ResetKind | null>(null);
  const [cloudPreviewOpen, setCloudPreviewOpen] = useState(false);
+ const [serverConflict, setServerConflict] = useState<ServerStorageConflict | null>(null);
+ const [serverConflictBusy, setServerConflictBusy] = useState(false), [serverConflictError, setServerConflictError] = useState('');
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
+ useEffect(() => {
+  const refreshConflict = () => setServerConflict(getAuthenticatedServerStorage()?.getConflicts()[0] ?? null);
+  window.addEventListener(SERVER_STORAGE_CONFLICT_EVENT, refreshConflict);
+  refreshConflict();
+  return () => window.removeEventListener(SERVER_STORAGE_CONFLICT_EVENT, refreshConflict);
+ }, []);
  const ex = exerciseOf(state.doc), exerciseIndex = state.doc.exercises.findIndex(x => x.id === ex.id);
  const manualTimerPause = useRef(!!ex.timerPaused), trackedExerciseId = useRef(ex.id);
  const [menu, setMenu] = useState(false);
@@ -144,14 +154,14 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    lesson: question?.lessonId, section: question?.sectionId, concept: question?.conceptId, question,
   });
   const scopeId = `question:${ex.id}`;
-  const itemType = answerType === 'choice' ? 'mcq' : answerType === 'text' ? 'typed' : 'step_by_step';
+  const itemType = answerType === 'choice' ? 'mcq' : answerType === 'true_false_why' ? 'true_false_why' : answerType === 'find_mistake' ? 'find_mistake' : answerType === 'text' ? 'typed' : 'step_by_step';
   activityTracker.startScope({ id: scopeId, openType: 'question_open', closeType: 'question_close', context, fields: {
    itemId: question?.id ?? ex.id, itemType, questionText: (ex.prompt || ex.source).slice(0, 8_000),
   } });
   return () => activityTracker.stopScope(scopeId);
  }, [activityTracker, answerType, currentBankQuestion, ex.id, ex.prompt, ex.source, lessonScreen, loadedBank?.version, matchingBank?.bank.chapter?.number, referenceLesson, sessionId]);
  usePracticeEditEvents(store, loadedBankRef);
- const wellbeing = useWellbeing({ multipleQuestions, sessionId, session: state.doc.session, storageConflict: state.storageState?.kind === 'conflict' }), askWellbeing = wellbeing.askWellbeing;
+ const wellbeing = useWellbeing({ multipleQuestions, sessionId, session: state.doc.session, storageConflict: state.storageState?.kind === 'conflict' || !!serverConflict }), askWellbeing = wellbeing.askWellbeing;
  const lessons = loadedBank?.bank.lessons ?? [];
  const readingPosition = useOptionalReadingPositionContext();
  const [restoreTarget, setRestoreTarget] = useState<LessonRestoreTarget | null>(null);
@@ -178,7 +188,22 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    completedSections: lessonProgressById[lesson.id]?.completedSectionIds?.length ?? 0,
   };
  }, [activePracticeLessonId, exam, lessonProgressById, lessonScreen, loadedBank, readingPosition?.position]);
- const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict';
+ const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict' || !!serverConflict;
+ async function resolveServerConflict(choice: ServerStorageConflictChoice) {
+  const storage = getAuthenticatedServerStorage();
+  if (!storage || !serverConflict || serverConflictBusy) return;
+  setServerConflictBusy(true);
+  setServerConflictError('');
+  try {
+   await storage.resolveConflict(serverConflict.key, choice);
+   setServerConflict(storage.getConflicts()[0] ?? null);
+  } catch (problem) {
+   setServerConflictError(problem instanceof Error ? problem.message : 'The saved version could not be resolved. Try again.');
+   setServerConflict(storage.getConflicts()[0] ?? serverConflict);
+  } finally {
+   setServerConflictBusy(false);
+  }
+ }
  useEffect(() => {
   if (!menu && !modalOpen) return;
   const policyFooter = document.querySelector('body > footer');
@@ -514,7 +539,9 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function recordPracticeAttempt() {
   if (ex.diagnosticId !== undefined) return; // The diagnostic result event is emitted after the reliable checker runs.
   const steps = ex.steps.filter(step => !stepIsBlank(step)).map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
-  const answer = (ex.answerText ?? '').slice(0, 8_000);
+  const answer = answerType === 'true_false_why'
+   ? [ex.answerChoice ? ex.answerChoice === 'true' ? 'True' : 'False' : '', ex.answerReason ?? ''].filter(Boolean).join(' — ').slice(0, 8_000)
+   : (ex.answerText ?? '').slice(0, 8_000);
   if (!answer && !steps.length) return;
   const itemId = currentBankQuestion?.id ?? ex.id;
   const attemptNo = (practiceAttemptCounts.current.get(itemId) ?? 0) + 1;
@@ -522,7 +549,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   emitLearnEvent(practiceEventContext, {
    type: currentBankQuestion?.stage === 'learn' ? 'check_answer' : 'exercise_attempt',
    itemId,
-   itemType: answerType === 'choice' ? 'mcq' : answerType === 'text' ? 'typed' : 'step_by_step',
+   itemType: answerType === 'choice' ? 'mcq' : answerType === 'true_false_why' ? 'true_false_why' : answerType === 'find_mistake' ? 'find_mistake' : answerType === 'text' ? 'typed' : 'step_by_step',
    questionText: (ex.prompt || ex.source).slice(0, 8_000),
    ...(answer ? { userAnswer: answer } : {}),
    ...(steps.length ? { steps } : {}),
@@ -657,8 +684,8 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    }} />
   </AppHeader>
 
-   {driveBankInitialized && <DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} />}
-   {syncPanelOpen && <SyncPanel onClose={() => { setSyncPanelOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} />}
+   {driveBankInitialized && <Suspense fallback={<div role="status" aria-live="polite">Loading question bank…</div>}><DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} /></Suspense>}
+   {syncPanelOpen && <Suspense fallback={<div role="status" aria-live="polite">Loading sync settings…</div>}><SyncPanel onClose={() => { setSyncPanelOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} /></Suspense>}
    <CloudResetPreviewDialog open={cloudPreviewOpen} onOpenChange={setCloudPreviewOpen} runtime={syncRuntime} />
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
@@ -688,9 +715,20 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
       <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusCurrentMathControl(); }}>Final{step.final ? ' ✓' : ''}</Button>
       <Button size="icon" variant="ghost" aria-label={`Reset Step ${i + 1}`} title={`Reset Step ${i + 1}`} onClick={() => resetStep(step.id)}><RotateCcw aria-hidden="true" /></Button><Button size="icon" variant="ghost" disabled={i === 0} aria-label={`Delete Step ${i + 1}`} title={i === 0 ? 'The first step cannot be deleted' : `Delete Step ${i + 1}`} onClick={() => deleteStep(step.id)}><Trash2 aria-hidden="true" /></Button>
      </header><div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={`Step ${i + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
-    </article>)}</section> : answerType === 'text' ? <div className="lesson-check-text-answer practice-response">
-     <label htmlFor={`practice-answer-${ex.id}`}>Answer</label>
-     <textarea id={`practice-answer-${ex.id}`} aria-label="Answer" dir="auto" maxLength={4000} value={ex.answerText ?? ''} onChange={event => dispatch(actions.setAnswerText({ value: event.target.value, answerType: 'text' }))} />
+    </article>)}</section> : answerType === 'text' || answerType === 'find_mistake' ? <div className="lesson-check-text-answer practice-response">
+     <label htmlFor={`practice-answer-${ex.id}`}>{answerType === 'find_mistake' ? 'Your answer' : 'Answer'}</label>
+     <textarea id={`practice-answer-${ex.id}`} aria-label={answerType === 'find_mistake' ? 'Your answer' : 'Answer'} dir="auto" maxLength={4000} value={ex.answerText ?? ''} onChange={event => dispatch(actions.setAnswerText({ value: event.target.value, answerType }))} />
+    </div> : answerType === 'true_false_why' ? <div className="practice-response">
+     <fieldset className="lesson-check-choice">
+      <legend>True or false?</legend><div className="lesson-choice-options" role="radiogroup" aria-label="True or false answer">
+       {(['true', 'false'] as const).map(choice => <label className={ex.answerChoice === choice ? 'lesson-choice-selected' : ''} key={`${ex.id}-${choice}`}>
+        <input type="radio" name={`practice-answer-${ex.id}`} value={choice} checked={ex.answerChoice === choice} onChange={() => dispatch(actions.setTrueFalseWhy({ choice, reason: ex.answerReason ?? '' }))} /><span>{choice === 'true' ? 'True' : 'False'}</span>
+       </label>)}
+      </div>
+     </fieldset>
+     <div className="lesson-check-text-answer"><label htmlFor={`practice-reason-${ex.id}`}>Explain your choice</label>
+      <textarea id={`practice-reason-${ex.id}`} aria-label="Reason for answer" dir="auto" maxLength={4000} value={ex.answerReason ?? ''} onChange={event => dispatch(actions.setTrueFalseWhy({ choice: ex.answerChoice, reason: event.target.value }))} />
+     </div>
     </div> : <fieldset className="lesson-check-choice practice-response">
      <legend>Choose one option</legend><div className="lesson-choice-options" role="radiogroup" aria-label="Answer choices">
       {answerChoices.map((answerChoice, index) => <label className={ex.answerText === answerChoice ? 'lesson-choice-selected' : ''} key={`${ex.id}-${index}`} dir="ltr">
@@ -739,6 +777,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     onCloseAutoFocus: event => { event.preventDefault(); if (insertInvoker.current?.isConnected) insertInvoker.current.focus({ preventScroll: true }); restoreInsertFocus(); },
    }}
    storageConflict={state.storageState?.kind === 'conflict'}
+   serverConflict={{ conflict: serverConflict, busy: serverConflictBusy, error: serverConflictError, onResolve: choice => { void resolveServerConflict(choice); } }}
   />
   {chapterTransitioning && <div role="status" aria-live="polite" dir="rtl" className="chapter-transition-overlay" >
    <div><strong >در حال آرشیو امن فصل قبلی</strong><p>تا تأیید کامل Google Drive و Notion صفحه را نبند.</p></div>

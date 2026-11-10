@@ -66,6 +66,34 @@ describe('namespaced Learn progress storage', () => {
     expect(restored.progressById['SAMPLE-1.1']).toMatchObject({ completedPracticeQuestionIds: ['SAMPLE-1.1-P02'], activePracticeQuestionIds: ['SAMPLE-1.1-P01'] });
   });
 
+  it('persists complete true/false-with-reason answers and keeps partial drafts incomplete', () => {
+    const source = bank(), check = source.questions.find(question => question.id === 'SAMPLE-1.1-L01')!;
+    check.answerType = 'true_false_why';
+    delete check.choices;
+    const initial = emptyLessonProgressState(source.bank_id, VERSION);
+    initial.progressById['SAMPLE-1.1'] = {
+      ...progress(),
+      checkAnswers: {
+        'SAMPLE-1.1-L01': { type: 'true_false_why', choice: 'false', reason: 'این گزاره فقط برای بعضی ورودی‌ها برقرار است.' },
+        'SAMPLE-1.1-L02': progress().checkAnswers!['SAMPLE-1.1-L02'],
+      },
+    };
+    expect(saveLessonProgress(source, VERSION, initial)).toEqual({ saved: true, message: '' });
+    expect(readLessonProgress(source, VERSION).progressById['SAMPLE-1.1'].checkAnswers?.['SAMPLE-1.1-L01']).toEqual({ type: 'true_false_why', choice: 'false', reason: 'این گزاره فقط برای بعضی ورودی‌ها برقرار است.' });
+
+    const draft = emptyLessonProgressState(source.bank_id, `${VERSION}-draft`);
+    draft.progressById['SAMPLE-1.1'] = {
+      ...progress(),
+      answeredCheckIds: ['SAMPLE-1.1-L02'],
+      checkAnswers: {
+        'SAMPLE-1.1-L01': { type: 'true_false_why', choice: 'true', reason: '' },
+        'SAMPLE-1.1-L02': progress().checkAnswers!['SAMPLE-1.1-L02'],
+      },
+    };
+    expect(saveLessonProgress(source, `${VERSION}-draft`, draft).saved).toBe(true);
+    expect(readLessonProgress(source, `${VERSION}-draft`).progressById['SAMPLE-1.1'].answeredCheckIds).toEqual(['SAMPLE-1.1-L02']);
+  });
+
   it('keeps lesson records separated by lesson ID and bank version', () => {
     const source = twoLessonBank(), saved = emptyLessonProgressState(source.bank_id, VERSION);
     saved.progressById['SAMPLE-1.1'] = progress();

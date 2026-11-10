@@ -316,12 +316,12 @@ const handlers = {
     setConfidence(state: ScratchState, action: PayloadAction<'high' | 'medium' | 'low'>) {
       const ex = exerciseOf(state.doc); ex.confidence = action.payload; ex.submittedAt = isoLocal();
     },
-    setAnswerText(state: ScratchState, action: PayloadAction<{ value: string; answerType?: 'text' | 'choice'; choices?: string[] }>) {
+    setAnswerText(state: ScratchState, action: PayloadAction<{ value: string; answerType?: 'text' | 'choice' | 'find_mistake'; choices?: string[] }>) {
       const ex = exerciseOf(state.doc);
       const previousType = ex.answerType;
       const previousAnswer = ex.answerText ?? '';
       const previousChoices = JSON.stringify(ex.choices ?? []);
-      if (action.payload.answerType === 'text' || action.payload.answerType === 'choice') ex.answerType = action.payload.answerType;
+      if (action.payload.answerType === 'text' || action.payload.answerType === 'choice' || action.payload.answerType === 'find_mistake') ex.answerType = action.payload.answerType;
       if (ex.answerType === 'choice' && action.payload.choices && action.payload.choices.length >= 2 && action.payload.choices.length <= 12 && action.payload.choices.every(choice => typeof choice === 'string' && choice.trim() && choice.length <= 500)) ex.choices = [...action.payload.choices];
       const answer = action.payload.value.slice(0, 4000);
       if (answer) { ex.answerText = answer; if (!ex.startedAt) ex.startedAt = isoLocal(); }
@@ -329,6 +329,19 @@ const handlers = {
       if (previousType !== ex.answerType
         || previousAnswer !== (ex.answerText ?? '')
         || previousChoices !== JSON.stringify(ex.choices ?? [])) invalidateSubmission(ex);
+    },
+    setTrueFalseWhy(state: ScratchState, action: PayloadAction<{ choice?: 'true' | 'false'; reason: string }>) {
+      const ex = exerciseOf(state.doc);
+      if (ex.answerType !== 'true_false_why') return;
+      const previousChoice = ex.answerChoice;
+      const previousReason = ex.answerReason ?? '';
+      if (action.payload.choice === 'true' || action.payload.choice === 'false') ex.answerChoice = action.payload.choice;
+      else delete ex.answerChoice;
+      const reason = action.payload.reason.slice(0, 4000);
+      if (reason) ex.answerReason = reason;
+      else delete ex.answerReason;
+      if ((ex.answerChoice || reason.trim()) && !ex.startedAt) ex.startedAt = isoLocal();
+      if (previousChoice !== ex.answerChoice || previousReason !== (ex.answerReason ?? '')) invalidateSubmission(ex);
     },
     setHint(state: ScratchState, action: PayloadAction<{ used: boolean; note?: string }>) {
       const ex = exerciseOf(state.doc); ex.hintUsed = action.payload.used;

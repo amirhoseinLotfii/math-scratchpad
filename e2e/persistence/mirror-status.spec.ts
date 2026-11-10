@@ -1,29 +1,15 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { GOOGLE_AUTH_BUTTON_NAME, installFakeGoogleAuth, openSyncPanel } from '../support/sync-panel';
 
 const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
-
-async function installFakeGoogle(page: Page) {
-  await page.route('https://accounts.google.com/gsi/client', route => route.fulfill({
-    status: 200,
-    contentType: 'text/javascript',
-    body: `window.google = { accounts: { oauth2: {}, id: {
-      initialize(options) { window.__testGoogleCallback = options.callback; },
-      renderButton(element) {
-        const button = document.createElement('button'); button.type='button'; button.textContent='Sign in with Google'; button.setAttribute('aria-label','Sign in with Google');
-        button.addEventListener('click', () => { const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now()/1000)+3600 })).replace(/=/g,''); window.__testGoogleCallback({ credential: 'header.'+payload+'.signature' }); });
-        element.replaceChildren(button);
-      }
-    } } };`,
-  }));
-}
 
 async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
   const calls: string[] = [];
   let drive = { status: 'pending', pendingCount: 2, lastSyncedAt: '2026-11-02T01:00:00.000Z', lastError: null as string | null };
   let notion = { status: 'error', pendingCount: 1, lastSyncedAt: '2026-11-02T00:45:00.000Z', lastError: 'database_not_shared' as string | null };
 
-  await installFakeGoogle(page);
+  await installFakeGoogleAuth(page);
   await page.route(`${API}/**`, async route => {
     const request = route.request(), url = new URL(request.url()), method = request.method();
     calls.push(`${method} ${url.pathname}`);
@@ -58,14 +44,8 @@ async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
     await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) });
   });
 
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-  await page.getByRole('menuitem', { name: /Cloud sync and migration/i }).press('Enter');
-  const panel = page.locator('section[aria-labelledby="sync-panel-title"]');
-  await expect(panel).toBeVisible();
-  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  const panel = await openSyncPanel(page);
+  await page.getByRole('button', { name: GOOGLE_AUTH_BUTTON_NAME }).click();
 
   const driveGroup = page.getByRole('group', { name: 'وضعیت Google Drive' });
   const notionGroup = page.getByRole('group', { name: 'وضعیت Notion' });

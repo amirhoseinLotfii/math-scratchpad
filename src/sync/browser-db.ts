@@ -1,6 +1,6 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
-import { ServerBackedStorage, readServerSnapshot } from './server-storage';
+import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
 
 export const LEARNING_DB_NAME = 'math-scratchpad-sync-v1';
 export const LEARNING_DB_VERSION = 1;
@@ -74,7 +74,7 @@ let activeStorage: Storage | undefined;
 let pendingWrites = new Set<Promise<unknown>>();
 let bootstrapPromise: Promise<LearningStorageBootstrap> | undefined;
 let channel: BroadcastChannel | undefined;
-const storageListeners = new Set<(change: { key: string; newValue: string | null }) => void>();
+const storageListeners = new Set<(change: { key: string; newValue: string | null; source?: ServerStorageChangeSource }) => void>();
 let serverStorage: ServerBackedStorage | undefined;
 const memoryOutbox = new Map<string, OutboxRecord>();
 const memoryServerEvents = new Map<number, ServerEventRecord>();
@@ -98,12 +98,12 @@ export async function initializeAuthenticatedServerStorage(token: string): Promi
   const localByKey = new Map(localRecords.filter(record => isLearningStorageKey(record.key)).map(record => [record.key, record]));
   const remoteByKey = new Map(remoteRecords.map(record => [record.key, record]));
 
-  const mirror = new ServerBackedStorage(remoteRecords, token, (key, value) => {
+  const mirror = new ServerBackedStorage(remoteRecords, token, (key, value, source) => {
     if (isLearningStorageKey(key)) {
       if (value === null) localStorageFacade.removeItem(key);
       else localStorageFacade.setItem(key, value);
     }
-    for (const listener of storageListeners) listener({ key, newValue: value });
+    for (const listener of storageListeners) listener({ key, newValue: value, ...(source ? { source } : {}) });
   });
   serverStorage = mirror;
 
@@ -411,7 +411,7 @@ export function getLearningStorage(): Storage {
   return activeStorage ?? localStorageIfAvailable() ?? new IndexedDbStorage();
 }
 
-export function subscribeLearningStorage(listener: (change: { key: string; newValue: string | null }) => void): () => void {
+export function subscribeLearningStorage(listener: (change: { key: string; newValue: string | null; source?: ServerStorageChangeSource }) => void): () => void {
   storageListeners.add(listener);
   return () => storageListeners.delete(listener);
 }

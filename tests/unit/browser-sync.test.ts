@@ -11,8 +11,9 @@ Object.defineProperty(globalThis, 'crypto', {
   configurable: true,
   enumerable: true
 });
-import { initialState } from '../../src/store';
+import { actions, initialState } from '../../src/store';
 import { serialize } from '../../src/persistence';
+import { createPersistentStore } from '../../src/features/session/persistence/persistent-store';
 import { emitLearnEvent, resetLearnEventRuntimeForTests, type LearnEvent } from '../../src/sync/events';
 import {
   clearVerifiedLegacyKeys,
@@ -167,6 +168,52 @@ describe('IndexedDB learning cache and legacy migration', () => {
 
     const db = await getLearningDb();
     expect((await db.get('cache', SESSION_KEY))?.value).toBe(remoteValue);
+  });
+
+  it('merges a remote prompt change into the active session while preserving the latest local answer', async () => {
+    const initial = initialState();
+    const initialValue = JSON.stringify({ version: 3, state: {
+      session: { doc: initial.doc, prefs: initial.prefs, keyboardOpen: false },
+      sync: { revision: 1, writerId: 'seed-device' },
+    } });
+    localStorage.setItem(SESSION_KEY, initialValue);
+    let serverRecord = { key: SESSION_KEY, value: initialValue, revision: 1 };
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { key: string; value: string | null; revision: number };
+        if (body.revision !== serverRecord.revision) return Response.json({ error: 'state_conflict', revision: serverRecord.revision }, { status: 409 });
+        serverRecord = { key: body.key, value: body.value ?? '', revision: body.revision + 1 };
+        return Response.json({ key: body.key, revision: serverRecord.revision });
+      }
+      return Response.json({ revision: serverRecord.revision, records: [serverRecord] });
+    }));
+
+    await initializeLearningStorage();
+    const runtime = createPersistentStore();
+    try {
+      await initializeAuthenticatedServerStorage('owner-token');
+      runtime.store.dispatch(actions.command({ type: 'digit', value: '7' }));
+      await runtime.flush();
+      await getAuthenticatedServerStorage()?.flush();
+
+      const changedElsewhere = JSON.parse(serverRecord.value);
+      changedElsewhere.state.session.doc.exercises[0].prompt = 'Changed on another device';
+      changedElsewhere.state.sync = { revision: 3, writerId: 'other-device' };
+      serverRecord = { ...serverRecord, value: JSON.stringify(changedElsewhere), revision: 3 };
+
+      runtime.store.dispatch(actions.command({ type: 'digit', value: '8' }));
+      await runtime.flush();
+      const localWork = structuredClone(runtime.store.getState().doc);
+      await getAuthenticatedServerStorage()?.flush();
+
+      expect(runtime.store.getState().doc.exercises[0]?.prompt).toBe('Changed on another device');
+      expect(runtime.store.getState().doc.exercises[0]?.steps).toEqual(localWork.exercises[0]?.steps);
+      const savedOnServer = JSON.parse(serverRecord.value);
+      expect(savedOnServer.state.session.doc.exercises[0].prompt).toBe('Changed on another device');
+      expect(savedOnServer.state.session.doc.exercises[0].steps).toEqual(localWork.exercises[0]?.steps);
+    } finally {
+      runtime.dispose();
+    }
   });
 
   it('keeps local learner state durable when the server rejects its mirror write', async () => {

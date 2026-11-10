@@ -3,14 +3,14 @@
 @import './tokens.css';
 
 @theme inline {
- /* Use Design System tokens directly - legacy tokens are mapped to these */
- --color-background: var(--color-background);
- --color-foreground: var(--color-text-primary);
- --color-primary: var(--color-primary);
- --color-primary-foreground: var(--color-primary-foreground);
- --color-muted: var(--color-surface);
- --color-muted-foreground: var(--color-text-muted);
- --color-border: var(--color-border);
- --color-ring: var(--color-ring);
- --color-destructive: var(--color-error);
+ /* Utility aliases point to the semantic tokens in tokens.css. */
+ --color-background: var(--background);
+ --color-foreground: var(--foreground);
+ --color-primary: var(--primary);
+ --color-primary-foreground: var(--primary-foreground);
+ --color-muted: var(--muted);
+ --color-muted-foreground: var(--muted-foreground);
+ --color-border: var(--border);
+ --color-ring: var(--ring);
+ --color-destructive: var(--destructive);
 }

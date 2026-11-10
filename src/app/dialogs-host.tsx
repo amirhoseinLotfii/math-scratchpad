@@ -9,12 +9,13 @@ import { CompletionDialog } from '../features/session/components/completion-dial
 import { SessionScales } from '../features/session/components/session-panel';
 import { ShortcutHelp } from '../features/workspace/components/shortcut-help';
 import { MathInsertDialog, type MathInsertDialogProps } from '../features/math-editor/components/math-insert-dialog';
+import type { ServerStorageConflict, ServerStorageConflictChoice } from '../sync/server-storage';
 import type { useWellbeing } from './use-wellbeing';
 
 export type ResetKind = 'session' | 'all';
 
 /** Session-level modal dialogs that sit outside the workspace: shortcuts, export/reset confirmations, wellbeing, confidence, completion, math insert and draft conflict. */
-export function DialogsHost({ menuInvokerRef, focusEditor, session, shortcuts, exportWarning, reset, wellbeing, confidence, completion, insert, storageConflict }: {
+export function DialogsHost({ menuInvokerRef, focusEditor, session, shortcuts, exportWarning, reset, wellbeing, confidence, completion, insert, storageConflict, serverConflict }: {
  menuInvokerRef: RefObject<HTMLButtonElement | null>;
  focusEditor: () => void;
  session: SessionMeta | undefined;
@@ -26,6 +27,12 @@ export function DialogsHost({ menuInvokerRef, focusEditor, session, shortcuts, e
  completion: { open: boolean; totalQuestions: number; answeredQuestions: number; skippedQuestions: number; draftQuestions: number; onClose: () => void; onReview: () => void; onCopy: () => void; onAnalyze: () => void };
  insert: MathInsertDialogProps;
  storageConflict: boolean;
+ serverConflict: {
+  conflict: ServerStorageConflict | null;
+  busy: boolean;
+  error: string;
+  onResolve: (choice: ServerStorageConflictChoice) => void;
+ };
 }) {
  const store = useAppStore(), dispatch = useAppDispatch();
  const resetCancelRef = useRef<HTMLButtonElement>(null);
@@ -46,6 +53,15 @@ export function DialogsHost({ menuInvokerRef, focusEditor, session, shortcuts, e
    onInsert={insert.onInsert}
    onCloseAutoFocus={insert.onCloseAutoFocus}
   />
-  <Dialog open={storageConflict}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
+  <Dialog open={storageConflict && !serverConflict.conflict}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}><DialogTitle>Draft conflict</DialogTitle><DialogDescription>Another tab saved a newer draft. Keep your unsaved work or use the saved draft.</DialogDescription><div className="dialog-actions"><Button onClick={() => store.resolveConflict?.('local')}>Keep this tab</Button><Button onClick={() => store.resolveConflict?.('remote')}>Use saved draft</Button></div></DialogContent></Dialog>
+  <Dialog open={!!serverConflict.conflict}><DialogContent onEscapeKeyDown={event => event.preventDefault()} onPointerDownOutside={event => event.preventDefault()}>
+   <DialogTitle>{serverConflict.conflict?.key === 'math-scratchpad-session-v3' ? 'Session changes overlap' : 'Saved changes overlap'}</DialogTitle>
+   <DialogDescription>This item changed on this device and on the server. Choose which version to keep.</DialogDescription>
+   {serverConflict.error && <p role="alert">{serverConflict.error}</p>}
+   <div className="dialog-actions">
+    <Button disabled={serverConflict.busy} onClick={() => serverConflict.onResolve('local')}>Keep this device’s version</Button>
+    <Button disabled={serverConflict.busy} onClick={() => serverConflict.onResolve('remote')}>Use server version</Button>
+   </div>
+  </DialogContent></Dialog>
  </>;
 }

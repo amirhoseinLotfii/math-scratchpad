@@ -6,6 +6,7 @@ import { restoreState, validateSession } from '../../../persistence';
 import { clampRestoredTimers } from '../timer-continuity';
 import type { PersistOptions } from 'zustand/middleware';
 import { flushLearningStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from '../../../sync/browser-db';
+import { SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, type ServerStorageSnapshotRequest } from '../../../sync/server-storage';
 export const SESSION_KEY = 'math-scratchpad-session-v3';
 const envelopeSchema = z.object({
  version: z.literal(3),
@@ -204,10 +205,37 @@ export function createPersistentStore() {
   store.setState({ ...value.state.session, past: [], future: [], copies: {}, storageState: undefined });
   suppress = false;
  }
- function storageEvent(event: { key: string | null; newValue: string | null }) {
-  if (event.key !== SESSION_KEY || !event.newValue || protectedDraft) return;
+ function applyRemoteRemoval() {
+  clearTimeout(timeout); pending = null; remote = null;
+  if (journalKey) {
+   try { localStorage.removeItem(journalKey); } catch { /* The selected server state has no saved session. */ }
+  }
+  const fresh = initialState();
+  const session = { doc: fresh.doc, prefs: fresh.prefs, keyboardOpen: fresh.keyboardOpen };
+  revision = 0; lastWriter = writerId; lastSignature = fullSignature(session); lastWork = workSignature(session); author = false;
+  suppress = true;
+  store.setState({ ...session, past: [], future: [], copies: {}, storageState: undefined });
+  suppress = false;
+ }
+ function storageEvent(event: { key: string | null; newValue: string | null; source?: string }) {
+  if (event.key !== SESSION_KEY || protectedDraft) return;
+  if (event.source === 'server-resolution-remote' && !event.newValue) {
+   applyRemoteRemoval();
+   return;
+  }
+  if (!event.newValue) return;
   try {
    const value = decode(event.newValue);
+   if (event.source === 'server-merge' || event.source === 'server-resolution-remote') {
+    applyRemote(value);
+    return;
+   }
+   if (event.source === 'server-resolution-local') {
+    clearTimeout(timeout); pending = null; remote = null;
+    revision = value.state.sync.revision; lastWriter = value.state.sync.writerId;
+    lastSignature = fullSignature(value.state.session); lastWork = workSignature(value.state.session); author = true;
+    return;
+   }
    if (value.state.sync.writerId === writerId || value.state.sync.revision < revision) return;
    if (value.state.sync.revision === revision && value.state.sync.writerId === lastWriter) return;
    if (pending && workSignature(pending) !== lastWork) {
@@ -225,6 +253,16 @@ export function createPersistentStore() {
    const current = store.getState(); queue({ doc: current.doc, prefs: current.prefs, keyboardOpen: current.keyboardOpen }, true); flush();
   }
  };
+ const serverSnapshotRequest = (event: Event) => {
+  const detail = (event as CustomEvent<ServerStorageSnapshotRequest>).detail;
+  if (!detail || detail.key !== SESSION_KEY) return;
+  const current = store.getState();
+  detail.value = JSON.stringify({ version: 3, state: {
+   session: { doc: current.doc, prefs: current.prefs, keyboardOpen: current.keyboardOpen },
+   sync: { revision, writerId },
+  } });
+  detail.provided = true;
+ };
  store.clearStorage = () => {
   if (isServerStorageActive()) {
    quietState({ kind: 'error', message: 'Server-only mode: local-storage reset is unavailable. Server records are protected.' });
@@ -240,6 +278,7 @@ export function createPersistentStore() {
  const visibilitychange = () => { if (document.visibilityState === 'hidden') void flush(); };
  const unsubscribeLearningStorage = subscribeLearningStorage(storageEvent);
  const nativeStorageEvent = (event: StorageEvent) => storageEvent(event);
+ window.addEventListener(SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, serverSnapshotRequest);
  window.addEventListener('storage', nativeStorageEvent); window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibilitychange);
  if (recoveredJournal && !protectedDraft) {
   // Carry the recovered draft back into authoritative IndexedDB without
@@ -254,5 +293,5 @@ export function createPersistentStore() {
   // Do not save the placeholder exercise before a saved server snapshot can hydrate a new browser.
   if (!pristineDefault || hasLegacyState) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
  }
- return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); if (activeSessionFlush === flush) activeSessionFlush = undefined; unsubscribeLearningStorage(); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
+ return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); if (activeSessionFlush === flush) activeSessionFlush = undefined; unsubscribeLearningStorage(); window.removeEventListener(SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, serverSnapshotRequest); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
 }

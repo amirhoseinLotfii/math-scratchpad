@@ -1,7 +1,7 @@
 import { allowedWorkKeys, normalizeWorkAnswers } from './lesson-work-items';
 import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
-import type { Lesson, LessonCheckAnswer, LessonProgress, LessonStatus } from './types';
+import { lessonCheckAnswerComplete, type Lesson, type LessonCheckAnswer, type LessonProgress, type LessonStatus } from './types';
 import { buildLessonSections } from './lesson-sections';
 import { getLearningStorage } from '../../sync/browser-db';
 
@@ -47,7 +47,7 @@ function declaredVersionNumber(value: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 function nowTimestamp() { return new Date().toISOString(); }
-function answerType(question: BankQuestion): 'math' | 'text' | 'choice' {
+function answerType(question: BankQuestion): NonNullable<BankQuestion['answerType']> {
   return question.answerType ?? (question.mode === 'text' ? 'text' : 'math');
 }
 function validMathSteps(question: BankQuestion, value: unknown) {
@@ -113,10 +113,16 @@ function normalizeProgress(value: unknown, lesson: Lesson, questionById: Map<str
         checkAnswers[questionId] = { type: 'text', value: response.value };
       } else if (expected === 'choice' && response.type === 'choice' && typeof response.value === 'string' && question.choices?.includes(response.value)) {
         checkAnswers[questionId] = { type: 'choice', value: response.value };
+      } else if (expected === 'find_mistake' && response.type === 'find_mistake' && typeof response.value === 'string' && response.value.length <= 4000) {
+        checkAnswers[questionId] = { type: 'find_mistake', value: response.value };
+      } else if (expected === 'true_false_why' && response.type === 'true_false_why'
+        && (response.choice === undefined || response.choice === 'true' || response.choice === 'false')
+        && typeof response.reason === 'string' && response.reason.length <= 4000) {
+        checkAnswers[questionId] = { type: 'true_false_why', ...(response.choice ? { choice: response.choice } : {}), reason: response.reason };
       } else return undefined;
     }
   }
-  if (answeredCheckIds.some(id => !Object.hasOwn(checkAnswers, id))) return undefined;
+  if (answeredCheckIds.some(id => !lessonCheckAnswerComplete(checkAnswers[id]))) return undefined;
   const confidenceByCheckId: Record<string, 1 | 2 | 3 | 4 | 5> = {};
   if (value.confidenceByCheckId !== undefined) {
     if (!record(value.confidenceByCheckId)) return undefined;

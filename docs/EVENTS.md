@@ -31,7 +31,7 @@ Every event has `id` (UUID v4), `schema` (1), `ts` (ISO 8601), `deviceId`, `bank
 | `concept_complete`, `lesson_complete` | Finish the checks for a concept or the final lesson section. |
 | `session_start`, `session_end`, `session_reset` | Begin, finish, or explicitly reset a practice session. |
 | `gate_attempt`, `gate_passed` | First engagement with a section's quick-checks, and unlocking the next section after those checks are answered or skipped. Mirrors Drive `gateStatusBySection`. |
-| `gate_failed` | Reserved; the current UI has no fail path (skipping still unlocks). |
+| `gate_failed` | A quick-check skip is recorded once for the section. This records that the answer gate was bypassed; it does not block navigation, and `gate_passed` is emitted when the learner advances after completing or skipping the section's remaining checks. |
 | `mistake_logged`, `review_due_done`, `reverse_attempt`, `timed_round`, `error_tagged`, `mastery_changed`, `mood_logged`, `goal_status`, `backup_created`, `backup_restored`, `report_generated` | Versioned event types for their respective feature cards. They are validated now; events are emitted when those UI actions are implemented. |
 | `legacy_state_migration` | A bounded UTF-8/base64 chunk of a prior learning-storage value, with a stable migration ID, original key, chunk index/count, and SHA-256. Repeated upload uses the same event IDs. Old browser keys are retained until server read-back matches the bytes and a private Drive backup is read back byte-for-byte. |
 | `tab_hidden`, `tab_visible`, `window_blur`, `window_focus`, `idle_start`, `idle_end` | Browser interruption and resume events while at least one learning scope is active. Idle is 120 seconds without keyboard, pointer, touch, wheel, or input activity. |
@@ -51,7 +51,7 @@ The in-process event sink is append-only and failures from a sink are isolated f
 | Open/close the read-only lesson reference | Timed `lesson_open`/`lesson_close` plus `chunk_read` |
 | Focus an item, change focused step | `question_open`/`question_close`, `step_open`/`step_close` |
 | Type in a quick check | `check_answer` (and one `gate_attempt` per section on first engagement), then debounced `answer_edited` changes; no correctness claim |
-| Choose check confidence or confirm skip | `confidence_set`, `check_skipped` |
+| Choose check confidence or confirm skip | `confidence_set`, `check_skipped`; the first confirmed skip in a section also emits `gate_failed` without blocking navigation |
 | Write/revise lesson work | First nonblank response creates `example_attempt` or `exercise_attempt`; later edits create `step_edited`; additional editor rows create `step_added` |
 | Reveal a worked-example solution | `example_revealed` (the learner's preceding work was already recorded as `example_attempt`) |
 | Advance after required checks | `gate_passed`, then `concept_complete`, `section_complete`, and `lesson_complete` when applicable |
