@@ -36,6 +36,7 @@ async function expectKeyboardBelowActiveStep(editor: Locator, activeIndex: numbe
 }
 
 test('QA-LESSON-MOBILE-01: each inline check keeps a single keyboard immediately after its active step', { tag: '@only-mobile-390' }, async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 640 },

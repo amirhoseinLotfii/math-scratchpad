@@ -170,6 +170,29 @@ describe('IndexedDB learning cache and legacy migration', () => {
     expect((await db.get('cache', SESSION_KEY))?.value).toBe(remoteValue);
   });
 
+  it('restores cloud learner data when this browser starts with an empty local database', async () => {
+    const remoteValue = '{"lesson":"restored from cloud"}';
+    const writes: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        writes.push(JSON.parse(String(init.body)));
+        return Response.json({ key: LESSON_KEY, revision: 8, updatedAt: '2026-11-11T00:00:00.000Z' });
+      }
+      return Response.json({ revision: 7, records: [{ key: LESSON_KEY, value: remoteValue, revision: 7, updatedAt: '2026-11-10T00:00:00.000Z' }] });
+    }));
+
+    await initializeLearningStorage();
+    expect(getLearningStorage().getItem(LESSON_KEY)).toBeNull();
+    await initializeAuthenticatedServerStorage('owner-token');
+
+    expect(getLearningStorage().getItem(LESSON_KEY)).toBe(remoteValue);
+    const db = await getLearningDb();
+    expect((await db.get('cache', LESSON_KEY))?.value).toBe(remoteValue);
+    await initializeAuthenticatedServerStorage('owner-token');
+    expect(getLearningStorage().getItem(LESSON_KEY)).toBe(remoteValue);
+    expect(writes).toEqual([]);
+  });
+
   it('merges a remote prompt change into the active session while preserving the latest local answer', async () => {
     const initial = initialState();
     const initialValue = JSON.stringify({ version: 3, state: {

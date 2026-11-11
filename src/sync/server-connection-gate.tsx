@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { getAuthenticatedServerStorage, isLocalLearningResetPending } from './browser-db';
+import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { getAuthenticatedServerStorage } from './browser-db';
 import { ensureApiToken, subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
@@ -9,10 +9,10 @@ const INITIAL: GateState = { kind: 'checking', message: 'در حال بررسی 
 const TIMEOUT_MS = 7_000;
 const PING_INTERVAL_MS = 30_000;
 
+export const ServerConnectionOverlayContext = createContext<(open: boolean) => void>(() => {});
+
 function localStorageMessage(): string {
-  return isLocalLearningResetPending()
-    ? 'داده‌های قدیمی این مرورگر پاک شده‌اند؛ تا پایان پاک‌سازی ابر، داده‌های تازه فقط روی همین دستگاه می‌مانند.'
-    : 'تمرین‌ها روی این دستگاه ذخیره می‌شوند.';
+  return 'تمرین‌ها روی این دستگاه ذخیره می‌شوند.';
 }
 
 /** Keeps the editor usable from durable local data while the server is unavailable. */
@@ -23,6 +23,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
   flushPendingDraft: () => Promise<void>;
 }) {
   const [state, setState] = useState<GateState>(INITIAL);
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const checking = useRef(false);
   const rerunAfterCheck = useRef(false);
   const mounted = useRef(false);
@@ -128,11 +129,11 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
   }, [state.kind, onAuthenticated, check]);
 
   return (
-    <>
+    <ServerConnectionOverlayContext.Provider value={setOverlayOpen}>
       <div data-server-editor data-connection-state={state.kind} >
         {children}
       </div>
-      {state.kind !== 'online' && (
+      {state.kind !== 'online' && !overlayOpen && (
         <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl">
           <div className="server-connection-gate-header">
             <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
@@ -144,6 +145,6 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
           </div>
         </aside>
       )}
-    </>
+    </ServerConnectionOverlayContext.Provider>
   );
 }

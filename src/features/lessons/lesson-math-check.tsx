@@ -1,4 +1,5 @@
 import { Fragment, createContext, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { Provider } from '../../app/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
@@ -36,7 +37,7 @@ export function createLessonMathStore(question: BankQuestion, phone: boolean, sa
 
 function dispatchInsert(store: ScratchStore, kind: string) {
   if (insertMathSymbol(store.getState().doc.cursor.stepId, kind)) return;
-  if (['+', '−', '×', '÷', '=', '<', '>', '≤', '≥', '≠'].includes(kind)) store.dispatch(actions.command({ type: 'operator', value: kind }));
+  if (['+', '−', '×', '÷', '=', '<', '>', '≤', '≥', '≠', '±', '∓'].includes(kind)) store.dispatch(actions.command({ type: 'operator', value: kind }));
   else if (kind === 'number') store.dispatch(actions.command({ type: 'insertBlankNumber' }));
   else if (kind === 'x' || kind === 'y' || kind === 'n' || kind === 't') store.dispatch(actions.command({ type: 'identifier', value: kind }));
   else store.dispatch(actions.command({ type: 'insert', value: kind }));
@@ -191,6 +192,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
         {exercise.steps.map((step, index) => <Fragment key={step.id}><article className={`lesson-answer-step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id}>
           <header><Button variant="ghost" className="lesson-step-title" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>{fa ? 'گام' : 'Step'} {localizeLessonDigits(index + 1, uiLang)}</Button>
             <span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? (fa ? 'نیازمند بازبینی' : 'Needs review') : step.edited ? (fa ? 'ویرایش‌شده' : 'Edited') : ''}</span>
+            {index > 0 && <Button variant="ghost" size="icon" className="lesson-step-delete" title={fa ? `حذف گام ${localizeLessonDigits(index + 1, uiLang)}` : `Delete Step ${index + 1}`} aria-label={fa ? `حذف گام ${localizeLessonDigits(index + 1, uiLang)}` : `Delete Step ${index + 1}`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'deleteStep' })); requestAnimationFrame(focusEditor); }}><Trash2 aria-hidden="true" /></Button>}
             <Button className="final-marker" aria-pressed={step.final} aria-label={fa ? `پاسخ نهایی، گام ${localizeLessonDigits(index + 1, uiLang)}` : `Final answer, Step ${index + 1}`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusEditor(); }}>{fa ? 'پاسخ نهایی' : 'Final answer'}{step.final ? ' ✓' : ''}</Button>
           </header>
           <div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={fa ? `عبارت گام ${localizeLessonDigits(index + 1, uiLang)}` : `Step ${index + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>

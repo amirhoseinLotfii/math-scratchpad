@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-const DB_NAME = 'math-scratchpad-sync-v1';
+const DB_NAME = 'math-scratchpad-sync-v2';
 const CACHE_STORE = 'cache';
 
 export async function resetLearningDatabase(page: Page): Promise<void> {

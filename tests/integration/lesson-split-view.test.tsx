@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../src/app/store-provider';
 import { initialState, makeStore } from '../../src/store';
@@ -66,6 +66,19 @@ describe('lesson split view', () => {
     const select = screen.getByLabelText('What are you working on?') as HTMLSelectElement;
     expect(select.value).toBe('q:SAMPLE-1.1-L01');
     expect(document.querySelectorAll('[aria-label="Math answer for SAMPLE-1.1-L01"]').length).toBeLessThanOrEqual(1);
+  });
+
+  it('adds and deletes a lesson work step while keeping the first step', () => {
+    wide(true);
+    mount();
+    const pane = screen.getByRole('complementary', { name: 'Your work' });
+    const add = within(pane).getAllByRole('button').find(button => /Add step|افزودن گام/.test(button.textContent ?? ''))!;
+    fireEvent.click(add);
+    const remove = within(pane).getAllByRole('button').find(button => /Delete Step 2|حذف گام/.test(button.getAttribute('aria-label') ?? ''))!;
+    expect(remove).toBeInTheDocument();
+    fireEvent.click(remove);
+    expect(within(pane).queryByRole('button', { name: /Delete Step 2|حذف گام/ })).not.toBeInTheDocument();
+    expect(within(pane).getByRole('button', { name: /Add step|افزودن گام/ })).toBeInTheDocument();
   });
 
   it('hides the book solution of a worked example until an attempt exists', () => {
