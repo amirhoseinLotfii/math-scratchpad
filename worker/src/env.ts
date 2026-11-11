@@ -11,6 +11,8 @@ export interface WorkerEnv {
   GOOGLE_DRIVE_REFRESH_TOKEN?: string;
   /** Internal Notion integration key; set with wrangler secret put NOTION_API_KEY. */
   NOTION_API_KEY?: string;
+  /** Temporary owner-issued credential for one coordinated learning-data reset. */
+  LEARNING_RESET_TOKEN?: string;
   /** Public Notion data-source identifiers. Never put credentials in these bindings. */
   NOTION_DATA_SOURCE_ATTEMPTS?: string;
   NOTION_DATA_SOURCE_SESSIONS?: string;

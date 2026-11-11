@@ -31,7 +31,8 @@ export class DriveMirrorError extends Error {
 export type DriveFileRef = { id: string; etag: string };
 export type DriveFileContent = DriveFileRef & { content: string };
 export type DriveSnapshotRef = { id: string; name: string; sha256: string };
-type DriveFileMetadata = { id?: unknown; name?: unknown; mimeType?: unknown; parents?: unknown };
+export type DriveFolderChild = { id: string; name: string; mimeType: string; parents: string[] };
+type DriveFileMetadata = { id?: unknown; name?: unknown; mimeType?: unknown; parents?: unknown; trashed?: unknown };
 type MergeContent = (remote: string, desired: string) => string;
 type DriveRequestStage =
   | 'drive_folder_lookup'
@@ -40,6 +41,7 @@ type DriveRequestStage =
   | 'drive_lookup'
   | 'drive_create'
   | 'drive_update'
+  | 'drive_trash'
   | 'drive_upload';
 
 /**
@@ -94,6 +96,64 @@ export class GoogleDriveClient {
 
   async ensureRootFolder(name: string): Promise<string> {
     return this.ensureFolder(name, 'root');
+  }
+
+  /** Find an existing direct child folder without creating or modifying anything. */
+  async findFolderId(name: string, parentId: string): Promise<string | undefined> {
+    const query = new URLSearchParams({
+      q: `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME_TYPE}' and '${escapeQuery(parentId)}' in parents and trashed = false`,
+      spaces: 'drive',
+      pageSize: '1000',
+      fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed)',
+    });
+    const matches = await this.listFiles(query, file => file.name === name && file.mimeType === FOLDER_MIME_TYPE
+      && file.trashed !== true && Array.isArray(file.parents) && file.parents.includes(parentId), 'drive_folder_lookup');
+    if (matches.length > 1) throw new DriveMirrorError('duplicate_file');
+    const id = matches[0]?.id;
+    if (typeof id !== 'string' || !id) return undefined;
+    return id;
+  }
+
+  /** List direct children only. Callers must constrain the parent to an app-owned folder. */
+  async listFilesInFolder(parentId: string): Promise<DriveFolderChild[]> {
+    const query = new URLSearchParams({
+      q: `'${escapeQuery(parentId)}' in parents and trashed = false`,
+      spaces: 'drive',
+      pageSize: '1000',
+      fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed)',
+    });
+    const files = await this.listFiles(query, file => file.trashed !== true
+      && Array.isArray(file.parents) && file.parents.includes(parentId), 'drive_file_lookup');
+    return files.map(file => {
+      if (typeof file.id !== 'string' || !file.id || typeof file.name !== 'string'
+        || typeof file.mimeType !== 'string' || !Array.isArray(file.parents)
+        || !file.parents.every(parent => typeof parent === 'string')) {
+        throw new DriveMirrorError('invalid_response');
+      }
+      return { id: file.id, name: file.name, mimeType: file.mimeType, parents: file.parents as string[] };
+    });
+  }
+
+  /** Move a verified direct child file to Drive trash; never deletes folders. */
+  async trashFileInFolder(id: string, parentId: string): Promise<boolean> {
+    const metadata = await this.readFileMetadata(id, 'id,mimeType,parents,trashed');
+    const parents = metadata.parents;
+    if (metadata.id !== id || metadata.trashed === true || metadata.mimeType === FOLDER_MIME_TYPE
+      || !Array.isArray(parents) || !parents.includes(parentId)) {
+      if (metadata.trashed === true) return false;
+      throw new DriveMirrorError('invalid_response');
+    }
+    const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?fields=id,trashed,parents`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed: true }),
+    }, 'drive_trash');
+    if (!response.ok) throw errorForStatus(response.status);
+    const trashed = await readJson<DriveFileMetadata>(response);
+    if (trashed.id !== id || trashed.trashed !== true || !Array.isArray(trashed.parents) || !trashed.parents.includes(parentId)) {
+      throw new DriveMirrorError('invalid_response');
+    }
+    return true;
   }
 
   /** Store a content-addressed Drive file and verify its exact bytes after upload. */
