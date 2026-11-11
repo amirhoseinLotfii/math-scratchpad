@@ -344,7 +344,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         this.weeklyBackupPromise,
         this.notionSyncPromise,
         this.driveOperationQueue,
-      ].filter((work): work is Promise<unknown> => Boolean(work)));
+      ]);
       await this.ctx.storage.deleteAlarm();
 
       const bankFileId = this.ctx.storage.sql.exec<{ file_id: string }>(
