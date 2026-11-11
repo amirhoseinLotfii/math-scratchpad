@@ -5,7 +5,7 @@ import { App } from '../../src/App';
 import { actions, exerciseOf, initialState, makeStore } from '../../src/store';
 import { latex } from '../../src/model';
 import { submenuAction } from '../support/menu-actions';
-afterEach(cleanup);
+afterEach(() => { cleanup(); localStorage.removeItem('math-scratchpad-ui:workspace-template:v1:default:general'); });
 function mount(batch = true) {
  const store = makeStore(initialState());
  if (batch) store.dispatch(actions.startFractionRound());
@@ -47,6 +47,16 @@ describe('Quick tools and numeric keypad', () => {
   mount();
   const buttons = within(screen.getByRole('group', { name: 'Quick math tools' })).getAllByRole('button');
   expect(buttons.map(x => x.getAttribute('aria-label'))).toEqual(['Insert fraction', 'Insert parentheses', 'Insert square root', 'Insert power', 'Insert equals']);
+ });
+ it('selects a manual workspace template and inserts its configured symbols', () => {
+  const store = mount();
+  const selector = screen.getByRole('combobox', { name: 'Workspace template' });
+  fireEvent.change(selector, { target: { value: 'functions' } });
+  const tools = within(screen.getByRole('group', { name: 'Quick math tools' })).getAllByRole('button');
+  expect(tools.map(button => button.getAttribute('aria-label'))).toEqual(['Insert variable x', 'Insert sine function', 'Insert cosine function', 'Insert plus or minus', 'Insert equals']);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert plus or minus' }));
+  expect(latex(exerciseOf(store.getState().doc).steps[0].expression)).toContain('\\pm');
+  expect(localStorage.getItem('math-scratchpad-ui:workspace-template:v1:default:general')).toBe('functions');
  });
  it.each([['Insert fraction', '\\frac'], ['Insert parentheses', '('], ['Insert square root', '\\sqrt'], ['Insert power', '^']])('%s inserts its mathematical structure into active step', (label, notation) => {
   const store = mount(); fireEvent.click(screen.getByRole('button', { name: label }));

@@ -43,6 +43,8 @@ export type LessonCheckAnswer =
   | { type: 'find_mistake'; value: string }
   | { type: 'true_false_why'; choice?: TrueFalseChoice; reason: string }
   | { type: 'math'; steps: Step[] };
+/** Learn-only work-pane answer. Legacy math work remains attached when an old question used the wrong editor. */
+export type LessonWorkAnswer = LessonCheckAnswer & { legacyMathSteps?: Step[] };
 export function lessonCheckAnswerComplete(answer: LessonCheckAnswer | undefined): boolean {
   if (!answer) return false;
   if (answer.type === 'math') return answer.steps.some(step => !stepIsBlank(step));
@@ -74,5 +76,5 @@ export interface LessonProgress {
   summaryOpen?: boolean;
   revealedSteps: Record<string, number>;
   /** Learn-only scratch work from the lesson work pane, keyed `ex:<concept>:<block>` or `q:<questionId>`; never exported or graded. */
-  workAnswers?: Record<string, { type: 'math'; steps: Step[] }>;
+  workAnswers?: Record<string, LessonWorkAnswer>;
 }

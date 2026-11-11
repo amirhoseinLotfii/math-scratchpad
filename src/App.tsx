@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { RotateCcw, Trash2, Plus, BookOpen } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
 import { actions, exerciseOf } from './store';
@@ -16,6 +16,7 @@ import { Button } from './shared/ui/button';
 import { useWorkspaceLayout } from './shared/hooks/use-workspace-layout';
 import { QuestionNavigator } from './features/workspace/components/question-navigator';
 import { MathTools } from './features/workspace/components/math-tools';
+import { readWorkspaceTemplate, writeWorkspaceTemplate, type WorkspaceTemplate, workspaceTemplateStorageKey } from './features/workspace/model/workspace-templates';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from './features/math-editor/mathlive-adapter';
 import { MathLiveStepInput } from './features/math-editor/components/mathlive-step-input';
 export { INSERT_VISIBLE } from './features/math-editor/components/math-insert-dialog';
@@ -48,6 +49,7 @@ import { PracticeLauncher, usePracticeLauncher } from './app/practice-launcher';
 import { useBankSession } from './app/use-bank-session';
 import { usePracticeEditEvents } from './app/use-practice-edit-events';
 import { useWellbeing } from './app/use-wellbeing';
+import { ServerConnectionOverlayContext } from './sync/server-connection-gate';
 
 const DriveBankPanel = lazy(() => import('./features/drive-bank/drive-bank-panel').then(({ DriveBankPanel: panel }) => ({ default: panel })));
 const SyncPanel = lazy(() => import('./sync/sync-panel').then(({ SyncPanel: panel }) => ({ default: panel })));
@@ -61,6 +63,7 @@ function freshLessonProgress(lessonId: string): LessonProgress {
 /** `initialBank` is used by isolated browser previews/tests; normal app startup loads through DriveBankPanel. */
 export function App({ initialBank }: { initialBank?: { bank: DriveBank; version: string } } = {}) {
  const layout = useWorkspaceLayout(), wide = layout !== 'phone';
+ const setConnectionOverlayOpen = useContext(ServerConnectionOverlayContext);
  const syncRuntime = getDefaultSyncRuntime();
  const syncStatus = useSyncExternalStore(syncRuntime?.subscribe ?? NO_SYNC_SUBSCRIBE, syncRuntime?.getSnapshot ?? (() => EMPTY_SYNC_STATUS), () => EMPTY_SYNC_STATUS);
  const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -72,6 +75,20 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
+ const workspaceTemplateScope = workspaceTemplateStorageKey(state.doc.session?.bankId, state.doc.session?.chapter);
+ const [workspaceTemplate, setWorkspaceTemplate] = useState<WorkspaceTemplate>(() => {
+  try { return readWorkspaceTemplate(window.localStorage, state.doc.session?.bankId, state.doc.session?.chapter); }
+  catch { return 'general'; }
+ });
+ useLayoutEffect(() => {
+  try { setWorkspaceTemplate(readWorkspaceTemplate(window.localStorage, state.doc.session?.bankId, state.doc.session?.chapter)); }
+  catch { setWorkspaceTemplate('general'); }
+ }, [workspaceTemplateScope]);
+ function changeWorkspaceTemplate(template: WorkspaceTemplate) {
+  setWorkspaceTemplate(template);
+  try { writeWorkspaceTemplate(window.localStorage, template, state.doc.session?.bankId, state.doc.session?.chapter); }
+  catch { /* Workspace preferences are optional when browser storage is unavailable. */ }
+ }
  useEffect(() => {
   const refreshConflict = () => setServerConflict(getAuthenticatedServerStorage()?.getConflicts()[0] ?? null);
   window.addEventListener(SERVER_STORAGE_CONFLICT_EVENT, refreshConflict);
@@ -84,8 +101,9 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const launcher = usePracticeLauncher(), { setup, backup, confirmExam, confirmFractions, jsonForm, openInlinePanel } = launcher;
  const bankSession = useBankSession({ initialBank, store, setTimerPaused: setTrackedTimerPaused });
  const { loadedBank, loadedBankRef, bankTransitionRef, chapterTransitioning, lessonProgressRef, lessonProgressById, lessonRemoteRevision, lessonPersistenceMessage, bankReady, prepareBankTransition, updateLessonProgressState, rememberLessonProgress } = bankSession;
- const [driveBankOpen, setDriveBankOpen] = useState(false);
- const [syncPanelOpen, setSyncPanelOpen] = useState(false);
+ const [activeInspector, setActiveInspector] = useState<'drive' | 'sync' | null>(null);
+ const driveBankOpen = activeInspector === 'drive';
+ const syncPanelOpen = activeInspector === 'sync';
  const [driveBankInitialized, setDriveBankInitialized] = useState(() => !!getDriveConfig().fileId);
  const [, setDriveBankAvailable] = useState(false);
  const [lessonPickerOpen, setLessonPickerOpen] = useState(false), [lessonScreen, setLessonScreen] = useState<Lesson | null>(null);
@@ -189,6 +207,9 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   };
  }, [activePracticeLessonId, exam, lessonProgressById, lessonScreen, loadedBank, readingPosition?.position]);
  const modalOpen = askWellbeing || shortcutsOpen || !!exportWarning || !!resetKind || cloudPreviewOpen || insertOpen || !!decision || complete || lessonPickerOpen || !!referenceLesson || state.storageState?.kind === 'conflict' || !!serverConflict;
+ useLayoutEffect(() => {
+  setConnectionOverlayOpen(menu || modalOpen || driveBankOpen || syncPanelOpen || !!lessonScreen);
+ }, [setConnectionOverlayOpen, menu, modalOpen, driveBankOpen, syncPanelOpen, lessonScreen]);
  async function resolveServerConflict(choice: ServerStorageConflictChoice) {
   const storage = getAuthenticatedServerStorage();
   if (!storage || !serverConflict || serverConflictBusy) return;
@@ -229,7 +250,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     setLessonPickerOpen(false);
     return;
   }
-  setDriveBankOpen(false);
+  setActiveInspector(null);
   const restored = readLessonProgress(bank, version);
   const active = bank.lessons ?? [];
   let storedId: string | null = null;
@@ -370,7 +391,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (existing) closeReference(existing.id);
   else await startReferencePracticeQuestion(questionId);
  }
- function openDriveBank() { setDriveBankInitialized(true); setDriveBankOpen(true); }
+ function openDriveBank() { setDriveBankInitialized(true); setActiveInspector('drive'); }
  function loadBankFromLessons() { setLessonPickerOpen(false); openDriveBank(); }
  async function startLessonPractice(lesson: Lesson, progress: LessonProgress, selectedQuestions: BankQuestion[], sectionId?: string) {
   const targetBank = loadedBank;
@@ -484,7 +505,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   if (!insertMathSymbol(stepId, kind)) {
    if (['x','y','n','t','infinity','sigma'].includes(kind)) dispatch(actions.command({type:'identifier',value:kind === 'infinity' ? '∞' : kind === 'sigma' ? 'σ' : kind}));
    else if (kind === 'number') dispatch(actions.command({ type: 'insertBlankNumber' }));
-   else if (['+','−','×','÷','=','≤','≥','≠','<','>'].includes(kind)) dispatch(actions.command({ type: 'operator', value: kind }));
+    else if (['+','−','×','÷','=','≤','≥','≠','<','>','±','∓'].includes(kind)) dispatch(actions.command({ type: 'operator', value: kind }));
    else dispatch(actions.command({ type: 'insert', value: kind }));
   }
   dispatch(actions.recentSymbol(kind)); dispatch(actions.closeSymbols());
@@ -655,7 +676,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const activeMathfield = mathfieldForStep(state.doc.cursor.stepId);
  const canUndo = !!activeMathfield?.canUndo() || state.past.some(d => d.exerciseId === ex.id);
  const canRedo = !!activeMathfield?.canRedo() || state.future.some(d => d.exerciseId === ex.id);
- const mathTools = <MathTools wide={wide} canUndo={canUndo} canRedo={canRedo} onUndo={() => { if (!undoMathfield(state.doc.cursor.stepId)) dispatch(actions.undo()); focusEditor(); }} onRedo={() => { if (!redoMathfield(state.doc.cursor.stepId)) dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} />;
+  const mathTools = <MathTools wide={wide} canUndo={canUndo} canRedo={canRedo} onUndo={() => { if (!undoMathfield(state.doc.cursor.stepId)) dispatch(actions.undo()); focusEditor(); }} onRedo={() => { if (!redoMathfield(state.doc.cursor.stepId)) dispatch(actions.redo()); focusEditor(); }} onInsert={insert} onMore={openInsert} workspaceTemplate={workspaceTemplate} onWorkspaceTemplateChange={changeWorkspaceTemplate} />;
  return <main ref={editorRoot} className="scratchpad" data-layout={layout} inert={modalOpen || menu} aria-busy={chapterTransitioning} aria-label="Math Scratchpad" lang="en" dir="ltr" tabIndex={0} onKeyDownCapture={keyboard}>
   <div className="app-content" hidden={!!lessonScreen} inert={modalOpen}>
   <AppHeader batch={batch} answeredCount={answeredCount} skippedCount={skippedCount} totalQuestions={state.doc.exercises.length} savedAt={state.savedAt} storageState={state.storageState} syncStatus={syncStatus} showKeyboardToggle={isMathAnswer} keyboardOpen={state.keyboardOpen} onToggleKeyboard={() => { const open = !state.keyboardOpen; writeKeyboardChoice(open); dispatch(actions.keyboard(open)); if (open) requestAnimationFrame(focusEditor); }}>
@@ -680,12 +701,12 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     onDownloadBackup: downloadBackup,
     onImportFile: () => fileInput.current?.click(),
     onImportJson: () => { jsonForm.reset({ json: '' }); openInlinePanel('backup'); },
-    onOpenSync: () => setSyncPanelOpen(true),
+     onOpenSync: () => setActiveInspector('sync'),
    }} />
   </AppHeader>
 
-   {driveBankInitialized && <Suspense fallback={<div role="status" aria-live="polite">Loading question bank…</div>}><DriveBankPanel open={driveBankOpen} close={() => { setDriveBankOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} /></Suspense>}
-   {syncPanelOpen && <Suspense fallback={<div role="status" aria-live="polite">Loading sync settings…</div>}><SyncPanel onClose={() => { setSyncPanelOpen(false); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} /></Suspense>}
+   {driveBankInitialized && <Suspense fallback={<div role="status" aria-live="polite">Loading question bank…</div>}><DriveBankPanel open={driveBankOpen} close={() => { setActiveInspector(current => current === 'drive' ? null : current); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} /></Suspense>}
+   {syncPanelOpen && <Suspense fallback={<div role="status" aria-live="polite">Loading sync settings…</div>}><SyncPanel onClose={() => { setActiveInspector(current => current === 'sync' ? null : current); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} /></Suspense>}
    <CloudResetPreviewDialog open={cloudPreviewOpen} onOpenChange={setCloudPreviewOpen} runtime={syncRuntime} />
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 

@@ -80,9 +80,9 @@ export function parse(input: string): Sequence {
     while (true) {
       space(); if (p >= text.length || text[p] === stop) break;
       const c = text[p];
-      const command = text.slice(p).match(/^\\(times|cdot|div|leq|geq|neq|le|ge|ne)(?![a-zA-Z])/);
-      if (command) { p += command[0].length; children.push(op(({ times: '×', cdot: '·', div: '÷', leq: '≤', geq: '≥', neq: '≠', le: '≤', ge: '≥', ne: '≠' } as Record<string, string>)[command[1]])); continue; }
-      if ('+-−*×÷·=<>≤≥≠,،'.includes(c)) { p++; children.push(op(({ '-': '−', '*': '×', '،': ',' } as Record<string, string>)[c] ?? c)); continue; }
+      const command = text.slice(p).match(/^\\(times|cdot|div|pm|mp|leq|geq|neq|le|ge|ne)(?![a-zA-Z])/);
+      if (command) { p += command[0].length; children.push(op(({ times: '×', cdot: '·', div: '÷', pm: '±', mp: '∓', leq: '≤', geq: '≥', neq: '≠', le: '≤', ge: '≥', ne: '≠' } as Record<string, string>)[command[1]])); continue; }
+      if ('+-−*×÷·=<>≤≥≠±∓,،'.includes(c)) { p++; children.push(op(({ '-': '−', '*': '×', '،': ',' } as Record<string, string>)[c] ?? c)); continue; }
       if (c === '/' || c === '^' || c === '%' || c === '!') {
         p++; const prev = children.pop(); if (!prev || prev.type === 'operator') throw Error('Put a value before this operator.');
         if (c === '%') children.push(template('percent', [base(prev)]));

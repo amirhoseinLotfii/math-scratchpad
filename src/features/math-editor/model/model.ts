@@ -82,7 +82,7 @@ export function latex(n: MathNode | Sequence): string {
   if (n.type === 'sequence') return n.children.map(latex).join('');
   if (n.type === 'number') return n.value || '\\square';
   if (n.type === 'identifier') return ({ 'π': '\\pi ', 'θ': '\\theta ', '∞': '\\infty ', 'σ': '\\sigma ' } as Record<string, string>)[n.value] || n.value;
-  if (n.type === 'operator') return ({ '×': '\\times ', '÷': '\\div ', '−': '-', '≤': '\\le ', '≥': '\\ge ', '≠': '\\ne ' } as Record<string, string>)[n.value] || n.value;
+  if (n.type === 'operator') return ({ '×': '\\times ', '÷': '\\div ', '−': '-', '±': '\\pm ', '∓': '\\mp ', '≤': '\\le ', '≥': '\\ge ', '≠': '\\ne ' } as Record<string, string>)[n.value] || n.value;
   if (n.type === 'fraction') return `\\frac{${latex(n.numerator)}}{${latex(n.denominator)}}`;
   if (n.type === 'power') return `{${latex(n.base)}}^{${latex(n.exponent)}}`; // the parser reads {..} before ^ as invisible grouping
   if (n.type === 'root') return `\\sqrt{${latex(n.body)}}`;
@@ -105,7 +105,7 @@ export type SymbolItem = { key: string; label: string; title: string };
 const symbol = (key: string, label: string, title: string): SymbolItem => ({ key, label, title });
 export const topics: Record<string, SymbolItem[]> = {
   Numbers: [symbol('fraction', 'a/b', 'Fraction'), symbol('power', 'xⁿ', 'Power'), symbol('root', '√', 'Root'), symbol('percent', '%', 'Percent'), symbol('group', '( )', 'Parentheses')],
-  Algebra: ['x', 'y', 'n', 't'].map(x => symbol(x, x, `Variable ${x}`)).concat([symbol('abs', '|x|', 'Absolute value'), ...['≤', '≥', '≠', '<', '>'].map(x => symbol(x, x, x))]),
+  Algebra: ['x', 'y', 'n', 't'].map(x => symbol(x, x, `Variable ${x}`)).concat([symbol('abs', '|x|', 'Absolute value'), symbol('±', '±', 'Plus or minus'), symbol('∓', '∓', 'Minus or plus'), ...['≤', '≥', '≠', '<', '>'].map(x => symbol(x, x, x))]),
   Functions: ['f', 'sin', 'cos', 'tan', 'ln', 'log', 'exp'].map(x => symbol(x, x === 'f' ? 'f(x)' : x, x)),
   Calculus: [symbol('derivative', 'd/dx', 'Derivative'), symbol('integral', '∫', 'Integral'), symbol('limit', 'lim', 'Limit'), symbol('sum', 'Σ', 'Sum'), symbol('infinity', '∞', 'Infinity')],
   Matrices: [symbol('matrix2', '[2×2]', '2 by 2 matrix'), symbol('matrix3', '[3×3]', '3 by 3 matrix'), symbol('det', 'det', 'Determinant')],

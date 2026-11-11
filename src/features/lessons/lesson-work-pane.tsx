@@ -1,12 +1,14 @@
-import { useId, useRef, useState, type FocusEvent, type ReactNode } from 'react';
+import { useCallback, useId, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import { Button } from '../../shared/ui/button';
 import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
-import { stepIsBlank, type Step } from '../../model';
+import { stepIsBlank, stepLatex, type Step } from '../../model';
 import { LessonMathCheck } from './lesson-math-check';
 import { MathDisplay } from '../../MathDisplay';
 import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
-import type { LessonWorkItem, LessonWorkKind } from './lesson-work-items';
+import { workAnswerHasContent, type LessonWorkItem, type LessonWorkKind } from './lesson-work-items';
+import { LessonAnswerFields } from './lesson-check';
+import type { LessonWorkAnswer } from './types';
 
 const KIND_LABEL: Record<LessonWorkKind, { fa: string; en: string }> = {
   example: { fa: 'مثال حل‌شده', en: 'Worked example' },
@@ -26,15 +28,16 @@ export function workItemLabel(item: LessonWorkItem, index: number, uiLang: 'fa' 
  * The lesson "Your work" pane: a selector over the current section's work items and the app's
  * existing step editor + math toolbar (composed through LessonMathCheck, never modified).
  */
-export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore, onWork, renderCheck, savedSteps, onFocusItem, onBlurItem, onRevealSolution }: {
+export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore, onWork, renderCheck, savedSteps, savedAnswer, onFocusItem, onBlurItem, onRevealSolution }: {
   items: LessonWorkItem[];
   selected: LessonWorkItem | undefined;
   onSelect: (key: string) => void;
   uiLang: 'fa' | 'en';
   getWorkStore: (item: LessonWorkItem) => ScratchStore;
-  onWork: (key: string, answer: { type: 'math'; steps: Step[] }) => void;
+  onWork: (key: string, answer: LessonWorkAnswer) => void;
   renderCheck: (question: BankQuestion) => ReactNode;
   savedSteps: (key: string) => Step[] | undefined;
+  savedAnswer: (key: string) => LessonWorkAnswer | undefined;
   onFocusItem?: (item: LessonWorkItem) => void;
   onBlurItem?: (item: LessonWorkItem) => void;
   onRevealSolution?: (item: LessonWorkItem) => void;
@@ -42,11 +45,19 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
   const fa = uiLang === 'fa', selectId = useId();
   const [solutionShown, setSolutionShown] = useState<Record<string, boolean>>({});
   const focusedItem = useRef<string | null>(null);
+  const item = selected ?? items[0];
+  const answer = item ? savedAnswer(item.key) : undefined;
+  const onMathAnswered = useCallback((id: string, next: { type: 'math'; steps: Step[] }) => {
+    if (!item) return;
+    onWork(item.key, {
+      ...next,
+      ...(answer?.type !== 'math' && answer?.legacyMathSteps ? { legacyMathSteps: answer.legacyMathSteps } : {}),
+    });
+  }, [answer, item, onWork]);
   if (!items.length) return <aside className="lesson-work-pane" aria-label={fa ? 'کار من' : 'Your work'}>
     <h2 className="lesson-work-title">{fa ? 'کار من' : 'Your work'}</h2>
     <p className="lesson-work-empty">{fa ? 'برای این بخش مثال یا تمرینی برای حل ثبت نشده است.' : 'This section has nothing to work on yet.'}</p>
   </aside>;
-  const item = selected ?? items[0];
   const steps = savedSteps(item.key);
   const block = item.kind === 'example' || item.kind === 'guided' ? item.block : undefined;
   const attempted = !!steps?.some(step => !stepIsBlank(step));
@@ -80,7 +91,28 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
               {block?.type === 'example' && block.text && block.text !== item.title && <p lang={languageForText(block.text)} dir={contentDirection(block.text)}><LessonText text={block.text} /></p>}
               {block?.type === 'example' && block.latex && <bdi dir="ltr" className="lesson-formula"><MathDisplay latex={block.latex} label={fa ? 'عبارت مثال' : 'Example expression'} display /></bdi>}
             </div>}
-        <LessonMathCheck question={item.workQuestion} store={getWorkStore(item)} onAnswered={onWork} uiLang={uiLang} />
+        {item.kind === 'exercise' && (item.workQuestion.answerType ?? (item.workQuestion.mode === 'text' ? 'text' : 'math')) !== 'math'
+          ? <>
+              <LessonAnswerFields
+                question={item.workQuestion}
+                answer={answer?.type === 'math' ? undefined : answer}
+                onAnswer={(_, next) => onWork(item.key, {
+                  ...next,
+                  ...(answer?.legacyMathSteps ? { legacyMathSteps: answer.legacyMathSteps } : answer?.type === 'math' ? { legacyMathSteps: answer.steps } : {}),
+                })}
+                uiLang={uiLang}
+              />
+              {answer && answer.type !== 'math' && answer.legacyMathSteps?.length ? <details className="lesson-legacy-math-work">
+                <summary>{fa ? 'گام‌های ریاضی قبلی (فقط خواندنی)' : 'Previous math work (read only)'}</summary>
+                <ol>{answer.legacyMathSteps.filter(step => !stepIsBlank(step)).map(step => <li key={step.id}><MathDisplay latex={stepLatex(step)} label={fa ? 'گام ریاضی قبلی' : 'Previous math step'} display /></li>)}</ol>
+              </details> : null}
+            </>
+          : <LessonMathCheck
+              question={item.workQuestion}
+              store={getWorkStore(item)}
+              onAnswered={onMathAnswered}
+              uiLang={uiLang}
+            />}
         {block?.type === 'example' && <div className="lesson-work-feedback">
           {!attempted
             ? <p className="lesson-work-hint">{fa ? 'اول خودت حداقل یک گام بنویس؛ بعد می‌توانی حلِ همین مثال در درس‌نامه را ببینی.' : 'Write at least one step first; then you can compare with the lesson’s solution.'}</p>

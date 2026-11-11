@@ -15,8 +15,9 @@ import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
 import { MAX_SESSION_EXERCISES, stepIsBlank, stepLatex, type Step } from '../../model';
 import { conceptAnchorId, sectionAnchorId } from '../progress/reading-position-anchors';
 import { useOptionalReadingPositionContext } from '../progress/reading-position-context';
-import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MAX, SPLIT_MEDIA_QUERY, SPLIT_MIN, SPLIT_RATIO_STORAGE_KEY, type LessonWorkItem } from './lesson-work-items';
+import { buildSectionWorkItems, clampSplitRatio, lessonPaneMode, ratioFromPointer, resolveSelectedWorkItem, SPLIT_MAX, SPLIT_MEDIA_QUERY, SPLIT_MIN, SPLIT_RATIO_STORAGE_KEY, workAnswerHasContent, workAnswerHasCurrentContent, type LessonWorkItem } from './lesson-work-items';
 import { LessonWorkPane } from './lesson-work-pane';
+import type { LessonWorkAnswer } from './types';
 import { ActivityTracker } from '../../sync/activity-tracker';
 import { getLearningStorage } from '../../sync/browser-db';
 import { emitLearnEvent, type LearnEventContext, type LearnEventDraft } from '../../sync/events';
@@ -342,7 +343,8 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
   const getWorkStore = useCallback((item: LessonWorkItem) => {
     let store = workStores.current.get(item.key);
     if (!store) {
-      store = createLessonMathStore(item.workQuestion, phone, progressRef.current.workAnswers?.[item.key]?.steps);
+      const saved = progressRef.current.workAnswers?.[item.key];
+      store = createLessonMathStore(item.workQuestion, phone, saved?.type === 'math' ? saved.steps : undefined);
       workStores.current.set(item.key, store);
     }
     return store;
@@ -402,27 +404,47 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
     focusedWorkScope.current = null;
   }, [activityTracker, lesson.id]);
 
-  const setWork = useCallback((key: string, { steps }: { type: 'math'; steps: Step[] }) => {
+  const setWork = useCallback((key: string, incoming: LessonWorkAnswer) => {
     const before = progressRef.current;
     const workAnswers = { ...before.workAnswers };
     const previous = workAnswers[key];
-    const blank = steps.every(step => stepIsBlank(step));
-    if (blank && !previous) return;
-    const signature = JSON.stringify(steps.map(step => stepLatex(step)));
-    if (previous && JSON.stringify(previous.steps.map(step => stepLatex(step))) === signature) return;
-    if (blank) delete workAnswers[key];
-    else workAnswers[key] = { type: 'math', steps };
+    const legacyMathSteps = incoming.type === 'math' ? undefined
+      : previous?.legacyMathSteps ?? (previous?.type === 'math' ? previous.steps : undefined);
+    const answer: LessonWorkAnswer = incoming.type === 'math' || !legacyMathSteps
+      ? incoming
+      : { ...incoming, legacyMathSteps };
+    const hasContent = workAnswerHasContent(answer);
+    const signature = (value: LessonWorkAnswer | undefined) => !value ? '' : JSON.stringify(value.type === 'math'
+      ? { type: value.type, steps: value.steps.map(step => stepLatex(step)), legacy: value.legacyMathSteps?.map(step => stepLatex(step)) }
+      : value.type === 'true_false_why'
+        ? { type: value.type, choice: value.choice, reason: value.reason, legacy: value.legacyMathSteps?.map(step => stepLatex(step)) }
+        : { type: value.type, value: value.value, legacy: value.legacyMathSteps?.map(step => stepLatex(step)) });
+    if (!hasContent && !previous) return;
+    if (signature(previous) === signature(answer)) return;
+    if (!hasContent) delete workAnswers[key];
+    else workAnswers[key] = answer;
     commitProgress({ ...before, workAnswers: Object.keys(workAnswers).length ? workAnswers : undefined });
     const item = workItems.find(candidate => candidate.key === key);
-    if (!item || blank) return;
-    const eventSteps = steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+    if (!item || !hasContent || !workAnswerHasCurrentContent(answer)) return;
     const questionText = (item.kind === 'check' || item.kind === 'exercise') ? (item.question.prompt || item.question.source) : item.title;
     const itemId = item.kind === 'check' || item.kind === 'exercise' ? item.question.id : item.key;
     const context = makeEventContext(item.kind === 'check' || item.kind === 'exercise' ? item.question : undefined, currentSection, item.kind === 'example' || item.kind === 'guided' ? item.conceptId : undefined);
-    if (!previous) {
+    const eventItemType = answer.type === 'math' ? 'step_by_step'
+      : answer.type === 'choice' ? 'mcq'
+        : answer.type === 'true_false_why' ? 'true_false_why'
+          : answer.type === 'find_mistake' ? 'find_mistake' : 'typed';
+    const eventAnswer = answer.type === 'math' ? answer.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40).join('\n').slice(0, 8_000)
+      : answer.type === 'true_false_why' ? [answer.choice ? answer.choice === 'true' ? 'True' : 'False' : '', answer.reason].filter(Boolean).join(' — ').slice(0, 8_000)
+        : answer.value.slice(0, 8_000);
+    const previousCurrentHasContent = previous?.type === 'math' && item.kind === 'exercise'
+      && (item.workQuestion.answerType ?? (item.workQuestion.mode === 'text' ? 'text' : 'math')) !== 'math'
+      ? false
+      : workAnswerHasCurrentContent(previous);
+    if (!previousCurrentHasContent) {
       const type = item.kind === 'example' || item.kind === 'guided' ? 'example_attempt' : item.kind === 'exercise' ? 'exercise_attempt' : 'check_answer';
       emitLearnEvent(context, {
-        type, itemId, itemType: 'step_by_step', questionText, userAnswer: eventSteps.join('\n').slice(0, 8_000), steps: eventSteps,
+        type, itemId, itemType: eventItemType, questionText, userAnswer: eventAnswer,
+        ...(answer.type === 'math' ? { steps: answer.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40) } : {}),
         verdict: 'submitted', verdictSource: 'none', attemptNo: nextAttemptNo(itemId),
       });
     } else {
@@ -430,15 +452,20 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
       if (timer) clearTimeout(timer);
       const nextTimer = setTimeout(() => {
         pendingWorkEdits.current.delete(key);
-        const latest = progressRef.current.workAnswers?.[key]?.steps;
-        if (!latest) return;
-        const latestSteps = latest.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
-        emitLearnEvent(context, { type: 'step_edited', itemId, itemType: 'step_by_step', questionText, userAnswer: latestSteps.join('\n').slice(0, 8_000), steps: latestSteps });
+        const latest = progressRef.current.workAnswers?.[key];
+        if (!latest || !workAnswerHasContent(latest)) return;
+        const latestAnswer = latest.type === 'math' ? latest.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40).join('\n').slice(0, 8_000)
+          : latest.type === 'true_false_why' ? [latest.choice ? latest.choice === 'true' ? 'True' : 'False' : '', latest.reason].filter(Boolean).join(' — ').slice(0, 8_000)
+            : latest.value.slice(0, 8_000);
+        const latestType = latest.type === 'math' ? 'step_by_step' : latest.type === 'choice' ? 'mcq' : latest.type === 'true_false_why' ? 'true_false_why' : latest.type === 'find_mistake' ? 'find_mistake' : 'typed';
+        emitLearnEvent(context, { type: latest.type === 'math' ? 'step_edited' : 'answer_edited', itemId, itemType: latestType, questionText, userAnswer: latestAnswer,
+          ...(latest.type === 'math' ? { steps: latest.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40) } : {}) });
       }, 700);
       pendingWorkEdits.current.set(key, nextTimer);
     }
-    if (previous && steps.length > previous.steps.length) {
-      for (const added of steps.slice(previous.steps.length)) emitLearnEvent(context, { type: 'step_added', itemId: added.id, itemType: 'step_by_step', questionText, steps: eventSteps });
+    if (previous?.type === 'math' && answer.type === 'math' && answer.steps.length > previous.steps.length) {
+      const eventSteps = answer.steps.map(step => stepLatex(step).slice(0, 4_000)).slice(0, 40);
+      for (const added of answer.steps.slice(previous.steps.length)) emitLearnEvent(context, { type: 'step_added', itemId: added.id, itemType: 'step_by_step', questionText, steps: eventSteps });
     }
   }, [commitProgress, currentSection, makeEventContext, nextAttemptNo, workItems]);
 
@@ -833,7 +860,7 @@ function ReadyLessonScreen({ bank, lesson, initialProgress, restore, onBack, onP
       </div>}
       {split && <div className="lesson-split-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label={fa ? 'تغییر عرض درس‌نامه' : 'Resize lesson panel'} aria-valuemin={30} aria-valuemax={70} aria-valuenow={splitRatio} onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => updateSplitRatio(50)} />}
       {(split || paneTab === 'work') && <div className="lesson-split-work" id="lesson-panel-work" {...(split ? {} : { role: 'tabpanel', 'aria-labelledby': 'lesson-tab-work' })}>
-        <LessonWorkPane items={workItems} selected={selectedWorkItem} onSelect={selectWorkItem} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={renderCheck} savedSteps={key => progress.workAnswers?.[key]?.steps} onFocusItem={engageWorkItem} onBlurItem={leaveWorkItem} onRevealSolution={revealWorkSolution} />
+        <LessonWorkPane items={workItems} selected={selectedWorkItem} onSelect={selectWorkItem} uiLang={uiLang} getWorkStore={getWorkStore} onWork={setWork} renderCheck={renderCheck} savedSteps={key => { const answer = progress.workAnswers?.[key]; return answer?.type === 'math' ? answer.steps : undefined; }} savedAnswer={key => progress.workAnswers?.[key]} onFocusItem={engageWorkItem} onBlurItem={leaveWorkItem} onRevealSolution={revealWorkSolution} />
       </div>}
       </div>
     </> : null}

@@ -41,6 +41,20 @@ describe('steps, final answer, undo/redo', () => {
     const { d, doc } = setup(); d(actions.command({ type: 'newStep' })); d(actions.command({ type: 'deleteStep' }));
     expect(exerciseOf(doc()).steps).toHaveLength(1); d(actions.command({ type: 'deleteStep' })); expect(exerciseOf(doc()).steps).toHaveLength(1);
   });
+  it('keeps a deleted final answer valid and undo restores the removed final step', () => {
+    const { d, doc } = setup();
+    d(actions.command({ type: 'newStep' }));
+    d(actions.command({ type: 'digit', value: '9' }));
+    d(actions.command({ type: 'final' }));
+    const beforeDeleteSteps = structuredClone(exerciseOf(doc()).steps), finalStepId = doc().cursor.stepId;
+    d(actions.command({ type: 'deleteStep' }));
+    expect(exerciseOf(doc()).steps.map(step => step.final)).toEqual([true]);
+    d(actions.undo());
+    expect(exerciseOf(doc()).steps).toEqual(beforeDeleteSteps);
+    expect(doc().cursor.stepId).toBe(finalStepId);
+    d(actions.redo());
+    expect(exerciseOf(doc()).steps.map(step => step.final)).toEqual([true]);
+  });
   it('undo/redo restore exact documents and redo is cleared by a new edit', () => {
     const { d, doc, s } = setup(); const snap = () => JSON.stringify([exerciseOf(doc()).steps, doc().cursor]); const a = snap();
     d(actions.command({ type: 'newStep' })); const b = snap();

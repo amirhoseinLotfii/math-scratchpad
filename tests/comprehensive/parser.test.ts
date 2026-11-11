@@ -9,6 +9,7 @@ describe('parser: supported constructs', () => {
   it.each([
     ['1+2', '1+2'], ['12-3', '12-3'], ['a−b', 'a-b'], ['a*b', 'a\\times b'], ['a×b', 'a\\times b'], ['a÷b', 'a\\div b'],
     ['a=b', 'a=b'], ['a<b', 'a<b'], ['a>b', 'a>b'], ['a≤b', 'a\\le b'], ['a≥b', 'a\\ge b'], ['a≠b', 'a\\ne b'],
+    ['±', '\\pm '], ['∓', '\\mp '], ['x±y∓z', 'x\\pm y\\mp z'], ['x\\pm y\\mp z', 'x\\pm y\\mp z'],
     ['a\\times b', 'a\\times b'], ['a\\cdot b', 'a·b'], ['a\\div b', 'a\\div b'],
     ['a\\le b', 'a\\le b'], ['a\\leq b', 'a\\le b'], ['a\\ge b', 'a\\ge b'], ['a\\geq b', 'a\\ge b'], ['a\\ne b', 'a\\ne b'], ['a\\neq b', 'a\\ne b'],
     ['\\frac{1}{2}', '\\frac{1}{2}'], ['\\dfrac{a}{b}', '\\frac{a}{b}'], ['\\tfrac{a}{b}', '\\frac{a}{b}'], ['1/2', '\\frac{1}{2}'], ['1/2^3', '\\frac{1}{{2}^{3}}'],

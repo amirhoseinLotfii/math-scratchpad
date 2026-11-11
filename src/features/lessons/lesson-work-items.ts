@@ -1,7 +1,7 @@
 import type { BankQuestion } from '../drive-bank/drive-bank';
-import type { Step } from '../../model';
+import { stepIsBlank, type AnswerType, type Step } from '../../model';
 import type { LessonSection } from './lesson-sections';
-import type { Lesson, LessonBlock } from './types';
+import type { Lesson, LessonBlock, LessonWorkAnswer } from './types';
 import { BREAKPOINT_MEDIA } from '../../shared/lib/breakpoints';
 
 /** One thing in the current lesson section the learner can work on beside the lesson text. */
@@ -17,7 +17,7 @@ export type LessonWorkKind = LessonWorkItem['kind'];
 export type LessonPaneMode = 'split' | 'tabs';
 
 /** Learn-only scratch work keyed by work item; never part of practice sessions or exports. */
-export type LessonWorkAnswers = Record<string, { type: 'math'; steps: Step[] }>;
+export type LessonWorkAnswers = Record<string, LessonWorkAnswer>;
 
 export const SPLIT_MIN = 30;
 export const SPLIT_MAX = 70;
@@ -73,7 +73,7 @@ export function buildSectionWorkItems(section: LessonSection | undefined, checks
     }
   }
   for (const question of checks) items.push({ key: questionWorkKey(question.id), kind: 'check', question, title: question.prompt || question.source, workQuestion: question });
-  for (const question of exercises) items.push({ key: questionWorkKey(question.id), kind: 'exercise', question, title: question.prompt || question.source, workQuestion: { id: questionWorkKey(question.id), mode: 'math', source: question.source } });
+  for (const question of exercises) items.push({ key: questionWorkKey(question.id), kind: 'exercise', question, title: question.prompt || question.source, workQuestion: { ...question, id: questionWorkKey(question.id) } });
   return items;
 }
 
@@ -96,13 +96,59 @@ export function allowedWorkKeys(lesson: Lesson, questions: BankQuestion[]): Set<
  * Restores saved work tolerantly: unknown or invalid entries are dropped one by one so older or
  * damaged work can never invalidate the rest of the lesson progress.
  */
-export function normalizeWorkAnswers(value: unknown, allowed: Set<string>, validSteps: (key: string, steps: unknown) => Step[] | undefined): LessonWorkAnswers | undefined {
+export function normalizeWorkAnswers(
+  value: unknown,
+  allowed: Set<string>,
+  validSteps: (key: string, response: unknown) => Step[] | undefined,
+  questionForKey?: (key: string) => Pick<BankQuestion, 'answerType' | 'mode' | 'choices'> | undefined,
+): LessonWorkAnswers | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const result: LessonWorkAnswers = {};
   for (const [key, response] of Object.entries(value as Record<string, unknown>)) {
-    if (!allowed.has(key) || !response || typeof response !== 'object' || (response as { type?: unknown }).type !== 'math') continue;
-    const steps = validSteps(key, response);
-    if (steps) result[key] = { type: 'math', steps };
+    if (!allowed.has(key) || !response || typeof response !== 'object' || Array.isArray(response)) continue;
+    const raw = response as Record<string, unknown>;
+    const question = questionForKey?.(key);
+    const expected: AnswerType = question?.answerType ?? (question?.mode === 'text' ? 'text' : 'math');
+    const legacyRaw = raw.legacyMathSteps;
+    const legacyMathSteps = legacyRaw === undefined ? undefined : validSteps(key, { steps: legacyRaw });
+    if (legacyRaw !== undefined && !legacyMathSteps) continue;
+    const withLegacy = <T extends LessonWorkAnswer>(answer: T): T => legacyMathSteps ? { ...answer, legacyMathSteps } : answer;
+    if (raw.type === 'math') {
+      const steps = validSteps(key, response);
+      if (!steps) continue;
+      if (expected === 'math') result[key] = { type: 'math', steps };
+      else {
+        const legacy = legacyMathSteps ?? steps;
+        if (!legacy.some(step => !stepIsBlank(step))) continue;
+        result[key] = expected === 'true_false_why'
+          ? { type: 'true_false_why', reason: '', legacyMathSteps: legacy }
+          : { type: expected, value: '', legacyMathSteps: legacy };
+      }
+      continue;
+    }
+    if (raw.type !== expected) continue;
+    if ((expected === 'text' || expected === 'find_mistake' || expected === 'choice')
+      && typeof raw.value === 'string' && raw.value.length <= 4000
+      && (expected !== 'choice' || question?.choices?.includes(raw.value))) {
+      result[key] = withLegacy({ type: expected, value: raw.value });
+    } else if (expected === 'true_false_why' && (raw.choice === undefined || raw.choice === 'true' || raw.choice === 'false')
+      && typeof raw.reason === 'string' && raw.reason.length <= 4000) {
+      result[key] = withLegacy({ type: 'true_false_why', ...(raw.choice ? { choice: raw.choice } : {}), reason: raw.reason });
+    }
   }
   return Object.keys(result).length ? result : undefined;
+}
+
+export function workAnswerHasContent(answer: LessonWorkAnswer | undefined): boolean {
+  if (!answer) return false;
+  return workAnswerHasCurrentContent(answer) || !!answer.legacyMathSteps?.some(step => !stepIsBlank(step));
+}
+
+export function workAnswerHasCurrentContent(answer: LessonWorkAnswer | undefined): boolean {
+  if (!answer) return false;
+  return answer.type === 'math'
+    ? answer.steps.some(step => !stepIsBlank(step))
+    : answer.type === 'true_false_why'
+      ? !!answer.choice || !!answer.reason.trim()
+      : !!answer.value.trim();
 }

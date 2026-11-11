@@ -39,6 +39,12 @@ describe('lesson work items', () => {
     expect(resolveSelectedWorkItem([], 'x')).toBeUndefined();
   });
 
+  it('preserves answer metadata when creating a section exercise work item', () => {
+    const question: BankQuestion = { id: 'L1-TEXT', mode: 'text', source: 'Explain the idea.', prompt: 'Explain the idea.', answerType: 'text', lessonId: 'L1', stage: 'practice' };
+    const item = buildSectionWorkItems(buildLessonSections(lesson)[0], [], [question]).find(entry => entry.kind === 'exercise')!;
+    expect(item.workQuestion).toMatchObject({ id: 'q:L1-TEXT', answerType: 'text', mode: 'text', source: 'Explain the idea.' });
+  });
+
   it('chooses split on wide screens and tabs otherwise; clamps and maps the resize ratio for RTL and LTR', () => {
     expect(lessonPaneMode(true)).toBe('split');
     expect(lessonPaneMode(false)).toBe('tabs');
@@ -103,5 +109,46 @@ describe('lesson work storage compatibility', () => {
     expect(progress.answeredCheckIds).toEqual([]);
     expect(progress.completedPracticeQuestionIds).toBeUndefined();
     expect(JSON.stringify(lessonExportDataFromState(restored))).not.toContain('workAnswers');
+  });
+
+  it('round-trips all typed work answers and migrates old math work to a read-only legacy answer', () => {
+    const raw = JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as { questions: Array<Record<string, unknown>> };
+    raw.questions.push(
+      { id: 'SAMPLE-1.1-TEXT', mode: 'text', source: 'Explain the method.', stage: 'practice', lessonId: 'SAMPLE-1.1' },
+      { id: 'SAMPLE-1.1-CHOICE', mode: 'text', source: 'Choose an option.', answerType: 'choice', choices: ['A', 'B'], stage: 'practice', lessonId: 'SAMPLE-1.1' },
+      { id: 'SAMPLE-1.1-TF', mode: 'text', source: 'Is the statement true?', answerType: 'true_false_why', stage: 'practice', lessonId: 'SAMPLE-1.1' },
+      { id: 'SAMPLE-1.1-MISTAKE', mode: 'text', source: 'Find the mistake.', answerType: 'find_mistake', stage: 'practice', lessonId: 'SAMPLE-1.1' },
+    );
+    const source = validateBank(raw), state = emptyLessonProgressState(source.bank_id, VERSION);
+    const legacyStep = blankStep(); legacyStep.expression = parse('3+4');
+    state.progressById['SAMPLE-1.1'] = { ...base(), workAnswers: {
+      'q:SAMPLE-1.1-TEXT': { type: 'text', value: 'Explain with words.' },
+      'q:SAMPLE-1.1-CHOICE': { type: 'choice', value: 'B' },
+      'q:SAMPLE-1.1-TF': { type: 'true_false_why', choice: 'false', reason: 'A counterexample disproves it.' },
+      'q:SAMPLE-1.1-MISTAKE': { type: 'find_mistake', value: 'The sign changes here.' },
+      'q:SAMPLE-1.1-P01': { type: 'math', steps: [legacyStep] },
+    } };
+
+    expect(saveLessonProgress(source, VERSION, state).saved).toBe(true);
+    const restored = readLessonProgress(source, VERSION, localStorage, NOW);
+    const answers = restored.progressById['SAMPLE-1.1'].workAnswers!;
+    expect(answers['q:SAMPLE-1.1-TEXT']).toEqual({ type: 'text', value: 'Explain with words.' });
+    expect(answers['q:SAMPLE-1.1-CHOICE']).toEqual({ type: 'choice', value: 'B' });
+    expect(answers['q:SAMPLE-1.1-TF']).toEqual({ type: 'true_false_why', choice: 'false', reason: 'A counterexample disproves it.' });
+    expect(answers['q:SAMPLE-1.1-MISTAKE']).toEqual({ type: 'find_mistake', value: 'The sign changes here.' });
+    expect(answers['q:SAMPLE-1.1-P01']).toMatchObject({ type: 'math', steps: [legacyStep] });
+    expect(JSON.stringify(lessonExportDataFromState(restored))).not.toContain('workAnswers');
+  });
+
+  it('preserves legacy math steps read-only when the question now requires text', () => {
+    const raw = JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as { questions: Array<Record<string, unknown>> };
+    raw.questions.push({ id: 'SAMPLE-1.1-TEXT', mode: 'text', source: 'Explain the method.', stage: 'practice', lessonId: 'SAMPLE-1.1' });
+    const source = validateBank(raw), state = emptyLessonProgressState(source.bank_id, VERSION);
+    const oldStep = blankStep(); oldStep.expression = parse('3+4');
+    state.progressById['SAMPLE-1.1'] = { ...base(), workAnswers: { 'q:SAMPLE-1.1-TEXT': { type: 'math', steps: [oldStep] } } };
+
+    expect(saveLessonProgress(source, VERSION, state).saved).toBe(true);
+    expect(readLessonProgress(source, VERSION, localStorage, NOW).progressById['SAMPLE-1.1'].workAnswers?.['q:SAMPLE-1.1-TEXT'])
+      .toMatchObject({ type: 'text', value: '', legacyMathSteps: [oldStep] });
   });
 });

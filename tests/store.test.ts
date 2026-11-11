@@ -59,7 +59,13 @@ describe('Structural editing and Redux history', () => {
   it('supports all catalog templates and keeps 4 unique recent items plus favorites', () => {
     const store = create(); for (const value of ['root', 'power', 'integral', 'sum', 'limit', 'root']) { store.dispatch(actions.command({ type: 'clear' })); store.dispatch(actions.command({ type: 'insert', value })); }
     expect(store.getState().prefs.recent).toEqual(['root', 'limit', 'sum', 'integral']); store.dispatch(actions.favorite('integral')); expect(store.getState().prefs.favorites).toContain('integral');
-    for (const symbol of symbolList.filter(x => !['x', 'y', 'n', 't', 'infinity', 'sigma', '≤', '≥', '≠', '<', '>'].includes(x.key))) { store.dispatch(actions.command({ type: 'clear' })); store.dispatch(actions.command({ type: 'insert', value: symbol.key })); expect(fields(stepOf(store.getState().doc).expression.children[0]).length).toBeGreaterThan(0); expect(store.getState().notice).toBe(''); }
+    for (const symbol of symbolList.filter(x => !['x', 'y', 'n', 't', 'infinity', 'sigma', '≤', '≥', '≠', '<', '>'].includes(x.key))) {
+      store.dispatch(actions.command({ type: 'clear' })); store.dispatch(actions.command({ type: 'insert', value: symbol.key }));
+      const inserted = stepOf(store.getState().doc).expression.children[0];
+      if (symbol.key === '±' || symbol.key === '∓') expect(inserted).toMatchObject({ type: 'operator', value: symbol.key });
+      else expect(fields(inserted).length).toBeGreaterThan(0);
+      expect(store.getState().notice).toBe('');
+    }
   });
 });
 describe('Review payload and persistence', () => {

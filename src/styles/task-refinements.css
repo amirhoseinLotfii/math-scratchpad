@@ -1,0 +1,60 @@
+:root {
+  --ms-layer-connection-status: 30;
+  --ms-layer-panel-backdrop: 40;
+  --ms-layer-panel: 45;
+  --ms-layer-modal-backdrop: 50;
+  --ms-layer-modal: 51;
+  --ms-layer-popover: 60;
+  --ms-layer-critical-transition: 20000;
+}
+
+.server-connection-gate { z-index: var(--ms-layer-connection-status); }
+#math-scratchpad-redux .drive-bank-backdrop,
+#math-scratchpad-redux .sync-panel-backdrop { z-index: var(--ms-layer-panel-backdrop); }
+#math-scratchpad-redux .setup-panel[aria-label="Google Drive question bank"],
+#math-scratchpad-redux .sync-panel-floating { z-index: var(--ms-layer-panel); }
+.modal-overlay { z-index: var(--ms-layer-modal-backdrop); }
+.modal-content { z-index: var(--ms-layer-modal); }
+.dropdown-content { z-index: var(--ms-layer-popover); }
+#math-scratchpad-redux .chapter-transition-overlay { z-index: var(--ms-layer-critical-transition); }
+
+#math-scratchpad-redux .workspace-template-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+#math-scratchpad-redux .workspace-template-picker select {
+  min-width: 112px;
+  min-height: 44px;
+  padding: 6px 28px 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+}
+#math-scratchpad-redux .lesson-step-delete { min-width: 44px; min-height: 44px; }
+#math-scratchpad-redux .lesson-legacy-math-work {
+  margin-block: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted-foreground);
+  background: var(--card);
+}
+#math-scratchpad-redux .lesson-legacy-math-work summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+#math-scratchpad-redux .lesson-legacy-math-work ol { margin-block: 4px 0; padding-inline-start: 28px; }
+
+@container (min-width: 768px) and (max-width: 1100px) {
+  #math-scratchpad-redux .workspace-template-picker { grid-column: 1 / -1; grid-row: 1; }
+  #math-scratchpad-redux .wide-history-tools { grid-column: 1; grid-row: 2; }
+  #math-scratchpad-redux .wide-more-tools { grid-column: 2; grid-row: 2; }
+  #math-scratchpad-redux .quick-math-tools { grid-row: 3; }
+}
+@container (max-width: 899px) {
+  #math-scratchpad-redux .workspace-template-picker { flex: 1 0 100%; order: -1; }
+}
