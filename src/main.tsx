@@ -2,7 +2,16 @@ import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
 import { App } from './App';
 import { createPersistentStore } from './features/session/persistence/persistent-store';
-import { initializeLearningStorage, initializeAuthenticatedServerStorage, refreshAuthenticatedServerStorage, getAuthenticatedServerStorage, updateAuthenticatedServerToken } from './sync/browser-db';
+import {
+  completeLocalLearningReset,
+  initializeLearningStorage,
+  initializeAuthenticatedServerStorage,
+  refreshAuthenticatedServerStorage,
+  getAuthenticatedServerStorage,
+  isLocalLearningResetPending,
+  prepareLocalLearningReset,
+  updateAuthenticatedServerToken,
+} from './sync/browser-db';
 import { getApiToken, hydrateWorkerSession } from './sync/worker-session';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
@@ -31,6 +40,13 @@ const isLocalTestOrDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(lo
   && !new URLSearchParams(location.search).has('serverMode');
 
 async function connectAuthenticatedStorage(token: string): Promise<void> {
+  if (isLocalLearningResetPending()) {
+    if (!syncRuntime) throw new Error('همگام‌سازی هنوز آماده نیست؛ داده‌های قدیمی این مرورگر به سرور فرستاده نشدند.');
+    if (await syncRuntime.hasCloudLearningData(token)) {
+      throw new Error('داده‌های یادگیری هنوز روی سرور هستند؛ تا پاک‌شدن آن‌ها این مرورگر همگام‌سازی نمی‌شود.');
+    }
+    completeLocalLearningReset();
+  }
   if (authenticatedStorageToken === token && getAuthenticatedServerStorage()) return;
   if (authenticatedStorageFlight?.token === token) return authenticatedStorageFlight.promise;
   const promise = (async () => {
@@ -77,6 +93,8 @@ function launchApp(showConnectionStatus = false) {
 
 void (async () => {
   initializeThemePreference();
+  // Run the production reset before IndexedDB is hydrated or any sync runtime starts.
+  if (import.meta.env.PROD) await prepareLocalLearningReset();
   // Keep the durable browser database as the primary store in every environment.
   const persistence = await initializeLearningStorage();
   appRuntime = createPersistentStore();
@@ -90,7 +108,7 @@ void (async () => {
   // A stored Worker session keeps sync working after the one-hour GIS ID token expires.
   await hydrateWorkerSession();
   const token = getApiToken();
-  syncRuntime.setIdToken(token ?? null);
+  syncRuntime.setIdToken(isLocalLearningResetPending() ? null : token ?? null);
 
   // Render from local data immediately. Sign-in is only needed to sync the
   // local outbox and learner records; a failed server connection never blocks editing.
