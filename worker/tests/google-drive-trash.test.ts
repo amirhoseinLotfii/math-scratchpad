@@ -146,6 +146,17 @@ describe('Google Drive learning mirror trash', () => {
     expect(client.diagnosticStage).not.toContain('private');
   });
 
+  it('maps only a safe message category and never stores the raw transport message', async () => {
+    const { client } = makeClient(async () => {
+      throw new Error('fetch failed: private host and credential detail');
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_fetch_failed');
+    expect(client.diagnosticStage).not.toContain('private');
+    expect(client.diagnosticStage).not.toContain('credential');
+  });
+
   it('rejects malformed batch responses instead of treating the file as trashed', async () => {
     const { client } = makeClient(async (url, init) => {
       if (init.method === 'GET') return fileMetadataResponse();
