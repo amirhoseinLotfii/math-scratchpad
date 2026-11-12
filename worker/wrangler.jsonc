@@ -49,7 +49,8 @@
         "GOOGLE_CLIENT_ID": "644646241119-b3u1ahcqnbhm1miec5a78pts6kplp68q.apps.googleusercontent.com",
         "GOOGLE_DRIVE_ROOT_FOLDER_ID": "1FWiS9wg7XZOFWopykEUPYU75tI_ZFcsZ",
         "GOOGLE_DRIVE_ROOT_FOLDER_NAME": "Math Scratchpad Staging QA — synthetic data — 2026-11-12",
-        "EVENT_RATE_LIMIT": "120"
+        "EVENT_RATE_LIMIT": "120",
+        "RELEASE_ENV": "staging"
       }
     }
   }
