@@ -183,14 +183,26 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     if (declaredLength > 4_096) return finalizeResponse(jsonError('payload_too_large', 413), c);
     const body = await readBoundedBody(c.req.raw, 4_096);
     if (!body) return finalizeResponse(jsonError('invalid_reset_request', 400), c);
-    let input: { confirm?: unknown; resetId?: unknown };
+    let input: { confirm?: unknown; resetId?: unknown; takeover?: unknown };
     try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
     catch { return finalizeResponse(jsonError('invalid_reset_request', 400), c); }
     if (input.confirm !== 'DELETE_ALL_LEARNING_DATA'
-      || typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)) {
+      || typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)
+      || (input.takeover !== undefined && input.takeover !== 'TAKEOVER_STUCK_LEARNING_RESET')) {
       return finalizeResponse(jsonError('invalid_reset_request', 400), c);
     }
-    const response = await internalJson('/internal/learning-reset', { resetId: input.resetId }, c.env);
+    const takeover = input.takeover === 'TAKEOVER_STUCK_LEARNING_RESET';
+    const response = await internalJson('/internal/learning-reset', { resetId: input.resetId, takeover }, c.env);
+    return finalizeResponse(response, c);
+  });
+
+  app.get('/admin/learning-reset/status', async c => {
+    const token = bearer(c);
+    const expected = c.env.LEARNING_RESET_TOKEN;
+    if (!expected || !token || !constantTimeSecretEqual(token, expected)) {
+      return finalizeResponse(jsonError('unauthorized', 401), c);
+    }
+    const response = await ownerStub(c.env).fetch('https://event-store.internal/internal/learning-reset/status');
     return finalizeResponse(response, c);
   });
 
