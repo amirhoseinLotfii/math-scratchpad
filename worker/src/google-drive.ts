@@ -634,6 +634,22 @@ function safeFetchFailureSuffix(error: unknown): string {
     TypeError: 'type_error',
   };
 
+  const safeMessagePrefixes: Array<{ pattern: RegExp; suffix: string }> = [
+    { pattern: /^fetch failed\\b/i, suffix: 'fetch_failed' },
+    { pattern: /^failed to fetch\\b/i, suffix: 'fetch_failed' },
+    { pattern: /^network request failed\\b/i, suffix: 'network_error' },
+    { pattern: /^network error\\b/i, suffix: 'network_error' },
+    { pattern: /^connection reset\\b/i, suffix: 'connection_reset' },
+    { pattern: /^connection refused\\b/i, suffix: 'connection_refused' },
+    { pattern: /^connection timed out\\b/i, suffix: 'timeout' },
+    { pattern: /^connect timeout\\b/i, suffix: 'connect_timeout' },
+    { pattern: /^headers timeout\\b/i, suffix: 'headers_timeout' },
+    { pattern: /^socket hang up\\b/i, suffix: 'socket_error' },
+    { pattern: /^host not found\\b/i, suffix: 'host_not_found' },
+    { pattern: /^name resolution\\b/i, suffix: 'dns_error' },
+    { pattern: /^tls handshake failed\\b/i, suffix: 'tls_error' },
+  ];
+
   const chain: object[] = [];
   const seen = new Set<object>();
   let current: unknown = error;
@@ -654,6 +670,13 @@ function safeFetchFailureSuffix(error: unknown): string {
     const name = readSafeValue(item, 'name');
     if (typeof name === 'string' && name !== 'Error'
       && Object.prototype.hasOwnProperty.call(knownNames, name)) return knownNames[name];
+  }
+  for (const item of chain) {
+    const message = readSafeValue(item, 'message');
+    if (typeof message !== 'string') continue;
+    for (const candidate of safeMessagePrefixes) {
+      if (candidate.pattern.test(message.trim())) return candidate.suffix;
+    }
   }
   if (chain.some(item => readSafeValue(item, 'name') === 'Error')) return knownNames.Error;
   return 'unknown';
