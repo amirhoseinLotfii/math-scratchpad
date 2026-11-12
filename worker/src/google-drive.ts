@@ -653,6 +653,7 @@ function safeFetchFailureSuffix(error: unknown): string {
   };
 
   const safeMessagePrefixes: Array<{ pattern: RegExp; suffix: string }> = [
+    { pattern: /^too many subrequests\b/i, suffix: 'subrequest_limit' },
     { pattern: /^fetch failed\b/i, suffix: 'fetch_failed' },
     { pattern: /^failed to fetch\b/i, suffix: 'fetch_failed' },
     { pattern: /^network request failed\b/i, suffix: 'network_error' },

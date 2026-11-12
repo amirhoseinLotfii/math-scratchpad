@@ -96,6 +96,11 @@ const NOTION_DEBOUNCE_MS = 250;
 const NOTION_RETRY_MS = 60_000;
 const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
 const LEARNING_RESET_TABLE = 'learning_reset_control';
+/**
+ * Each trashed mirror costs two Drive subrequests (verify + batch trash). Keep one reset call
+ * well under the Workers Free per-invocation subrequest cap (50) and resume on retry.
+ */
+const LEARNING_RESET_TRASH_PER_CALL = 12;
 
 type StoredNotionMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
@@ -379,6 +384,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         'SELECT file_id FROM bank_source WHERE singleton = 1',
       ).toArray()[0]?.file_id;
       const driveResult = await this.trashLearningMirrorFiles(bankFileId);
+      if (driveResult.remainingLearningMirrors) {
+        // Partial Drive progress: keep the lock and every cloud record until a later retry finishes Drive.
+        return json({ completed: false, inProgress: true, drive: driveResult, retryWithSameResetId: true }, 202);
+      }
       const cloudResult = this.clearLearningRecords();
       await this.ctx.storage.delete(DRIVE_STATE_KEY);
       await this.ctx.storage.delete(NOTION_MIRROR_STATE_KEY);
@@ -457,6 +466,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     preservedFiles: number;
     protectedBankFileSkipped: boolean;
     foldersFound: number;
+    remainingLearningMirrors?: boolean;
   }> {
     const state = await this.readDriveState();
     const stored = state.folders;
@@ -497,6 +507,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     let inspectedFiles = 0;
     let preservedFiles = 0;
     let protectedBankFileSkipped = false;
+    let trashAttempts = 0;
     for (const folder of targetFolders) {
       const children: DriveFolderChild[] = await client.listFilesInFolder(folder.id);
       for (const child of children) {
@@ -511,6 +522,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           preservedFiles += 1;
           continue;
         }
+        if (trashAttempts >= LEARNING_RESET_TRASH_PER_CALL) {
+          return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound: targetFolders.length + 1, remainingLearningMirrors: true };
+        }
+        trashAttempts += 1;
         if (await client.trashFileInFolder(child.id, folder.id)) movedToTrash += 1;
       }
     }
