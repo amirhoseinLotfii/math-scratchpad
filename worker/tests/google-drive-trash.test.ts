@@ -97,6 +97,22 @@ describe('Google Drive learning mirror trash', () => {
     expect(client.diagnosticStage).not.toContain('private');
   });
 
+  it('records only an allowlisted transport cause when the Drive trash request is rejected', async () => {
+    const failure = new TypeError('private request details and credentials');
+    Object.defineProperty(failure, 'cause', {
+      value: { code: 'UND_ERR_CONNECT_TIMEOUT', message: 'private nested transport detail' },
+    });
+    const { client } = makeClient(async (_url, init) => {
+      if (init.method === 'GET') return fileMetadataResponse();
+      throw failure;
+    });
+
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(client.diagnosticStage).toBe('drive_trash_fetch_rejected_connect_timeout');
+    expect(client.diagnosticStage).not.toContain('private');
+    expect(client.diagnosticStage).not.toContain('credentials');
+  });
+
   it('rejects malformed batch responses instead of treating the file as trashed', async () => {
     const { client } = makeClient(async (url, init) => {
       if (init.method === 'GET') return fileMetadataResponse();
@@ -118,3 +134,4 @@ describe('Google Drive learning mirror trash', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
