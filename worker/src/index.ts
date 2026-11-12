@@ -91,7 +91,12 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     await next();
   });
 
-  app.get('/health', c => finalizeResponse(c.json({ ok: true, service: 'math-scratchpad-sync' }), c));
+  app.get('/health', c => finalizeResponse(c.json({
+    ok: true,
+    service: 'math-scratchpad-sync',
+    env: c.env.RELEASE_ENV ?? 'production',
+    sha: c.env.RELEASE_SHA ?? null,
+  }), c));
 
   const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase()));
 
