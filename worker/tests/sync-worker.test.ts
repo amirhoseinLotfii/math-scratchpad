@@ -205,11 +205,29 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     const app = createApp(validVerifier);
     const event = makeEvent();
     await call(app, '/events', { token: 'valid-test-token', body: { events: [event] } });
-    const lesson = new URLSearchParams({ scope: 'lesson', bankVersion: event.bankVersion, lesson: event.lesson });
+    const lesson = new URLSearchParams({ scope: 'lesson', bankVersion: event.bankVersion, chapter: String(event.chapter), lesson: event.lesson });
     expect(await (await call(app, `/reset/preview?${lesson}`, { token: 'valid-test-token' })).json()).toMatchObject({ scope: 'lesson', matchingEvents: 1, canExecute: false });
-    const otherSection = new URLSearchParams({ scope: 'section', bankVersion: event.bankVersion, lesson: event.lesson, section: 'other-section' });
+    const otherSection = new URLSearchParams({ scope: 'section', bankVersion: event.bankVersion, chapter: String(event.chapter), lesson: event.lesson, section: 'other-section' });
     expect(await (await call(app, `/reset/preview?${otherSection}`, { token: 'valid-test-token' })).json()).toMatchObject({ matchingEvents: 0 });
     expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events).toHaveLength(1);
+  });
+
+  it('isolates a lesson preview when the same lesson ID exists in another chapter', async () => {
+    const app = createApp(validVerifier);
+    const first = makeEvent();
+    const identicalIdOtherChapter = { ...makeEvent(), chapter: 2 };
+    const sent = await call(app, '/events', { token: 'valid-test-token', body: { events: [first, identicalIdOtherChapter] } });
+    expect(sent.status).toBe(200);
+    const forFirst = new URLSearchParams({ scope: 'lesson', bankVersion: first.bankVersion, chapter: '1', lesson: first.lesson });
+    expect(await (await call(app, `/reset/preview?${forFirst}`, { token: 'valid-test-token' })).json())
+      .toMatchObject({ scope: 'lesson', matchingEvents: 1, totalEvents: 2, canExecute: false });
+    const forOther = new URLSearchParams({ scope: 'lesson', bankVersion: first.bankVersion, chapter: '2', lesson: first.lesson });
+    expect(await (await call(app, `/reset/preview?${forOther}`, { token: 'valid-test-token' })).json())
+      .toMatchObject({ scope: 'lesson', matchingEvents: 1, totalEvents: 2, canExecute: false });
+    const missingChapter = new URLSearchParams({ scope: 'lesson', bankVersion: first.bankVersion, lesson: first.lesson });
+    expect((await call(app, `/reset/preview?${missingChapter}`, { token: 'valid-test-token' })).status).toBe(400);
+    expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events)
+      .toHaveLength(2);
   });
 
   it('previews a chapter by numeric ID and bank version without touching other chapters or sessions', async () => {
