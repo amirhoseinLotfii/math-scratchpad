@@ -475,7 +475,7 @@ export class GoogleDriveClient {
         return response;
       }
       catch (error) {
-        const failureStage = requestStage === 'drive_trash'
+        const failureStage = requestStage === 'drive_trash' || requestStage === 'drive_file_lookup'
           ? `${requestStage}_fetch_rejected_${safeFetchFailureSuffix(error)}`
           : `${requestStage}_fetch_rejected`;
         this.stage = failureStage;
