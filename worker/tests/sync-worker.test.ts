@@ -292,7 +292,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         `preserved-on-failure-${resetId}`, JSON.stringify({ id: `preserved-on-failure-${resetId}` }), new Date().toISOString(),
       );
       target.driveClient = {
-        diagnosticStage: 'drive_file_lookup_fetch_rejected',
+        diagnosticStage: 'drive_file_lookup_fetch_rejected_type_error',
         findFolderId: async () => { throw new DriveMirrorError('network_error'); },
       };
 
@@ -302,11 +302,11 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
       expect(response.status).toBe(502);
       expect(await response.json()).toMatchObject({
         error: 'learning_reset_incomplete', code: 'network_error',
-        failureStage: 'drive_reset:drive_file_lookup_fetch_rejected', retryWithSameResetId: true,
+        failureStage: 'drive_reset:drive_file_lookup_fetch_rejected_type_error', retryWithSameResetId: true,
       });
       expect(target.ctx.storage.sql.exec<{ failure_stage: string; error_code: string }>(
         "SELECT failure_stage, error_code FROM mirror_diagnostics WHERE destination = 'drive'",
-      ).toArray()).toEqual([{ failure_stage: 'drive_reset:drive_file_lookup_fetch_rejected', error_code: 'network_error' }]);
+      ).toArray()).toEqual([{ failure_stage: 'drive_reset:drive_file_lookup_fetch_rejected_type_error', error_code: 'network_error' }]);
       expect(target.ctx.storage.sql.exec<{ status: string }>(
         'SELECT status FROM learning_reset_control WHERE singleton = 1',
       ).toArray()).toEqual([{ status: 'running' }]);
