@@ -234,12 +234,24 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     const other = new URLSearchParams({ scope: 'chapter', bankVersion: 'v21', chapter: '2' });
     expect(await (await call(app, `/reset/preview?${other}`, { token: 'valid-test-token' })).json())
       .toMatchObject({ matchingEvents: 1, totalEvents: 3 });
-    expect((await call(app, '/reset/preview?scope=chapter&chapter=1', { token: 'valid-test-token' })).status).toBe(400);
-    expect((await call(app, '/reset/preview?scope=chapter&bankVersion=v21&chapter=1.0', { token: 'valid-test-token' })).status).toBe(400);
-    expect((await call(app, '/reset/preview?scope=chapter&bankVersion=v21&chapter=0', { token: 'valid-test-token' })).status).toBe(400);
-    expect((await call(app, '/reset/preview?scope=chapter&bankVersion=v21&chapter=1&lesson=2.1', { token: 'valid-test-token' })).status).toBe(400);
     expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events)
       .toHaveLength(3);
+  });
+
+  it('rejects incomplete or malformed chapter reset filters without a learning write', async () => {
+    const app = createApp(validVerifier);
+    const invalid = [
+      '/reset/preview?scope=chapter&chapter=1',
+      '/reset/preview?scope=chapter&bankVersion=v21&chapter=1.0',
+      '/reset/preview?scope=chapter&bankVersion=v21&chapter=0',
+      '/reset/preview?scope=chapter&bankVersion=v21&chapter=1&lesson=2.1',
+    ];
+    for (const path of invalid) {
+      const result = await call(app, path, { token: 'valid-test-token' });
+      expect(result.status).toBe(400);
+    }
+    const snapshot = await call(app, '/snapshot', { token: 'valid-test-token' });
+    expect((await snapshot.json() as { events: unknown[] }).events).toEqual([]);
   });
 
   it('persists the editor snapshot on the server with owner authentication and conflict protection', async () => {
