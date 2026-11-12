@@ -212,6 +212,36 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events).toHaveLength(1);
   });
 
+  it('previews a chapter by numeric ID and bank version without touching other chapters or sessions', async () => {
+    const app = createApp(validVerifier);
+    const first = makeEvent();
+    const otherChapter = { ...makeEvent(), id: crypto.randomUUID(), chapter: 2, lesson: '2.1', section: '2.1' };
+    const otherBank = { ...makeEvent(), id: crypto.randomUUID(), bankVersion: 'v22' };
+    const write = await call(app, '/events', {
+      token: 'valid-test-token',
+      body: { events: [first, otherChapter, otherBank] },
+    });
+    expect(write.status).toBe(200);
+    const scoped = new URLSearchParams({ scope: 'chapter', bankVersion: 'v21', chapter: '1' });
+    const preview = await call(app, `/reset/preview?${scoped}`, { token: 'valid-test-token' });
+    expect(preview.status).toBe(200);
+    expect(await preview.json()).toMatchObject({
+      readOnly: true, canExecute: false, scope: 'chapter',
+      filters: { bankVersion: 'v21', chapter: '1' },
+      matchingEvents: 1, totalEvents: 3,
+      requiresCloudReconciliation: true,
+    });
+    const other = new URLSearchParams({ scope: 'chapter', bankVersion: 'v21', chapter: '2' });
+    expect(await (await call(app, `/reset/preview?${other}`, { token: 'valid-test-token' })).json())
+      .toMatchObject({ matchingEvents: 1, totalEvents: 3 });
+    expect((await call(app, '/reset/preview?scope=chapter&chapter=1', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/preview?scope=chapter&bankVersion=v21&chapter=1.0', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/preview?scope=chapter&bankVersion=v21&chapter=0', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await call(app, '/reset/preview?scope=chapter&bankVersion=v21&chapter=1&lesson=2.1', { token: 'valid-test-token' })).status).toBe(400);
+    expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events)
+      .toHaveLength(3);
+  });
+
   it('persists the editor snapshot on the server with owner authentication and conflict protection', async () => {
     const app = createApp(validVerifier);
     const key = 'math-scratchpad-session-v3';
