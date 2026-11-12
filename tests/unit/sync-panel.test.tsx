@@ -23,11 +23,14 @@ import {
 } from '../../src/sync/browser-db';
 import { legacyMigrationBackupContents, markLegacyMigrationDriveVerified, queueLegacyMigration, verifyLegacyMigrationOnServer } from '../../src/sync/legacy-migration';
 import { permittedAccount } from '../../src/features/drive-bank/identity';
-import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
+import { exchangeIdTokenForWorkerSession, resetWorkerSessionForTests } from '../../src/sync/worker-session';
+import { clearGoogleIdToken, commitGoogleIdToken } from '../../src/sync/google-id-token';
 
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: vi.fn() }));
 
 const LEGACY_KEY = 'math-scratchpad-session-v3';
+const TEST_ID_TOKEN = `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: 'owner@example.test' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}.signature`;
+const TEST_WORKER_SESSION = `mss1.${'T'.repeat(43)}`;
 
 function readBlob(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -97,19 +100,25 @@ async function initializeWithLegacySession() {
   return { bootstrap, migration, verified };
 }
 
+async function establishTestGoogleIdentitySession() {
+  commitGoogleIdToken(TEST_ID_TOKEN);
+  await exchangeIdTokenForWorkerSession(TEST_ID_TOKEN);
+}
+
 beforeEach(async () => {
   localStorage.clear();
   await resetLearningDbForTests();
   vi.mocked(permittedAccount).mockResolvedValue(true);
   setDefaultSyncRuntime(new BrowserSyncRuntime());
   // Keep Worker session exchange out of the Drive request counts asserted below.
-  await resetWorkerSessionForTests({ fetcher: (async () => new Response('{}', { status: 503 })) as unknown as typeof fetch });
+  await resetWorkerSessionForTests({ fetcher: (async () => Response.json({ sessionToken: TEST_WORKER_SESSION, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }, { status: 201 })) as unknown as typeof fetch });
 });
 
 afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  clearGoogleIdToken();
   delete (window as Window & { google?: unknown; gapi?: unknown }).google;
   delete (window as Window & { gapi?: unknown }).gapi;
   setDefaultSyncRuntime(new BrowserSyncRuntime());
@@ -246,6 +255,7 @@ describe('sync and migration panel', () => {
     const { verified } = await initializeWithLegacySession();
     expect(verified.status).toBe('server-verified');
     installGooglePicker();
+    await establishTestGoogleIdentitySession();
     const expectedContents = legacyMigrationBackupContents(verified);
     let uploadedContent = '';
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -278,12 +288,13 @@ describe('sync and migration panel', () => {
     expect(fetcher).toHaveBeenCalledTimes(5);
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
     expect((await readLegacyMigration())?.status).toBe('complete');
-    expect(screen.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' }).isConnected).toBe(true);
+    expect(screen.getByRole('button', { name: 'Sign in with Google' }).isConnected).toBe(true);
   });
 
   it('preserves the old key when the owner cancels Drive folder selection', async () => {
     const { verified } = await initializeWithLegacySession();
     installGooglePicker('cancel');
+    await establishTestGoogleIdentitySession();
     const fetcher = vi.fn(async (input: RequestInfo | URL) => String(input).includes('/oauth2/v3/userinfo')
       ? Response.json({ email: 'owner@example.test', email_verified: true })
       : new Response('', { status: 404 }));
@@ -301,6 +312,7 @@ describe('sync and migration panel', () => {
   it('reuses an uploaded backup after read-back failure and preserves legacy data until verification', async () => {
     const { verified } = await initializeWithLegacySession();
     installGooglePicker();
+    await establishTestGoogleIdentitySession();
     const contents = legacyMigrationBackupContents(verified);
     const metadata = { id: 'backup-file-id', name: `MathScratchpad-Learning-Migration-${verified.id.slice(0, 8)}.json`, mimeType: 'application/json', parents: ['backup-folder'] };
     let uploaded = false;
@@ -332,6 +344,7 @@ describe('sync and migration panel', () => {
   it('keeps legacy data and never uploads when the selected backup folder is shared', async () => {
     await initializeWithLegacySession();
     installGooglePicker();
+    await establishTestGoogleIdentitySession();
     const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).includes('/oauth2/v3/userinfo')
       ? Response.json({ email: 'owner@example.test', email_verified: true })
       : Response.json({ id: 'backup-folder', mimeType: 'application/vnd.google-apps.folder', ownedByMe: true, shared: true, capabilities: { canAddChildren: true } }));
@@ -349,13 +362,14 @@ describe('sync and migration panel', () => {
   it('refuses to upload a private backup when the selected Drive account is not the project owner', async () => {
     const { verified } = await initializeWithLegacySession();
     installGooglePicker();
+    await establishTestGoogleIdentitySession();
     vi.mocked(permittedAccount).mockResolvedValue(false);
     const fetcher = vi.fn(async () => Response.json({ email: 'different@example.test', email_verified: true }));
     vi.stubGlobal('fetch', fetcher);
     render(<SyncPanel />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('The selected Google Drive account is not authorized for this project.');
+    expect((await screen.findByRole('alert')).textContent).toContain('حساب Google Drive با حساب واردشده یکی نیست');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(LEGACY_KEY)).toBe('{"legacy":"preserve-me"}');
     expect((await readLegacyMigration())?.status).toBe('server-verified');

@@ -12,7 +12,7 @@ import {
   prepareLocalLearningReset,
   updateAuthenticatedServerToken,
 } from './sync/browser-db';
-import { getApiToken, hydrateWorkerSession } from './sync/worker-session';
+import { getWorkerSession, hydrateWorkerSession } from './sync/worker-session';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
 import { ReadingPositionProvider } from './features/progress/reading-position-context';
@@ -86,7 +86,7 @@ function launchApp(showConnectionStatus = false) {
   
   createRoot(root!).render(showConnectionStatus
     ? <ServerConnectionGate
-        tokenProvider={getApiToken}
+        tokenProvider={() => getWorkerSession()?.token}
         onAuthenticated={connectAuthenticatedStorage}
         flushPendingDraft={flushAppDraft}
       >{app}</ServerConnectionGate>
@@ -109,8 +109,8 @@ void (async () => {
   await syncRuntime.start();
   // A stored Worker session keeps sync working after the one-hour GIS ID token expires.
   await hydrateWorkerSession();
-  const token = getApiToken();
-  syncRuntime.setIdToken(isLocalLearningResetPending() ? null : token ?? null);
+  const sessionToken = getWorkerSession()?.token;
+  syncRuntime.setIdToken(isLocalLearningResetPending() ? null : sessionToken ?? null);
 
   // Render from local data immediately. Sign-in is only needed to sync the
   // local outbox and learner records; a failed server connection never blocks editing.

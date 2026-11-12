@@ -12,6 +12,7 @@ import {
   isLocalLearningResetPending,
   prepareLocalLearningReset,
   queueLearnEvent,
+  readOutboxCount,
   resetLearningDbForTests,
   setSyncMeta,
   storeServerEvents,
@@ -55,6 +56,7 @@ describe('coordinated local learning reset', () => {
       key: 'math-scratchpad-drive-bank-cache-v1:keep-bank', value: '{"bank":true}', updatedAt: new Date().toISOString(),
     });
     await queueLearnEvent(oldAnswer);
+    expect(await readOutboxCount()).toBe(0);
     await storeServerEvents([{ seq: 42, event: oldAnswer }]);
     await setSyncMeta('server-cursor', 42);
 

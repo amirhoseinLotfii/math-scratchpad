@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage, isLocalLearningResetPending } from './browser-db';
-import { ensureApiToken, subscribeApiToken } from './worker-session';
+import { ensureWorkerSession } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
 
@@ -41,18 +41,26 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       setState({ kind: 'blocked', message: `اینترنت قطع است؛ ${localStorageMessage()}` });
       return;
     }
-    let token = tokenProvider();
-    if (!token) token = await ensureApiToken();
-    if (!token) {
-      setState({ kind: 'blocked', message: `برای همگام‌سازی با سرور وارد Google شو. ${localStorageMessage()}` });
-      return;
-    }
     checking.current = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      await flushPendingDraft();
-      if (!getAuthenticatedServerStorage()) await onAuthenticated(token);
+      const resetPending = isLocalLearningResetPending();
+      const session = await ensureWorkerSession();
+      const token = tokenProvider() ?? session?.token;
+      if (!token) {
+        setState({ kind: 'blocked', message: `برای همگام‌سازی امن با سرور، از دکمهٔ Google وارد شو. ${localStorageMessage()}` });
+        return;
+      }
+      // Never flush a draft or initialize hydrated storage while the local reset guard is set.
+      if (!resetPending) await flushPendingDraft();
+      if (resetPending || !getAuthenticatedServerStorage()) await onAuthenticated(token);
+      if (resetPending) {
+        // onAuthenticated verifies /reset/preview and /state, then clears local data only
+        // when cloud learning data is confirmed empty. A reload completes the unlock.
+        setState({ kind: 'checking', message: 'پاک‌سازی سرور تأیید شد؛ مرورگر در حال بارگیری دوباره است.' });
+        return;
+      }
       await getAuthenticatedServerStorage()?.flush();
       await verifyOwnerServerConnection(token, controller.signal);
       if (id === epoch.current) setState({ kind: 'online', message: '' });
@@ -103,31 +111,6 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     };
   }, [check]);
 
-  useEffect(() => {
-    if (state.kind === 'online') return;
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-    void subscribeApiToken(token => {
-      if (!active) return;
-      void onAuthenticated(token).then(check).catch(problem => {
-        if (!active) return;
-        setState({
-          kind: 'blocked',
-          message: `اتصال Google تأیید نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. ${localStorageMessage()}`,
-        });
-      });
-    }).then(removeListener => {
-      if (!active) removeListener();
-      else unsubscribe = removeListener;
-    }).catch(problem => {
-      if (active) setState({
-        kind: 'blocked',
-        message: `ورود گوگل بارگیری نشد: ${problem instanceof Error ? problem.message : 'خطای نامشخص'}. ${localStorageMessage()}`,
-      });
-    });
-    return () => { active = false; unsubscribe?.(); };
-  }, [state.kind, onAuthenticated, check]);
-
   const resetPending = isLocalLearningResetPending();
 
   return (
@@ -145,7 +128,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
             ? `تا تأیید پاک‌شدن داده‌های ابر، پاسخ‌دادن در این مرورگر قفل است. ${state.message}`
             : state.message}</p>
           <div className="server-connection-gate-google">
-            <GoogleLoginButton />
+            <GoogleLoginButton onComplete={() => check()} />
           </div>
         </aside>
       )}

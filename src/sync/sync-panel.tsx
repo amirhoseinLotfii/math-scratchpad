@@ -4,7 +4,7 @@ import { getConfig, loadPicker, pickBackupFolder } from '../features/drive-bank/
 import { createVerifiedDriveBackup } from './drive-backup';
 import { subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
-import { requestCombinedGoogleAuth, signOutGoogle } from './google-auth';
+import { requestDriveAccessTokenFromGesture, signOutGoogle } from './google-auth';
 import { backupAndFinishLegacyMigration, finishLegacyMigration, queueLegacyMigration, verifyLegacyMigrationOnServer } from './legacy-migration';
 import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
 import { queueLearnEvent, readLegacyMigration, type LegacyMigration } from './browser-db';
@@ -80,9 +80,9 @@ function weeklyBackupLabel(status: MirrorSyncStatus | null): string {
   return 'پشتیبان هفتگی نیاز به بررسی دارد';
 }
 
-async function awaitDriveToken(): Promise<string> {
-  const token = (await requestCombinedGoogleAuth()).driveToken.accessToken;
-  return token;
+function awaitDriveToken(): Promise<string> {
+  // This is called directly from the backup button handler; keep the OAuth request in that gesture.
+  return requestDriveAccessTokenFromGesture().then(token => token.accessToken);
 }
 
 function awaitFolderSelection(config: ReturnType<typeof getConfig>, token: string): Promise<{ id: string; name: string }> {

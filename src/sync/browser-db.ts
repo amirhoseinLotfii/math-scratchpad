@@ -631,8 +631,14 @@ export function learningDbWriteError(): string {
 }
 
 export async function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
+  // Do not create a new local outbox item while the coordinated reset is waiting
+  // for the cloud-side deletion to finish. Recheck after opening IndexedDB too,
+  // because another tab may have set the guard while this call was awaiting.
+  if (isLocalLearningResetPending()) return;
   const db = await database();
+  if (isLocalLearningResetPending()) return;
   const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
+  if (isLocalLearningResetPending()) return;
   const serialized = JSON.stringify(event);
   if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
   if (!existing) await db.put(LEARNING_OUTBOX_STORE, { id: event.id, event, queuedAt: event.ts, ...(migrationId ? { migrationId } : {}) });

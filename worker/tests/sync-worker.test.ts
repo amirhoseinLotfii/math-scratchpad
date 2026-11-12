@@ -105,6 +105,37 @@ describe('Google ID token verification', () => {
 });
 
 describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
+  it('keeps cron mirror syncs independent and returns only sanitized failures and request counts', async () => {
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    const { runInDurableObject } = await import('cloudflare:test');
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        syncDrive: () => Promise<unknown>;
+        syncNotion: () => Promise<unknown>;
+        fetch: (request: Request) => Promise<Response>;
+        activeMirrorSubrequestBudget?: { used: number; limit: number };
+        budgetedFetch: typeof fetch;
+      };
+      target.activeMirrorSubrequestBudget = { used: 40, limit: 40 };
+      expect(() => target.budgetedFetch('https://example.test')).toThrow('subrequest_budget_exceeded');
+      target.activeMirrorSubrequestBudget = undefined;
+      const calls: string[] = [];
+      target.syncDrive = async () => { calls.push('drive'); throw new Error('synthetic secret detail'); };
+      target.syncNotion = async () => { calls.push('notion'); return { status: 'synced', pendingCount: 0 }; };
+
+      const response = await target.fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(calls.sort()).toEqual(['drive', 'notion']);
+      expect(body).toContain('"status":"error"');
+      expect(body).toContain('"status":"synced"');
+      expect(body).toContain('"subrequestsUsed":0');
+      expect(body).toContain('"subrequestLimit":40');
+      expect(body).not.toContain('synthetic secret detail');
+    });
+  });
+
   it('does not let a Drive timeout prevent Notion mirror work', async () => {
     const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
     const stub = testEnv.EVENT_STORE.get(id);
@@ -145,12 +176,13 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
       method: 'OPTIONS', origin: ALLOWED_ORIGIN,
       extraHeaders: {
         'Access-Control-Request-Method': 'POST',
-        'Access-Control-Request-Headers': 'authorization,content-type,x-math-scratchpad-reset-epoch',
+        'Access-Control-Request-Headers': 'authorization,content-type,idempotency-key,x-math-scratchpad-reset-epoch',
       },
     });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe(ALLOWED_ORIGIN);
     expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain(LEARNING_RESET_EPOCH_HEADER);
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Idempotency-Key');
 
     const foreign = await call(app, '/health', { origin: 'https://example.com' });
     expect(foreign.status).toBe(403);

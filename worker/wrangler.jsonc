@@ -24,5 +24,33 @@
     "NOTION_DATA_SOURCE_MISTAKES": "c94b70b8-1ca5-4ddc-9519-edc43a075cc4",
     "NOTION_DATA_SOURCE_CONCEPTS": "e2f2f7a0-dfb8-424a-b464-fb8af13566c7",
     "NOTION_DATA_SOURCE_DAILY_REPORTS": "6c154e26-ac84-4537-a66a-9e6be62d4f23"
+  },
+  "env": {
+    "staging": {
+      "name": "math-scratchpad-sync-staging",
+      "durable_objects": {
+        "bindings": [
+          { "name": "EVENT_STORE", "class_name": "LearningEventStore" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["LearningEventStore"] }
+      ],
+      "triggers": {
+        "crons": ["*/5 * * * *"]
+      },
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      },
+      "vars": {
+        "ALLOWED_ORIGIN": "https://amirhoseinlotfii.github.io",
+        "OWNER_EMAIL": "amirhoseinlotfalizadeprogramer@gmail.com",
+        "GOOGLE_CLIENT_ID": "644646241119-b3u1ahcqnbhm1miec5a78pts6kplp68q.apps.googleusercontent.com",
+        "GOOGLE_DRIVE_ROOT_FOLDER_ID": "1FWiS9wg7XZOFWopykEUPYU75tI_ZFcsZ",
+        "GOOGLE_DRIVE_ROOT_FOLDER_NAME": "Math Scratchpad Staging QA — synthetic data — 2026-11-12",
+        "EVENT_RATE_LIMIT": "120"
+      }
+    }
   }
 }

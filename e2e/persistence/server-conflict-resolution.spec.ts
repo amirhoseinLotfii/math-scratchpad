@@ -36,6 +36,10 @@ function initialSessionValue(): string {
 async function installConflictWorker(page: Page, records: Map<string, StateRecord>) {
   await page.route(`${API}/**`, async route => {
     const request = route.request(), url = new URL(request.url()), method = request.method();
+    if (url.pathname === '/session' && method === 'POST') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      return;
+    }
     if (url.pathname === '/state' && method === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [...records].map(([key, record]) => ({ key, ...record })), revision: records.size }) });
       return;

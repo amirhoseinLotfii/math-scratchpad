@@ -40,6 +40,7 @@ const GIS_ERRORS: Record<string, string> = {
   popup_failed_to_open: 'The browser could not open the Google window. In Chrome for Android, allow pop-ups for this site in Settings → Site settings → Pop-ups, then try again.',
   unknown: 'Google connection failed.',
 };
+export type GoogleDrivePopupErrorCode = 'prompt_unavailable' | 'popup_blocked' | 'user_cancelled' | 'network_error';
 export type Token = { accessToken: string; expiresAt: number };
 
 const DRIVE_TOKEN_SESSION_KEY = 'math-scratchpad-drive-token-v1';
@@ -109,15 +110,23 @@ if (typeof window !== 'undefined') {
   });
 }
 /** Must be called directly inside a tap handler, otherwise Android Chrome blocks the popup. */
-export function requestToken(clientId: string, opts: { prompt?: '' | 'consent' | 'select_account'; hint?: string }, done: (r: { token?: Token; error?: string }) => void) {
+export function requestToken(clientId: string, opts: { prompt?: '' | 'consent' | 'select_account'; hint?: string }, done: (r: { token?: Token; error?: string; errorCode?: GoogleDrivePopupErrorCode }) => void) {
   const oauth2 = window.google?.accounts?.oauth2;
-  if (!oauth2) { done({ error: 'Google sign-in is not ready yet. Try again in a few seconds.' }); return; }
+  if (!oauth2) { done({ error: 'ورود Google هنوز در این مرورگر آماده نیست. صفحه را دوباره بارگیری کن و دوباره تلاش کن.', errorCode: 'prompt_unavailable' }); return; }
   const client = oauth2.initTokenClient({
     client_id: clientId, scope: SCOPES, include_granted_scopes: false, ...(opts.hint ? { login_hint: opts.hint } : {}),
-    error_callback: (e: { type?: string }) => done({ error: GIS_ERRORS[e?.type ?? 'unknown'] ?? GIS_ERRORS.unknown }),
+    error_callback: (e: { type?: string }) => {
+      const type = e?.type ?? 'unknown';
+      const errorCode = type === 'popup_failed_to_open' ? 'popup_blocked'
+        : type === 'popup_closed' ? 'user_cancelled' : 'network_error';
+      done({ error: GIS_ERRORS[type] ?? GIS_ERRORS.unknown, errorCode });
+    },
     callback: (r: { access_token?: string; expires_in?: number | string; error?: string; error_description?: string }) => {
-      if (r.error || !r.access_token) { done({ error: r.error === 'access_denied' ? 'Access was denied. If Google shows “App not verified” or “Access blocked”, the personal account may need to be added as a test user.' : `Google returned an error: ${r.error ?? 'no access token'}` }); return; }
-      if (!oauth2.hasGrantedAllScopes(r, DRIVE_SCOPE)) { done({ error: 'Google Drive access was not granted. Reconnect and approve the requested permission.' }); return; }
+      if (r.error || !r.access_token) {
+        done({ error: r.error === 'access_denied' ? 'Access was denied. If Google shows “App not verified” or “Access blocked”, the personal account may need to be added as a test user.' : `Google returned an error: ${r.error ?? 'no access token'}`, errorCode: r.error === 'access_denied' ? 'user_cancelled' : 'network_error' });
+        return;
+      }
+      if (!oauth2.hasGrantedAllScopes(r, DRIVE_SCOPE)) { done({ error: 'Google Drive access was not granted. Reconnect and approve the requested permission.', errorCode: 'user_cancelled' }); return; }
       done({ token: { accessToken: r.access_token, expiresAt: Date.now() + Number(r.expires_in ?? 3600) * 1000 - 60000 } });
     },
   });

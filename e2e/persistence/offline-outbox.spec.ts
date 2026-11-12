@@ -8,8 +8,12 @@ const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
 async function installSyncWorker(page: Page, getOnline: () => boolean, posted: Array<Record<string, unknown>>) {
   const server: Array<{ seq: number; event: Record<string, unknown> }> = [];
   await page.route(`${API}/**`, async route => {
-    if (!getOnline()) { await route.abort('internetdisconnected'); return; }
     const request = route.request(), url = new URL(request.url());
+    if (url.pathname === '/session' && request.method() === 'POST') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      return;
+    }
+    if (!getOnline()) { await route.abort('internetdisconnected'); return; }
     if (url.pathname === '/events' && request.method() === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as { events?: Array<Record<string, unknown>> };
       const acknowledgements = (body.events ?? []).map(event => {

@@ -182,7 +182,7 @@ describe('Google config and auth helpers', () => {
     expect(GOOGLE_CLIENT_ID).toMatch(/^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/); expect(GOOGLE_APP_ID).toMatch(/^\d+$/); expect(GOOGLE_CLIENT_ID.startsWith(GOOGLE_APP_ID + '-')).toBe(true); expect(GOOGLE_API_KEY).toMatch(/^AIza[\w-]{35}$/);
   });
   const oauth = (resp: Record<string, unknown>, granted = true) => { const init = vi.fn((cfg: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => cfg.callback(resp) })); window.google = { accounts: { oauth2: { initTokenClient: init, hasGrantedAllScopes: () => granted } } }; return init; };
-  it('requestToken reports when GIS is not loaded', () => { const done = vi.fn(); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('not ready'); });
+  it('requestToken reports when GIS is not loaded', () => { const done = vi.fn(); requestToken('c', {}, done); expect(done.mock.calls[0][0].error).toContain('آماده نیست'); });
   it('requestToken returns a token that expires a minute early, and asks for drive.file only', () => {
     const init = oauth({ access_token: 'A', expires_in: '3600' }); const done = vi.fn(); const t0 = Date.now(); requestToken('cid', { hint: 'h' }, done);
     const tok = done.mock.calls[0][0].token; expect(tok.accessToken).toBe('A'); expect(tok.expiresAt).toBeGreaterThanOrEqual(t0 + 3540000 - 5); expect(tok.expiresAt).toBeLessThanOrEqual(Date.now() + 3540000);

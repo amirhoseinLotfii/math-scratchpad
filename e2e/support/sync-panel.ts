@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 
-export const GOOGLE_AUTH_BUTTON_NAME = 'ورود یکپارچهٔ Google و Drive';
+export const GOOGLE_AUTH_BUTTON_NAME = 'Sign in with Google';
 
 export async function installFakeGoogleAuth(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -33,6 +33,14 @@ export async function installFakeGoogleAuth(page: Page): Promise<void> {
           id: {
             initialize: (options: { callback: typeof handlers.signIn }) => { handlers.signIn = options.callback; },
             prompt: () => handlers.signIn?.({ credential: fakeToken }),
+            renderButton: (element: HTMLElement) => {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.textContent = 'Sign in with Google';
+              button.setAttribute('aria-label', 'Sign in with Google');
+              button.addEventListener('click', () => handlers.signIn?.({ credential: fakeToken }));
+              element.replaceChildren(button);
+            },
           },
         },
       },
