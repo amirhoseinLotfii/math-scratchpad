@@ -134,4 +134,3 @@ describe('Google Drive learning mirror trash', () => {
     expect(calls).toHaveLength(1);
   });
 });
-

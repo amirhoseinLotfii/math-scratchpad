@@ -647,4 +647,3 @@ async function readJson<T>(response: Response): Promise<T> {
 function utf8Length(content: string): number {
   return new TextEncoder().encode(content).byteLength;
 }
-

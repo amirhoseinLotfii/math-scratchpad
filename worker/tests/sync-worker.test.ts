@@ -603,4 +603,3 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
 });
 
 type StoredEventForTest = { seq: number; event: Record<string, unknown> };
-
