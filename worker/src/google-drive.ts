@@ -3,6 +3,7 @@ import { SnapshotError, snapshotHash, snapshotName, writeImmutableSnapshot, type
 
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
+const DRIVE_BATCH_API = 'https://www.googleapis.com/batch/drive/v3';
 const GOOGLE_TOKEN_API = 'https://oauth2.googleapis.com/token';
 const GOOGLE_DRIVE_ABOUT_API = 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,me)';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
@@ -143,13 +144,30 @@ export class GoogleDriveClient {
       if (metadata.trashed === true) return false;
       throw new DriveMirrorError('invalid_response');
     }
-    const response = await this.apiFetch(`${DRIVE_FILES_API}/${encodeURIComponent(id)}?fields=id,trashed,parents`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trashed: true }),
+    const boundary = `mathscratchpad_reset_${crypto.randomUUID().replace(/-/g, '')}`;
+    const patchBody = JSON.stringify({ trashed: true });
+    const path = `/drive/v3/files/${encodeURIComponent(id)}?fields=id%2Ctrashed%2Cparents`;
+    const batchBody = [
+      `--${boundary}\r\n`,
+      'Content-Type: application/http\r\n',
+      'Content-ID: <trash-learning-mirror>\r\n\r\n',
+      `PATCH ${path} HTTP/1.1\r\n`,
+      'Content-Type: application/json; charset=UTF-8\r\n',
+      `Content-Length: ${utf8Length(patchBody)}\r\n\r\n`,
+      `${patchBody}\r\n`,
+      `--${boundary}--\r\n`,
+    ].join('');
+    const response = await this.apiFetch(DRIVE_BATCH_API, {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/mixed; boundary=${boundary}` },
+      body: batchBody,
     }, 'drive_trash');
     if (!response.ok) throw errorForStatus(response.status);
-    const trashed = await readJson<DriveFileMetadata>(response);
+    const batchContent = new TextDecoder().decode(await response.arrayBuffer());
+    const batchResult = parseSingleDriveBatchResponse(response.headers.get('Content-Type'), batchContent);
+    this.stage = `drive_trash_batch_http_${batchResult.status}`;
+    if (batchResult.status < 200 || batchResult.status >= 300) throw errorForStatus(batchResult.status);
+    const trashed = parseJsonText<DriveFileMetadata>(batchResult.body);
     if (trashed.id !== id || trashed.trashed !== true || !Array.isArray(trashed.parents) || !trashed.parents.includes(parentId)) {
       throw new DriveMirrorError('invalid_response');
     }
@@ -544,6 +562,42 @@ export class GoogleDriveClient {
 
 function escapeQuery(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function parseSingleDriveBatchResponse(contentType: string | null, content: string): { status: number; body: string } {
+  const boundary = contentType?.match(/(?:^|;)\s*boundary=(?:"([^"]+)"|([^;\s]+))/i);
+  const boundaryValue = boundary?.[1] ?? boundary?.[2];
+  if (!boundaryValue) throw new DriveMirrorError('invalid_response');
+
+  const parts = content.split(`--${boundaryValue}`).map(part => part.trim()).filter(part => part && part !== '--');
+  if (parts.length !== 1) throw new DriveMirrorError('invalid_response');
+
+  const part = parts[0];
+  const mimeHeaderBreak = /\r?\n\r?\n/.exec(part);
+  if (!mimeHeaderBreak || !/^Content-Type:\s*application\/http\s*$/im.test(part.slice(0, mimeHeaderBreak.index))) {
+    throw new DriveMirrorError('invalid_response');
+  }
+
+  const nested = part.slice(mimeHeaderBreak.index + mimeHeaderBreak[0].length);
+  const statusLineBreak = /\r?\n/.exec(nested);
+  if (!statusLineBreak) throw new DriveMirrorError('invalid_response');
+  const statusLine = nested.slice(0, statusLineBreak.index);
+  const statusMatch = /^HTTP\/\d(?:\.\d)?\s+(\d{3})(?:\s|$)/i.exec(statusLine);
+  if (!statusMatch) throw new DriveMirrorError('invalid_response');
+
+  const nestedHeaders = nested.slice(statusLineBreak.index + statusLineBreak[0].length);
+  const responseHeaderBreak = /\r?\n\r?\n/.exec(nestedHeaders);
+  if (!responseHeaderBreak) throw new DriveMirrorError('invalid_response');
+
+  return {
+    status: Number(statusMatch[1]),
+    body: nestedHeaders.slice(responseHeaderBreak.index + responseHeaderBreak[0].length).trim(),
+  };
+}
+
+function parseJsonText<T>(content: string): T {
+  try { return JSON.parse(content) as T; }
+  catch { throw new DriveMirrorError('invalid_response'); }
 }
 
 function errorForStatus(status: number): DriveMirrorError {
