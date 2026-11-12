@@ -16,6 +16,7 @@ import {
 
 import { SYNC_API_ORIGIN } from './sync-config';
 import { reportApiUnauthorized } from './api-unauthorized';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from './learning-reset-epoch';
 export { SYNC_API_ORIGIN } from './sync-config';
 const PAGE_LIMIT = 100;
 const MAX_PULL_PAGES_PER_RUN = 100;
@@ -294,11 +295,16 @@ export class BrowserSyncRuntime {
   private async request(path: string, init: RequestInit, tokenOverride?: string): Promise<Response> {
     const token = tokenOverride ?? this.token;
     if (!token) throw new SyncRequestError('Google sign-in is required.', 401, false);
+    const isLearningWrite = init.method?.toUpperCase() === 'POST' && (path === '/events' || path === '/state');
     let response: Response;
     try {
       response = await this.fetcher(`${this.apiOrigin}${path}`, {
         ...init,
-        headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+        headers: {
+          ...(init.headers ?? {}),
+          Authorization: `Bearer ${token}`,
+          ...(isLearningWrite ? { [LEARNING_RESET_EPOCH_HEADER]: LEARNING_RESET_EPOCH } : {}),
+        },
       });
     } catch { throw new SyncRequestError('شبکه در دسترس نیست؛ داده‌ها در صف آفلاین می‌مانند.'); }
     if (response.status === 401) {

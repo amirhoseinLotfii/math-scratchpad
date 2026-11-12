@@ -45,7 +45,9 @@ async function connectAuthenticatedStorage(token: string): Promise<void> {
     if (await syncRuntime.hasCloudLearningData(token)) {
       throw new Error('داده‌های یادگیری هنوز روی سرور هستند؛ تا پاک‌شدن آن‌ها این مرورگر همگام‌سازی نمی‌شود.');
     }
-    completeLocalLearningReset();
+    await completeLocalLearningReset();
+    location.reload();
+    return;
   }
   if (authenticatedStorageToken === token && getAuthenticatedServerStorage()) return;
   if (authenticatedStorageFlight?.token === token) return authenticatedStorageFlight.promise;

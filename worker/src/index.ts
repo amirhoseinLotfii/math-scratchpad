@@ -4,6 +4,7 @@ import { verifyGoogleIdToken } from './auth';
 import { readBoundedBody } from './body';
 import type { GoogleIdentity, WorkerEnv } from './env';
 import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSessionToken } from './session';
+import { LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 
 const MAX_BODY_BYTES = 250_000;
 const PAGES_ORIGIN = 'https://amirhoseinlotfii.github.io';
@@ -42,7 +43,7 @@ function finalizeResponse(response: Response, c: AppContext): Response {
 
 function requestedHeadersAreAllowed(value: string | null): boolean {
   if (!value) return true;
-  const allowed = new Set(['authorization', 'content-type']);
+  const allowed = new Set(['authorization', 'content-type', LEARNING_RESET_EPOCH_HEADER.toLowerCase()]);
   return value.split(',').every(header => allowed.has(header.trim().toLowerCase()));
 }
 
@@ -67,7 +68,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
       }
       c.header('Access-Control-Allow-Origin', allowedOrigin);
       c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      c.header('Access-Control-Allow-Headers', `Authorization, Content-Type, ${LEARNING_RESET_EPOCH_HEADER}`);
       c.header('Access-Control-Max-Age', '86400');
       c.header('Vary', 'Origin');
       return c.body(null, 204);
@@ -142,6 +143,8 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     const target = new URL(`${path}${incomingUrl.search}`, 'https://event-store.internal');
     const headers = new Headers();
     if (body !== undefined) headers.set('Content-Type', 'application/json');
+    const clientEpoch = c.req.header(LEARNING_RESET_EPOCH_HEADER);
+    if (clientEpoch) headers.set(LEARNING_RESET_EPOCH_HEADER, clientEpoch);
     const response = await stub.fetch(new Request(target, { method, headers, ...(body !== undefined ? { body } : {}) }));
     return finalizeResponse(response, c);
   };

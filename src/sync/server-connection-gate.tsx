@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { getAuthenticatedServerStorage } from './browser-db';
+import { getAuthenticatedServerStorage, isLocalLearningResetPending } from './browser-db';
 import { ensureApiToken, subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
@@ -128,18 +128,22 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     return () => { active = false; unsubscribe?.(); };
   }, [state.kind, onAuthenticated, check]);
 
+  const resetPending = isLocalLearningResetPending();
+
   return (
     <ServerConnectionOverlayContext.Provider value={setOverlayOpen}>
-      <div data-server-editor data-connection-state={state.kind} >
+      <div data-server-editor data-connection-state={state.kind} inert={resetPending}>
         {children}
       </div>
-      {state.kind !== 'online' && !overlayOpen && (
+      {(state.kind !== 'online' || resetPending) && (!overlayOpen || resetPending) && (
         <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl">
           <div className="server-connection-gate-header">
-            <strong>{state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
+            <strong>{resetPending ? 'پاک‌سازی داده‌های قبلی در حال انتظار است' : state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
             <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }}>بررسی اتصال</button>
           </div>
-          <p className="server-connection-gate-message">{state.message}</p>
+          <p className="server-connection-gate-message">{resetPending
+            ? `تا تأیید پاک‌شدن داده‌های ابر، پاسخ‌دادن در این مرورگر قفل است. ${state.message}`
+            : state.message}</p>
           <div className="server-connection-gate-google">
             <GoogleLoginButton />
           </div>

@@ -5,6 +5,7 @@ import type { WorkerEnv } from './env';
 import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode, type DriveFolderChild, type DriveSnapshotRef } from './google-drive';
 import { snapshotName } from './immutable-snapshot';
 import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from './session';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 import {
   applyConceptEvent,
   applyDailyEvent,
@@ -222,9 +223,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
         status TEXT NOT NULL,
         reset_id TEXT,
-        completed_at TEXT
+        completed_at TEXT,
+        client_epoch TEXT
       )
     `);
+    const resetColumns = ctx.storage.sql.exec<{ name: string }>(`PRAGMA table_info(${LEARNING_RESET_TABLE})`).toArray();
+    if (!resetColumns.some(column => column.name === 'client_epoch')) {
+      ctx.storage.sql.exec(`ALTER TABLE ${LEARNING_RESET_TABLE} ADD COLUMN client_epoch TEXT`);
+    }
     ctx.storage.sql.exec(`INSERT OR IGNORE INTO ${LEARNING_RESET_TABLE} (singleton, status, reset_id) VALUES (1, 'idle', NULL)`);
   }
 
@@ -234,6 +240,12 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset/release') return this.releaseLearningReset(request);
     if (this.isLearningResetLocked() && this.isLearningOrMirrorRoute(url.pathname, request.method)) {
       return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
+    }
+    if (request.method === 'POST' && ['/events', '/state'].includes(url.pathname)) {
+      const requiredEpoch = this.requiredLearningClientEpoch();
+      if (requiredEpoch && request.headers.get(LEARNING_RESET_EPOCH_HEADER) !== requiredEpoch) {
+        return json({ error: 'client_update_required' }, 426);
+      }
     }
     if (request.method === 'POST' && url.pathname.startsWith('/internal/session/')) return this.handleSession(url.pathname, request);
     if ((request.method === 'GET' && (url.pathname === '/bank/meta' || url.pathname === '/bank/content'))
@@ -286,6 +298,12 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return status === 'running' || status === 'awaiting_release';
   }
 
+  private requiredLearningClientEpoch(): string | null {
+    return this.ctx.storage.sql.exec<{ client_epoch: string | null }>(
+      `SELECT client_epoch FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
+    ).toArray()[0]?.client_epoch ?? null;
+  }
+
   private isLearningOrMirrorRoute(pathname: string, method: string): boolean {
     if (pathname.startsWith('/internal/session/') || pathname.startsWith('/bank/')) return false;
     if (method === 'GET' && ['/reset/preview', '/state', '/sync', '/snapshot', '/drive/status', '/notion/status'].includes(pathname)) return false;
@@ -328,7 +346,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       if (current.status === 'awaiting_release') return current.reset_id === resetId ? 'awaiting_release' : 'in_progress';
       if (current.status === 'released' && current.reset_id === resetId) return 'complete';
       this.ctx.storage.sql.exec(
-        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'running', reset_id = ?, completed_at = NULL WHERE singleton = 1`,
+        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'running', reset_id = ?, completed_at = NULL, client_epoch = NULL WHERE singleton = 1`,
         resetId,
       );
       return 'claimed';
@@ -370,7 +388,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       });
     } catch (error) {
       const code = error instanceof DriveMirrorError ? error.code : 'reset_failed';
-      return json({ error: 'learning_reset_incomplete', code, retryWithSameResetId: true }, 502);
+      const failureStage = this.driveClient?.diagnosticStage ?? 'worker_internal';
+      const safeStage = `drive_reset:${failureStage}`.slice(0, 64);
+      this.recordDiagnostic('drive', safeStage, code);
+      return json({ error: 'learning_reset_incomplete', code, failureStage: safeStage, retryWithSameResetId: true }, 502);
     }
   }
 
@@ -387,11 +408,17 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null }>(
         `SELECT status, reset_id FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
       ).one();
-      if (current.status === 'released' && current.reset_id === input.resetId) return 'released';
+      if (current.status === 'released' && current.reset_id === input.resetId) {
+        this.ctx.storage.sql.exec(
+          `UPDATE ${LEARNING_RESET_TABLE} SET client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
+          LEARNING_RESET_EPOCH, input.resetId,
+        );
+        return 'released';
+      }
       if (current.status !== 'awaiting_release' || current.reset_id !== input.resetId) return 'not_ready';
       this.ctx.storage.sql.exec(
-        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'released' WHERE singleton = 1 AND reset_id = ?`,
-        input.resetId,
+        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'released', client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
+        LEARNING_RESET_EPOCH, input.resetId,
       );
       return 'released';
     });
