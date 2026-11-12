@@ -701,23 +701,31 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   /** Read-only, owner-authenticated preflight. Never deletes or mutates learning data. */
   private resetPreview(url: URL): Response {
     const scope = url.searchParams.get('scope');
-    if (scope !== 'all' && scope !== 'session' && scope !== 'lesson' && scope !== 'section') {
+    if (scope !== 'all' && scope !== 'session' && scope !== 'lesson' && scope !== 'section' && scope !== 'chapter') {
       return json({ error: 'invalid_reset_scope' }, 400);
     }
-    const requested = ['bankVersion', 'session', 'lesson', 'section'] as const;
+    const requested = ['bankVersion', 'session', 'lesson', 'section', 'chapter'] as const;
     const values = Object.fromEntries(requested.map(name => [name, url.searchParams.get(name)])) as Record<typeof requested[number], string | null>;
     if (requested.some(name => values[name] !== null && (!values[name]?.trim() || values[name]!.length > 120 || /[\x00-\x1f]/.test(values[name]!)))) {
       return json({ error: 'invalid_reset_scope' }, 400);
     }
+    // Chapter uses the numeric chapter field of an event. Reject ambiguous or invalid IDs.
+    if (scope === 'chapter' && !/^[1-9][0-9]{0,5}$/.test(values.chapter ?? '')) {
+      return json({ error: 'invalid_reset_chapter' }, 400);
+    }
     const required = scope === 'section' ? ['bankVersion', 'lesson', 'section']
       : scope === 'lesson' ? ['bankVersion', 'lesson']
+      : scope === 'chapter' ? ['bankVersion', 'chapter']
       : scope === 'session' ? ['session'] : [];
     if (requested.some(name => values[name] !== null && !required.includes(name))) return json({ error: 'invalid_reset_scope' }, 400);
     if (required.some(name => !values[name as keyof typeof values])) return json({ error: 'missing_reset_filter' }, 400);
     const fields = scope === 'section' ? ['bankVersion', 'lesson', 'section'] as const
       : scope === 'lesson' ? ['bankVersion', 'lesson'] as const
+      : scope === 'chapter' ? ['bankVersion', 'chapter'] as const
       : scope === 'session' ? ['session'] as const : [] as const;
-    const where = fields.length ? ` WHERE ${fields.map(name => `json_extract(event_json, '$.${name}') = ?`).join(' AND ')}` : '';
+    const where = fields.length ? ` WHERE ${fields.map(name => name === 'chapter'
+      ? `json_extract(event_json, '$.chapter') = CAST(? AS INTEGER)`
+      : `json_extract(event_json, '$.${name}') = ?`).join(' AND ')}` : '';
     const args = fields.map(name => values[name]!);
     const matchingEvents = Number(this.ctx.storage.sql.exec<{ count: number }>(
       `SELECT COUNT(*) AS count FROM learning_events${where}`, ...args,
