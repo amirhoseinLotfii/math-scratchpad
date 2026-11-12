@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 22821)
-Total output lines: 1812
-
 import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
 import { readBoundedBody } from './body';
@@ -471,7 +468,856 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const stored = state.folders;
     if (!this.driveConfigured()) {
       if (stored) throw new DriveMirrorError('not_configured');
-      return { move…10821 tokens truncated…      const completed: StoredNotionMirrorState = {
+      return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 0 };
+    }
+
+    this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
+    const client = this.driveClient;
+    const rootName = this.env.GOOGLE_DRIVE_ROOT_FOLDER_NAME?.trim() || 'Math_Project';
+    const rootId = stored?.rootId ?? this.env.GOOGLE_DRIVE_ROOT_FOLDER_ID ?? await client.findFolderId(rootName, 'root');
+    if (!rootId) return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 0 };
+    const root = await client.readFileMetadata(rootId, 'id,name,mimeType,parents,trashed');
+    if (root.id !== rootId || root.name !== rootName || root.mimeType !== 'application/vnd.google-apps.folder' || root.trashed === true) {
+      throw new DriveMirrorError('invalid_response');
+    }
+
+    const syncId = stored?.syncId ?? await client.findFolderId('03_Sync', rootId);
+    if (!syncId) return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 1 };
+    await this.assertDriveFolder(client, syncId, '03_Sync', rootId);
+
+    const targetFolders: Array<{ id: string; parentId: string; name: string }> = [{ id: syncId, parentId: rootId, name: '03_Sync' }];
+    for (const name of ['events', 'state'] as const) {
+      const storedId = stored?.[name === 'events' ? 'eventsId' : 'stateId'];
+      const id = storedId ?? await client.findFolderId(name, syncId);
+      if (id) {
+        await this.assertDriveFolder(client, id, name, syncId);
+        targetFolders.push({ id, parentId: syncId, name });
+      }
+    }
+    const backupsId = stored?.backupsId ?? await client.findFolderId('06_Backups', rootId);
+    if (backupsId) {
+      await this.assertDriveFolder(client, backupsId, '06_Backups', rootId);
+      targetFolders.push({ id: backupsId, parentId: rootId, name: '06_Backups' });
+    }
+
+    let movedToTrash = 0;
+    let inspectedFiles = 0;
+    let preservedFiles = 0;
+    let protectedBankFileSkipped = false;
+    for (const folder of targetFolders) {
+      const children: DriveFolderChild[] = await client.listFilesInFolder(folder.id);
+      for (const child of children) {
+        if (child.mimeType === 'application/vnd.google-apps.folder') continue;
+        inspectedFiles += 1;
+        if (child.id === bankFileId) {
+          protectedBankFileSkipped = true;
+          preservedFiles += 1;
+          continue;
+        }
+        if (!isLearningMirrorFileName(child.name)) {
+          preservedFiles += 1;
+          continue;
+        }
+        if (await client.trashFileInFolder(child.id, folder.id)) movedToTrash += 1;
+      }
+    }
+    return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound: targetFolders.length + 1 };
+  }
+
+  private async assertDriveFolder(client: GoogleDriveClient, id: string, name: string, parentId: string): Promise<void> {
+    const metadata = await client.readFileMetadata(id, 'id,name,mimeType,parents,trashed');
+    if (metadata.id !== id || metadata.name !== name || metadata.mimeType !== 'application/vnd.google-apps.folder'
+      || metadata.trashed === true || !Array.isArray(metadata.parents) || !metadata.parents.includes(parentId)) {
+      throw new DriveMirrorError('invalid_response');
+    }
+  }
+
+  private clearLearningRecords(): {
+    deletedLearningEvents: number;
+    deletedAppStateRecords: number;
+    deletedNotionProjectionRecords: number;
+    deletedNotionReferences: number;
+    deletedQueuedMirrorRecords: number;
+    bankSourceRecords: number;
+    activeAuthSessions: number;
+    preservedIdentityAndDriveConfigRecords: number;
+  } {
+    return this.ctx.storage.transactionSync(() => {
+      const count = (sql: string, ...args: Array<string | number>) => Number(this.ctx.storage.sql.exec<{ count: number }>(sql, ...args).one().count);
+      const summary = {
+        deletedLearningEvents: count('SELECT COUNT(*) AS count FROM learning_events'),
+        deletedAppStateRecords: count("SELECT COUNT(*) AS count FROM app_state WHERE key NOT IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')"),
+        deletedNotionProjectionRecords: count('SELECT COUNT(*) AS count FROM notion_projections'),
+        deletedNotionReferences: count('SELECT COUNT(*) AS count FROM notion_page_refs'),
+        deletedQueuedMirrorRecords: count('SELECT COUNT(*) AS count FROM notion_state_queue')
+          + count('SELECT COUNT(*) AS count FROM notion_mistake_reviews')
+          + count('SELECT COUNT(*) AS count FROM notion_session_mistakes'),
+        bankSourceRecords: count('SELECT COUNT(*) AS count FROM bank_source'),
+        activeAuthSessions: count('SELECT COUNT(*) AS count FROM auth_sessions WHERE revoked_at IS NULL AND expires_at > ?', Date.now()),
+        preservedIdentityAndDriveConfigRecords: count("SELECT COUNT(*) AS count FROM app_state WHERE key IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')"),
+      };
+      this.ctx.storage.sql.exec('DELETE FROM learning_events');
+      this.ctx.storage.sql.exec("DELETE FROM app_state WHERE key NOT IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')");
+      this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = 0 WHERE singleton = 1');
+      this.ctx.storage.sql.exec('DELETE FROM notion_projections');
+      this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = 0 WHERE singleton = 1');
+      this.ctx.storage.sql.exec('DELETE FROM notion_page_refs');
+      this.ctx.storage.sql.exec('DELETE FROM notion_state_queue');
+      this.ctx.storage.sql.exec('DELETE FROM notion_mistake_reviews');
+      this.ctx.storage.sql.exec('DELETE FROM notion_session_mistakes');
+      this.ctx.storage.sql.exec('DELETE FROM sync_health');
+      this.ctx.storage.sql.exec('DELETE FROM mirror_diagnostics');
+      this.ctx.storage.sql.exec('DELETE FROM rate_windows');
+      this.ctx.storage.sql.exec("DELETE FROM sqlite_sequence WHERE name = 'learning_events'");
+      return summary;
+    });
+  }
+
+
+  /** Internal session bookkeeping; reachable only through the Worker's stub, never from the public router. */
+  private async handleSession(pathname: string, request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, 4_096);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let input: { tokenHash?: unknown; email?: unknown; sub?: unknown; all?: unknown };
+    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
+    catch { return json({ error: 'invalid_session_request' }, 400); }
+    const now = Date.now();
+    const tokenHash = typeof input.tokenHash === 'string' && SESSION_HASH_PATTERN.test(input.tokenHash) ? input.tokenHash : undefined;
+
+    if (pathname === '/internal/session/issue') {
+      const rate = this.consumeRateLimit();
+      if (rate) return rate;
+      if (!tokenHash || typeof input.email !== 'string' || !input.email || input.email.length > 320
+        || typeof input.sub !== 'string' || !input.sub || input.sub.length > 255) {
+        return json({ error: 'invalid_session_request' }, 400);
+      }
+      const expiresAt = now + SESSION_TTL_MS;
+      this.ctx.storage.transactionSync(() => {
+        this.ctx.storage.sql.exec('DELETE FROM auth_sessions WHERE expires_at <= ? OR (revoked_at IS NOT NULL AND revoked_at <= ?)', now, now - SESSION_TTL_MS);
+        this.ctx.storage.sql.exec(
+          'INSERT INTO auth_sessions (token_hash, email, sub, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)',
+          tokenHash, input.email, input.sub, now, expiresAt,
+        );
+        this.ctx.storage.sql.exec(
+          `UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL AND token_hash NOT IN (
+             SELECT token_hash FROM auth_sessions WHERE revoked_at IS NULL ORDER BY created_at DESC, token_hash LIMIT ?)`,
+          now, MAX_ACTIVE_SESSIONS,
+        );
+      });
+      return json({ expiresAt }, 201);
+    }
+
+    if (pathname === '/internal/session/verify') {
+      if (!tokenHash) return json({ error: 'session_invalid' }, 401);
+      const row = this.ctx.storage.sql.exec<{ email: string; sub: string; expires_at: number; revoked_at: number | null }>(
+        'SELECT email, sub, expires_at, revoked_at FROM auth_sessions WHERE token_hash = ?', tokenHash,
+      ).toArray()[0];
+      if (!row || row.revoked_at !== null || Number(row.expires_at) <= now) return json({ error: 'session_invalid' }, 401);
+      return json({ email: row.email, sub: row.sub, expiresAt: Number(row.expires_at) });
+    }
+
+    if (pathname === '/internal/session/revoke') {
+      const rate = this.consumeRateLimit();
+      if (rate) return rate;
+      if (input.all === true) {
+        const revoked = this.ctx.storage.sql.exec('UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL', now).rowsWritten;
+        return json({ revoked });
+      }
+      if (!tokenHash) return json({ error: 'invalid_session_request' }, 400);
+      const revoked = this.ctx.storage.sql.exec('UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL', now, tokenHash).rowsWritten;
+      return json({ revoked });
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+
+  /** Separate from the mirror client so bank reads never overwrite mirror diagnostics. */
+  private bankDriveClient(): GoogleDriveClient {
+    this.bankClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
+    return this.bankClient;
+  }
+
+  private bankErrorResponse(error: unknown): Response {
+    if (error instanceof BankTooLargeError) return json({ error: 'bank_too_large' }, 413);
+    if (error instanceof BankFileTypeError) return json({ error: error.message }, 422);
+    const code = error instanceof DriveMirrorError ? error.code : 'internal_error';
+    if (code === 'not_configured') return json({ error: 'drive_not_configured' }, 503);
+    if (code === 'permission_denied') return json({ error: 'bank_not_accessible' }, 403);
+    if (code === 'reauthorization_required' || code === 'account_mismatch') return json({ error: 'drive_reauthorization_required', code }, 502);
+    if (code === 'quota_exceeded') return json({ error: 'drive_rate_limited' }, 429);
+    return json({ error: 'drive_unavailable', code }, 502);
+  }
+
+  /** Register the picked bank file after confirming the server Drive credential can read it. */
+  private async registerBankSource(request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, 4_096);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let input: { fileId?: unknown; fileName?: unknown };
+    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
+    catch { return json({ error: 'invalid_bank_source' }, 400); }
+    if (typeof input.fileId !== 'string' || !isValidDriveFileId(input.fileId)
+      || (input.fileName !== undefined && (typeof input.fileName !== 'string' || input.fileName.length > 255))) {
+      return json({ error: 'invalid_bank_source' }, 400);
+    }
+    const client = this.bankDriveClient();
+    if (!client.isConfigured) return json({ error: 'drive_not_configured' }, 503);
+    let meta: BankFileMeta;
+    try { meta = await readBankMetadata(client, input.fileId); }
+    catch (error) { return this.bankErrorResponse(error); }
+    const fileName = typeof input.fileName === 'string' && input.fileName ? input.fileName : meta.name;
+    this.ctx.storage.sql.exec(
+      'INSERT INTO bank_source (singleton, file_id, file_name, registered_at) VALUES (1, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET file_id=excluded.file_id, file_name=excluded.file_name, registered_at=excluded.registered_at',
+      input.fileId, fileName, new Date().toISOString(),
+    );
+    return json({ fileId: input.fileId, fileName, meta });
+  }
+
+  /** Read only the registered bank file, with the Worker's own Drive credential. */
+  private async readBank(includeContent: boolean): Promise<Response> {
+    const source = this.ctx.storage.sql.exec<{ file_id: string; file_name: string }>(
+      'SELECT file_id, file_name FROM bank_source WHERE singleton = 1',
+    ).toArray()[0];
+    if (!source) return json({ error: 'bank_source_not_registered' }, 404);
+    const client = this.bankDriveClient();
+    if (!client.isConfigured) return json({ error: 'drive_not_configured' }, 503);
+    try {
+      const meta = await readBankMetadata(client, source.file_id);
+      if (!includeContent) return json({ fileId: source.file_id, fileName: source.file_name, meta });
+      const text = await client.readTextContent(source.file_id);
+      if (new TextEncoder().encode(text).byteLength > MAX_BANK_BYTES) return json({ error: 'bank_too_large' }, 413);
+      return json({ fileId: source.file_id, fileName: source.file_name, meta, text });
+    } catch (error) {
+      return this.bankErrorResponse(error);
+    }
+  }
+
+  /** Read-only, owner-authenticated preflight. Never deletes or mutates learning data. */
+  private resetPreview(url: URL): Response {
+    const scope = url.searchParams.get('scope');
+    if (scope !== 'all' && scope !== 'session' && scope !== 'lesson' && scope !== 'section') {
+      return json({ error: 'invalid_reset_scope' }, 400);
+    }
+    const requested = ['bankVersion', 'session', 'lesson', 'section'] as const;
+    const values = Object.fromEntries(requested.map(name => [name, url.searchParams.get(name)])) as Record<typeof requested[number], string | null>;
+    if (requested.some(name => values[name] !== null && (!values[name]?.trim() || values[name]!.length > 120 || /[\x00-\x1f]/.test(values[name]!)))) {
+      return json({ error: 'invalid_reset_scope' }, 400);
+    }
+    const required = scope === 'section' ? ['bankVersion', 'lesson', 'section']
+      : scope === 'lesson' ? ['bankVersion', 'lesson']
+      : scope === 'session' ? ['session'] : [];
+    if (requested.some(name => values[name] !== null && !required.includes(name))) return json({ error: 'invalid_reset_scope' }, 400);
+    if (required.some(name => !values[name as keyof typeof values])) return json({ error: 'missing_reset_filter' }, 400);
+    const fields = scope === 'section' ? ['bankVersion', 'lesson', 'section'] as const
+      : scope === 'lesson' ? ['bankVersion', 'lesson'] as const
+      : scope === 'session' ? ['session'] as const : [] as const;
+    const where = fields.length ? ` WHERE ${fields.map(name => `json_extract(event_json, '$.${name}') = ?`).join(' AND ')}` : '';
+    const args = fields.map(name => values[name]!);
+    const matchingEvents = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM learning_events${where}`, ...args,
+    ).one().count);
+    const overall = this.ctx.storage.sql.exec<{ count: number; lastSeq: number | null }>(
+      'SELECT COUNT(*) AS count, MAX(seq) AS lastSeq FROM learning_events',
+    ).one();
+    const stateKeys = this.ctx.storage.sql.exec<{ key: string }>(
+      "SELECT key FROM app_state WHERE key LIKE 'math-scratchpad-%'",
+    ).toArray().map(record => record.key);
+    const protectedStateKeys = stateKeys.filter(key => key.includes('drive-config') || key.includes('bank-cache') || key.includes('device-id'));
+    const affectedSharedStateKeys = stateKeys.filter(key => key.includes('lesson-progress') || key.includes('session-archive') || key.includes('session-v3'));
+    const notionPages = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM notion_page_refs',
+    ).one().count);
+    return json({
+      readOnly: true,
+      canExecute: false,
+      scope,
+      filters: Object.fromEntries(fields.map(name => [name, values[name]])),
+      matchingEvents,
+      totalEvents: Number(overall.count),
+      lastSeq: Number(overall.lastSeq ?? 0),
+      appStateRevision: this.appStateRevision(),
+      protectedBankAndIdentityStateKeys: protectedStateKeys.length,
+      sharedStateKeysRequiringSelectiveMerge: affectedSharedStateKeys.length,
+      notionPageReferencesRequiringReconciliation: scope === 'all' ? notionPages : null,
+      requiresCloudReconciliation: true,
+      warning: 'Preview only. No reset or deletion endpoint is enabled.',
+    });
+  }
+
+  /** Durable Object alarm retries configured private mirrors after transient failures. */
+  async alarm(): Promise<void> {
+    if (this.isLearningResetLocked()) return;
+    await this.withMirrorSubrequestBudget(async () => {
+      // Notion may not be blocked by a failed Google Drive request.
+      const work: Promise<unknown>[] = [];
+      if (notionDataSourcesFromEnv(this.env)) work.push(this.syncNotion());
+      if (this.driveConfigured()) {
+        work.push((async () => {
+          await this.syncDrive();
+          if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
+        })());
+      }
+      return Promise.allSettled(work);
+    });
+  }
+
+  private async withMirrorSubrequestBudget<T>(operation: () => Promise<T>): Promise<{ value: T; used: number; limit: number }> {
+    const previous = this.activeMirrorSubrequestBudget;
+    const budget = previous ?? { used: 0, limit: MAX_MIRROR_SUBREQUESTS };
+    this.activeMirrorSubrequestBudget = budget;
+    try {
+      const value = await operation();
+      return { value, used: budget.used, limit: budget.limit };
+    } finally {
+      this.activeMirrorSubrequestBudget = previous;
+    }
+  }
+
+  private appStateRevision(): number {
+    return Number(this.ctx.storage.sql.exec<{ revision: number }>(
+      'SELECT revision FROM app_state_meta WHERE singleton = 1',
+    ).one().revision);
+  }
+
+  private readAppState(): Response {
+    const rows = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number; updated_at: string }>(
+      'SELECT key, value, revision, updated_at FROM app_state ORDER BY key',
+    ).toArray();
+    const records = rows.map(({ updated_at, ...record }) => ({ ...record, updatedAt: updated_at }));
+    return json({ records, revision: this.appStateRevision() });
+  }
+
+  private async writeAppState(request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, MAX_STATE_BODY_BYTES);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder().decode(body)); }
+    catch { return json({ error: 'invalid_state_json' }, 400); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return json({ error: 'invalid_state' }, 400);
+    const item = value as { key?: unknown; value?: unknown; revision?: unknown };
+    if (typeof item.key !== 'string' || !item.key.startsWith('math-scratchpad') || item.key.length > 200
+      || !(typeof item.value === 'string' || item.value === null)
+      || (typeof item.value === 'string' && new TextEncoder().encode(item.value).byteLength > MAX_STATE_VALUE_BYTES)
+      || !Number.isSafeInteger(item.revision) || Number(item.revision) < 0) {
+      return json({ error: 'invalid_state' }, 400);
+    }
+    const result = this.ctx.storage.transactionSync(() => {
+      if (this.isLearningResetLocked()) return { conflict: false, resetting: true, revision: 0, updatedAt: '' };
+      const existing = this.ctx.storage.sql.exec<{ revision: number }>(
+        'SELECT revision FROM app_state WHERE key = ?', item.key!,
+      ).toArray()[0];
+      const current = existing?.revision ?? 0;
+      if (current !== item.revision) return { conflict: true, resetting: false, revision: current };
+      const revision = current + 1;
+      const updatedAt = new Date().toISOString();
+      this.ctx.storage.sql.exec(
+        'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, updated_at=excluded.updated_at',
+        item.key!, item.value as string | null, revision, updatedAt,
+      );
+      this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = revision + 1 WHERE singleton = 1');
+      return { conflict: false, resetting: false, revision, updatedAt };
+    });
+    if (result.resetting) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
+    if (result.conflict) return json({ error: 'state_conflict', revision: result.revision }, 409);
+    if (this.driveConfigured()) {
+      const state = await this.readDriveState();
+      await this.saveDriveState({
+        ...state, status: 'pending',
+        pendingCount: Math.max(0, (await this.maxSequence()) - state.lastSeq) + 1,
+      });
+      await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
+    }
+    await this.queueNotionState(item.key!, result.revision);
+    return json({ key: item.key, revision: result.revision, updatedAt: result.updatedAt });
+  }
+
+  private parseRateLimit(raw: string | undefined): number {
+    const value = Number(raw ?? 120);
+    return Number.isInteger(value) && value > 0 && value <= 10_000 ? value : 120;
+  }
+
+  private consumeRateLimit(): Response | null {
+    const now = Date.now();
+    const windowStart = Math.floor(now / RATE_WINDOW_MS) * RATE_WINDOW_MS;
+    const count = this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec('DELETE FROM rate_windows WHERE window_start < ?', windowStart - RATE_WINDOW_MS);
+      this.ctx.storage.sql.exec(
+        `INSERT INTO rate_windows (window_start, request_count) VALUES (?, 1)
+         ON CONFLICT(window_start) DO UPDATE SET request_count = request_count + 1`,
+        windowStart,
+      );
+      return Number(this.ctx.storage.sql.exec<{ request_count: number }>(
+        'SELECT request_count FROM rate_windows WHERE window_start = ?', windowStart,
+      ).one().request_count);
+    });
+
+    if (count <= this.rateLimit) return null;
+    const retryAfter = Math.max(1, Math.ceil((windowStart + RATE_WINDOW_MS - now) / 1_000));
+    return json({ error: 'rate_limited', retryAfterSeconds: retryAfter }, 429, { 'Retry-After': String(retryAfter) });
+  }
+
+  private async append(request: Request): Promise<Response> {
+    const declaredLength = Number(request.headers.get('Content-Length') ?? 0);
+    if (declaredLength > MAX_BODY_BYTES) return json({ error: 'payload_too_large' }, 413);
+    const body = await readBoundedBody(request, MAX_BODY_BYTES);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let raw: string;
+    try { raw = new TextDecoder('utf-8', { fatal: true }).decode(body); }
+    catch { return json({ error: 'invalid_json' }, 400); }
+
+    let input: unknown;
+    try { input = JSON.parse(raw); } catch { return json({ error: 'invalid_json' }, 400); }
+    if (!input || typeof input !== 'object' || !Array.isArray((input as { events?: unknown }).events)) {
+      return json({ error: 'invalid_payload' }, 400);
+    }
+
+    const supplied = (input as { events: unknown[] }).events;
+    if (supplied.length < 1 || supplied.length > MAX_BATCH_SIZE) return json({ error: 'invalid_batch_size' }, 400);
+    const events: LearnEvent[] = [];
+    for (const item of supplied) {
+      const parsed = learnEventSchema.safeParse(item);
+      if (!parsed.success) return json({ error: 'invalid_event', issues: parsed.error.issues.map(issue => ({ path: issue.path, code: issue.code })) }, 400);
+      events.push(parsed.data);
+    }
+
+    const byId = new Map<string, string>();
+    for (const event of events) {
+      const payload = canonicalJson(event);
+      const previous = byId.get(event.id);
+      if (previous !== undefined && previous !== payload) return json({ error: 'event_id_conflict' }, 409);
+      byId.set(event.id, payload);
+    }
+
+    let results: Map<string, AppendResult>;
+    let resetInProgress = false;
+    try {
+      results = this.ctx.storage.transactionSync(() => {
+        if (this.isLearningResetLocked()) {
+          resetInProgress = true;
+          return new Map<string, AppendResult>();
+        }
+        const rows = new Map<string, AppendResult>();
+        for (const [id, payload] of byId) {
+          const existing = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+            'SELECT seq, event_json FROM learning_events WHERE event_id = ?', id,
+          ).toArray()[0];
+          if (existing) {
+            if (existing.event_json !== payload) throw new EventConflictError();
+            rows.set(id, { id, seq: Number(existing.seq), duplicate: true });
+            continue;
+          }
+          const event = events.find(candidate => candidate.id === id)!;
+          this.ctx.storage.sql.exec(
+            'INSERT INTO learning_events (event_id, event_json, event_ts) VALUES (?, ?, ?)',
+            id, payload, event.ts,
+          );
+          const seq = Number(this.ctx.storage.sql.exec<{ seq: number }>('SELECT last_insert_rowid() AS seq').one().seq);
+          rows.set(id, { id, seq, duplicate: false });
+          const projectedThrough = this.projectionSequence();
+          if (projectedThrough === seq - 1) {
+            this.applyNotionProjection(event);
+            this.setProjectionSequence(seq);
+          }
+        }
+        return rows;
+      });
+    } catch (error) {
+      if (error instanceof EventConflictError) return json({ error: 'event_id_conflict' }, 409);
+      throw error;
+    }
+    if (resetInProgress) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
+
+    const seen = new Set<string>();
+    const ordered = events.map(event => {
+      const result = results.get(event.id)!;
+      if (seen.has(event.id)) return { ...result, duplicate: true };
+      seen.add(event.id);
+      return result;
+    });
+    const cursor = Math.max(0, ...ordered.map(item => item.seq));
+    await this.queueDriveMirror(cursor);
+    await this.queueNotionMirror(cursor);
+    return json({ events: ordered, cursor }, 200);
+  }
+
+  private driveConfigured(): boolean {
+    return Boolean(this.env.GOOGLE_CLIENT_ID && this.env.GOOGLE_DRIVE_CLIENT_SECRET && this.env.GOOGLE_DRIVE_REFRESH_TOKEN);
+  }
+
+  private async getConfiguredDriveRootId(client: GoogleDriveClient): Promise<string> {
+    const rootId = this.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim();
+    const rootName = this.env.GOOGLE_DRIVE_ROOT_FOLDER_NAME?.trim() || 'Math_Project';
+    if (!rootId) return client.ensureRootFolder(rootName);
+    const root = await client.readFileMetadata(rootId, 'id,name,mimeType,parents,trashed');
+    if (root.id !== rootId || root.name !== rootName || root.mimeType !== 'application/vnd.google-apps.folder' || root.trashed === true) {
+      throw new DriveMirrorError('invalid_response');
+    }
+    return rootId;
+  }
+
+  private async readDriveState(): Promise<DriveMirrorState> {
+    const stored = await this.ctx.storage.get<DriveMirrorState>(DRIVE_STATE_KEY);
+    return stored
+      ? { ...stored, files: stored.files ?? {}, fileHashes: stored.fileHashes ?? {}, snapshots: stored.snapshots ?? {} }
+      : { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined, files: {}, fileHashes: {}, snapshots: {} };
+  }
+
+  private recordDiagnostic(destination: 'drive' | 'notion', stage: string, code: string): void {
+    this.ctx.storage.sql.exec(
+      'INSERT INTO mirror_diagnostics(destination,failure_stage,error_code,updated_at) VALUES(?,?,?,?) ON CONFLICT(destination) DO UPDATE SET failure_stage=excluded.failure_stage,error_code=excluded.error_code,updated_at=excluded.updated_at',
+      destination, stage.slice(0, 64), code.slice(0, 64), new Date().toISOString(),
+    );
+  }
+
+  private readDiagnosticStage(destination: 'drive' | 'notion'): string | null {
+    const row = this.ctx.storage.sql.exec<{ failure_stage: string }>(
+      'SELECT failure_stage FROM mirror_diagnostics WHERE destination = ?', destination,
+    ).toArray()[0];
+    return row?.failure_stage ?? null;
+  }
+
+  private async saveDriveState(state: DriveMirrorState): Promise<void> {
+    await this.ctx.storage.put(DRIVE_STATE_KEY, state);
+    this.ctx.storage.sql.exec(
+      'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
+      'drive', state.status, state.pendingCount, state.lastError ?? null, state.lastSyncedAt ?? null, new Date().toISOString(),
+    );
+  }
+
+  private async readPriorDriveContent(input: {
+    client: GoogleDriveClient;
+    state: DriveMirrorState;
+    path: string;
+    logicalName: string;
+    parentId: string;
+    mimeType: string;
+  }): Promise<string | undefined> {
+    const snapshot = input.state.snapshots?.[input.path];
+    if (snapshot) {
+      const content = await input.client.readTextContent(snapshot.id);
+      if (await sha256Hex(content) !== snapshot.sha256) throw new DriveMirrorError('invalid_response');
+      const expectedName = await snapshotName(input.logicalName, content);
+      if (snapshot.name !== expectedName) throw new DriveMirrorError('invalid_response');
+      return content;
+    }
+
+    const id = input.state.files[input.path]?.id
+      ?? await input.client.findTextFileId(input.logicalName, input.parentId, input.mimeType);
+    if (!id) return undefined;
+    const content = await input.client.readTextContent(id);
+    const expectedHash = input.state.fileHashes[input.path];
+    if (expectedHash && await sha256Hex(content) !== expectedHash) throw new DriveMirrorError('invalid_response');
+    return content;
+  }
+
+  private async writeDriveSnapshot(input: {
+    client: GoogleDriveClient;
+    state: DriveMirrorState;
+    path: string;
+    logicalName: string;
+    parentId: string;
+    mimeType: string;
+    desiredContent: string;
+    mergeContent: (previous: string, desired: string) => string;
+    trackHash?: boolean;
+  }): Promise<DriveSnapshotRef> {
+    const previous = await this.readPriorDriveContent(input);
+    const content = previous === undefined ? input.desiredContent : input.mergeContent(previous, input.desiredContent);
+    const saved = await input.client.writeImmutableTextFile({
+      logicalName: input.logicalName,
+      parentId: input.parentId,
+      mimeType: input.mimeType,
+      content,
+    });
+    input.state.snapshots = { ...(input.state.snapshots ?? {}), [input.path]: saved };
+    if (input.trackHash !== false) input.state.fileHashes[input.path] = saved.sha256;
+    return saved;
+  }
+
+  private async maxSequence(): Promise<number> {
+    return Number(this.ctx.storage.sql.exec<{ seq: number }>(
+      'SELECT COALESCE(MAX(seq), 0) AS seq FROM learning_events',
+    ).one().seq);
+  }
+
+  private projectionSequence(): number {
+    return Number(this.ctx.storage.sql.exec<{ last_seq: number }>(
+      'SELECT last_seq FROM notion_projection_meta WHERE singleton = 1',
+    ).one().last_seq);
+  }
+
+  private setProjectionSequence(sequence: number): void {
+    this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = ? WHERE singleton = 1', sequence);
+  }
+
+  private readNotionProjection<T>(kind: string, key: string): T | undefined {
+    const row = this.ctx.storage.sql.exec<{ projection_json: string }>(
+      'SELECT projection_json FROM notion_projections WHERE projection_type = ? AND projection_key = ?',
+      kind, key,
+    ).toArray()[0];
+    return row ? JSON.parse(row.projection_json) as T : undefined;
+  }
+
+  private saveNotionProjection(kind: string, key: string, value: unknown): void {
+    this.ctx.storage.sql.exec(
+      'INSERT INTO notion_projections (projection_type, projection_key, projection_json) VALUES (?, ?, ?) ON CONFLICT(projection_type, projection_key) DO UPDATE SET projection_json = excluded.projection_json',
+      kind, key, JSON.stringify(value),
+    );
+  }
+
+  private applyNotionProjection(event: LearnEvent): void {
+    if (typeof event.isTest !== 'boolean') return;
+    if (event.type === 'chapter_snapshot') return;
+    const priorSession = this.readNotionProjection<SessionProjection>('session', event.session);
+    this.saveNotionProjection('session', event.session, applySessionEvent(priorSession, event));
+    if (event.isTest) return;
+
+    const dayKey = tehranDayKey(event.ts);
+    const priorDaily = this.readNotionProjection<DailyProjection>('daily', dayKey);
+    const daily = applyDailyEvent(priorDaily, event);
+    if (daily) this.saveNotionProjection('daily', dayKey, daily);
+
+    const conceptKey = [event.chapter, event.lesson, event.concept].join(':');
+    const priorConcept = this.readNotionProjection<ConceptProjection>('concept', conceptKey);
+    const concept = applyConceptEvent(priorConcept, event);
+    if (concept) this.saveNotionProjection('concept', conceptKey, concept);
+  }
+
+  private async repairNotionProjections(through: number): Promise<boolean> {
+    const projectedThrough = this.projectionSequence();
+    if (projectedThrough >= through) return true;
+    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+      projectedThrough, through, NOTION_PROJECTION_PAGE_SIZE,
+    ).toArray();
+    if (rows.length === 0) return this.projectionSequence() >= through;
+    this.ctx.storage.transactionSync(() => {
+      for (const row of rows) {
+        const sequence = Number(row.seq);
+        if (sequence !== this.projectionSequence() + 1) break;
+        this.applyNotionProjection(JSON.parse(row.event_json) as LearnEvent);
+        this.setProjectionSequence(sequence);
+      }
+    });
+    return this.projectionSequence() >= through;
+  }
+
+  private async getDriveStatus(): Promise<DriveMirrorStatus> {
+    const maxSeq = await this.maxSequence();
+    if (!this.driveConfigured()) {
+      return {
+        status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null,
+        failureStage: null,
+        weeklyBackup: { status: 'not_configured', lastCreatedAt: null, lastError: null },
+      };
+    }
+    const state = await this.readDriveState();
+    return {
+      status: state.status,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      pendingCount: Math.max(0, maxSeq - state.lastSeq)
+        + (state.appStateRevision === this.appStateRevision() ? 0 : 1),
+      quarantinedCount: state.quarantinedCount ?? null,
+      lastError: state.lastError ?? null,
+      failureStage: state.status === 'error' ? this.readDiagnosticStage('drive') : null,
+      weeklyBackup: {
+        status: state.weeklyBackup?.status ?? 'scheduled',
+        lastCreatedAt: state.weeklyBackup?.lastCreatedAt ?? null,
+        lastError: state.weeklyBackup?.lastError ?? null,
+      },
+    };
+  }
+
+  private async readNotionState(): Promise<StoredNotionMirrorState> {
+    return await this.ctx.storage.get<StoredNotionMirrorState>(NOTION_MIRROR_STATE_KEY)
+      ?? { status: 'pending', lastSeq: 0, pendingCount: 0, quarantinedCount: undefined };
+  }
+
+  private async saveNotionState(state: StoredNotionMirrorState): Promise<void> {
+    await this.ctx.storage.put(NOTION_MIRROR_STATE_KEY, state);
+    this.ctx.storage.sql.exec(
+      'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
+      'notion', state.status, state.pendingCount, state.lastError ?? null, state.lastSyncedAt ?? null, new Date().toISOString(),
+    );
+  }
+
+  private async getNotionStatus(): Promise<NotionMirrorStatus> {
+    const maxSeq = await this.maxSequence();
+    if (!notionDataSourcesFromEnv(this.env)) {
+      return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null };
+    }
+    const state = await this.readNotionState();
+    return {
+      status: state.status,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
+      quarantinedCount: state.quarantinedCount ?? null,
+      lastError: state.lastError ?? null,
+    };
+  }
+
+  private notionStateQueueCount(): number {
+    return Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM notion_state_queue',
+    ).one().count);
+  }
+
+  private notionPendingCount(maxSeq: number, lastSeq: number): number {
+    return Math.max(0, maxSeq - lastSeq) + this.notionStateQueueCount();
+  }
+
+  private async queueNotionState(key: string, revision: number): Promise<void> {
+    if (this.isLearningResetLocked()) return;
+    if (!notionDataSourcesFromEnv(this.env)) return;
+    // The archive is mirrored as a raw state record while it is live. Chapter
+    // snapshots remain append-only learning events before local cleanup.
+    this.ctx.storage.sql.exec(
+      'INSERT INTO notion_state_queue(key,revision) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET revision=MAX(revision,excluded.revision)',
+      key, revision,
+    );
+    const state = await this.readNotionState();
+    const maxSeq = await this.maxSequence();
+    await this.saveNotionState({
+      ...state,
+      status: 'pending',
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
+      lastError: state.lastError,
+    });
+    await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
+  }
+
+  private async queueNotionMirror(cursor: number): Promise<void> {
+    if (this.isLearningResetLocked()) return;
+    if (!notionDataSourcesFromEnv(this.env)) return;
+    const state = await this.readNotionState();
+    if (cursor <= state.lastSeq) return;
+    const maxSeq = await this.maxSequence();
+    await this.saveNotionState({
+      ...state,
+      status: 'pending',
+      pendingCount: this.notionPendingCount(maxSeq, state.lastSeq),
+      // Keep the last failure visible until a mirror run actually succeeds.
+      lastError: state.lastError,
+    });
+    await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
+  }
+
+  private async scheduleAlarmIn(delayMs: number): Promise<void> {
+    if (this.isLearningResetLocked()) return;
+    const requested = Date.now() + delayMs;
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing === null || requested < existing) await this.ctx.storage.setAlarm(requested);
+  }
+
+  private async syncNotion(): Promise<NotionMirrorStatus> {
+    if (this.isLearningResetLocked()) return this.getNotionStatus();
+    if (!notionDataSourcesFromEnv(this.env)) return this.getNotionStatus();
+    if (this.notionSyncPromise) return this.notionSyncPromise;
+    this.notionSyncPromise = this.performNotionSync().finally(() => { this.notionSyncPromise = undefined; });
+    return this.notionSyncPromise;
+  }
+
+  private async performNotionSync(): Promise<NotionMirrorStatus> {
+    const dataSources = notionDataSourcesFromEnv(this.env);
+    if (!dataSources || !this.env.NOTION_API_KEY) return this.getNotionStatus();
+    const state = await this.readNotionState();
+    const through = await this.maxSequence();
+    if (through === state.lastSeq && this.notionStateQueueCount() === 0 && state.status === 'synced') {
+      // Backfill the SQL health dashboard for mirrors synced before the table existed.
+      await this.saveNotionState({ ...state, pendingCount: 0 });
+      return this.getNotionStatus();
+    }
+    await this.saveNotionState({
+      ...state,
+      status: 'syncing',
+      pendingCount: this.notionPendingCount(through, state.lastSeq),
+      lastError: undefined,
+    });
+
+    try {
+      const projectionsReady = await this.repairNotionProjections(through);
+      if (!projectionsReady) {
+        const rebuilding: StoredNotionMirrorState = {
+          ...state,
+          status: 'pending',
+          pendingCount: this.notionPendingCount(through, state.lastSeq),
+          lastError: undefined,
+        };
+        await this.saveNotionState(rebuilding);
+        await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
+        return this.toNotionStatus(rebuilding, through);
+      }
+
+      this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY, this.budgetedFetch);
+      const events = this.readEventsAfter(state.lastSeq, through, NOTION_EVENTS_PER_RUN);
+      let lastSeq = state.lastSeq;
+      let lastSyncedAt = state.lastSyncedAt;
+      let quarantinedCount = state.quarantinedCount ?? 0;
+      for (const stored of events) {
+        const event = stored.event;
+        if (typeof event.isTest !== 'boolean') {
+          quarantinedCount += 1;
+          lastSeq = stored.seq;
+          await this.saveNotionState({
+            status: 'pending',
+            lastSeq,
+            pendingCount: this.notionPendingCount(through, lastSeq),
+            quarantinedCount,
+            ...(lastSyncedAt ? { lastSyncedAt } : {}),
+          });
+          continue;
+        }
+        const session = this.readNotionProjection<SessionProjection>('session', event.session)
+          ?? applySessionEvent(undefined, event);
+        const daily = event.isTest ? undefined : this.readNotionProjection<DailyProjection>('daily', tehranDayKey(event.ts));
+        const conceptKey = [event.chapter, event.lesson, event.concept].join(':');
+        const hasConceptUpdate = isAttemptLikeEvent(event) || event.type === 'mastery_changed' || event.type === 'gate_passed';
+        const concept = event.isTest || !hasConceptUpdate ? undefined : this.readNotionProjection<ConceptProjection>('concept', conceptKey);
+        const context = this.createNotionContext(dataSources, new Date().toISOString());
+        await syncNotionEvent(context, { event, session, daily, concept });
+        lastSeq = stored.seq;
+        lastSyncedAt = new Date().toISOString();
+        await this.saveNotionState({
+          status: 'pending',
+          lastSeq,
+          pendingCount: this.notionPendingCount(through, lastSeq),
+          quarantinedCount,
+          lastSyncedAt,
+        });
+      }
+
+      const queuedStateRows = this.ctx.storage.sql.exec<PendingNotionState>(
+        'SELECT key, revision FROM notion_state_queue ORDER BY key LIMIT ?', NOTION_STATE_KEYS_PER_RUN,
+      ).toArray();
+      for (const queued of queuedStateRows) {
+        const current = this.ctx.storage.sql.exec<{
+          value: string | null;
+          revision: number;
+          updated_at: string;
+        }>('SELECT value, revision, updated_at FROM app_state WHERE key = ?', queued.key).toArray()[0];
+        const revision = current ? Number(current.revision) : Number(queued.revision);
+        const context = this.createNotionContext(dataSources, new Date().toISOString());
+        await syncNotionAppState(context, {
+          key: queued.key,
+          value: current?.value ?? null,
+          revision,
+          updatedAt: current?.updated_at ?? new Date().toISOString(),
+        });
+        this.ctx.storage.sql.exec(
+          'DELETE FROM notion_state_queue WHERE key = ? AND revision <= ?', queued.key, revision,
+        );
+        lastSyncedAt = new Date().toISOString();
+        const currentMax = await this.maxSequence();
+        await this.saveNotionState({
+          status: 'pending',
+          lastSeq,
+          pendingCount: this.notionPendingCount(currentMax, lastSeq),
+          quarantinedCount,
+          lastSyncedAt,
+        });
+      }
+
+      const currentMax = await this.maxSequence();
+      const pendingCount = this.notionPendingCount(currentMax, lastSeq);
+      const completed: StoredNotionMirrorState = {
         status: pendingCount === 0 ? 'synced' : 'pending',
         lastSeq,
         pendingCount,
