@@ -22,6 +22,9 @@ export interface WorkerEnv {
   NOTION_DATA_SOURCE_MISTAKES?: string;
   NOTION_DATA_SOURCE_CONCEPTS?: string;
   NOTION_DATA_SOURCE_DAILY_REPORTS?: string;
+  /** Public release metadata; supply actual commit SHA at deployment time. */
+  RELEASE_ENV?: string;
+  RELEASE_SHA?: string;
   EVENT_RATE_LIMIT?: string;
 }
 
