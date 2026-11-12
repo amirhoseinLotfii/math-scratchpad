@@ -710,17 +710,17 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return json({ error: 'invalid_reset_scope' }, 400);
     }
     // Chapter uses the numeric chapter field of an event. Reject ambiguous or invalid IDs.
-    if (scope === 'chapter' && !/^[1-9][0-9]{0,5}$/.test(values.chapter ?? '')) {
+    if (['chapter', 'lesson', 'section'].includes(scope) && !/^[1-9][0-9]{0,5}$/.test(values.chapter ?? '')) {
       return json({ error: 'invalid_reset_chapter' }, 400);
     }
-    const required = scope === 'section' ? ['bankVersion', 'lesson', 'section']
-      : scope === 'lesson' ? ['bankVersion', 'lesson']
+    const required = scope === 'section' ? ['bankVersion', 'chapter', 'lesson', 'section']
+      : scope === 'lesson' ? ['bankVersion', 'chapter', 'lesson']
       : scope === 'chapter' ? ['bankVersion', 'chapter']
       : scope === 'session' ? ['session'] : [];
     if (requested.some(name => values[name] !== null && !required.includes(name))) return json({ error: 'invalid_reset_scope' }, 400);
     if (required.some(name => !values[name as keyof typeof values])) return json({ error: 'missing_reset_filter' }, 400);
-    const fields = scope === 'section' ? ['bankVersion', 'lesson', 'section'] as const
-      : scope === 'lesson' ? ['bankVersion', 'lesson'] as const
+    const fields = scope === 'section' ? ['bankVersion', 'chapter', 'lesson', 'section'] as const
+      : scope === 'lesson' ? ['bankVersion', 'chapter', 'lesson'] as const
       : scope === 'chapter' ? ['bankVersion', 'chapter'] as const
       : scope === 'session' ? ['session'] as const : [] as const;
     const where = fields.length ? ` WHERE ${fields.map(name => name === 'chapter'
