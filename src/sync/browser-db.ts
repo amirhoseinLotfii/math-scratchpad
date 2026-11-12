@@ -1,5 +1,6 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
+import { LEARNING_RESET_EPOCH } from './learning-reset-epoch';
 import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
 
 export const LEARNING_DB_NAME = 'math-scratchpad-sync-v2';
@@ -12,7 +13,7 @@ export const LEARNING_META_STORE = 'meta';
 export const LEGACY_MIGRATION_META_KEY = 'legacy-migration-v1';
 const LOCAL_RESET_EPOCH_KEY = 'math-scratchpad-local-learning-reset-epoch-v1';
 const LOCAL_RESET_PENDING_KEY = 'math-scratchpad-local-learning-reset-pending-v1';
-const LOCAL_RESET_EPOCH = '2026-11-11-v2';
+const LOCAL_RESET_EPOCH = LEARNING_RESET_EPOCH;
 const LEGACY_MIGRATION_LOCK_NAME = 'math-scratchpad-legacy-migration-v1';
 const LEGACY_MIGRATION_LOCK_KEY = 'legacy-migration-lock-v1';
 const LEGACY_MIGRATION_LOCK_LEASE_MS = 120_000;
@@ -111,10 +112,11 @@ export async function prepareLocalLearningReset(): Promise<boolean> {
   });
 }
 
-/** Release the local sync guard only after the authenticated cloud preflight is empty. */
-export function completeLocalLearningReset(): void {
+/** Re-clear local changes made while reset was pending, then release sync. */
+export async function completeLocalLearningReset(): Promise<void> {
   const storage = localStorageIfAvailable();
   if (!storage) throw new Error('Local browser storage is unavailable; sync remains paused.');
+  await clearLocalLearningData();
   storage.removeItem(LOCAL_RESET_PENDING_KEY);
   if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== null) throw new Error('The local reset guard could not be cleared; sync remains paused.');
 }

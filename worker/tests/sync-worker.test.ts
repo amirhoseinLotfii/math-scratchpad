@@ -5,6 +5,8 @@ import type { JWTVerifyGetKey } from 'jose';
 import { verifyGoogleIdToken } from '../src/auth';
 import { createApp, type IdTokenVerifier } from '../src/index';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
+import { DriveMirrorError } from '../src/google-drive';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 
 const OWNER_EMAIL = 'amirhoseinlotfalizadeprogramer@gmail.com';
 const CLIENT_ID = 'test-google-client.apps.googleusercontent.com';
@@ -141,10 +143,14 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
 
     const preflight = await call(app, '/events', {
       method: 'OPTIONS', origin: ALLOWED_ORIGIN,
-      extraHeaders: { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type' },
+      extraHeaders: {
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'authorization,content-type,x-math-scratchpad-reset-epoch',
+      },
     });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe(ALLOWED_ORIGIN);
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain(LEARNING_RESET_EPOCH_HEADER);
 
     const foreign = await call(app, '/health', { origin: 'https://example.com' });
     expect(foreign.status).toBe(403);
@@ -228,6 +234,79 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
       token: 'valid-test-token', body: { key, value: '{"draft":2}', revision: 1 },
     });
     expect(updated.status).toBe(200);
+  });
+
+  it('rejects writes from stale clients after reset and accepts the current reset epoch', async () => {
+    const app = createApp(validVerifier);
+    const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
+    const resetId = crypto.randomUUID();
+    const { runInDurableObject } = await import('cloudflare:test');
+    await runInDurableObject(stub, instance => {
+      const target = instance as unknown as {
+        ctx: { storage: { sql: { exec: (sql: string, ...bindings: string[]) => unknown } } };
+      };
+      target.ctx.storage.sql.exec(
+        "UPDATE learning_reset_control SET status = 'released', reset_id = ?, client_epoch = ? WHERE singleton = 1",
+        resetId,
+        LEARNING_RESET_EPOCH,
+      );
+    });
+
+    const staleEvent = await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } });
+    expect(staleEvent.status).toBe(426);
+    expect(await staleEvent.json()).toMatchObject({ error: 'client_update_required' });
+    const staleState = await call(app, '/state', {
+      token: 'valid-test-token', body: { key: 'math-scratchpad-session-v3', value: 'old', revision: 0 },
+    });
+    expect(staleState.status).toBe(426);
+
+    const currentHeaders = { [LEARNING_RESET_EPOCH_HEADER]: LEARNING_RESET_EPOCH };
+    const currentEvent = await call(app, '/events', {
+      token: 'valid-test-token', body: { events: [makeEvent()] }, extraHeaders: currentHeaders,
+    });
+    expect(currentEvent.status).toBe(200);
+    const currentState = await call(app, '/state', {
+      token: 'valid-test-token', body: { key: 'math-scratchpad-session-v3', value: 'new', revision: 0 },
+      extraHeaders: currentHeaders,
+    });
+    expect(currentState.status).toBe(200);
+  });
+
+  it('records a sanitized Google Drive stage when coordinated reset cleanup fails', async () => {
+    const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
+    const { runInDurableObject } = await import('cloudflare:test');
+    const resetId = crypto.randomUUID();
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        env: WorkerEnv;
+        driveClient?: { diagnosticStage: string; findFolderId: () => Promise<string | undefined> };
+        executeLearningReset: (request: Request) => Promise<Response>;
+        ctx: { storage: { sql: { exec<T>(sql: string, ...bindings: Array<string | number>): { toArray(): T[] } } } };
+      };
+      Object.assign(target.env, {
+        GOOGLE_DRIVE_CLIENT_SECRET: 'test-drive-secret',
+        GOOGLE_DRIVE_REFRESH_TOKEN: 'test-drive-refresh-token',
+      });
+      target.driveClient = {
+        diagnosticStage: 'drive_file_lookup_fetch_rejected',
+        findFolderId: async () => { throw new DriveMirrorError('network_error'); },
+      };
+
+      const response = await target.executeLearningReset(new Request('https://event-store.internal/internal/learning-reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId }),
+      }));
+      expect(response.status).toBe(502);
+      expect(await response.json()).toMatchObject({
+        error: 'learning_reset_incomplete', code: 'network_error',
+        failureStage: 'drive_reset:drive_file_lookup_fetch_rejected', retryWithSameResetId: true,
+      });
+      expect(target.ctx.storage.sql.exec<{ failure_stage: string; error_code: string }>(
+        "SELECT failure_stage, error_code FROM mirror_diagnostics WHERE destination = 'drive'",
+      ).toArray()).toEqual([{ failure_stage: 'drive_reset:drive_file_lookup_fetch_rejected', error_code: 'network_error' }]);
+      expect(target.ctx.storage.sql.exec<{ status: string }>(
+        'SELECT status FROM learning_reset_control WHERE singleton = 1',
+      ).toArray()).toEqual([{ status: 'running' }]);
+    });
   });
 
   it('deletes only the explicitly requested server state key and rejects unrelated names', async () => {

@@ -7,6 +7,7 @@
 import { SYNC_API_ORIGIN } from './sync-config';
 import { reportApiUnauthorized } from './api-unauthorized';
 import { keepLocalServerConflictValue, mergeServerStateValues } from './server-conflict-merge';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from './learning-reset-epoch';
 
 export type ServerStateRecord = { key: string; value: string | null; revision: number; updatedAt?: string };
 type ServerSnapshot = { records: ServerStateRecord[]; revision: number };
@@ -123,7 +124,11 @@ export class ServerBackedStorage implements Storage {
         try {
           response = await fetch(`${SYNC_API_ORIGIN}/state`, {
             method: 'POST', cache: 'no-store',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.token}`,
+              [LEARNING_RESET_EPOCH_HEADER]: LEARNING_RESET_EPOCH,
+            },
             body: JSON.stringify({ key, value: desiredValue, revision }),
           });
           if (response.status === 409) {
