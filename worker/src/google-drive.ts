@@ -604,29 +604,68 @@ function parseJsonText<T>(content: string): T {
 }
 
 function safeFetchFailureSuffix(error: unknown): string {
-  const cause = error && typeof error === 'object' && 'cause' in error
-    ? (error as { cause?: unknown }).cause
-    : undefined;
-  const code = cause && typeof cause === 'object' && 'code' in cause
-    ? (cause as { code?: unknown }).code
-    : undefined;
   const knownCodes: Record<string, string> = {
     ECONNRESET: 'connection_reset',
     ECONNREFUSED: 'connection_refused',
     ETIMEDOUT: 'timeout',
     ENOTFOUND: 'host_not_found',
+    EHOSTUNREACH: 'host_unreachable',
     EAI_AGAIN: 'dns_retry',
+    EPIPE: 'connection_broken',
+    ECONNABORTED: 'connection_aborted',
     UND_ERR_CONNECT_TIMEOUT: 'connect_timeout',
     UND_ERR_HEADERS_TIMEOUT: 'headers_timeout',
     UND_ERR_BODY_TIMEOUT: 'body_timeout',
     UND_ERR_SOCKET: 'socket_error',
+    ERR_SOCKET_CONNECTION_TIMEOUT: 'connect_timeout',
     ERR_INVALID_URL: 'invalid_url',
     ERR_INVALID_STATE: 'invalid_state',
   };
-  if (typeof code === 'string' && knownCodes[code]) return knownCodes[code];
-  if (error instanceof TypeError) return 'type_error';
-  if (error instanceof Error && error.name === 'AbortError') return 'aborted';
+
+  const knownNames: Record<string, string> = {
+    AbortError: 'aborted',
+    ConnectTimeoutError: 'connect_timeout',
+    Error: 'generic_error',
+    FetchError: 'fetch_error',
+    HeadersTimeoutError: 'headers_timeout',
+    NetworkError: 'network_error',
+    SocketError: 'socket_error',
+    TimeoutError: 'timeout',
+    TypeError: 'type_error',
+  };
+
+  const chain: object[] = [];
+  const seen = new Set<object>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current && (typeof current === 'object' || typeof current === 'function'); depth++) {
+    const item = current as object;
+    if (seen.has(item)) break;
+    seen.add(item);
+    chain.push(item);
+    current = readSafeValue(item, 'cause');
+  }
+
+  // Prefer a transport code from any nested cause to a broad wrapper error name.
+  for (const item of chain) {
+    const code = readSafeValue(item, 'code');
+    if (typeof code === 'string' && Object.prototype.hasOwnProperty.call(knownCodes, code)) return knownCodes[code];
+  }
+  for (const item of chain) {
+    const name = readSafeValue(item, 'name');
+    if (typeof name === 'string' && name !== 'Error'
+      && Object.prototype.hasOwnProperty.call(knownNames, name)) return knownNames[name];
+  }
+  if (chain.some(item => readSafeValue(item, 'name') === 'Error')) return knownNames.Error;
   return 'unknown';
+}
+
+function readSafeValue(target: object, key: string): unknown {
+  try {
+    return (target as Record<string, unknown>)[key];
+  }
+  catch {
+    return undefined;
+  }
 }
 
 function errorForStatus(status: number): DriveMirrorError {

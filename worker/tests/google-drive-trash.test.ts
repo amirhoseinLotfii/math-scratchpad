@@ -126,6 +126,26 @@ describe('Google Drive learning mirror trash', () => {
     expect(client.diagnosticStage).not.toContain('credentials');
   });
 
+  it('finds an allowlisted code through nested fetch causes before using the wrapper name', async () => {
+    const failure = { name: 'TypeError', message: 'private outer detail' };
+    Object.assign(failure, { cause: { cause: { code: 'EHOSTUNREACH', message: 'private inner detail' } } });
+    const { client } = makeClient(async () => { throw failure; });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_host_unreachable');
+    expect(client.diagnosticStage).not.toContain('private');
+  });
+
+  it('maps a known cross-realm error name without recording its message', async () => {
+    const { client } = makeClient(async () => {
+      throw { name: 'TypeError', message: 'private cross-realm request detail' };
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_type_error');
+    expect(client.diagnosticStage).not.toContain('private');
+  });
+
   it('rejects malformed batch responses instead of treating the file as trashed', async () => {
     const { client } = makeClient(async (url, init) => {
       if (init.method === 'GET') return fileMetadataResponse();
