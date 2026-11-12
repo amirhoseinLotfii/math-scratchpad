@@ -126,6 +126,56 @@ describe('Google Drive learning mirror trash', () => {
     expect(client.diagnosticStage).not.toContain('credentials');
   });
 
+  it('retries a rejected Drive read and succeeds when the connection recovers', async () => {
+    let attempts = 0;
+    const { client } = makeClient(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('fetch failed: private host detail');
+      return jsonResponse({ files: [] });
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).resolves.toEqual([]);
+    expect(attempts).toBe(2);
+    expect(client.diagnosticStage).toBe('drive_file_lookup_http_200');
+  });
+
+  it('retries a transient server response for a Drive read', async () => {
+    let attempts = 0;
+    const { client } = makeClient(async () => {
+      attempts += 1;
+      return attempts === 1 ? jsonResponse({ error: 'temporary failure' }, 503) : jsonResponse({ files: [] });
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).resolves.toEqual([]);
+    expect(attempts).toBe(2);
+    expect(client.diagnosticStage).toBe('drive_file_lookup_http_200');
+  });
+
+  it('stops after the bounded Drive read retry count and retains a sanitized failure stage', async () => {
+    let attempts = 0;
+    const { client } = makeClient(async () => {
+      attempts += 1;
+      throw new Error('fetch failed: private host and credential detail');
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(attempts).toBe(3);
+    expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_fetch_failed');
+    expect(client.diagnosticStage).not.toContain('credential');
+  });
+
+  it('does not retry a Drive trash mutation after a rejected request', async () => {
+    const { client, calls } = makeClient(async (_url, init) => {
+      if (init.method === 'GET') return fileMetadataResponse();
+      throw new Error('private mutation failure detail');
+    });
+
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(calls).toHaveLength(2);
+    expect(client.diagnosticStage).toBe('drive_trash_fetch_rejected_generic_error');
+    expect(client.diagnosticStage).not.toContain('private');
+  });
+
   it('finds an allowlisted code through nested fetch causes before using the wrapper name', async () => {
     const failure = { name: 'TypeError', message: 'private outer detail' };
     Object.assign(failure, { cause: { cause: { code: 'EHOSTUNREACH', message: 'private inner detail' } } });

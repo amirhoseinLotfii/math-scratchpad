@@ -10,6 +10,8 @@ const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const MAX_ETAG_RETRIES = 3;
 const SIMPLE_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
 const MULTIPART_UPLOAD_LIMIT_BYTES = SIMPLE_UPLOAD_LIMIT_BYTES - 16 * 1024;
+const DRIVE_GET_RETRY_ATTEMPTS = 3;
+const DRIVE_GET_RETRY_BASE_DELAY_MS = 150;
 
 export type DriveMirrorErrorCode =
   | 'not_configured'
@@ -469,18 +471,34 @@ export class GoogleDriveClient {
       this.stage = requestStage;
       const headers = new Headers(init.headers);
       headers.set('Authorization', `Bearer ${token}`);
-      try {
-        const response = await this.fetcher(input, { ...init, headers });
+      const isSafeRead = (init.method ?? 'GET').toUpperCase() === 'GET';
+      const maxAttempts = isSafeRead ? DRIVE_GET_RETRY_ATTEMPTS : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        let response: Response;
+        try {
+          response = await this.fetcher(input, { ...init, headers });
+        }
+        catch (error) {
+          if (attempt < maxAttempts - 1) {
+            await waitForDriveRetry(attempt);
+            continue;
+          }
+          const failureStage = requestStage === 'drive_trash' || requestStage === 'drive_file_lookup'
+            ? `${requestStage}_fetch_rejected_${safeFetchFailureSuffix(error)}`
+            : `${requestStage}_fetch_rejected`;
+          this.stage = failureStage;
+          throw new DriveMirrorError('network_error');
+        }
+
+        if (isSafeRead && response.status >= 500 && attempt < maxAttempts - 1) {
+          try { await response.body?.cancel(); } catch { /* Best effort before retrying the read. */ }
+          await waitForDriveRetry(attempt);
+          continue;
+        }
         this.stage = `${requestStage}_http_${response.status}`;
         return response;
       }
-      catch (error) {
-        const failureStage = requestStage === 'drive_trash' || requestStage === 'drive_file_lookup'
-          ? `${requestStage}_fetch_rejected_${safeFetchFailureSuffix(error)}`
-          : `${requestStage}_fetch_rejected`;
-        this.stage = failureStage;
-        throw new DriveMirrorError('network_error');
-      }
+      throw new DriveMirrorError('network_error');
     };
     let response = await send();
     if (response.status !== 401) return response;
@@ -716,6 +734,10 @@ function errorForStatus(status: number): DriveMirrorError {
   if (status === 429 || status === 507) return new DriveMirrorError('quota_exceeded');
   if (status >= 500) return new DriveMirrorError('network_error');
   return new DriveMirrorError('invalid_response');
+}
+
+function waitForDriveRetry(attempt: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, DRIVE_GET_RETRY_BASE_DELAY_MS * 2 ** attempt));
 }
 
 async function readJson<T>(response: Response): Promise<T> {
