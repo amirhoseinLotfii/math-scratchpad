@@ -157,6 +157,18 @@ describe('Google Drive learning mirror trash', () => {
     expect(client.diagnosticStage).not.toContain('credential');
   });
 
+  it('classifies network wording inside a wrapped error without copying the private detail', async () => {
+    const { client } = makeClient(async () => {
+      throw new Error('Worker subrequest failed: network error for https://private.example/?credential=secret');
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_network_error');
+    expect(client.diagnosticStage).not.toContain('private');
+    expect(client.diagnosticStage).not.toContain('credential');
+    expect(client.diagnosticStage).not.toContain('secret');
+  });
+
   it('rejects malformed batch responses instead of treating the file as trashed', async () => {
     const { client } = makeClient(async (url, init) => {
       if (init.method === 'GET') return fileMetadataResponse();
