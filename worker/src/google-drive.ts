@@ -677,9 +677,26 @@ function safeFetchFailureSuffix(error: unknown): string {
     for (const candidate of safeMessagePrefixes) {
       if (candidate.pattern.test(message.trim())) return candidate.suffix;
     }
+    const messageSuffix = safeFetchMessageSuffix(message);
+    if (messageSuffix) return messageSuffix;
   }
   if (chain.some(item => readSafeValue(item, 'name') === 'Error')) return knownNames.Error;
   return 'unknown';
+}
+
+function safeFetchMessageSuffix(message: string): string | undefined {
+  const normalized = message.toLowerCase();
+  if (/\b(?:dns|eai_again|name resolution|resolve host)\b/.test(normalized)) return 'dns_error';
+  if (/\b(?:timeout|timed out|etimedout)\b/.test(normalized)) return 'timeout';
+  if (/\b(?:connection reset|econnreset)\b/.test(normalized)) return 'connection_reset';
+  if (/\b(?:connection refused|econnrefused)\b/.test(normalized)) return 'connection_refused';
+  if (/\bsocket\b/.test(normalized)) return 'socket_error';
+  if (/\b(?:connect|connection)\b/.test(normalized) && /\b(?:fail|failed|failure|error|unavailable)\b/.test(normalized)) {
+    return 'connection_error';
+  }
+  if (/\bnetwork\b/.test(normalized)) return 'network_error';
+  if (/\bfetch\b/.test(normalized) && /\b(?:fail|failure|reject|rejected)\b/.test(normalized)) return 'fetch_failed';
+  return undefined;
 }
 
 function readSafeValue(target: object, key: string): unknown {
