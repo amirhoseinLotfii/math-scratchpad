@@ -1,6 +1,6 @@
 # Scoped learning reset — staged implementation contract (2026-11-12)
 
-Status: **design + pure classification tests only; NOT READY FOR MERGE OR PRODUCTION**.
+Status: **read-only impact-preview API + worker tests + design only; NOT READY FOR MERGE OR PRODUCTION**.
 Base commit: `59913b8fb45bfe07ca2f31614efb1843b2b5569d` (the deployed PR #91 code).
 Branch: `feature/scoped-learning-reset`; this branch must remain isolated from production.
 
@@ -8,7 +8,7 @@ Branch: `feature/scoped-learning-reset`; this branch must remain isolated from p
 
 Allow an authenticated owner to reset one chapter or one lesson without erasing any other learning records, question bank, sign-in sessions, application credentials, another project's Notion rows, or any unrelated Drive content. The reset includes direct answers **and derived side effects**, not just event rows. The existing global reset remains unchanged.
 
-The current commit deliberately adds only a pure parser/classifier plus unit tests. It does **not** expose an API, delete data, alter mirror cursors, change a client epoch, or claim an end-to-end pass.
+The branch extends the existing owner-authenticated `GET /reset/preview` for chapter scope and requires chapter identity for lesson/section scope, with Worker tests. It does **not** enable execution, delete data, alter mirror cursors, change a client epoch, or claim an end-to-end pass.
 
 ## 2. Identity and scope contract
 
@@ -19,7 +19,7 @@ Minimum safe internal scope (stricter than the original UI sketch):
 
 Reason: `LearnEvent` has `chapter: number`, `lesson: string` and `bankVersion: string`. A bare lesson ID is not guaranteed unique across chapters and bank revisions. Before implementation verify the bank's canonical lesson-to-chapter mapping; never trust arbitrary client scope assertions. Current parser deliberately rejects extra fields and invalid IDs.
 
-`classifyScopedLearningEvent` returns `preserve | remove | rebuild` and **does not execute deletion**. `remove` is a candidate set for the later plan, not authorization to run SQL DELETE. Legacy migration payloads, chapter snapshots affected by a lesson reset, and shared session/report events require semantic replay.
+Proposed (not yet implemented): a pure `classifyScopedLearningEvent` helper returning `preserve | remove | rebuild`. `remove` would represent a candidate set for a later plan, not authorization to run SQL DELETE. Legacy migration payloads, chapter snapshots affected by a lesson reset, and shared session/report events require semantic replay.
 
 ## 3. Required read-only preview before execute
 
@@ -35,7 +35,7 @@ Do not publish a preview reporting estimated numbers as exact numbers. Re-read s
 ## 4. Execution protocol (not yet implemented)
 
 Proposed endpoints:
-- `GET /reset/preview?type=lesson&id=1.1&chapter=1&bankVersion=v21` (owner session; dry-run only).
+- **Implemented read-only:** `GET /reset/preview?scope=chapter&chapter=1&bankVersion=v21` and `GET /reset/preview?scope=lesson&chapter=1&lesson=1.1&bankVersion=v21` (owner session; `canExecute:false`).
 - `POST /admin/learning-reset/scoped` (separate admin secret, explicit confirmation string, UUID v4 `resetId`, validated scope).
 - `GET /admin/learning-reset/scoped/status?resetId=...` and a safe release/abort path.
 
