@@ -19,7 +19,7 @@ for (const state of states) test(`AXE ${state}: no WCAG A/AA violations includin
    await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
    const importAction = page.getByRole('menuitem', { name: 'Import session JSON' });
    await importAction.scrollIntoViewIfNeeded();
-   // Exercise the mobile menu action with a pointer; keyboard activation has its own coverage.
+   // Exercise the mobile menu action with a pointer; keyboard navigation requires separate verification.
    await importAction.click();
    const jsonInput = page.getByRole('textbox', { name: 'Copy or paste session JSON' });
    await expect(jsonInput).toBeVisible();
