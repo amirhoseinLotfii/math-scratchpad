@@ -474,8 +474,11 @@ export class GoogleDriveClient {
         this.stage = `${requestStage}_http_${response.status}`;
         return response;
       }
-      catch {
-        this.stage = `${requestStage}_fetch_rejected`;
+      catch (error) {
+        const failureStage = requestStage === 'drive_trash'
+          ? `${requestStage}_fetch_rejected_${safeFetchFailureSuffix(error)}`
+          : `${requestStage}_fetch_rejected`;
+        this.stage = failureStage;
         throw new DriveMirrorError('network_error');
       }
     };
@@ -598,6 +601,32 @@ function parseSingleDriveBatchResponse(contentType: string | null, content: stri
 function parseJsonText<T>(content: string): T {
   try { return JSON.parse(content) as T; }
   catch { throw new DriveMirrorError('invalid_response'); }
+}
+
+function safeFetchFailureSuffix(error: unknown): string {
+  const cause = error && typeof error === 'object' && 'cause' in error
+    ? (error as { cause?: unknown }).cause
+    : undefined;
+  const code = cause && typeof cause === 'object' && 'code' in cause
+    ? (cause as { code?: unknown }).code
+    : undefined;
+  const knownCodes: Record<string, string> = {
+    ECONNRESET: 'connection_reset',
+    ECONNREFUSED: 'connection_refused',
+    ETIMEDOUT: 'timeout',
+    ENOTFOUND: 'host_not_found',
+    EAI_AGAIN: 'dns_retry',
+    UND_ERR_CONNECT_TIMEOUT: 'connect_timeout',
+    UND_ERR_HEADERS_TIMEOUT: 'headers_timeout',
+    UND_ERR_BODY_TIMEOUT: 'body_timeout',
+    UND_ERR_SOCKET: 'socket_error',
+    ERR_INVALID_URL: 'invalid_url',
+    ERR_INVALID_STATE: 'invalid_state',
+  };
+  if (typeof code === 'string' && knownCodes[code]) return knownCodes[code];
+  if (error instanceof TypeError) return 'type_error';
+  if (error instanceof Error && error.name === 'AbortError') return 'aborted';
+  return 'unknown';
 }
 
 function errorForStatus(status: number): DriveMirrorError {
