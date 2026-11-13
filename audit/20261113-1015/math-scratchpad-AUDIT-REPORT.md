@@ -2,7 +2,7 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-4 Blocker, 1 Critical, 9 High, 1 Medium, 1 Low. Findings include static risks, not all reproduced.
+5 Blocker, 1 Critical, 9 High, 1 Medium, 1 Low. Findings include static risks, not all reproduced.
 Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
@@ -32,6 +32,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Session JSON replace confirmation | FAILED | 3 local mobile runs replaced synthetic work without confirmation | e2e/audit/import.requires-confirmation.spec.ts; AUD-017 |
+| main | Invalid session JSON | VERIFIED | 3 mobile tests: invalid, oversized and script-bearing malformed input displayed error; no test script executed | e2e/audit/import.invalid-inputs.spec.ts; no general XSS guarantee |
 | main | Standalone offline build | FAILED | editor never mounts; undefined PROD, 3 browser test failures | e2e/audit/standalone.start.spec.ts; AUD-016 |
 | main | Full backup fixture | VERIFIED | mobile and desktop each passed; desktop initially crashed under concurrent load, rerun passed | e2e/persistence/learning-backup.spec.ts |
 | main | Keyboard adaptations | VERIFIED | 15 passed mobile-320 | e2e/accessibility/keyboard-and-adaptations.spec.ts |
@@ -67,6 +69,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - AUD-009: Distinct reset releases reuse the same epoch. Phone workaround: none verified; avoid any additional reset while this is investigated.
 
 - AUD-014: A pre-existing synthetic outbox event was sent despite the local reset-pending flag; no production data was sent.
+
+- AUD-017: Session JSON restore replaces current synthetic work without a separate confirmation; back up current work before any import.
 
 ## 5. All findings
 ### AUD-001 — Reset-pending state makes editor inert until authenticated cloud check
@@ -309,6 +313,21 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Standalone red test passes, offline smoke tests verify editor, storage reload and no unintended external requests; Vite Pages build remains green.
 - **Size:** S · **Fix risk:** medium
 
+### AUD-017 — Session JSON restore replaces current work without confirmation
+- **Category:** Data
+- **Severity:** Blocker · **Blocks learning today:** yes
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (executed); PR 91 and PR 93 not independently tested
+- **Location:** `src/app/practice-launcher.tsx:56`
+- **Related:** G7 · G8 · test matrix Session/backup/import
+- **Evidence:** Three local mobile browser runs entered a synthetic expression, pasted a different valid serialized session and pressed Restore. The previous expression was replaced immediately and no separate confirmation dialog appeared. External requests were blocked. This demonstrates replacement of current UI state; durable recovery options and actual user's data were not examined.
+- **Reproduction:** `npx playwright test e2e/audit/import.requires-confirmation.spec.ts --project=mobile-390 --workers=1`. The red test expects existing work to remain until a confirmation is presented.
+- **Expected / Actual:** A destructive session replacement requires a reviewable confirmation and preservation or backup path / valid JSON is loaded immediately when Restore is pressed.
+- **Root cause:** UI / state · `src/app/practice-launcher.tsx:56` · successful parsing directly dispatches `actions.load` without an intervening confirmation or backup.
+- **Proposed fix (not executed):** Preview consequences, provide an explicit cancel-first replacement confirmation, and offer a verified backup or recoverable undo before dispatching the replacement.
+- **Fix acceptance:** Red test passes on mobile and desktop; cancel leaves current session intact, confirm replaces exactly once, and recovery from accidental import is verified.
+- **Size:** M · **Fix risk:** medium
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Blocks learning today | Confidence | Verification | Refs | Location | Size |
 |---|---|---|---|---|---|---|---|---|---|
@@ -328,6 +347,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 93 static | src/sync/runtime.ts:265 | M |
 | AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | no | confirmed | VERIFIED | main 7eeeef0, PR 93 d1c730c | src/app/exercise-menu.tsx:86 | S |
 | AUD-016 | Standalone HTML fails to mount because production flag is undefined | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 and PR 93 static | scripts/standalone.mjs:4 | S |
+| AUD-017 | Session JSON restore replaces current work without confirmation | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 | src/app/practice-launcher.tsx:56 | M |
 
 ## Notion read-only aggregate observations
 On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
@@ -494,7 +514,7 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - S10: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S11: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S12: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S13: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S13: VERIFIED — mobile-390 local browser tested malformed JSON, a 1,000,001-character input and one script-bearing malformed object; visible errors and no execution were observed. Desktop and other payloads remain NOT_TESTED. See e2e/audit/import.invalid-inputs.spec.ts.
 - S14: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S15: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S16: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
@@ -514,7 +534,7 @@ Each complete row below is NOT_TESTED unless otherwise stated; partial results d
 - Drive/Notion adapters: FAILED — synthetic reset ownership and references AUD-010/011; live effects not touched.
 - Scoped reset: NOT_TESTED — no execute route statically (AUD-005).
 - Multi-device: NOT_TESTED — desktop local-storage conflict tests pass, full convergence untested.
-- Session, backup, import: NOT_TESTED — partial menu and local storage tests only.
+- Session, backup, import: FAILED — destructive JSON replacement has no confirmation (AUD-017); backup fixture passed, full matrix incomplete.
 - Menu and accessibility: NOT_TESTED — selected AXE/mobile checks passed, all items/keyboard coverage incomplete.
 - Theme and layout: NOT_TESTED — partial 320/mobile tests passed; full visual matrix absent.
 - Offline/network errors: NOT_TESTED — mocked reconnect passed, chaos matrix incomplete.
@@ -943,6 +963,29 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "run_cmd": "npm run build && npx playwright test --config e2e/audit/playwright.standalone.config.ts",
     "depends_on": [],
     "size": "S",
+    "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-017",
+    "title": "Session JSON restore replaces current work without confirmation",
+    "category": "Data",
+    "severity": "Blocker",
+    "blocker": true,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0"
+    ],
+    "location": "src/app/practice-launcher.tsx:56",
+    "requirements": [
+      "G7",
+      "G8"
+    ],
+    "root_cause_layer": "UI",
+    "red_test": "e2e/audit/import.requires-confirmation.spec.ts",
+    "run_cmd": "npx playwright test e2e/audit/import.requires-confirmation.spec.ts --project=mobile-390 --workers=1",
+    "depends_on": [],
+    "size": "M",
     "fix_risk": "medium"
   }
 ]
