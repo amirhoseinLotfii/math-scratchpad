@@ -80,3 +80,17 @@ Gitleaks 8.30.1 returned zero findings on each imported directory, and `git diff
 - `worker/test/audit/vitest.audit.config.ts` — 8 files, 9 tests: 2 PASS / 7 FAIL. Confirmed red findings: AUD-005 scoped execute route returns 404; AUD-009 release IDs reuse the same epoch and old-generation writes persist; AUD-010 an unmarked `progress.json` is selected for trash; AUD-011 Notion page references are deleted; AUD-013 a valid 300 KB state payload returns 413; AUD-018 combined sync rejects when one mirror rejects.
 - Audit Playwright keyboard (six mobile cases) and standalone suite could not launch because Chromium headless shell is missing. They are BLOCKED/NOT_TESTED, not feature failures. The pre-existing browser installation attempts and KERNEL browser restriction remain in effect.
 - No finding is recorded FIXED from this phase. Next: address one confirmed finding, add/keep acceptance coverage, rerun its red test and affected green suites, then checkpoint.
+
+## Phase 5 — AUD-009 fixed — 2026-11-13 17:38 Asia/Tehran
+
+### Change
+- Reset release creates and persists a random server generation for each distinct reset. Repeating the same reset release is idempotent and returns the already stored generation. The initial pre-reset state remains compatible with the build-time epoch.
+- Added owner-authenticated `GET /reset/epoch`; writes after a released reset require its generation and return `426` plus `requiredEpoch` when stale.
+- Client preflights the current server generation before enabling sync/hydration, tracks it separately from build-version reset metadata, clears local learning data behind the pending guard on a new generation, and sends the dynamic value on both event and state writes. A reset racing a live session fails closed and triggers a reload/reconciliation.
+
+### Verification
+- Targeted Worker audit tests for two complete resets, retrying each release, rejection of the first generation, and acceptance of a fresh event passed (5 passed; 1 unrelated route test skipped by filter).
+- Client reset-generation/outbox/header tests passed. Integrated root: 77 files / 985 tests passed. Worker: 7 files / 123 tests passed. `npm run test:typecheck` passed. `npm run build` passed and Wrangler exited in `--dry-run`; no deployment occurred.
+- `git diff --check` and staged Gitleaks scan passed. Full audit Worker suite still has red AUD-005, AUD-010, AUD-011, AUD-013. Playwright acceptance remains BLOCKED by missing Chromium.
+
+Local commit: `a61760ec1971c09f14ea40236f80f69e039f5f3f`. GitHub code branch commit: `8a1e78be40ad6c7d87811af47e680c7e96513c86`. The exact local/remote tree SHA is `e57078ce02d55e23d0fbe58cdced6ec8fe3e0143`. No main merge or production deployment.
