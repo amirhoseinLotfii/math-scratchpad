@@ -16,6 +16,8 @@ export interface WorkerEnv {
   NOTION_API_KEY?: string;
   /** Temporary owner-issued credential for one coordinated learning-data reset. */
   LEARNING_RESET_TOKEN?: string;
+  /** Fail-closed feature gate for local-only scoped reset execution; unset in deployed environments. */
+  SCOPED_RESET_ENABLED?: string;
   /** Public Notion data-source identifiers. Never put credentials in these bindings. */
   NOTION_DATA_SOURCE_ATTEMPTS?: string;
   NOTION_DATA_SOURCE_SESSIONS?: string;

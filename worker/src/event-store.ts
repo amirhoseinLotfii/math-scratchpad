@@ -7,6 +7,11 @@ import { snapshotName } from './immutable-snapshot';
 import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from './session';
 import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 import {
+  classifyScopedLearningEvent,
+  parseScopedLearningResetScope,
+  type ScopedLearningResetScope,
+} from './scoped-reset-plan';
+import {
   applyConceptEvent,
   applyDailyEvent,
   applySessionEvent,
@@ -99,6 +104,11 @@ const NOTION_RETRY_MS = 60_000;
 const MAX_MIRROR_SUBREQUESTS = 40;
 const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
 const LEARNING_RESET_TABLE = 'learning_reset_control';
+const SCOPED_RESET_OPERATIONS_TABLE = 'scoped_reset_operations';
+const MAX_SCOPED_RESET_BODY_BYTES = 16_384;
+const MAX_SCOPED_RESET_REBUILD_EVENTS = 5_000;
+const SCOPED_RESET_REVIEW_CONFIRMATION = 'I_REVIEWED_SCOPED_RESET_PREVIEW';
+const SCOPED_RESET_DELETE_CONFIRMATION = 'I_CONFIRM_SCOPED_LEARNING_DATA_DELETION';
 /**
  * Each trashed mirror costs two Drive subrequests (verify + batch trash). Keep one reset call
  * well under the Workers Free per-invocation subrequest cap (50) and resume on retry.
@@ -115,6 +125,25 @@ type StoredNotionMirrorState = {
 };
 type PendingNotionState = { key: string; revision: number };
 type MirrorSubrequestBudget = { used: number; limit: number };
+type ScopedResetOperationRow = {
+  operation_id: string;
+  scope_json: string;
+  snapshot_token: string;
+  state: 'prepared' | 'approved' | 'completed' | 'expired';
+  expires_at: number;
+  result_json: string | null;
+};
+type ScopedResetEventRow = { seq: number; event_id: string; event_json: string };
+type ScopedResetSnapshot = {
+  scope: ScopedLearningResetScope;
+  snapshotToken: string;
+  matchingEvents: number;
+  totalEvents: number;
+  lastSeq: number;
+  appStateRevision: number;
+  removableEventIds: string[];
+  blockers: string[];
+};
 
 class MirrorSubrequestBudgetExceeded extends Error {
   readonly code = 'subrequest_budget_exceeded';
@@ -134,6 +163,28 @@ function canonicalJson(value: unknown): string {
     return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+/** A compact optimistic-concurrency fingerprint; authorization is enforced separately. */
+function scopedResetFingerprint(value: string): string {
+  let hash = 14_695_981_039_346_656_037n;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= BigInt(value.charCodeAt(index));
+    hash = BigInt.asUintN(64, hash * 1_099_511_628_211n);
+  }
+  return `scoped-v1-${hash.toString(16).padStart(16, '0')}`;
+}
+
+function isScopedResetSharedStateKey(key: string): boolean {
+  return [
+    'math-scratchpad-session-v3',
+    'math-scratchpad-redux-v2',
+    'math-scratchpad-flow-v1',
+    'math-scratchpad-drive-session-archive-v1',
+    'math-scratchpad-reading-position-v1',
+    'math-scratchpad-lesson-progress-v1:',
+    'math-scratchpad-last-open-lesson-v1:',
+  ].some(marker => marker.endsWith(':') ? key.startsWith(marker) : key === marker);
 }
 
 function isLearningMirrorFileName(name: string): boolean {
@@ -271,6 +322,16 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       ctx.storage.sql.exec(`ALTER TABLE ${LEARNING_RESET_TABLE} ADD COLUMN client_epoch TEXT`);
     }
     ctx.storage.sql.exec(`INSERT OR IGNORE INTO ${LEARNING_RESET_TABLE} (singleton, status, reset_id) VALUES (1, 'idle', NULL)`);
+    ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS ${SCOPED_RESET_OPERATIONS_TABLE} (
+      operation_id TEXT PRIMARY KEY,
+      scope_json TEXT NOT NULL,
+      snapshot_token TEXT NOT NULL,
+      state TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      result_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -297,7 +358,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       if (url.pathname === '/bank/source') return this.registerBankSource(request);
       return this.readBank(url.pathname === '/bank/content');
     }
-    const supported = (request.method === 'POST' && url.pathname === '/events')
+    const supported = (request.method === 'POST' && (url.pathname === '/events' || url.pathname === '/reset/execute'))
       || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status' || url.pathname === '/state' || url.pathname === '/reset/preview'))
       || (request.method === 'POST' && (url.pathname === '/drive/sync' || url.pathname === '/notion/sync' || url.pathname === '/internal/weekly-backup' || url.pathname === '/state' || url.pathname === '/internal/sync-all'));
     if (!supported) return json({ error: 'not_found' }, 404);
@@ -331,6 +392,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (rate) return rate;
 
     if (url.pathname === '/reset/preview') return this.resetPreview(url);
+    if (request.method === 'POST' && url.pathname === '/reset/execute') return this.executeScopedReset(request);
     if (url.pathname === '/state') return request.method === 'GET' ? this.readAppState()
       : this.trackLearningMutation(() => this.writeAppState(request));
     if (url.pathname === '/events') return this.trackLearningMutation(() => this.append(request));
@@ -943,10 +1005,41 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       "SELECT key FROM app_state WHERE key LIKE 'math-scratchpad-%'",
     ).toArray().map(record => record.key);
     const protectedStateKeys = stateKeys.filter(key => key.includes('drive-config') || key.includes('bank-cache') || key.includes('device-id'));
-    const affectedSharedStateKeys = stateKeys.filter(key => key.includes('lesson-progress') || key.includes('session-archive') || key.includes('session-v3'));
+    const affectedSharedStateKeys = stateKeys.filter(isScopedResetSharedStateKey);
     const notionPages = Number(this.ctx.storage.sql.exec<{ count: number }>(
       'SELECT COUNT(*) AS count FROM notion_page_refs',
     ).one().count);
+    let scopedExecution: Record<string, unknown> | undefined;
+    if (scope === 'lesson' || scope === 'chapter') {
+      const parsedScope = scope === 'lesson'
+        ? parseScopedLearningResetScope({
+          type: 'lesson', id: values.lesson, chapter: Number(values.chapter), bankVersion: values.bankVersion,
+        })
+        : parseScopedLearningResetScope({
+          type: 'chapter', id: values.chapter, bankVersion: values.bankVersion,
+        });
+      if (parsedScope) {
+        const plan = this.buildScopedResetSnapshot(parsedScope);
+        const enabled = this.env.SCOPED_RESET_ENABLED === 'true';
+        scopedExecution = {
+          enabled,
+          eligible: enabled && plan.blockers.length === 0,
+          snapshotToken: plan.snapshotToken,
+          matchingEvents: plan.matchingEvents,
+          removableEvents: plan.removableEventIds.length,
+          blockers: [...plan.blockers, ...(!enabled ? ['feature_disabled'] : [])].sort(),
+        };
+      } else {
+        scopedExecution = {
+          enabled: this.env.SCOPED_RESET_ENABLED === 'true',
+          eligible: false,
+          snapshotToken: null,
+          matchingEvents,
+          removableEvents: 0,
+          blockers: ['unsupported_or_invalid_scope'],
+        };
+      }
+    }
     return json({
       readOnly: true,
       canExecute: false,
@@ -960,7 +1053,285 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       sharedStateKeysRequiringSelectiveMerge: affectedSharedStateKeys.length,
       notionPageReferencesRequiringReconciliation: scope === 'all' ? notionPages : null,
       requiresCloudReconciliation: true,
-      warning: 'Preview only. No reset or deletion endpoint is enabled.',
+      ...(scopedExecution ? { scopedExecution } : {}),
+      warning: 'Preview only. Scoped execution is disabled unless its Worker flag is enabled and every safety check passes.',
+    });
+  }
+
+  /** Builds a stable, owner-local snapshot. The token changes if any relevant data changes. */
+  private buildScopedResetSnapshot(scope: ScopedLearningResetScope): ScopedResetSnapshot {
+    const fields = scope.type === 'chapter'
+      ? ['bankVersion', 'chapter'] as const
+      : ['bankVersion', 'chapter', 'lesson'] as const;
+    const values: Record<string, string | number> = scope.type === 'chapter'
+      ? { bankVersion: scope.bankVersion, chapter: Number(scope.id) }
+      : { bankVersion: scope.bankVersion, chapter: scope.chapter, lesson: scope.id };
+    const where = fields.map(name => name === 'chapter'
+      ? `json_extract(event_json, '$.chapter') = CAST(? AS INTEGER)`
+      : `json_extract(event_json, '$.${name}') = ?`).join(' AND ');
+    const matchingCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM learning_events WHERE ${where}`,
+      ...fields.map(name => values[name]),
+    ).one().count);
+    const matchingRows = this.ctx.storage.sql.exec<ScopedResetEventRow>(
+      `SELECT seq, event_id, event_json FROM learning_events WHERE ${where} ORDER BY seq ASC LIMIT ?`,
+      ...fields.map(name => values[name]), MAX_SCOPED_RESET_REBUILD_EVENTS + 1,
+    ).toArray();
+    const stats = this.ctx.storage.sql.exec<{ count: number; lastSeq: number | null }>(
+      'SELECT COUNT(*) AS count, MAX(seq) AS lastSeq FROM learning_events',
+    ).one();
+    const appStateRows = this.ctx.storage.sql.exec<{
+      key: string; value: string | null; revision: number; updated_at: string;
+    }>('SELECT key, value, revision, updated_at FROM app_state ORDER BY key').toArray();
+    const appStateRevision = this.appStateRevision();
+    const sharedStateKeyCount = appStateRows.filter(row => isScopedResetSharedStateKey(row.key)).length;
+    const notionPageCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM notion_page_refs',
+    ).one().count);
+    const notionQueueCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM notion_state_queue',
+    ).one().count);
+    const notionMistakeIndexCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      'SELECT (SELECT COUNT(*) FROM notion_mistake_reviews) + (SELECT COUNT(*) FROM notion_session_mistakes) AS count',
+    ).one().count);
+    const notionResetPendingCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE status IN ('pending', 'retry', 'ownership_unverified')",
+    ).one().count);
+    const mirrorHealth = this.ctx.storage.sql.exec<{
+      destination: string; status: string; pending_count: number;
+    }>("SELECT destination, status, pending_count FROM sync_health WHERE destination IN ('drive','notion') ORDER BY destination").toArray();
+    const configuredMirrors = {
+      drive: this.driveConfigured(),
+      notion: Boolean(notionDataSourcesFromEnv(this.env) && this.env.NOTION_API_KEY),
+    };
+    const resetStatus = this.ctx.storage.sql.exec<{ status: string }>(
+      `SELECT status FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
+    ).one().status;
+    const blockers = new Set<string>();
+    const removableEventIds: string[] = [];
+    if (sharedStateKeyCount > 0) blockers.add('learning_state_requires_selective_merge');
+    if (notionPageCount > 0) blockers.add('notion_pages_require_reconciliation');
+    if (notionQueueCount > 0 || notionMistakeIndexCount > 0 || notionResetPendingCount > 0) {
+      blockers.add('notion_sync_state_requires_reconciliation');
+    }
+    if (configuredMirrors.drive || configuredMirrors.notion
+      || mirrorHealth.some(item => item.status !== 'not_configured')) blockers.add('cloud_mirror_requires_reconciliation');
+    if (resetStatus === 'running' || resetStatus === 'awaiting_release') blockers.add('full_reset_in_progress');
+    if (Number(stats.count) > MAX_SCOPED_RESET_REBUILD_EVENTS || matchingCount > MAX_SCOPED_RESET_REBUILD_EVENTS) {
+      blockers.add('projection_rebuild_too_large');
+    }
+
+    for (const row of matchingRows) {
+      let value: unknown;
+      try { value = JSON.parse(row.event_json); }
+      catch {
+        blockers.add('matching_event_invalid');
+        continue;
+      }
+      const parsed = learnEventSchema.safeParse(value);
+      if (!parsed.success) {
+        blockers.add('matching_event_invalid');
+        continue;
+      }
+      const disposition = classifyScopedLearningEvent(parsed.data, scope);
+      if (disposition === 'remove') removableEventIds.push(row.event_id);
+      else if (disposition === 'rebuild') blockers.add('aggregate_event_requires_rebuild');
+      else blockers.add('event_outside_scope');
+    }
+
+    const lastSeq = Number(stats.lastSeq ?? 0);
+    const totalEvents = Number(stats.count);
+    const snapshotPayload = canonicalJson({
+      scope,
+      matchingRows,
+      totalEvents,
+      lastSeq,
+      appStateRevision,
+      appStateRows,
+      notionPageCount,
+      notionQueueCount,
+      notionMistakeIndexCount,
+      notionResetPendingCount,
+      mirrorHealth,
+      configuredMirrors,
+      resetStatus,
+    });
+    return {
+      scope,
+      snapshotToken: scopedResetFingerprint(snapshotPayload),
+      matchingEvents: matchingCount,
+      totalEvents,
+      lastSeq,
+      appStateRevision,
+      removableEventIds,
+      blockers: [...blockers].sort(),
+    };
+  }
+
+  /** Rebuild derived Notion projections after deleting scoped source events. */
+  private rebuildNotionProjectionsFromEventLog(): void {
+    this.ctx.storage.sql.exec('DELETE FROM notion_projections');
+    this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = 0 WHERE singleton = 1');
+    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
+      'SELECT seq, event_json FROM learning_events ORDER BY seq ASC',
+    ).toArray();
+    for (const row of rows) {
+      const event = learnEventSchema.parse(JSON.parse(row.event_json));
+      this.applyNotionProjection(event);
+      this.setProjectionSequence(Number(row.seq));
+    }
+  }
+
+  /** Journaled, owner-routed scoped reset. Every destructive write is one SQLite transaction. */
+  private async executeScopedReset(request: Request): Promise<Response> {
+    if (this.env.SCOPED_RESET_ENABLED !== 'true') return json({ error: 'scoped_reset_disabled' }, 503);
+    const raw = await readBoundedBody(request, MAX_SCOPED_RESET_BODY_BYTES);
+    if (!raw) return json({ error: 'payload_too_large' }, 413);
+    let input: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return json({ error: 'invalid_scoped_reset_request' }, 400);
+      input = parsed as Record<string, unknown>;
+    } catch {
+      return json({ error: 'invalid_scoped_reset_request' }, 400);
+    }
+
+    const action = input.action;
+    const operationId = input.operationId;
+    const headerKey = request.headers.get('Idempotency-Key');
+    if ((action !== 'confirm_review' && action !== 'confirm_delete' && action !== 'execute')
+      || typeof operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)
+      || headerKey !== operationId) {
+      return json({ error: 'invalid_scoped_reset_request' }, 400);
+    }
+
+    const now = Date.now();
+    return this.ctx.storage.transactionSync(() => {
+      if (this.isLearningResetLocked()) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
+
+      if (action === 'confirm_review') {
+        const allowed = new Set(['action', 'operationId', 'scope', 'snapshotToken', 'confirmation']);
+        if (Object.keys(input).some(key => !allowed.has(key))
+          || input.confirmation !== SCOPED_RESET_REVIEW_CONFIRMATION
+          || typeof input.snapshotToken !== 'string' || !/^scoped-v1-[0-9a-f]{16}$/.test(input.snapshotToken)) {
+          return json({ error: 'invalid_scoped_reset_confirmation' }, 400);
+        }
+        const scope = parseScopedLearningResetScope(input.scope);
+        if (!scope) return json({ error: 'invalid_reset_scope' }, 400);
+        const scopeJson = canonicalJson(scope);
+        const existing = this.readScopedResetOperation(operationId);
+        if (existing) {
+          if (existing.scope_json !== scopeJson || existing.snapshot_token !== input.snapshotToken) {
+            return json({ error: 'idempotency_key_conflict' }, 409);
+          }
+          return this.scopedResetOperationResponse(existing, true);
+        }
+        const plan = this.buildScopedResetSnapshot(scope);
+        if (plan.blockers.length > 0) return json({ error: 'scoped_reset_not_safe', blockers: plan.blockers }, 409);
+        if (plan.snapshotToken !== input.snapshotToken) return json({ error: 'stale_reset_preview' }, 409);
+        const timestamp = new Date(now).toISOString();
+        this.ctx.storage.sql.exec(
+          `INSERT INTO ${SCOPED_RESET_OPERATIONS_TABLE}
+            (operation_id, scope_json, snapshot_token, state, expires_at, result_json, created_at, updated_at)
+           VALUES (?, ?, ?, 'prepared', ?, NULL, ?, ?)`,
+          operationId, scopeJson, input.snapshotToken, now + 5 * 60_000, timestamp, timestamp,
+        );
+        return json({ operationId, state: 'prepared', next: 'confirm_delete', expiresAt: now + 5 * 60_000 });
+      }
+
+      const existing = this.readScopedResetOperation(operationId);
+      if (!existing) return json({ error: 'scoped_reset_operation_not_found' }, 409);
+      if (existing.state === 'completed') return this.scopedResetOperationResponse(existing, true);
+      if (existing.expires_at < now) {
+        this.ctx.storage.sql.exec(
+          `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'expired', updated_at = ? WHERE operation_id = ? AND state != 'completed'`,
+          new Date(now).toISOString(), operationId,
+        );
+        return json({ error: 'scoped_reset_confirmation_expired' }, 409);
+      }
+      const scope = parseScopedLearningResetScope(JSON.parse(existing.scope_json));
+      if (!scope) return json({ error: 'scoped_reset_operation_corrupt' }, 500);
+
+      if (action === 'confirm_delete') {
+        if (Object.keys(input).some(key => !['action', 'operationId', 'confirmation'].includes(key))
+          || input.confirmation !== SCOPED_RESET_DELETE_CONFIRMATION) {
+          return json({ error: 'invalid_scoped_reset_confirmation' }, 400);
+        }
+        if (existing.state === 'approved') return this.scopedResetOperationResponse(existing, true);
+        if (existing.state !== 'prepared') return json({ error: 'scoped_reset_confirmation_required' }, 409);
+        const plan = this.buildScopedResetSnapshot(scope);
+        if (plan.blockers.length > 0) return json({ error: 'scoped_reset_not_safe', blockers: plan.blockers }, 409);
+        if (plan.snapshotToken !== existing.snapshot_token) return json({ error: 'stale_reset_preview' }, 409);
+        this.ctx.storage.sql.exec(
+          `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'approved', updated_at = ? WHERE operation_id = ? AND state = 'prepared'`,
+          new Date(now).toISOString(), operationId,
+        );
+        return json({ operationId, state: 'approved', next: 'execute' });
+      }
+
+      if (Object.keys(input).some(key => !['action', 'operationId'].includes(key))) {
+        return json({ error: 'invalid_scoped_reset_request' }, 400);
+      }
+      if (existing.state !== 'approved') return json({ error: 'scoped_reset_two_confirmations_required' }, 409);
+      const plan = this.buildScopedResetSnapshot(scope);
+      if (plan.blockers.length > 0) return json({ error: 'scoped_reset_not_safe', blockers: plan.blockers }, 409);
+      if (plan.snapshotToken !== existing.snapshot_token) return json({ error: 'stale_reset_preview' }, 409);
+
+      const allEvents = this.ctx.storage.sql.exec<{ event_json: string }>(
+        'SELECT event_json FROM learning_events ORDER BY seq ASC LIMIT ?', MAX_SCOPED_RESET_REBUILD_EVENTS + 1,
+      ).toArray();
+      const allEventsValid = allEvents.every(row => {
+        try { return learnEventSchema.safeParse(JSON.parse(row.event_json)).success; }
+        catch { return false; }
+      });
+      if (allEvents.length > MAX_SCOPED_RESET_REBUILD_EVENTS || !allEventsValid) {
+        return json({ error: 'projection_rebuild_not_safe' }, 409);
+      }
+
+      for (let offset = 0; offset < plan.removableEventIds.length; offset += 100) {
+        const batch = plan.removableEventIds.slice(offset, offset + 100);
+        const placeholders = batch.map(() => '?').join(',');
+        this.ctx.storage.sql.exec(`DELETE FROM learning_events WHERE event_id IN (${placeholders})`, ...batch);
+      }
+      this.rebuildNotionProjectionsFromEventLog();
+      const result = {
+        operationId,
+        completed: true,
+        deletedEvents: plan.removableEventIds.length,
+        preservedEvents: plan.totalEvents - plan.removableEventIds.length,
+        preservedAppStateRecords: Number(this.ctx.storage.sql.exec<{ count: number }>(
+          'SELECT COUNT(*) AS count FROM app_state',
+        ).one().count),
+        completedAt: new Date(now).toISOString(),
+        cloudReconciliation: 'not_configured',
+      };
+      const resultJson = JSON.stringify(result);
+      this.ctx.storage.sql.exec(
+        `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'completed', result_json = ?, updated_at = ? WHERE operation_id = ? AND state = 'approved'`,
+        resultJson, new Date(now).toISOString(), operationId,
+      );
+      return json(result);
+    });
+  }
+
+  private readScopedResetOperation(operationId: string): ScopedResetOperationRow | undefined {
+    return this.ctx.storage.sql.exec<ScopedResetOperationRow>(
+      `SELECT operation_id, scope_json, snapshot_token, state, expires_at, result_json
+       FROM ${SCOPED_RESET_OPERATIONS_TABLE} WHERE operation_id = ?`, operationId,
+    ).toArray()[0];
+  }
+
+  private scopedResetOperationResponse(operation: ScopedResetOperationRow, idempotent: boolean): Response {
+    if (operation.state === 'completed' && operation.result_json) {
+      const result = JSON.parse(operation.result_json) as Record<string, unknown>;
+      return json({ ...result, ...(idempotent ? { idempotent: true } : {}) });
+    }
+    return json({
+      operationId: operation.operation_id,
+      state: operation.state,
+      next: operation.state === 'prepared' ? 'confirm_delete' : operation.state === 'approved' ? 'execute' : undefined,
+      expiresAt: operation.expires_at,
+      ...(idempotent ? { idempotent: true } : {}),
     });
   }
 

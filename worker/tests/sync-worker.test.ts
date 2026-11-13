@@ -229,7 +229,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect((await call(app, '/reset/preview?scope=section&lesson=L1', { token: 'valid-test-token' })).status).toBe(400);
     expect((await call(app, '/reset/preview?scope=all&session=x', { token: 'valid-test-token' })).status).toBe(400);
     expect((await call(app, '/reset/preview?scope=session&session=x&lesson=ignored', { token: 'valid-test-token' })).status).toBe(400);
-    expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(404);
+    expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(400);
   });
 
   it('shows all-data reset impact but preserves the question bank config and server state', async () => {

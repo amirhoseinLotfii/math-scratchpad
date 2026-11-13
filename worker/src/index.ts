@@ -7,6 +7,7 @@ import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSes
 import { isValidLearningResetEpoch, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 
 const MAX_BODY_BYTES = 250_000;
+const MAX_SCOPED_RESET_BODY_BYTES = 16_384;
 const MAX_STATE_BODY_BYTES = 2_100_000;
 const PAGES_ORIGIN = 'https://amirhoseinlotfii.github.io';
 
@@ -304,6 +305,14 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
   app.get('/reset/epoch', authorize, c => proxy(c, '/internal/learning-reset/epoch', 'GET'));
   app.get('/reset/preview', authorize, c => proxy(c, '/reset/preview', 'GET'));
+  app.post('/reset/execute', authorize, c => {
+    // Deployed environments leave this flag unset. The storage layer checks it
+    // again so a public-route mistake cannot enable scoped deletion by itself.
+    if (c.env.SCOPED_RESET_ENABLED !== 'true') {
+      return finalizeResponse(jsonError('scoped_reset_disabled', 503), c);
+    }
+    return proxy(c, '/reset/execute', 'POST', true, MAX_SCOPED_RESET_BODY_BYTES);
+  });
   app.get('/state', authorize, c => proxy(c, '/state', 'GET'));
   app.post('/state', authorize, c => proxy(c, '/state', 'POST', true, MAX_STATE_BODY_BYTES));
   app.get('/sync', authorize, c => proxy(c, '/sync', 'GET'));
