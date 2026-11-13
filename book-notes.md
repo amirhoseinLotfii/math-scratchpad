@@ -34,3 +34,11 @@
 - Rechecked PR #94: still `OPEN` and draft. Base unchanged; current head is `94a47eb6b06502ecc45359839eb83c634aff2546`. No changes were made to the PR or app code.
 - OpenStax’s official Preface was checked. It has a restriction requiring prior written permission before book material is ingested into LLM/generative-AI offerings. This is a material blocker for the requested AI-mediated full-book extraction/translation. No new web/PDF book pages were downloaded, no Chapter 2–12 content was produced, and G3 remains NOT_TESTED. See `reports/LICENSE-GATE.md`.
 - The license point is recorded as a blocker for review, not as legal advice. Do not continue source extraction/content generation until the owner confirms written permission or changes scope to original, non-book-derived exercises.
+
+
+## Repository-content checkpoint — 2026-11-13 22:28 Asia/Tehran
+
+- Rechecked PR #94: still open and draft; current head `94a47eb6b06502ecc45359839eb83c634aff2546`.
+- Current `booklog/20261113-2141` tree has 10 paths and contains notes, aggregate findings, the template analyzer, and progress only; no bank JSON, answer-key, source-extract, or question/answer text file.
+- `gitleaks` is unavailable. A scoped credential-pattern scan of the new progress, notes, reports, and local tooling had no matches; G15 remains `NOT_TESTED` because the full history secret scan was not run.
+- Content phases remain paused pending permission review; no source page extraction or new chapter bank content was produced.
