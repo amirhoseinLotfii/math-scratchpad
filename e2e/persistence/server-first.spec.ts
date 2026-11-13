@@ -42,6 +42,14 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
           id: {
             initialize: (args: { callback: typeof handlers.signIn }) => { handlers.signIn = args.callback; },
             prompt: () => handlers.signIn?.({ credential: fakeToken }),
+            renderButton: (element: HTMLElement) => {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.textContent = 'Sign in with Google';
+              button.setAttribute('aria-label', 'Sign in with Google');
+              button.addEventListener('click', () => handlers.signIn?.({ credential: fakeToken }));
+              element.replaceChildren(button);
+            },
           },
         },
       },
@@ -59,6 +67,9 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
   await page.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', async route => {
     const request = route.request(), pathname = new URL(request.url()).pathname;
     calls.push(request.method() + ' ' + pathname);
+    if (pathname === '/session' && request.method() === 'POST') {
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+    }
     if (pathname === '/state' && request.method() === 'GET') {
       return route.fulfill({
         status: 200, contentType: 'application/json',
@@ -137,7 +148,7 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
   await expect.poll(() => mathValue(mathField(page))).toContain('321');
 
   const connectionCard = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
-  await connectionCard.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' }).click();
+  await connectionCard.getByRole('button', { name: 'Sign in with Google' }).click();
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
   await expect.poll(() => records.has('math-scratchpad-session-v3')).toBeTruthy();
   expect(bankCachePosts).toBe(0);

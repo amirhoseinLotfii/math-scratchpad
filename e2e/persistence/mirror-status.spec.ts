@@ -13,6 +13,10 @@ async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
   await page.route(`${API}/**`, async route => {
     const request = route.request(), url = new URL(request.url()), method = request.method();
     calls.push(`${method} ${url.pathname}`);
+    if (url.pathname === '/session' && method === 'POST') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      return;
+    }
     if (url.pathname === '/events' && method === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as { events?: Array<{ id: string }> };
       const events = (body.events ?? []).map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false }));

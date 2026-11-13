@@ -60,6 +60,31 @@ function fixtureEvent(index: number): LearnEvent {
   };
 }
 
+function createManualScheduler() {
+  type Handle = ReturnType<typeof setTimeout>;
+  let now = 0;
+  let id = 0;
+  const timers = new Map<number, { at: number; callback: () => void }>();
+  const schedule = ((callback: TimerHandler, delay?: number) => {
+    const timerId = ++id;
+    timers.set(timerId, { at: now + Number(delay ?? 0), callback: () => typeof callback === 'function' ? callback() : undefined });
+    return timerId as unknown as Handle;
+  }) as unknown as typeof globalThis.setTimeout;
+  const cancel = ((handle: Handle) => { timers.delete(Number(handle)); }) as typeof globalThis.clearTimeout;
+  const advance = (milliseconds: number) => {
+    const target = now + milliseconds;
+    while (true) {
+      const due = [...timers.entries()].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      now = due[1].at;
+      timers.delete(due[0]);
+      due[1].callback();
+    }
+    now = target;
+  };
+  return { schedule, cancel, advance };
+}
+
 function seedLegacy() {
   localStorage.setItem(SESSION_KEY, OLD_SESSION);
   localStorage.setItem(LESSON_KEY, OLD_LESSON);
@@ -535,6 +560,121 @@ describe('IndexedDB learning cache and legacy migration', () => {
   });
 
 describe('browser sync runtime', () => {
+  it('debounces event pushes and sends the queued events together with a stable idempotency key', async () => {
+    await initializeLearningStorage();
+    const posted: Array<{ body: { events: LearnEvent[] }; init?: RequestInit }> = [];
+    const clock = createManualScheduler();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted.push({ body, init });
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+
+    for (let index = 0; index < 10; index += 1) {
+      emitLearnEvent({ bankVersion: 'v21', session: `debounce-${index}`, chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    }
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(10));
+
+    expect(posted).toHaveLength(0);
+    clock.advance(4_999);
+    expect(posted).toHaveLength(0);
+    clock.advance(1);
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]?.body.events).toHaveLength(10);
+    expect(posted[0]?.init?.headers).toMatchObject({
+      'Idempotency-Key': `events-${posted[0]?.body.events.map(event => event.id).join('.')}`,
+    });
+    expect(await readOutboxCount()).toBe(0);
+    runtime.stop();
+  });
+
+  it('flushes continuing activity by the 30-second max wait', async () => {
+    await initializeLearningStorage();
+    const posted: LearnEvent[][] = [];
+    const clock = createManualScheduler();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted.push(body.events);
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+
+    for (let index = 0; index < 8; index += 1) {
+      if (index > 0) clock.advance(4_000);
+      emitLearnEvent({ bankVersion: 'v21', session: `max-wait-${index}`, chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+      await vi.waitFor(async () => expect(await readOutboxCount()).toBe(index + 1));
+    }
+    expect(posted).toHaveLength(0);
+    clock.advance(2_000);
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toHaveLength(8);
+    expect(await readOutboxCount()).toBe(0);
+    runtime.stop();
+  });
+
+  it('flushes one small durable batch with fetch keepalive on pagehide', async () => {
+    await initializeLearningStorage();
+    let posted: { init?: RequestInit; body: { events: LearnEvent[] } } | undefined;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted = { init, body };
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'pagehide', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.waitFor(() => expect(posted).toBeDefined());
+    expect(posted?.body.events).toHaveLength(1);
+    expect(posted?.init?.keepalive).toBe(true);
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(0));
+    runtime.stop();
+  });
+
+  it('does not queue or send learning data while the local reset guard is active', async () => {
+    localStorage.setItem('math-scratchpad-local-learning-reset-pending-v1', '1');
+    const fetcher = vi.fn(async () => Response.json({ events: [], cursor: 0 }));
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    emitLearnEvent({ bankVersion: 'v21', session: 'reset-pending', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    runtime.setIdToken('owner-session-token');
+    await runtime.syncNow();
+
+    expect(await readOutboxCount()).toBe(0);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtime.getSnapshot().phase).toBe('needs-auth');
+    runtime.stop();
+  });
+
   it('is commutative under event order and idempotent under duplicate delivery', async () => {
     await fc.assert(fc.asyncProperty(fc.array(fc.integer({ min: 0, max: 25 }), { maxLength: 30 }), async input => {
       const expected = [...new Set(input)].map(fixtureEvent).sort((a, b) => a.id.localeCompare(b.id));

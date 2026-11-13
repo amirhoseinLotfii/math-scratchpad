@@ -5,7 +5,7 @@ import { actions } from '../../store';
 import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
-import { GoogleLoginButton } from '../../sync/google-login-button';
+import { GoogleDriveAccessButton, GoogleLoginButton } from '../../sync/google-login-button';
 import { GOOGLE_AUTH_STATE_EVENT } from '../../sync/google-auth-state';
 import { EMPTY_BANK, archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, readArchive, readBankCache, readDriveMeta, readPrivateBankText, saveBankCache, snapshotVersion, type ArchivedSession, type DriveBank, type DriveMeta } from './drive-bank';
 import { DRIVE_CONFIG_KEY, clearDriveSessionToken, getConfig, loadIdentity, loadPicker, pickFile, readDriveSessionToken, refreshDriveSessionTokenSilently, saveConfig, saveDriveSessionToken, type DriveConfig, type Token } from './google';
@@ -24,7 +24,7 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
   const token = useRef<Token | null>(null), fingerprint = useRef(''), active = useRef(true), syncing = useRef(false), selectedFileByUser = useRef(false);
   const onBankReadyRef = useRef(onBankReady), onAvailableRef = useRef(onAvailable);
   onBankReadyRef.current = onBankReady; onAvailableRef.current = onAvailable;
-  const panel = useRef<HTMLElement>(null), connectButton = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null), connectButton = useRef<HTMLDivElement>(null);
   const confirmationTrigger = useRef<HTMLElement | null>(null), cancelConfirmation = useRef<HTMLButtonElement>(null);
   const cfg = useRef(config); cfg.current = config;
   async function restoreCachedBank(fileId: string) {
@@ -279,9 +279,13 @@ export function DriveBankPanel({ close, open, onAvailable, onBankReady, onBefore
     <div className="toolbar"><GoogleLoginButton
       buttonRef={connectButton}
       disabled={busy || !ready}
-      label={connected || (token.current === null && config.fileId) ? 'Reconnect Google account + Drive' : 'Connect Google account + Drive'}
-      onComplete={({ driveToken }) => { setBusy(true); return afterToken(driveToken, true); }}
+      label={connected || (token.current === null && config.fileId) ? 'Sign in to Google identity' : 'Sign in to Google identity'}
     />
+      <GoogleDriveAccessButton
+        disabled={busy || !ready}
+        label={connected ? 'Reconnect Google Drive access' : 'Grant Google Drive access'}
+        onComplete={async driveToken => { setBusy(true); try { await afterToken(driveToken, true); } finally { setBusy(false); } }}
+      />
       {connected && <Button onClick={choose}>Choose bank file</Button>}
       {connected && config.fileId && <Button onClick={() => { void sync(true); }}>Check now</Button>}
       {available && available.bank.questions.length > 0 && <Button onClick={event => requestConfirmation('batch', event.currentTarget)} disabled={!!same}>Open received batch</Button>}<Button onClick={close}>Close</Button></div>

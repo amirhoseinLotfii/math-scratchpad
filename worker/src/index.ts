@@ -18,6 +18,20 @@ function jsonError(error: string, status: number): Response {
   return Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
+function safeMirrorError(value: unknown): string {
+  const allowed = new Set([
+    'not_configured', 'reauthorization_required', 'account_mismatch', 'permission_denied',
+    'quota_exceeded', 'etag_conflict', 'invalid_response', 'duplicate_file',
+    'subrequest_budget_exceeded', 'network_error', 'token_invalid', 'database_not_shared',
+    'schema_mismatch', 'rate_limited', 'remote_error',
+  ]);
+  return typeof value === 'string' && allowed.has(value) ? value : 'unknown';
+}
+
+function safeMirrorStage(value: unknown): string {
+  return typeof value === 'string' && /^[a-z0-9_]{1,80}$/.test(value) ? value : 'unknown';
+}
+
 function constantTimeSecretEqual(candidate: string, expected: string): boolean {
   const left = new TextEncoder().encode(candidate);
   const right = new TextEncoder().encode(expected);
@@ -43,7 +57,7 @@ function finalizeResponse(response: Response, c: AppContext): Response {
 
 function requestedHeadersAreAllowed(value: string | null): boolean {
   if (!value) return true;
-  const allowed = new Set(['authorization', 'content-type', LEARNING_RESET_EPOCH_HEADER.toLowerCase()]);
+  const allowed = new Set(['authorization', 'content-type', 'idempotency-key', LEARNING_RESET_EPOCH_HEADER.toLowerCase()]);
   return value.split(',').every(header => allowed.has(header.trim().toLowerCase()));
 }
 
@@ -68,7 +82,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
       }
       c.header('Access-Control-Allow-Origin', allowedOrigin);
       c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      c.header('Access-Control-Allow-Headers', `Authorization, Content-Type, ${LEARNING_RESET_EPOCH_HEADER}`);
+      c.header('Access-Control-Allow-Headers', `Authorization, Content-Type, Idempotency-Key, ${LEARNING_RESET_EPOCH_HEADER}`);
       c.header('Access-Control-Max-Age', '86400');
       c.header('Vary', 'Origin');
       return c.body(null, 204);
@@ -77,7 +91,12 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     await next();
   });
 
-  app.get('/health', c => finalizeResponse(c.json({ ok: true, service: 'math-scratchpad-sync' }), c));
+  app.get('/health', c => finalizeResponse(c.json({
+    ok: true,
+    service: 'math-scratchpad-sync',
+    env: c.env.RELEASE_ENV ?? 'production',
+    sha: c.env.RELEASE_SHA ?? null,
+  }), c));
 
   const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase()));
 
@@ -145,6 +164,8 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     if (body !== undefined) headers.set('Content-Type', 'application/json');
     const clientEpoch = c.req.header(LEARNING_RESET_EPOCH_HEADER);
     if (clientEpoch) headers.set(LEARNING_RESET_EPOCH_HEADER, clientEpoch);
+    const idempotencyKey = c.req.header('Idempotency-Key');
+    if (idempotencyKey) headers.set('Idempotency-Key', idempotencyKey);
     const response = await stub.fetch(new Request(target, { method, headers, ...(body !== undefined ? { body } : {}) }));
     return finalizeResponse(response, c);
   };
@@ -251,9 +272,24 @@ const app = createApp();
 export async function requestMirrorSync(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>): Promise<void> {
   const id = env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase());
   const response = await env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
-  if (!response.ok) throw new Error('scheduled_mirror_sync_failed');
-  const state = await response.json() as { drive?: { status?: string }; notion?: { status?: string } };
-  if (state.drive?.status === 'error' || state.notion?.status === 'error') {
+  if (!response.ok) {
+    console.warn('scheduled_mirror_sync_failed', { stage: 'durable_object_request', status: response.status });
+    throw new Error('scheduled_mirror_sync_failed');
+  }
+  const state = await response.json() as {
+    drive?: { status?: string; lastError?: unknown; failureStage?: unknown };
+    notion?: { status?: string; lastError?: unknown };
+    subrequestsUsed?: unknown;
+    subrequestLimit?: unknown;
+  };
+  const failures = [
+    ...(state.drive?.status === 'error' ? [{ destination: 'drive', errorCode: safeMirrorError(state.drive.lastError), stage: safeMirrorStage(state.drive.failureStage) }] : []),
+    ...(state.notion?.status === 'error' ? [{ destination: 'notion', errorCode: safeMirrorError(state.notion.lastError), stage: 'notion_event_sync' }] : []),
+  ];
+  const used = Number.isSafeInteger(state.subrequestsUsed) ? Number(state.subrequestsUsed) : null;
+  const limit = Number.isSafeInteger(state.subrequestLimit) ? Number(state.subrequestLimit) : null;
+  if (failures.length) {
+    console.warn('scheduled_mirror_sync_incomplete', { failures, subrequestsUsed: used, subrequestLimit: limit });
     throw new Error('scheduled_mirror_retry_incomplete');
   }
 }

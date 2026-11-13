@@ -22,6 +22,7 @@ export type DriveMirrorErrorCode =
   | 'etag_conflict'
   | 'invalid_response'
   | 'duplicate_file'
+  | 'subrequest_budget_exceeded'
   | 'network_error';
 
 export class DriveMirrorError extends Error {
@@ -479,6 +480,10 @@ export class GoogleDriveClient {
           response = await this.fetcher(input, { ...init, headers });
         }
         catch (error) {
+          if ((error as { code?: unknown } | null)?.code === 'subrequest_budget_exceeded') {
+            this.stage = 'subrequest_budget';
+            throw error;
+          }
           if (attempt < maxAttempts - 1) {
             await waitForDriveRetry(attempt);
             continue;

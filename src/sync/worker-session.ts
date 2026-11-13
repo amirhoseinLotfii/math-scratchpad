@@ -11,6 +11,8 @@ import { deleteDB, openDB, type IDBPDatabase } from 'idb';
 import { ensureGoogleIdToken, getGoogleIdToken, subscribeGoogleIdToken } from './google-id-token';
 import { SYNC_API_ORIGIN } from './sync-config';
 import { API_UNAUTHORIZED_EVENT } from './api-unauthorized';
+import { GoogleAuthError } from './google-auth-errors';
+import { recordGoogleAuthDiagnostic } from './google-auth-diagnostics';
 
 export const WORKER_SESSION_DB_NAME = 'math-scratchpad-auth-v1';
 const STORE = 'session';
@@ -21,6 +23,7 @@ export const WORKER_SESSION_EVENT = 'math-scratchpad:worker-session-changed';
 const USABLE_SKEW_MS = 60_000;
 /** Renew from a fresh GIS token when less than this remains. */
 const RENEW_BEFORE_MS = 24 * 60 * 60_000;
+const SESSION_REQUEST_TIMEOUT_MS = 10_000;
 const SESSION_PATTERN = /^mss1\.[A-Za-z0-9_-]{43}$/;
 
 export type WorkerSession = { token: string; expiresAt: number };
@@ -31,6 +34,7 @@ let issueFlight: Promise<WorkerSession | undefined> | undefined;
 let dbPromise: Promise<IDBPDatabase> | undefined;
 let channel: BroadcastChannel | undefined;
 let fetcher: typeof fetch = (...args) => fetch(...args);
+let lastIssueFailure: { code: 'session_rejected' | 'network_timeout' | 'network_error'; status?: number } | undefined;
 
 export function isWorkerSessionToken(token: string | null | undefined): boolean {
   return typeof token === 'string' && token.startsWith('mss1.');
@@ -114,27 +118,62 @@ export function exchangeIdTokenForWorkerSession(idToken: string): Promise<Worker
   if (current && current.expiresAt > Date.now() + RENEW_BEFORE_MS) return Promise.resolve(current);
   if (issueFlight) return issueFlight;
   issueFlight = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SESSION_REQUEST_TIMEOUT_MS);
+    lastIssueFailure = undefined;
     try {
       const response = await fetcher(`${SYNC_API_ORIGIN}/session`, {
-        method: 'POST', cache: 'no-store', headers: { Authorization: `Bearer ${idToken}` },
+        method: 'POST', cache: 'no-store', headers: { Authorization: `Bearer ${idToken}` }, signal: controller.signal,
       });
-      if (!response.ok) return undefined;
+      if (response.status !== 201) {
+        lastIssueFailure = { code: 'session_rejected', status: response.status };
+        recordGoogleAuthDiagnostic('session_rejected', `http_${response.status}`);
+        return undefined;
+      }
       const issued = validRecord(await response.json().then(
         (value: { sessionToken?: unknown; expiresAt?: unknown }) => ({ token: value?.sessionToken, expiresAt: value?.expiresAt }),
       ));
-      if (!issued || issued.expiresAt <= Date.now() + USABLE_SKEW_MS) return undefined;
+      if (!issued || issued.expiresAt <= Date.now() + USABLE_SKEW_MS) {
+        lastIssueFailure = { code: 'session_rejected', status: response.status };
+        recordGoogleAuthDiagnostic('session_rejected', 'invalid_201_body');
+        return undefined;
+      }
       // Replacing a session: revoke the old one so it cannot be reused on this device.
       const previous = cached;
       await persist(issued);
       if (previous && previous.token !== issued.token) void revokeOnServer(previous.token);
+      recordGoogleAuthDiagnostic('session_created', 'http_201');
       return issued;
     } catch {
+      lastIssueFailure = controller.signal.aborted
+        ? { code: 'network_timeout' }
+        : { code: 'network_error' };
+      recordGoogleAuthDiagnostic(lastIssueFailure.code);
       return undefined;
     } finally {
+      clearTimeout(timeout);
       issueFlight = undefined;
     }
   })();
   return issueFlight;
+}
+
+/** Used by the visible sign-in button: unlike background token refresh, failure is surfaced to the user. */
+export async function exchangeIdTokenForWorkerSessionOrThrow(idToken: string): Promise<WorkerSession> {
+  const session = await exchangeIdTokenForWorkerSession(idToken);
+  if (session) return session;
+  const failure = lastIssueFailure ?? { code: 'session_rejected' as const };
+  throw new GoogleAuthError(failure.code, failure.status);
+}
+
+/** Strict session lookup for reset and other flows that must not unlock on a raw ID token. */
+export async function ensureWorkerSession(): Promise<WorkerSession | undefined> {
+  await hydrateWorkerSession();
+  const current = getWorkerSession();
+  if (current) return current;
+  const idToken = await ensureGoogleIdToken();
+  if (!idToken) return undefined;
+  return exchangeIdTokenForWorkerSessionOrThrow(idToken);
 }
 
 /**
@@ -167,13 +206,13 @@ export async function subscribeApiToken(listener: (token: string) => void): Prom
     last = token;
     listener(token);
   };
-  const onSessionChange = () => deliver(getApiToken());
+  const onSessionChange = () => deliver(getWorkerSession()?.token);
   if (typeof window !== 'undefined') window.addEventListener(WORKER_SESSION_EVENT, onSessionChange);
   deliver(getWorkerSession()?.token);
   let unsubscribeGoogle: () => void = () => undefined;
   try {
     unsubscribeGoogle = await subscribeGoogleIdToken(idToken => {
-      void exchangeIdTokenForWorkerSession(idToken).then(session => deliver(session?.token ?? getWorkerSession()?.token ?? idToken));
+      void exchangeIdTokenForWorkerSession(idToken).then(session => deliver(session?.token ?? getWorkerSession()?.token));
     });
   } catch (problem) {
     // Without GIS the stored Worker session can still be used.

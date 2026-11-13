@@ -94,6 +94,7 @@ const NOTION_EVENTS_PER_RUN = 20;
 const NOTION_STATE_KEYS_PER_RUN = 10;
 const NOTION_DEBOUNCE_MS = 250;
 const NOTION_RETRY_MS = 60_000;
+const MAX_MIRROR_SUBREQUESTS = 40;
 const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
 const LEARNING_RESET_TABLE = 'learning_reset_control';
 /**
@@ -111,6 +112,12 @@ type StoredNotionMirrorState = {
   lastError?: NotionErrorCode;
 };
 type PendingNotionState = { key: string; revision: number };
+type MirrorSubrequestBudget = { used: number; limit: number };
+
+class MirrorSubrequestBudgetExceeded extends Error {
+  readonly code = 'subrequest_budget_exceeded';
+  constructor() { super('subrequest_budget_exceeded'); }
+}
 
 function json(data: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers);
@@ -173,6 +180,15 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private notionClient: NotionClientPort | undefined;
   private notionSyncPromise: Promise<NotionMirrorStatus> | undefined;
   private readonly notionRequests = new NotionRequestQueue();
+  private activeMirrorSubrequestBudget?: MirrorSubrequestBudget;
+  private readonly budgetedFetch: typeof fetch = (input, init) => {
+    const budget = this.activeMirrorSubrequestBudget;
+    if (budget) {
+      if (budget.used >= budget.limit) throw new MirrorSubrequestBudgetExceeded();
+      budget.used += 1;
+    }
+    return globalThis.fetch(input, init);
+  };
   private activeLearningMutations = 0;
   /** Reset id currently executing in this isolate; a takeover must never race a live run. */
   private activeLearningResetId: string | undefined;
@@ -271,12 +287,27 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (url.pathname === '/internal/weekly-backup') {
       const scheduledTime = Number(url.searchParams.get('scheduledTime'));
       const now = Number.isSafeInteger(scheduledTime) && scheduledTime > 0 ? new Date(scheduledTime) : new Date();
-      return json({ weeklyBackup: await this.syncWeeklyBackup(now) });
+      const result = await this.withMirrorSubrequestBudget(() => this.syncWeeklyBackup(now));
+      return json({ weeklyBackup: result.value, subrequestsUsed: result.used, subrequestLimit: result.limit });
     }
 
     if (url.pathname === '/internal/sync-all') {
-      const [drive, notion] = await Promise.all([this.syncDrive(), this.syncNotion()]);
-      return json({ drive, notion });
+      const result = await this.withMirrorSubrequestBudget(async () => {
+        const [driveResult, notionResult] = await Promise.allSettled([this.syncDrive(), this.syncNotion()]);
+        const drive = driveResult.status === 'fulfilled' ? driveResult.value : {
+          status: 'error' as const, lastSyncedAt: null, pendingCount: 0, quarantinedCount: null,
+          lastError: 'network_error' as const, failureStage: 'sync_all',
+          weeklyBackup: { status: 'scheduled' as const, lastCreatedAt: null, lastError: null },
+        };
+        const notion = notionResult.status === 'fulfilled' ? notionResult.value : {
+          status: 'error' as const, lastSyncedAt: null, pendingCount: 0, quarantinedCount: null,
+          lastError: 'network_error' as const,
+        };
+        if (driveResult.status === 'rejected') this.recordDiagnostic('drive', 'sync_all', 'network_error');
+        if (notionResult.status === 'rejected') this.recordDiagnostic('notion', 'sync_all', 'network_error');
+        return { drive, notion };
+      });
+      return json({ ...result.value, subrequestsUsed: result.used, subrequestLimit: result.limit });
     }
     const rate = this.consumeRateLimit();
     if (rate) return rate;
@@ -475,12 +506,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 0 };
     }
 
-    this.driveClient ??= new GoogleDriveClient(this.env);
+    this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
     const client = this.driveClient;
-    const rootId = stored?.rootId ?? await client.findFolderId('Math_Project', 'root');
+    const rootName = this.env.GOOGLE_DRIVE_ROOT_FOLDER_NAME?.trim() || 'Math_Project';
+    const rootId = stored?.rootId ?? this.env.GOOGLE_DRIVE_ROOT_FOLDER_ID ?? await client.findFolderId(rootName, 'root');
     if (!rootId) return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 0 };
     const root = await client.readFileMetadata(rootId, 'id,name,mimeType,parents,trashed');
-    if (root.id !== rootId || root.name !== 'Math_Project' || root.mimeType !== 'application/vnd.google-apps.folder' || root.trashed === true) {
+    if (root.id !== rootId || root.name !== rootName || root.mimeType !== 'application/vnd.google-apps.folder' || root.trashed === true) {
       throw new DriveMirrorError('invalid_response');
     }
 
@@ -640,7 +672,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   /** Separate from the mirror client so bank reads never overwrite mirror diagnostics. */
   private bankDriveClient(): GoogleDriveClient {
-    this.bankClient ??= new GoogleDriveClient(this.env);
+    this.bankClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
     return this.bankClient;
   }
 
@@ -753,16 +785,30 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   /** Durable Object alarm retries configured private mirrors after transient failures. */
   async alarm(): Promise<void> {
     if (this.isLearningResetLocked()) return;
-    // Notion may not be blocked by a failed Google Drive request.
-    const work: Promise<unknown>[] = [];
-    if (notionDataSourcesFromEnv(this.env)) work.push(this.syncNotion());
-    if (this.driveConfigured()) {
-      work.push((async () => {
-        await this.syncDrive();
-        if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
-      })());
+    await this.withMirrorSubrequestBudget(async () => {
+      // Notion may not be blocked by a failed Google Drive request.
+      const work: Promise<unknown>[] = [];
+      if (notionDataSourcesFromEnv(this.env)) work.push(this.syncNotion());
+      if (this.driveConfigured()) {
+        work.push((async () => {
+          await this.syncDrive();
+          if ((await this.readDriveState()).weeklyBackup?.status === 'error') await this.syncWeeklyBackup();
+        })());
+      }
+      return Promise.allSettled(work);
+    });
+  }
+
+  private async withMirrorSubrequestBudget<T>(operation: () => Promise<T>): Promise<{ value: T; used: number; limit: number }> {
+    const previous = this.activeMirrorSubrequestBudget;
+    const budget = previous ?? { used: 0, limit: MAX_MIRROR_SUBREQUESTS };
+    this.activeMirrorSubrequestBudget = budget;
+    try {
+      const value = await operation();
+      return { value, used: budget.used, limit: budget.limit };
+    } finally {
+      this.activeMirrorSubrequestBudget = previous;
     }
-    await Promise.allSettled(work);
   }
 
   private appStateRevision(): number {
@@ -934,6 +980,17 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private driveConfigured(): boolean {
     return Boolean(this.env.GOOGLE_CLIENT_ID && this.env.GOOGLE_DRIVE_CLIENT_SECRET && this.env.GOOGLE_DRIVE_REFRESH_TOKEN);
+  }
+
+  private async getConfiguredDriveRootId(client: GoogleDriveClient): Promise<string> {
+    const rootId = this.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim();
+    const rootName = this.env.GOOGLE_DRIVE_ROOT_FOLDER_NAME?.trim() || 'Math_Project';
+    if (!rootId) return client.ensureRootFolder(rootName);
+    const root = await client.readFileMetadata(rootId, 'id,name,mimeType,parents,trashed');
+    if (root.id !== rootId || root.name !== rootName || root.mimeType !== 'application/vnd.google-apps.folder' || root.trashed === true) {
+      throw new DriveMirrorError('invalid_response');
+    }
+    return rootId;
   }
 
   private async readDriveState(): Promise<DriveMirrorState> {
@@ -1229,7 +1286,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         return this.toNotionStatus(rebuilding, through);
       }
 
-      this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY);
+      this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY, this.budgetedFetch);
       const events = this.readEventsAfter(state.lastSeq, through, NOTION_EVENTS_PER_RUN);
       let lastSeq = state.lastSeq;
       let lastSyncedAt = state.lastSyncedAt;
@@ -1445,11 +1502,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     }
 
     try {
-      this.driveClient ??= new GoogleDriveClient(this.env);
+      this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
       const client = this.driveClient;
       let folders = state.folders;
       if (!folders) {
-        const rootId = await client.ensureRootFolder('Math_Project');
+        const rootId = await this.getConfiguredDriveRootId(client);
         const syncId = await client.ensureFolder('03_Sync', rootId);
         const eventsId = await client.ensureFolder('events', syncId);
         const stateId = await client.ensureFolder('state', syncId);
@@ -1499,6 +1556,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return { status: 'created', lastCreatedAt: now.toISOString(), lastError: null };
     } catch (error) {
       const code = error instanceof DriveMirrorError ? error.code
+        : (error as { code?: unknown } | null)?.code === 'subrequest_budget_exceeded' ? 'subrequest_budget_exceeded'
         : error instanceof Error && error.message === 'event_id_conflict' ? 'etag_conflict' : 'network_error';
       state.weeklyBackup = { ...state.weeklyBackup, status: 'error', date, lastError: code };
       await this.saveDriveState({ ...state, status: state.status, weeklyBackup: state.weeklyBackup });
@@ -1529,7 +1587,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq), lastError: undefined });
 
     try {
-      this.driveClient ??= new GoogleDriveClient(this.env);
+      this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
       const client = this.driveClient;
       const events = this.readEventsThrough(through);
       const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
@@ -1537,7 +1595,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const newEvents = mirrorableEvents.filter(item => item.seq > state.lastSeq);
       let folders = state.folders;
       if (!folders) {
-        const rootId = await client.ensureRootFolder('Math_Project');
+        const rootId = await this.getConfiguredDriveRootId(client);
         const syncId = await client.ensureFolder('03_Sync', rootId);
         const eventsId = await client.ensureFolder('events', syncId);
         const stateId = await client.ensureFolder('state', syncId);
@@ -1643,7 +1701,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         },
       };
     } catch (error) {
-      const code = error instanceof DriveMirrorError ? error.code : error instanceof Error && error.message === 'event_id_conflict'
+      const code = error instanceof DriveMirrorError ? error.code : (error as { code?: unknown } | null)?.code === 'subrequest_budget_exceeded'
+        ? 'subrequest_budget_exceeded' : error instanceof Error && error.message === 'event_id_conflict'
         ? 'etag_conflict' : 'network_error';
       const currentMax = await this.maxSequence();
       const failed: DriveMirrorState = {

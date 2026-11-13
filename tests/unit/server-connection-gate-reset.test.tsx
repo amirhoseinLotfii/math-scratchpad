@@ -9,8 +9,7 @@ vi.mock('../../src/sync/browser-db', () => ({
   isLocalLearningResetPending: () => gateMocks.resetPending,
 }));
 vi.mock('../../src/sync/worker-session', () => ({
-  ensureApiToken: async () => undefined,
-  subscribeApiToken: async () => () => {},
+  ensureWorkerSession: async () => undefined,
 }));
 vi.mock('../../src/sync/google-login-button', () => ({ GoogleLoginButton: () => null }));
 
@@ -30,7 +29,7 @@ describe('server connection gate during reset', () => {
 
     const editor = container.querySelector('[data-server-editor]');
     expect(editor?.hasAttribute('inert')).toBe(true);
-    await screen.findByText(/برای همگام‌سازی با سرور وارد Google شو/);
+    await screen.findByText(/برای همگام‌سازی امن با سرور، از دکمهٔ Google وارد شو/);
     expect(screen.getByLabelText('وضعیت همگام‌سازی').textContent).toContain('پاسخ‌دادن در این مرورگر قفل است');
     expect(screen.getByRole('button', { name: 'Save an answer' })).toBeDefined();
   });

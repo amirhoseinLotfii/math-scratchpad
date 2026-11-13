@@ -6,6 +6,7 @@ import {
   getAuthenticatedServerStorage,
   getSyncMeta,
   isLearningStorageKey,
+  isLocalLearningResetPending,
   queueLearnEvent,
   readOutboxBatch,
   readOutboxCount,
@@ -22,6 +23,9 @@ const PAGE_LIMIT = 100;
 const MAX_PULL_PAGES_PER_RUN = 100;
 const MAX_BATCH_BYTES = 190_000;
 const MAX_BATCH_EVENTS = 50;
+const MAX_KEEPALIVE_BATCH_BYTES = 60_000;
+const EVENT_DEBOUNCE_MS = 5_000;
+const EVENT_MAX_WAIT_MS = 30_000;
 
 export type SyncPhase = 'idle' | 'needs-auth' | 'queued' | 'syncing' | 'synced' | 'retrying' | 'error';
 export type MirrorPhase = 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
@@ -56,7 +60,14 @@ export type ResetPreview = {
 
 type SyncPage = { events: Array<{ seq: number; event: LearnEvent }>; cursor: number; through: number; hasMore: boolean; snapshotCursor?: number };
 type AckResponse = { events: Array<{ id: string; seq: number; duplicate: boolean }>; cursor: number };
-type RuntimeOptions = { apiOrigin?: string; fetcher?: typeof fetch; random?: () => number; now?: () => number };
+type RuntimeOptions = {
+  apiOrigin?: string;
+  fetcher?: typeof fetch;
+  random?: () => number;
+  now?: () => number;
+  scheduleTimeout?: typeof globalThis.setTimeout;
+  cancelTimeout?: typeof globalThis.clearTimeout;
+};
 
 class SyncRequestError extends Error {
   constructor(message: string, readonly status?: number, readonly retryable = true, readonly retryAfterMs?: number) { super(message); }
@@ -74,6 +85,8 @@ export class BrowserSyncRuntime {
   private readonly fetcher: typeof fetch;
   private readonly random: () => number;
   private readonly now: () => number;
+  private readonly scheduleTimeout: typeof globalThis.setTimeout;
+  private readonly cancelTimeout: typeof globalThis.clearTimeout;
   private readonly listeners = new Set<() => void>();
   private current: SyncStatus = { phase: 'idle', pending: 0, driveMirror: null, notionMirror: null };
   private token: string | null = null;
@@ -81,6 +94,9 @@ export class BrowserSyncRuntime {
   private running?: Promise<void>;
   private mirrorStatusObservers = 0;
   private retryTimer?: ReturnType<typeof setTimeout>;
+  private debounceTimer?: ReturnType<typeof setTimeout>;
+  private maxWaitTimer?: ReturnType<typeof setTimeout>;
+  private keepaliveFlush?: Promise<void>;
   private retryAttempt = 0;
   private started = false;
 
@@ -89,6 +105,8 @@ export class BrowserSyncRuntime {
     this.fetcher = options.fetcher ?? fetch.bind(globalThis);
     this.random = options.random ?? Math.random;
     this.now = options.now ?? Date.now;
+    this.scheduleTimeout = options.scheduleTimeout ?? globalThis.setTimeout.bind(globalThis);
+    this.cancelTimeout = options.cancelTimeout ?? globalThis.clearTimeout.bind(globalThis);
   }
 
   getSnapshot = (): SyncStatus => this.current;
@@ -103,6 +121,7 @@ export class BrowserSyncRuntime {
     if (this.started) return;
     this.started = true;
     this.unsubscribeEvents = subscribeToLearnEvents(event => {
+      if (isLocalLearningResetPending()) return;
       void queueLearnEvent(event).then(() => this.refreshCountAndTrigger()).catch(() => {
         this.update({ phase: 'error', lastError: 'رویداد در صف آفلاین ذخیره نشد؛ اتصال یا فضای مرورگر را بررسی کن.' });
       });
@@ -110,8 +129,13 @@ export class BrowserSyncRuntime {
     window.addEventListener('online', this.onWake);
     window.addEventListener('focus', this.onWake);
     window.addEventListener('pageshow', this.onWake);
+    window.addEventListener('pagehide', this.onPageHide);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     await this.refreshCount();
+    if (isLocalLearningResetPending()) {
+      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
+      return;
+    }
     void this.syncNow();
   }
 
@@ -123,10 +147,16 @@ export class BrowserSyncRuntime {
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     window.removeEventListener('pagehide', this.onPageHide);
     if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.clearEventFlushTimers();
     this.retryTimer = undefined; this.started = false;
   }
 
   setIdToken(token: string | null): void {
+    if (isLocalLearningResetPending()) {
+      this.token = null;
+      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
+      return;
+    }
     this.token = token;
     if (token) updateAuthenticatedServerToken(token);
     if (!token) {
@@ -265,6 +295,13 @@ export class BrowserSyncRuntime {
   async syncNow(): Promise<void> {
     if (this.running) return this.running;
     if (!this.started) return;
+    this.clearEventFlushTimers();
+    if (isLocalLearningResetPending()) {
+      this.token = null;
+      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
+      await this.refreshCount();
+      return;
+    }
     if (!this.token) {
       const pending = await this.refreshCount();
       this.update({ phase: pending ? 'needs-auth' : 'idle' });
@@ -284,18 +321,61 @@ export class BrowserSyncRuntime {
 
   private async refreshCountAndTrigger() {
     const pending = await this.refreshCount();
-    if (this.token) void this.syncNow();
+    if (isLocalLearningResetPending()) {
+      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
+      return;
+    }
+    if (this.token) this.scheduleEventFlush();
     else this.update({ phase: pending ? 'needs-auth' : this.current.phase === 'synced' ? 'synced' : 'idle' });
   }
 
-  private onWake = () => { if (this.started && navigator.onLine !== false) void this.syncNow(); };
-  private onVisibilityChange = () => { if (document.visibilityState === 'visible') this.onWake(); };
-  private onPageHide = () => { /* IndexedDB transactions are already submitted as each event is queued. */ };
+  private scheduleEventFlush(): void {
+    if (!this.started || !this.token || isLocalLearningResetPending()) return;
+    if (this.debounceTimer) this.cancelTimeout(this.debounceTimer);
+    this.debounceTimer = this.scheduleTimeout(() => {
+      this.debounceTimer = undefined;
+      void this.syncNow();
+    }, EVENT_DEBOUNCE_MS);
+    if (!this.maxWaitTimer) {
+      this.maxWaitTimer = this.scheduleTimeout(() => {
+        this.maxWaitTimer = undefined;
+        if (this.debounceTimer) this.cancelTimeout(this.debounceTimer);
+        this.debounceTimer = undefined;
+        void this.syncNow();
+      }, EVENT_MAX_WAIT_MS);
+    }
+  }
+
+  private clearEventFlushTimers(): void {
+    if (this.debounceTimer) this.cancelTimeout(this.debounceTimer);
+    if (this.maxWaitTimer) this.cancelTimeout(this.maxWaitTimer);
+    this.debounceTimer = undefined;
+    this.maxWaitTimer = undefined;
+  }
+
+  private onWake = () => { if (this.started && navigator.onLine !== false && !isLocalLearningResetPending()) void this.syncNow(); };
+  private onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') this.onWake();
+    else this.flushKeepaliveBatch();
+  };
+  private onPageHide = () => this.flushKeepaliveBatch();
+
+  private flushKeepaliveBatch(): void {
+    if (!this.started || !this.token || this.running || this.keepaliveFlush || isLocalLearningResetPending() || navigator.onLine === false) return;
+    this.clearEventFlushTimers();
+    const flush = this.pushOutbox({ keepalive: true, maxBytes: MAX_KEEPALIVE_BATCH_BYTES }).catch(() => {
+      // The durable outbox remains the source of truth and will retry on the next visit.
+    }).finally(() => { if (this.keepaliveFlush === flush) this.keepaliveFlush = undefined; });
+    this.keepaliveFlush = flush;
+  }
 
   private async request(path: string, init: RequestInit, tokenOverride?: string): Promise<Response> {
     const token = tokenOverride ?? this.token;
     if (!token) throw new SyncRequestError('Google sign-in is required.', 401, false);
     const isLearningWrite = init.method?.toUpperCase() === 'POST' && (path === '/events' || path === '/state');
+    if (isLearningWrite && isLocalLearningResetPending()) {
+      throw new SyncRequestError('ارسال تا پایان پاک‌سازی متوقف است؛ هیچ داده‌ای فرستاده نشد.', 409, false);
+    }
     let response: Response;
     try {
       response = await this.fetcher(`${this.apiOrigin}${path}`, {
@@ -342,21 +422,28 @@ export class BrowserSyncRuntime {
     }
   }
 
-  private async pushOutbox(): Promise<void> {
+  private async pushOutbox(options: { keepalive?: boolean; maxBytes?: number } = {}): Promise<void> {
+    const maxBytes = options.maxBytes ?? MAX_BATCH_BYTES;
     while (true) {
+      if (isLocalLearningResetPending()) return;
       const batch = await readOutboxBatch(MAX_BATCH_EVENTS);
       if (!batch.length) return;
       const selected: typeof batch = [];
       let bytes = 2;
       for (const item of batch) {
         const nextSize = new TextEncoder().encode(JSON.stringify(item.event)).byteLength + (selected.length ? 1 : 0);
-        if (selected.length && bytes + nextSize > MAX_BATCH_BYTES) break;
-        if (!selected.length && nextSize > MAX_BATCH_BYTES) throw new SyncRequestError('یک رویداد از حد مجاز سرور بزرگ‌تر است و در صف نگه داشته شد.', 413, false);
+        if (selected.length && bytes + nextSize > maxBytes) break;
+        if (!selected.length && nextSize > maxBytes) {
+          if (options.keepalive) return;
+          throw new SyncRequestError('یک رویداد از حد مجاز سرور بزرگ‌تر است و در صف نگه داشته شد.', 413, false);
+        }
         selected.push(item); bytes += nextSize;
       }
+      const idempotencyKey = `events-${selected.map(item => item.id).join('.')}`;
       const response = await this.request('/events', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ events: selected.map(item => item.event) }),
+        ...(options.keepalive ? { keepalive: true } : {}),
       });
       const body: unknown = await response.json();
       if (!isRecord(body) || !Array.isArray(body.events)) throw new SyncRequestError('پاسخ تأیید سرور معتبر نبود.');
@@ -369,6 +456,7 @@ export class BrowserSyncRuntime {
       if (confirmed.length !== selected.length) throw new SyncRequestError('سرور همهٔ رویدادهای دسته را تأیید نکرد؛ رویدادها در صف باقی ماندند.');
       await acknowledgeOutbox(confirmed.map(item => item.id));
       await this.refreshCount();
+      if (options.keepalive) return;
     }
   }
 

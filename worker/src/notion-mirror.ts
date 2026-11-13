@@ -25,6 +25,7 @@ export type NotionErrorCode =
   | 'schema_mismatch'
   | 'rate_limited'
   | 'remote_error'
+  | 'subrequest_budget_exceeded'
   | 'network_error';
 
 export type NotionMirrorStatus = {
@@ -100,10 +101,11 @@ export function notionDataSourcesFromEnv(env: WorkerEnv): NotionDataSources | nu
   };
 }
 
-export function createNotionClient(token: string): NotionClientPort {
+export function createNotionClient(token: string, fetcher: typeof fetch = globalThis.fetch.bind(globalThis)): NotionClientPort {
   const client = new Client({
     auth: token,
     timeoutMs: 15_000,
+    fetch: fetcher,
     retry: false,
   });
   return client as unknown as NotionClientPort;
@@ -331,6 +333,7 @@ export function notionErrorCode(error: unknown): NotionErrorCode {
   const value = error as { code?: string; status?: number; headers?: Headers | Record<string, string> } | null;
   const code = value?.code?.toLowerCase() ?? '';
   const status = Number(value?.status ?? 0);
+  if (code === 'subrequest_budget_exceeded' || (error instanceof Error && error.message === 'subrequest_budget_exceeded')) return 'subrequest_budget_exceeded';
   if (status === 401 || code.includes('unauthorized')) return 'token_invalid';
   if (status === 404 || code.includes('object_not_found')) return 'database_not_shared';
   if (status === 400 || code.includes('validation')) return 'schema_mismatch';
