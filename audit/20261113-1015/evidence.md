@@ -35,3 +35,8 @@ Local runs use synthetic data and mocked external services unless otherwise spec
 | Auth negative control | fake downstream storage failure returned a 5xx, not 401 | `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/auth.downstream-error.test.ts` |
 | AUD-005 | local scoped execute returned 404 repeatedly; PR92 static-only | `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.scoped-execute-route.test.ts` |
 | AUD-017 file path | 3 local mobile runs: selecting a valid synthetic backup replaced existing expression without confirmation | `npx playwright test e2e/audit/import.file-confirmation.spec.ts --project=mobile-390 --workers=1` |
+
+| AUD-007 keyboard | main: 320 px Enter activation failed 4/5 repeat runs after target focus then blur; no keydown/click; desktop 5/5 passed. Escape/focus 2/2 passed. | npx playwright test --config e2e/audit/playwright.keyboard.config.ts -g 'menu.import-json.opens-with-Enter' --workers=1 --repeat-each=5; e2e/audit/menu.keyboard.spec.ts |
+| AUD-017 file path | 3/3 mobile synthetic valid-file imports replaced the existing expression before any confirmation dialog | npx playwright test e2e/audit/import.file-confirmation.spec.ts --project=mobile-390 --workers=1 --repeat-each=3 |
+| Audit test typecheck | exit 0 after new audit specs and diagnostics | npm run test:typecheck |
+| Audit-output secret scan | 0 findings in each of audit/<RUN_ID>, tests/audit, worker/test/audit, e2e/audit | gitleaks 8.30.1, separate directory scans |
