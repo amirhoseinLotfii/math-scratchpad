@@ -80,3 +80,11 @@
 - AUD-005: synthetic local POST scoped execute returned 404 in three previous attempts and one after environment restoration. PR92 still only statically examined.
 - AUD-017: Import backup file path independently replaced synthetic current work without separate confirmation in three local mobile runs; unified with prior text-import finding.
 - S10: PR91 local Worker test covered orphaned lock takeover and release; real production lock not altered.
+
+## Phase 9 — keyboard and import diagnostic checkpoint
+- Timestamp: 2026-11-13T12:19+03:30.
+- Import from a valid synthetic backup file replaced a synthetic active expression without showing confirmation in 3/3 mobile runs. No user data or external service was used; AUD-017 now covers both JSON and file import paths.
+- Menu keyboard subset: initial one-shot 10/10 Enter/Space/Escape checks passed across Pixel 7 emulation (320×640) and desktop. Repeated mobile Enter test then reproduced intermittent loss: 4/5 attempts focused and blurred the Import session JSON item before key delivery, with no keydown/click and menu root active; desktop 5/5 passed. Direct locator press failed 2/3 mobile repeats and passed 3/3 desktop. Escape closed and restored trigger focus in 2/2 devices.
+- Hypotheses by likelihood: (1) compact-menu focus/roving-focus interaction around inline Data role=group at src/app/exercise-menu.tsx:123–130; (2) touch emulation plus pointer hover in this test path; (3) asynchronous compact-layout initialization. Exact root cause remains unisolated after repeated attempts; no app code changed.
+- Updated AUD-007, K5, N8, I2, I3, I4, G7, G8, S12 and menu test matrix. Full menu matrix, all other S12 actions, S14/S15, and live production browser remain NOT_TESTED/BLOCKED.
+- Evidence added to evidence.md; typecheck passed. Secret scan of audit/<RUN_ID>, tests/audit, worker/test/audit and e2e/audit returned zero findings. A repository-root scan separately found the previously documented browser API key at src/features/drive-bank/drive-config.ts:4; it is not copied into audit files or the report.
