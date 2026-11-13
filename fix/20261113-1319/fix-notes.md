@@ -195,3 +195,15 @@ Timestamp: 2026-11-13 15:24 Asia/Tehran.
 - Checkpoint whitespace checks passed. Gitleaks was NOT_RUN because the executable is absent in this runtime; this phase adds only public deployment/run identifiers and commit SHAs, with no credentials or secret material.
 - Next: AUD-007 compact mobile menu Enter activation.
 
+
+## Phase 16 — AUD-007 compact mobile menu keyboard focus
+Timestamp: 2026-11-13 15:35 Asia/Tehran.
+
+- Reproduced the Import session JSON Enter failure 5/5 times at mobile-320 before the change. The item briefly received focus, then Radix returned focus to the root `role=menu`; the target received no keydown or click. The inline mobile disclosure is rendered inside the same Radix menu, so its trigger's pointerleave path must not clear focus when that group remains expanded.
+- Updated compact Practice and Data disclosures to prevent the default Radix pointerleave focus reset while their inline groups are expanded. This preserves item focus as the menu scrolls into the child action list. Updated the regression to scroll the Import item into view and assert it remains focused before Enter/Space.
+- Local browser support was enabled from the already-installed `@sparticuz/chromium` package by `npm run test:browser:prepare`; it created `/tmp/math-chromium` without network access. The prior missing-browser blocker no longer applies to these local checks.
+- Verification after the fix: repeated Import Enter direct-focus test 5/5 PASS; repeated locator-press Enter test 5/5 PASS. After removing temporary diagnostic logging, the full keyboard file passed 6/6 at mobile-320 and 6/6 desktop; integrated `UI-AUDIT-07` passed 1/1 at mobile-320. `npm run typecheck`, `npm run test:typecheck`, `npx vitest run tests/keyboard-ux.test.tsx` (15/15), and `git diff --check` passed. This phase did not rerun the full application/Worker suite.
+- Status: AUD-007 FIXED in the isolated code branch. No production data or deployment was touched. Current local commit `f126b4e5292d4d41238f060da504a4959049ec2a`; synchronized GitHub code branch commit `8c40cc4ce18f824901abd77414451de681c880d3`; both have tree `a70745f39e9996eabdb14b6284b414276b9fd1b1`. No PR, merge, or release.
+- `git diff --check` passed. Gitleaks was NOT_RUN because the executable is absent in this runtime; this phase adds only focus handling and test code, with no credentials or secret material.
+- Next: AUD-008 mobile-320 visual CI failure.
+
