@@ -1,0 +1,424 @@
+# Math Scratchpad — Full Audit Report
+RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
+
+## 0. TL;DR
+2 Blocker, 5 High, 1 Medium; 0 Critical, 0 Low. Findings include static risks, not all reproduced.
+Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, and exit-flush is absent in main. No safe phone-only recovery was verified.
+Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
+
+## 1. Environment & coverage
+Repository cloned. Node 24.22.1, npm 11.9.0. npm ci --ignore-scripts succeeded; local tests ran. Cloudflare read access succeeded. Google Drive root was listable; account identity was not established, so no project backup was created there. Notion live rows not queried. Real sign-in and protected production data were not touched.
+PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 performed; phase 8 and most scenarios not completed. Static review does not count as a behavioral test. No claim of exhaustive coverage.
+
+## 2. Versions & release drift
+- main: 7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf
+- PR 91: open, 59913b8fb45bfe07ca2f31614efb1843b2b5569d, based on main.
+- PR 92: open draft, f384ca4fe9b4844df15a528ecb41529f138794ef, based on PR 91 head.
+- PR 93: open draft, d1c730c643d1aef994a5f9fc9afe09876cca18fd, based on main.
+- Pages: successful deploy run [43238966350](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43238966350), SHA main above.
+- Worker: deployment annotation 59913b8, version d376eafb-f0ab-42b9-8409-aab8f9bbaead, 100%, 2026-11-12 17:08:08 UTC. /health returned only ok/service. Admin status returned 401 unauthenticated.
+
+## 3. Test results
+| Ref | Suite | Status | Result | Evidence |
+|---|---|---|---|---|
+| main | Typecheck | VERIFIED | exit 0 | npm run typecheck, this run |
+| main | Vitest | VERIFIED | 75 files, 975 tests passed | npx vitest run, this run |
+| main | Worker | VERIFIED | 6 files, 113 tests passed | npm run test:worker, this run |
+| main | Targeted sync/auth | VERIFIED | 3 files, 44 tests passed | npx vitest run tests/unit/browser-sync.test.ts tests/unit/learning-reset-client.test.ts tests/unit/google-auth.test.ts |
+| main | AXE mobile-320 | VERIFIED | 9 passed | npx playwright test e2e/accessibility/axe-states.spec.ts --project=mobile-320 --workers=1 |
+| main | UI-AUDIT-07 mobile-320 | VERIFIED | 1 passed | same test passed on main, not PR 93; local run |
+| main | Build | VERIFIED | exit 0, Worker dry run | npm run build; standalone build warned import.meta is empty in IIFE; effect NOT_TESTED |
+| PR 93 | CI gate | FAILED | 90 passed, 1 failed, 515 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43294569144), AUD-007 |
+| PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
+| All refs | Full browser / new audit tests | NOT_TESTED | incomplete | No new audit test produced |
+
+## 4. Blockers
+- AUD-001: Reset-pending state makes editor inert until authenticated cloud check. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
+- AUD-003: Exit and hidden-page flush are absent from main. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
+
+## 5. All findings
+### AUD-001 — Reset-pending state makes editor inert until authenticated cloud check
+- **Category:** Bug
+- **Severity:** Blocker · **Blocks learning today:** yes
+- **Confidence:** likely · **Verification:** NOT_TESTED
+- **Refs affected:** main 7eeeef0; PR 93 d1c730c
+- **Location:** src/sync/server-connection-gate.tsx:135; src/main.tsx:42
+- **Related:** C1 C6 H8 K1 N2
+- **Evidence:** Static inspection: pending flag makes the entire editor inert; main clears the flag only after an authenticated hasCloudLearningData check. PR 93 retains the inert guard. Real phone state and Google timeout were not observed in this run.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer state; src/sync/server-connection-gate.tsx:135; src/main.tsx:42; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Provide a safe, explicitly verified recovery after server reconciliation without requiring a working interactive Google popup; preserve epoch protection.
+- **Fix acceptance:** Test pending flag with failed Google sign-in, server empty and nonempty, interrupted check and subsequent reload; verify no old data reappears.
+- **Size:** M · **Fix risk:** high
+
+### AUD-002 — Outbox initiates sync immediately instead of five-second trailing debounce
+- **Category:** Contract violation
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** likely · **Verification:** NOT_TESTED
+- **Refs affected:** main 7eeeef0
+- **Location:** src/sync/runtime.ts:285
+- **Related:** N1 B2 B3 B4 K8
+- **Evidence:** After queue persistence refreshCountAndTrigger calls syncNow immediately when authenticated. PR 93 adds debounce and maximum-wait timers at runtime.ts:322–345, but behavior has not been independently verified.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer outbox; src/sync/runtime.ts:285; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Introduce tested 5-second trailing debounce and 30-second maximum wait, respecting explicit flushes and retries.
+- **Fix acceptance:** Fake-clock tests for five events, continuous events, authentication changes and concurrent running sync.
+- **Size:** M · **Fix risk:** medium
+
+### AUD-003 — Exit and hidden-page flush are absent from main
+- **Category:** Contract violation
+- **Severity:** Blocker · **Blocks learning today:** yes
+- **Confidence:** likely · **Verification:** NOT_TESTED
+- **Refs affected:** main 7eeeef0
+- **Location:** src/sync/runtime.ts:102; src/sync/runtime.ts:292
+- **Related:** N1 B5 B6 K8
+- **Evidence:** start does not register pagehide; onPageHide is empty; visibilitychange only acts when visible. Queued events may remain local rather than reach server before exit; actual data loss or duplication has not been demonstrated.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer outbox; src/sync/runtime.ts:102; src/sync/runtime.ts:292; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Implement bounded authenticated keepalive flush with acknowledgement and durable retry, without removing events prematurely.
+- **Fix acceptance:** Local Worker E2E: answer then hide/close within 2 seconds, verify server and reload, including offline and concurrent flush.
+- **Size:** M · **Fix risk:** high
+
+### AUD-004 — Production Worker and Pages originate from different commits
+- **Category:** Release
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** production; main 7eeeef0; PR 91 59913b8
+- **Location:** Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml
+- **Related:** N7 L5 L7 K7
+- **Evidence:** Cloudflare deployment annotation identifies 59913b8, 100% version d376eafb, 2026-11-12 17:08 UTC. Successful Pages run 43238966350 used main 7eeeef0. GET /health returned only ok and service, no SHA or environment. Deployment annotation is evidence, not a cryptographic artifact identity.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer config; Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Merge and release an agreed commit through a single versioned pipeline; inject immutable SHA and environment into health.
+- **Fix acceptance:** Compare deployed Pages build and Worker health SHA with main after release, with rollback and staging checks.
+- **Size:** M · **Fix risk:** high
+
+### AUD-005 — Scoped reset execution is not implemented
+- **Category:** Missing
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** likely · **Verification:** NOT_TESTED
+- **Refs affected:** main 7eeeef0; PR 92 f384ca4
+- **Location:** worker/src/index.ts:219; PR 92 worker/src/index.ts:231
+- **Related:** N3 C9 K6
+- **Evidence:** Both inspected route lists expose GET /reset/preview but no /reset/execute. PR 92 scoped-reset-plan.ts:38–45 explicitly describes a future transactional planner. No production write or endpoint probing was performed.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer worker; worker/src/index.ts:219; PR 92 worker/src/index.ts:231; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Design journaled scoped execution with isolation, idempotency and ownership checks across all layers.
+- **Fix acceptance:** Synthetic local integration tests for preview, two confirmations, execute, restart, concurrency and preserved unrelated data.
+- **Size:** L · **Fix risk:** high
+
+### AUD-006 — PR 93 replaced Enter with pointer click in AXE setup
+- **Category:** CI/test
+- **Severity:** Medium · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** PR 93 d1c730c
+- **Location:** e2e/accessibility/axe-states.spec.ts:20
+- **Related:** K5 I2 L2
+- **Evidence:** Git history shows commit b305a95 replaced press Enter with click; 776fd7fc changed only the comment. Separate CI test UI-AUDIT-07 still uses Enter and fails. This change does not itself establish the underlying UI cause.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer test; e2e/accessibility/axe-states.spec.ts:20; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Restore explicit keyboard coverage and independently investigate focus and submenu behavior; retain pointer coverage.
+- **Fix acceptance:** Real keyboard Enter and Space across device projects; assert dialog opens and focus returns.
+- **Size:** S · **Fix risk:** low
+
+### AUD-007 — PR 93 CI gate fails on mobile session backup workflow
+- **Category:** CI/test
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** PR 93 d1c730c
+- **Location:** e2e/ui-audit-regressions.spec.ts:103
+- **Related:** I2 L3 L4
+- **Evidence:** Run 43294569144 mobile-320 UI-AUDIT-07 failed and failed on retry: Session backup region not found after Enter; 90 passed and 515 did not run. Root cause is unresolved: keyboard interaction, focus, or test setup are possibilities.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer CI; e2e/ui-audit-regressions.spec.ts:103; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Reproduce locally against exact PR head, inspect focus/DOM and fix the actual failure without weakening the assertion.
+- **Fix acceptance:** Run UI-AUDIT-07 three times on PR head and verify Enter/Space and mouse.
+- **Size:** M · **Fix risk:** medium
+
+### AUD-008 — PR 92 mobile-320 visual CI gate fails
+- **Category:** CI/test
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** PR 92 f384ca4
+- **Location:** e2e/visual/mobile-layout.spec.ts:23
+- **Related:** H1 L3
+- **Evidence:** Run 43278685074 failed single-edit snapshot and its retry: 27,690 pixels differed (11%) against 3% tolerance; 93 passed, 512 did not run. Actual visual cause not established.
+- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
+- **Root cause:** layer CI; e2e/visual/mobile-layout.spec.ts:23; mechanism or unresolved cause as stated in evidence.
+- **Proposed fix (not executed):** Inspect CI baseline, actual and diff on exact head before deciding whether UI or baseline requires change.
+- **Fix acceptance:** Repeat on CI-equivalent renderer; review screenshots on 320 px, then pass visual suite.
+- **Size:** M · **Fix risk:** medium
+
+## 6. Findings summary table
+| ID | Title | Category | Severity | Confidence | Verification | Location |
+|---|---|---|---|---|---|---|
+| AUD-001 | Reset-pending state makes editor inert until authenticated cloud check | Bug | Blocker | likely | NOT_TESTED | src/sync/server-connection-gate.tsx:135; src/main.tsx:42 |
+| AUD-002 | Outbox initiates sync immediately instead of five-second trailing debounce | Contract violation | High | likely | NOT_TESTED | src/sync/runtime.ts:285 |
+| AUD-003 | Exit and hidden-page flush are absent from main | Contract violation | Blocker | likely | NOT_TESTED | src/sync/runtime.ts:102; src/sync/runtime.ts:292 |
+| AUD-004 | Production Worker and Pages originate from different commits | Release | High | confirmed | VERIFIED | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml |
+| AUD-005 | Scoped reset execution is not implemented | Missing | High | likely | NOT_TESTED | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 |
+| AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | confirmed | VERIFIED | e2e/accessibility/axe-states.spec.ts:20 |
+| AUD-007 | PR 93 CI gate fails on mobile session backup workflow | CI/test | High | confirmed | VERIFIED | e2e/ui-audit-regressions.spec.ts:103 |
+| AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | confirmed | VERIFIED | e2e/visual/mobile-layout.spec.ts:23 |
+
+## 7. Known issues K1–K8
+- K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
+- K2: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
+- K3: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
+- K4: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
+- K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
+- K6: NOT_TESTED — root cause / actual production behavior not established; see AUD-005.
+- K7: NOT_TESTED — root cause / actual production behavior not established; see AUD-004.
+- K8: NOT_TESTED — root cause / actual production behavior not established; see AUD-002 and AUD-003.
+
+## 8. Contract & requirements
+- N1: NOT_TESTED — full behavioral coverage incomplete; static gaps AUD-002 and AUD-003.
+- N2: NOT_TESTED — full behavioral coverage incomplete; recovery risk AUD-001.
+- N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
+- N4: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
+- N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
+- N6: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
+- N7: NOT_TESTED — full behavioral coverage incomplete; release mismatch AUD-004.
+- N8: NOT_TESTED — full behavioral coverage incomplete; keyboard coverage gap AUD-006 and CI AUD-007.
+
+## 9. Review checklist
+All entries below are NOT_TESTED in full; static observations are linked where available.
+- A: A1 NOT_TESTED, A2 NOT_TESTED, A3 NOT_TESTED, A4 NOT_TESTED, A5 NOT_TESTED, A6 NOT_TESTED, A7 NOT_TESTED, A8 NOT_TESTED, A9 NOT_TESTED.
+- B: B1 NOT_TESTED, B2 NOT_TESTED, B3 NOT_TESTED, B4 NOT_TESTED, B5 NOT_TESTED, B6 NOT_TESTED, B7 NOT_TESTED, B8 NOT_TESTED, B9 NOT_TESTED, B10 NOT_TESTED, B11 NOT_TESTED, B12 NOT_TESTED, B13 NOT_TESTED, B14 NOT_TESTED.
+- C: C1 NOT_TESTED, C2 NOT_TESTED, C3 NOT_TESTED, C4 NOT_TESTED, C5 NOT_TESTED, C6 NOT_TESTED, C7 NOT_TESTED, C8 NOT_TESTED, C9 NOT_TESTED, C10 NOT_TESTED.
+- D: D1 NOT_TESTED, D2 NOT_TESTED, D3 NOT_TESTED, D4 NOT_TESTED, D5 NOT_TESTED, D6 NOT_TESTED, D7 NOT_TESTED, D8 NOT_TESTED, D9 NOT_TESTED, D10 NOT_TESTED, D11 NOT_TESTED.
+- E: E1 NOT_TESTED, E2 NOT_TESTED, E3 NOT_TESTED, E4 NOT_TESTED, E5 NOT_TESTED, E6 NOT_TESTED, E7 NOT_TESTED, E8 NOT_TESTED, E9 NOT_TESTED, E10 NOT_TESTED, E11 NOT_TESTED.
+- F: F1 NOT_TESTED, F2 NOT_TESTED, F3 NOT_TESTED, F4 NOT_TESTED, F5 NOT_TESTED, F6 NOT_TESTED, F7 NOT_TESTED, F8 NOT_TESTED, F9 NOT_TESTED.
+- G: G1 NOT_TESTED, G2 NOT_TESTED, G3 NOT_TESTED, G4 NOT_TESTED, G5 NOT_TESTED, G6 NOT_TESTED, G7 NOT_TESTED, G8 NOT_TESTED, G9 NOT_TESTED, G10 NOT_TESTED.
+- H: H1 NOT_TESTED, H2 NOT_TESTED, H3 NOT_TESTED, H4 NOT_TESTED, H5 NOT_TESTED, H6 NOT_TESTED, H7 NOT_TESTED, H8 NOT_TESTED.
+- I: I1 NOT_TESTED, I2 NOT_TESTED, I3 NOT_TESTED, I4 NOT_TESTED, I5 NOT_TESTED, I6 NOT_TESTED, I7 NOT_TESTED, I8 NOT_TESTED.
+- J: J1 NOT_TESTED, J2 NOT_TESTED, J3 NOT_TESTED, J4 NOT_TESTED, J5 NOT_TESTED, J6 NOT_TESTED, J7 NOT_TESTED.
+- K: K1 NOT_TESTED, K2 NOT_TESTED, K3 NOT_TESTED, K4 NOT_TESTED.
+- L: L1 NOT_TESTED, L2 NOT_TESTED, L3 NOT_TESTED, L4 NOT_TESTED, L5 NOT_TESTED, L6 NOT_TESTED, L7 NOT_TESTED, L8 NOT_TESTED.
+
+## 10. Browser scenarios
+- S1–S18: NOT_TESTED — complete specified scenarios were not executed. The separate nine AXE tests do not establish these scenarios.
+- Real Google sign-in: BLOCKED — owner-only; no account sign-in was attempted.
+
+## 11. PR analysis & merge order
+PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 returned exit 0, but semantic compatibility was not tested. Consider 91 before 92 after testing, resolve PR 93 independently, then integrate and test one SHA. This is a proposed sequence, not merge authorization.
+
+## 12. Proposed fix plan
+1. Synthetic reproduction of lock, sign-in and exit scenarios; establish safe recovery. 2. Resolve confirmed CI failures and restore keyboard checks. 3. Integrate scoped reset only after data isolation tests. 4. Align release SHA, rerun full browser, worker, security and release gates.
+
+## 13. Owner-only actions & open items
+No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
+
+## 14. Appendix
+Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Screenshots, red tests, production user-data verification and full security review: NOT_TESTED. No secrets or raw traces included.
+
+## 15. Machine index
+```json
+[
+  {
+    "id": "AUD-001",
+    "title": "Reset-pending state makes editor inert until authenticated cloud check",
+    "category": "Bug",
+    "severity": "Blocker",
+    "blocker": true,
+    "confidence": "likely",
+    "verification": "NOT_TESTED",
+    "refs": [
+      "main 7eeeef0; PR 93 d1c730c"
+    ],
+    "location": "src/sync/server-connection-gate.tsx:135; src/main.tsx:42",
+    "requirements": [
+      "C1",
+      "C6",
+      "H8",
+      "K1",
+      "N2"
+    ],
+    "root_cause_layer": "state",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "high"
+  },
+  {
+    "id": "AUD-002",
+    "title": "Outbox initiates sync immediately instead of five-second trailing debounce",
+    "category": "Contract violation",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "likely",
+    "verification": "NOT_TESTED",
+    "refs": [
+      "main 7eeeef0"
+    ],
+    "location": "src/sync/runtime.ts:285",
+    "requirements": [
+      "N1",
+      "B2",
+      "B3",
+      "B4",
+      "K8"
+    ],
+    "root_cause_layer": "outbox",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-003",
+    "title": "Exit and hidden-page flush are absent from main",
+    "category": "Contract violation",
+    "severity": "Blocker",
+    "blocker": true,
+    "confidence": "likely",
+    "verification": "NOT_TESTED",
+    "refs": [
+      "main 7eeeef0"
+    ],
+    "location": "src/sync/runtime.ts:102; src/sync/runtime.ts:292",
+    "requirements": [
+      "N1",
+      "B5",
+      "B6",
+      "K8"
+    ],
+    "root_cause_layer": "outbox",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "high"
+  },
+  {
+    "id": "AUD-004",
+    "title": "Production Worker and Pages originate from different commits",
+    "category": "Release",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "production; main 7eeeef0; PR 91 59913b8"
+    ],
+    "location": "Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml",
+    "requirements": [
+      "N7",
+      "L5",
+      "L7",
+      "K7"
+    ],
+    "root_cause_layer": "config",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "high"
+  },
+  {
+    "id": "AUD-005",
+    "title": "Scoped reset execution is not implemented",
+    "category": "Missing",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "likely",
+    "verification": "NOT_TESTED",
+    "refs": [
+      "main 7eeeef0; PR 92 f384ca4"
+    ],
+    "location": "worker/src/index.ts:219; PR 92 worker/src/index.ts:231",
+    "requirements": [
+      "N3",
+      "C9",
+      "K6"
+    ],
+    "root_cause_layer": "worker",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "L",
+    "fix_risk": "high"
+  },
+  {
+    "id": "AUD-006",
+    "title": "PR 93 replaced Enter with pointer click in AXE setup",
+    "category": "CI/test",
+    "severity": "Medium",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "PR 93 d1c730c"
+    ],
+    "location": "e2e/accessibility/axe-states.spec.ts:20",
+    "requirements": [
+      "K5",
+      "I2",
+      "L2"
+    ],
+    "root_cause_layer": "test",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "S",
+    "fix_risk": "low"
+  },
+  {
+    "id": "AUD-007",
+    "title": "PR 93 CI gate fails on mobile session backup workflow",
+    "category": "CI/test",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "PR 93 d1c730c"
+    ],
+    "location": "e2e/ui-audit-regressions.spec.ts:103",
+    "requirements": [
+      "I2",
+      "L3",
+      "L4"
+    ],
+    "root_cause_layer": "CI",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-008",
+    "title": "PR 92 mobile-320 visual CI gate fails",
+    "category": "CI/test",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "PR 92 f384ca4"
+    ],
+    "location": "e2e/visual/mobile-layout.spec.ts:23",
+    "requirements": [
+      "H1",
+      "L3"
+    ],
+    "root_cause_layer": "CI",
+    "red_test": "",
+    "run_cmd": "",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "medium"
+  }
+]
+```
