@@ -40,3 +40,5 @@ Local runs use synthetic data and mocked external services unless otherwise spec
 | AUD-017 file path | 3/3 mobile synthetic valid-file imports replaced the existing expression before any confirmation dialog | npx playwright test e2e/audit/import.file-confirmation.spec.ts --project=mobile-390 --workers=1 --repeat-each=3 |
 | Audit test typecheck | exit 0 after new audit specs and diagnostics | npm run test:typecheck |
 | Audit-output secret scan | 0 findings in each of audit/<RUN_ID>, tests/audit, worker/test/audit, e2e/audit | gitleaks 8.30.1, separate directory scans |
+
+| Phase 3 static review | 18 main Worker route handlers; production admin status route exists on PR 91 but not main; SQLite DDL and reset transitions reviewed | worker/src/index.ts; worker/src/event-store.ts; worker/wrangler.jsonc; src/sync/browser-db.ts; src/main.tsx |
