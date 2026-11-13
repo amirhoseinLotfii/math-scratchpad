@@ -40,6 +40,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | main | Outbox 5-second debounce | FAILED | three runs sent after roughly 4 ms | tests/audit/outbox.debounce.test.ts; AUD-002 |
 | main | UI audit mobile-320 | VERIFIED | 9 passed | e2e/ui-audit-regressions.spec.ts |
 | main | Local storage / conflict desktop | VERIFIED | 8 passed | local-storage-sync and server-conflict-resolution |
+| PR 93 | Full Vitest | VERIFIED | 75 files, 980 passed | npx vitest run at pinned head |
+| PR 93 | Mocked Google sign-in/Drive browser | VERIFIED | 3 mobile-390 tests passed | drive-session-confirmation and google-auth-new-tab; local symlinked dependencies emitted Vite font warnings |
 | PR 93 | Worker and typecheck | VERIFIED | 114 worker tests and typecheck passed | local pinned head |
 | main | Public versus DO state size | FAILED | 3 local runs: direct 300 KB state succeeds, public route returns 413 | worker/test/audit/state.proxy-limit.test.ts; AUD-013 |
 | main | Ownership and Notion audit | FAILED | 2 synthetic assertions failed in three runs | worker/test/audit/reset.ownership-and-notion.test.ts; AUD-010 and AUD-011 |
@@ -290,31 +292,27 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Size:** S · **Fix risk:** low
 
 ## 6. Findings summary table
-| ID | Title | Category | Severity | Confidence | Verification | Location |
-|---|---|---|---|---|---|---|
-| AUD-001 | Reset-pending state makes editor inert until authenticated cloud check | Bug | Blocker | likely | NOT_TESTED | src/sync/server-connection-gate.tsx:135; src/main.tsx:42 |
-| AUD-002 | Outbox initiates sync immediately instead of five-second trailing debounce | Contract violation | High | confirmed | VERIFIED | src/sync/runtime.ts:285 |
-| AUD-003 | Exit and hidden-page flush are absent from main | Contract violation | Blocker | likely | NOT_TESTED | src/sync/runtime.ts:102; src/sync/runtime.ts:292 |
-| AUD-004 | Production Worker and Pages originate from different commits | Release | High | confirmed | VERIFIED | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml |
-| AUD-005 | Scoped reset execution is not implemented | Missing | High | likely | NOT_TESTED | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 |
-| AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | confirmed | VERIFIED | e2e/accessibility/axe-states.spec.ts:20 |
-| AUD-007 | PR 93 CI gate fails on mobile session backup workflow | CI/test | High | confirmed | VERIFIED | e2e/ui-audit-regressions.spec.ts:103 |
-| AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | confirmed | VERIFIED | e2e/visual/mobile-layout.spec.ts:23 |
-
-| AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | confirmed | VERIFIED | worker/src/event-store.ts:419 |
-
-| AUD-010 | Reset selects Drive files by name without an ownership marker | Data | Critical | confirmed | VERIFIED | worker/src/event-store.ts:485 |
-| AUD-011 | Reset clears Notion page references without external reconciliation | Data | High | confirmed | VERIFIED | worker/src/event-store.ts:532 |
-| AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | confirmed | VERIFIED | package.json |
-
-| AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | confirmed | VERIFIED | worker/src/index.ts:130 |
-
-| AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | confirmed | VERIFIED | src/app/exercise-menu.tsx:86 |
+| ID | Title | Category | Severity | Blocks learning today | Confidence | Verification | Refs | Location | Size |
+|---|---|---|---|---|---|---|---|---|---|
+| AUD-001 | Reset-pending state makes editor inert until authenticated cloud check | Bug | Blocker | yes | likely | NOT_TESTED | main 7eeeef0; PR 93 d1c730c | src/sync/server-connection-gate.tsx:135; src/main.tsx:42 | M |
+| AUD-002 | Outbox initiates sync immediately instead of five-second trailing debounce | Contract violation | High | no | confirmed | VERIFIED | main 7eeeef0 | src/sync/runtime.ts:285 | M |
+| AUD-003 | Exit and hidden-page flush are absent from main | Contract violation | Blocker | yes | likely | NOT_TESTED | main 7eeeef0 | src/sync/runtime.ts:102; src/sync/runtime.ts:292 | M |
+| AUD-004 | Production Worker and Pages originate from different commits | Release | High | no | confirmed | VERIFIED | production; main 7eeeef0; PR 91 59913b8 | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml | M |
+| AUD-005 | Scoped reset execution is not implemented | Missing | High | no | likely | NOT_TESTED | main 7eeeef0; PR 92 f384ca4 | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 | L |
+| AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/accessibility/axe-states.spec.ts:20 | S |
+| AUD-007 | PR 93 CI gate fails on mobile session backup workflow | CI/test | High | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/ui-audit-regressions.spec.ts:103 | M |
+| AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | no | confirmed | VERIFIED | PR 92 f384ca4 | e2e/visual/mobile-layout.spec.ts:23 | M |
+| AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 91 59913b8 static, PR 93 d1c730c static | worker/src/event-store.ts:419 | L |
+| AUD-010 | Reset selects Drive files by name without an ownership marker | Data | Critical | no | confirmed | VERIFIED | main 7eeeef0 | worker/src/event-store.ts:485 | L |
+| AUD-011 | Reset clears Notion page references without external reconciliation | Data | High | no | confirmed | VERIFIED | main 7eeeef0 | worker/src/event-store.ts:532 | L |
+| AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | no | confirmed | VERIFIED | main 7eeeef0 | package.json | M |
+| AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 and PR 93 static | worker/src/index.ts:130 | M |
+| AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 93 static | src/sync/runtime.ts:265 | M |
+| AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | no | confirmed | VERIFIED | main 7eeeef0, PR 93 d1c730c | src/app/exercise-menu.tsx:86 | S |
 
 ## Notion read-only aggregate observations
 On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
 
-| AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | confirmed | VERIFIED | src/sync/runtime.ts:265 |
 
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
@@ -324,7 +322,7 @@ On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistak
 - K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
 - K6: NOT_TESTED — root cause / actual production behavior not established; see AUD-005.
 - K7: NOT_TESTED — root cause / actual production behavior not established; see AUD-004.
-- K8: NOT_TESTED — root cause / actual production behavior not established; see AUD-002 and AUD-003.
+- K8: FAILED — main mocked runtime violates 5-second debounce (AUD-002); full production behavior and exit flush remain untested (AUD-003).
 
 ## 8. Contract & requirements
 
@@ -344,28 +342,125 @@ On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistak
 Full request/response/error contract and duplicate type comparison: NOT_TESTED.
 
 - N1: FAILED — debounce behavior failed in three mocked local runs (AUD-002); exit flush static gap AUD-003; full browser/real Worker validation remains incomplete.
-- N2: FAILED — synthetic release epoch test failed; complete reset behavior NOT_TESTED; see AUD-009 and recovery risk AUD-001.
+- N2: FAILED — two complete local Worker resets allowed an old event (AUD-009); external mirror reconciliation and real-device behavior remain NOT_TESTED; see AUD-001 and AUD-014.
 - N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
 - N4: FAILED — local fake Drive test selected unmarked file, AUD-010; Notion cleanup/reconciliation gap AUD-011.
 - N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
 - N6: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
-- N7: NOT_TESTED — full behavioral coverage incomplete; release mismatch AUD-004.
+- N7: FAILED — Worker deployment and Pages release identify different source commits; see AUD-004.
 - N8: NOT_TESTED — full behavioral coverage incomplete; keyboard coverage gap AUD-006 and CI AUD-007.
 
 ## 9. Review checklist
-All entries below are NOT_TESTED in full; static observations are linked where available.
-- A: A1 NOT_TESTED, A2 NOT_TESTED, A3 NOT_TESTED, A4 NOT_TESTED, A5 NOT_TESTED, A6 NOT_TESTED, A7 NOT_TESTED, A8 NOT_TESTED, A9 NOT_TESTED.
-- B: B1 NOT_TESTED, B2 NOT_TESTED, B3 NOT_TESTED, B4 NOT_TESTED, B5 NOT_TESTED, B6 NOT_TESTED, B7 NOT_TESTED, B8 NOT_TESTED, B9 NOT_TESTED, B10 NOT_TESTED, B11 NOT_TESTED, B12 NOT_TESTED, B13 NOT_TESTED, B14 NOT_TESTED.
-- C: C1 NOT_TESTED, C2 NOT_TESTED, C3 NOT_TESTED, C4 NOT_TESTED, C5 NOT_TESTED, C6 NOT_TESTED, C7 NOT_TESTED, C8 NOT_TESTED, C9 NOT_TESTED, C10 NOT_TESTED.
-- D: D1 NOT_TESTED, D2 NOT_TESTED, D3 NOT_TESTED, D4 NOT_TESTED, D5 NOT_TESTED, D6 NOT_TESTED, D7 NOT_TESTED, D8 NOT_TESTED, D9 NOT_TESTED, D10 NOT_TESTED, D11 NOT_TESTED.
-- E: E1 NOT_TESTED, E2 NOT_TESTED, E3 NOT_TESTED, E4 NOT_TESTED, E5 NOT_TESTED, E6 NOT_TESTED, E7 NOT_TESTED, E8 NOT_TESTED, E9 NOT_TESTED, E10 NOT_TESTED, E11 NOT_TESTED.
-- F: F1 NOT_TESTED, F2 NOT_TESTED, F3 NOT_TESTED, F4 NOT_TESTED, F5 NOT_TESTED, F6 NOT_TESTED, F7 NOT_TESTED, F8 NOT_TESTED, F9 NOT_TESTED.
-- G: G1 NOT_TESTED, G2 NOT_TESTED, G3 NOT_TESTED, G4 NOT_TESTED, G5 NOT_TESTED, G6 NOT_TESTED, G7 NOT_TESTED, G8 NOT_TESTED, G9 NOT_TESTED, G10 NOT_TESTED.
-- H: H1 NOT_TESTED, H2 NOT_TESTED, H3 NOT_TESTED, H4 NOT_TESTED, H5 NOT_TESTED, H6 NOT_TESTED, H7 NOT_TESTED, H8 NOT_TESTED.
-- I: I1 NOT_TESTED, I2 NOT_TESTED, I3 NOT_TESTED, I4 NOT_TESTED, I5 NOT_TESTED, I6 NOT_TESTED, I7 NOT_TESTED, I8 NOT_TESTED.
-- J: J1 NOT_TESTED, J2 NOT_TESTED, J3 NOT_TESTED, J4 NOT_TESTED, J5 NOT_TESTED, J6 NOT_TESTED, J7 NOT_TESTED.
-- K: K1 NOT_TESTED, K2 NOT_TESTED, K3 NOT_TESTED, K4 NOT_TESTED.
-- L: L1 NOT_TESTED, L2 NOT_TESTED, L3 NOT_TESTED, L4 NOT_TESTED, L5 NOT_TESTED, L6 NOT_TESTED, L7 NOT_TESTED, L8 NOT_TESTED.
+Each code records a narrow executed failure or an explicit limitation; NOT_TESTED means no complete check, even if some static evidence exists.
+- A1: NOT_TESTED — full behavior or coverage not established in this run.
+- A2: FAILED — AUD-013
+- A3: NOT_TESTED — full behavior or coverage not established in this run.
+- A4: FAILED — AUD-013
+- A5: NOT_TESTED — full behavior or coverage not established in this run.
+- A6: NOT_TESTED — full behavior or coverage not established in this run.
+- A7: NOT_TESTED — full behavior or coverage not established in this run.
+- A8: NOT_TESTED — full behavior or coverage not established in this run.
+- A9: NOT_TESTED — full behavior or coverage not established in this run.
+- B1: NOT_TESTED — full behavior or coverage not established in this run.
+- B2: FAILED — AUD-002
+- B3: NOT_TESTED — full behavior or coverage not established in this run.
+- B4: NOT_TESTED — full behavior or coverage not established in this run.
+- B5: NOT_TESTED — full behavior or coverage not established in this run.
+- B6: NOT_TESTED — full behavior or coverage not established in this run.
+- B7: NOT_TESTED — full behavior or coverage not established in this run.
+- B8: NOT_TESTED — full behavior or coverage not established in this run.
+- B9: NOT_TESTED — full behavior or coverage not established in this run.
+- B10: NOT_TESTED — full behavior or coverage not established in this run.
+- B11: NOT_TESTED — full behavior or coverage not established in this run.
+- B12: NOT_TESTED — full behavior or coverage not established in this run.
+- B13: NOT_TESTED — full behavior or coverage not established in this run.
+- B14: NOT_TESTED — full behavior or coverage not established in this run.
+- C1: FAILED — AUD-014
+- C2: NOT_TESTED — full behavior or coverage not established in this run.
+- C3: NOT_TESTED — full behavior or coverage not established in this run.
+- C4: NOT_TESTED — full behavior or coverage not established in this run.
+- C5: FAILED — AUD-009
+- C6: NOT_TESTED — full behavior or coverage not established in this run.
+- C7: NOT_TESTED — full behavior or coverage not established in this run.
+- C8: FAILED — AUD-011
+- C9: NOT_TESTED — full behavior or coverage not established in this run.
+- C10: NOT_TESTED — full behavior or coverage not established in this run.
+- D1: NOT_TESTED — full behavior or coverage not established in this run.
+- D2: NOT_TESTED — full behavior or coverage not established in this run.
+- D3: NOT_TESTED — full behavior or coverage not established in this run.
+- D4: NOT_TESTED — full behavior or coverage not established in this run.
+- D5: NOT_TESTED — full behavior or coverage not established in this run.
+- D6: NOT_TESTED — full behavior or coverage not established in this run.
+- D7: NOT_TESTED — full behavior or coverage not established in this run.
+- D8: NOT_TESTED — full behavior or coverage not established in this run.
+- D9: NOT_TESTED — full behavior or coverage not established in this run.
+- D10: NOT_TESTED — full behavior or coverage not established in this run.
+- D11: NOT_TESTED — full behavior or coverage not established in this run.
+- E1: NOT_TESTED — full behavior or coverage not established in this run.
+- E2: NOT_TESTED — full behavior or coverage not established in this run.
+- E3: NOT_TESTED — full behavior or coverage not established in this run.
+- E4: NOT_TESTED — full behavior or coverage not established in this run.
+- E5: NOT_TESTED — full behavior or coverage not established in this run.
+- E6: NOT_TESTED — full behavior or coverage not established in this run.
+- E7: FAILED — AUD-013
+- E8: NOT_TESTED — full behavior or coverage not established in this run.
+- E9: NOT_TESTED — full behavior or coverage not established in this run.
+- E10: NOT_TESTED — full behavior or coverage not established in this run.
+- E11: NOT_TESTED — full behavior or coverage not established in this run.
+- F1: FAILED — AUD-010
+- F2: FAILED — AUD-010
+- F3: NOT_TESTED — full behavior or coverage not established in this run.
+- F4: NOT_TESTED — full behavior or coverage not established in this run.
+- F5: NOT_TESTED — full behavior or coverage not established in this run.
+- F6: NOT_TESTED — full behavior or coverage not established in this run.
+- F7: NOT_TESTED — full behavior or coverage not established in this run.
+- F8: NOT_TESTED — full behavior or coverage not established in this run.
+- F9: NOT_TESTED — full behavior or coverage not established in this run.
+- G1: NOT_TESTED — full behavior or coverage not established in this run.
+- G2: NOT_TESTED — full behavior or coverage not established in this run.
+- G3: NOT_TESTED — full behavior or coverage not established in this run.
+- G4: NOT_TESTED — full behavior or coverage not established in this run.
+- G5: NOT_TESTED — full behavior or coverage not established in this run.
+- G6: NOT_TESTED — full behavior or coverage not established in this run.
+- G7: NOT_TESTED — full behavior or coverage not established in this run.
+- G8: NOT_TESTED — full behavior or coverage not established in this run.
+- G9: NOT_TESTED — full behavior or coverage not established in this run.
+- G10: NOT_TESTED — full behavior or coverage not established in this run.
+- H1: NOT_TESTED — full behavior or coverage not established in this run.
+- H2: NOT_TESTED — full behavior or coverage not established in this run.
+- H3: NOT_TESTED — full behavior or coverage not established in this run.
+- H4: NOT_TESTED — full behavior or coverage not established in this run.
+- H5: NOT_TESTED — full behavior or coverage not established in this run.
+- H6: NOT_TESTED — full behavior or coverage not established in this run.
+- H7: NOT_TESTED — full behavior or coverage not established in this run.
+- H8: NOT_TESTED — full behavior or coverage not established in this run.
+- I1: NOT_TESTED — full behavior or coverage not established in this run.
+- I2: NOT_TESTED — full behavior or coverage not established in this run.
+- I3: NOT_TESTED — full behavior or coverage not established in this run.
+- I4: NOT_TESTED — full behavior or coverage not established in this run.
+- I5: NOT_TESTED — full behavior or coverage not established in this run.
+- I6: NOT_TESTED — full behavior or coverage not established in this run.
+- I7: NOT_TESTED — full behavior or coverage not established in this run.
+- I8: FAILED — AUD-015
+- J1: NOT_TESTED — full behavior or coverage not established in this run.
+- J2: NOT_TESTED — full behavior or coverage not established in this run.
+- J3: NOT_TESTED — full behavior or coverage not established in this run.
+- J4: NOT_TESTED — full behavior or coverage not established in this run.
+- J5: NOT_TESTED — full behavior or coverage not established in this run.
+- J6: NOT_TESTED — full behavior or coverage not established in this run.
+- J7: FAILED — AUD-012
+- K1: NOT_TESTED — full behavior or coverage not established in this run.
+- K2: NOT_TESTED — full behavior or coverage not established in this run.
+- K3: NOT_TESTED — full behavior or coverage not established in this run.
+- K4: NOT_TESTED — full behavior or coverage not established in this run.
+- L1: NOT_TESTED — full behavior or coverage not established in this run.
+- L2: FAILED — AUD-006
+- L3: FAILED — AUD-008
+- L4: NOT_TESTED — full behavior or coverage not established in this run.
+- L5: FAILED — AUD-004
+- L6: NOT_TESTED — full behavior or coverage not established in this run.
+- L7: NOT_TESTED — full behavior or coverage not established in this run.
+- L8: NOT_TESTED — full behavior or coverage not established in this run.
 
 ## 10. Browser scenarios
 - S1: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
