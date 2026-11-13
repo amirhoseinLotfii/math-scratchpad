@@ -96,6 +96,11 @@ const NOTION_DEBOUNCE_MS = 250;
 const NOTION_RETRY_MS = 60_000;
 const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
 const LEARNING_RESET_TABLE = 'learning_reset_control';
+/**
+ * Each trashed mirror costs two Drive subrequests (verify + batch trash). Keep one reset call
+ * well under the Workers Free per-invocation subrequest cap (50) and resume on retry.
+ */
+const LEARNING_RESET_TRASH_PER_CALL = 12;
 
 type StoredNotionMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
@@ -169,6 +174,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private notionSyncPromise: Promise<NotionMirrorStatus> | undefined;
   private readonly notionRequests = new NotionRequestQueue();
   private activeLearningMutations = 0;
+  /** Reset id currently executing in this isolate; a takeover must never race a live run. */
+  private activeLearningResetId: string | undefined;
   private readonly learningMutationWaiters = new Set<() => void>();
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
@@ -238,6 +245,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const url = new URL(request.url);
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset') return this.executeLearningReset(request);
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset/release') return this.releaseLearningReset(request);
+    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/status') return this.learningResetStatus();
     if (this.isLearningResetLocked() && this.isLearningOrMirrorRoute(url.pathname, request.method)) {
       return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
     }
@@ -331,19 +339,25 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private async executeLearningReset(request: Request): Promise<Response> {
     const body = await readBoundedBody(request, 4_096);
     if (!body) return json({ error: 'payload_too_large' }, 413);
-    let input: { resetId?: unknown };
+    let input: { resetId?: unknown; takeover?: unknown };
     try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
     catch { return json({ error: 'invalid_reset_request' }, 400); }
     if (typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)) {
       return json({ error: 'invalid_reset_request' }, 400);
     }
     const resetId = input.resetId;
+    const takeover = input.takeover === true;
+    if (takeover && this.activeLearningResetId && this.activeLearningResetId !== resetId) {
+      return json({ error: 'learning_reset_active' }, 409);
+    }
     const claim = this.ctx.storage.transactionSync(() => {
       const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null }>(
         `SELECT status, reset_id FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
       ).one();
-      if (current.status === 'running' && current.reset_id !== resetId) return 'in_progress';
-      if (current.status === 'awaiting_release') return current.reset_id === resetId ? 'awaiting_release' : 'in_progress';
+      // An explicit admin takeover lets a new reset id claim a lock orphaned by a lost reset id.
+      const orphanTakeover = takeover && current.reset_id !== resetId;
+      if (current.status === 'running' && current.reset_id !== resetId && !orphanTakeover) return 'in_progress';
+      if (current.status === 'awaiting_release' && !orphanTakeover) return current.reset_id === resetId ? 'awaiting_release' : 'in_progress';
       if (current.status === 'released' && current.reset_id === resetId) return 'complete';
       this.ctx.storage.sql.exec(
         `UPDATE ${LEARNING_RESET_TABLE} SET status = 'running', reset_id = ?, completed_at = NULL, client_epoch = NULL WHERE singleton = 1`,
@@ -355,6 +369,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (claim === 'awaiting_release') return json({ completed: true, releaseRequired: true });
     if (claim === 'complete') return json({ error: 'learning_reset_already_complete' }, 409);
 
+    this.activeLearningResetId = resetId;
     try {
       await this.waitForLearningMutations();
       await Promise.allSettled([
@@ -369,6 +384,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         'SELECT file_id FROM bank_source WHERE singleton = 1',
       ).toArray()[0]?.file_id;
       const driveResult = await this.trashLearningMirrorFiles(bankFileId);
+      if (driveResult.remainingLearningMirrors) {
+        // Partial Drive progress: keep the lock and every cloud record until a later retry finishes Drive.
+        return json({ completed: false, inProgress: true, drive: driveResult, retryWithSameResetId: true }, 202);
+      }
       const cloudResult = this.clearLearningRecords();
       await this.ctx.storage.delete(DRIVE_STATE_KEY);
       await this.ctx.storage.delete(NOTION_MIRROR_STATE_KEY);
@@ -392,7 +411,22 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const safeStage = `drive_reset:${failureStage}`.slice(0, 64);
       this.recordDiagnostic('drive', safeStage, code);
       return json({ error: 'learning_reset_incomplete', code, failureStage: safeStage, retryWithSameResetId: true }, 502);
+    } finally {
+      if (this.activeLearningResetId === resetId) this.activeLearningResetId = undefined;
     }
+  }
+
+  /** Read-only lock state for the admin; never returns the reset id itself. */
+  private learningResetStatus(): Response {
+    const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null; completed_at: string | null }>(
+      `SELECT status, reset_id, completed_at FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
+    ).one();
+    return json({
+      status: current.status,
+      hasResetId: current.reset_id !== null,
+      completedAt: current.completed_at,
+      activeInThisInstance: this.activeLearningResetId !== undefined,
+    });
   }
 
   private async releaseLearningReset(request: Request): Promise<Response> {
@@ -432,6 +466,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     preservedFiles: number;
     protectedBankFileSkipped: boolean;
     foldersFound: number;
+    remainingLearningMirrors?: boolean;
   }> {
     const state = await this.readDriveState();
     const stored = state.folders;
@@ -472,6 +507,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     let inspectedFiles = 0;
     let preservedFiles = 0;
     let protectedBankFileSkipped = false;
+    let trashAttempts = 0;
     for (const folder of targetFolders) {
       const children: DriveFolderChild[] = await client.listFilesInFolder(folder.id);
       for (const child of children) {
@@ -486,6 +522,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           preservedFiles += 1;
           continue;
         }
+        if (trashAttempts >= LEARNING_RESET_TRASH_PER_CALL) {
+          return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound: targetFolders.length + 1, remainingLearningMirrors: true };
+        }
+        trashAttempts += 1;
         if (await client.trashFileInFolder(child.id, folder.id)) movedToTrash += 1;
       }
     }

@@ -316,6 +316,161 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     });
   });
 
+  it('lets the admin inspect and explicitly take over a learning reset lock orphaned by a lost reset id', async () => {
+    const app = createApp(validVerifier);
+    const adminEnv = { ...testEnv, LEARNING_RESET_TOKEN: 'admin-reset-test-token' } as WorkerEnv;
+    const admin = (path: string, body?: unknown, token = 'admin-reset-test-token') => app.fetch(new Request(`https://worker.test${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }), adminEnv);
+    const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
+    const { runInDurableObject } = await import('cloudflare:test');
+    const lostResetId = crypto.randomUUID();
+    const newResetId = crypto.randomUUID();
+    type Target = {
+      activeLearningResetId?: string;
+      executeLearningReset: (request: Request) => Promise<Response>;
+      ctx: { storage: { sql: { exec<T>(sql: string, ...bindings: Array<string | number | null>): { one(): T; toArray(): T[] } } } };
+    };
+    const row = () => runInDurableObject(stub, async instance => (instance as unknown as Target).ctx.storage.sql.exec<{ status: string; reset_id: string | null }>(
+      'SELECT status, reset_id FROM learning_reset_control WHERE singleton = 1',
+    ).one());
+
+    for (const stuckStatus of ['running', 'awaiting_release']) {
+      await runInDurableObject(stub, async instance => {
+        (instance as unknown as Target).ctx.storage.sql.exec(
+          'UPDATE learning_reset_control SET status = ?, reset_id = ?, completed_at = NULL WHERE singleton = 1', stuckStatus, lostResetId,
+        );
+      });
+      expect((await admin('/admin/learning-reset/status', undefined, 'wrong-token')).status).toBe(401);
+      const status = await admin('/admin/learning-reset/status');
+      expect(status.status).toBe(200);
+      const statusBody = await status.json() as Record<string, unknown>;
+      expect(statusBody).toEqual({ status: stuckStatus, hasResetId: true, completedAt: null, activeInThisInstance: false });
+      expect(JSON.stringify(statusBody)).not.toContain(lostResetId);
+
+      const blocked = await admin('/admin/learning-reset', { confirm: 'DELETE_ALL_LEARNING_DATA', resetId: newResetId });
+      expect(blocked.status).toBe(409);
+      expect(await blocked.json()).toMatchObject({ error: 'learning_reset_in_progress' });
+      expect((await admin('/admin/learning-reset', { confirm: 'DELETE_ALL_LEARNING_DATA', resetId: newResetId, takeover: true })).status).toBe(400);
+      expect(await row()).toEqual({ status: stuckStatus, reset_id: lostResetId });
+    }
+
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as Target;
+      target.activeLearningResetId = lostResetId;
+      const live = await target.executeLearningReset(new Request('https://event-store.internal/internal/learning-reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId: newResetId, takeover: true }),
+      }));
+      expect(live.status).toBe(409);
+      expect(await live.json()).toMatchObject({ error: 'learning_reset_active' });
+      target.activeLearningResetId = undefined;
+    });
+    expect(await row()).toEqual({ status: 'awaiting_release', reset_id: lostResetId });
+
+    // Earlier tests may leave Drive credentials on the shared instance; this test covers lock handling only.
+    const driveBindings = await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as { env: WorkerEnv; driveClient?: unknown };
+      const saved = { GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN };
+      Object.assign(target.env, { GOOGLE_DRIVE_CLIENT_SECRET: undefined, GOOGLE_DRIVE_REFRESH_TOKEN: undefined });
+      target.driveClient = undefined;
+      return saved;
+    });
+    const takeover = await Promise.resolve(admin('/admin/learning-reset', {
+      confirm: 'DELETE_ALL_LEARNING_DATA', resetId: newResetId, takeover: 'TAKEOVER_STUCK_LEARNING_RESET',
+    })).finally(() => runInDurableObject(stub, async instance => {
+      Object.assign((instance as unknown as { env: WorkerEnv }).env, driveBindings);
+    }));
+    const takeoverBody = await takeover.clone().text();
+    expect(takeover.status, takeoverBody).toBe(200);
+    expect(await takeover.json()).toMatchObject({ completed: true, releaseRequired: true });
+    expect(await row()).toEqual({ status: 'awaiting_release', reset_id: newResetId });
+    expect((await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } })).status).toBe(503);
+    expect(await (await admin('/admin/learning-reset/status')).json()).toMatchObject({ status: 'awaiting_release', hasResetId: true });
+
+    expect((await admin('/admin/learning-reset/release', { confirm: 'RELEASE_LEARNING_SYNC', resetId: lostResetId })).status).toBe(409);
+    const release = await admin('/admin/learning-reset/release', { confirm: 'RELEASE_LEARNING_SYNC', resetId: newResetId });
+    expect(release.status).toBe(200);
+    expect(await (await admin('/admin/learning-reset/status')).json()).toMatchObject({ status: 'released' });
+  });
+
+  it('trashes Drive learning mirrors in bounded batches and clears cloud records only after Drive is done', async () => {
+    const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
+    const { runInDurableObject } = await import('cloudflare:test');
+    const resetId = crypto.randomUUID();
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        env: WorkerEnv;
+        driveClient?: unknown;
+        executeLearningReset: (request: Request) => Promise<Response>;
+        ctx: { storage: { sql: { exec<T>(sql: string, ...bindings: Array<string | number | null>): { one(): T } }; put: (key: string, value: unknown) => Promise<void> } };
+      };
+      const originalBindings = {
+        GOOGLE_CLIENT_ID: target.env.GOOGLE_CLIENT_ID,
+        GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET,
+        GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+      };
+      Object.assign(target.env, {
+        GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
+        GOOGLE_DRIVE_CLIENT_SECRET: 'test-drive-secret',
+        GOOGLE_DRIVE_REFRESH_TOKEN: 'test-drive-refresh-token',
+      });
+      try {
+        const sql = target.ctx.storage.sql;
+        sql.exec("UPDATE learning_reset_control SET status = 'idle', reset_id = NULL WHERE singleton = 1");
+        sql.exec('DELETE FROM learning_events');
+        sql.exec('INSERT INTO learning_events (event_id, event_json, event_ts) VALUES (?, ?, ?)', 'batched-event', '{"id":"batched-event"}', new Date().toISOString());
+        await target.ctx.storage.put('drive-mirror-state-v1', {
+          status: 'synced', lastSeq: 1, pendingCount: 0,
+          folders: { rootId: 'root-folder', syncId: 'sync-folder', eventsId: 'events-folder', stateId: 'state-folder' },
+          files: {}, fileHashes: {}, snapshots: {},
+        });
+        const folder = (id: string, name: string, parent: string) => ({ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent], trashed: false });
+        const metadata: Record<string, Record<string, unknown>> = {
+          'root-folder': folder('root-folder', 'Math_Project', 'root'),
+          'sync-folder': folder('sync-folder', '03_Sync', 'root-folder'),
+          'events-folder': folder('events-folder', 'events', 'sync-folder'),
+          'state-folder': folder('state-folder', 'state', 'sync-folder'),
+        };
+        let stateFiles = Array.from({ length: 30 }, (_, index) => ({
+          id: `mirror-${index}`, name: `progress.sha256-${index.toString(16).padStart(64, '0')}.json`, mimeType: 'application/json', parents: ['state-folder'],
+        }));
+        stateFiles.push({ id: 'keep-notes', name: 'notes.txt', mimeType: 'text/plain', parents: ['state-folder'] });
+        target.driveClient = {
+          diagnosticStage: 'idle',
+          findFolderId: async () => undefined,
+          readFileMetadata: async (id: string) => metadata[id] ?? {},
+          listFilesInFolder: async (parentId: string) => parentId === 'state-folder' ? [...stateFiles] : [],
+          trashFileInFolder: async (id: string) => { stateFiles = stateFiles.filter(file => file.id !== id); return true; },
+        };
+        const run = () => target.executeLearningReset(new Request('https://event-store.internal/internal/learning-reset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId }),
+        }));
+        const eventCount = () => Number(sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM learning_events').one().count);
+        const status = () => sql.exec<{ status: string }>('SELECT status FROM learning_reset_control WHERE singleton = 1').one().status;
+
+        for (const expectedRemaining of [18, 6]) {
+          const partial = await run();
+          expect(partial.status, await partial.clone().text()).toBe(202);
+          expect(await partial.json()).toMatchObject({ completed: false, inProgress: true, retryWithSameResetId: true, drive: { movedToTrash: 12, remainingLearningMirrors: true } });
+          expect(stateFiles.length - 1).toBe(expectedRemaining);
+          expect(eventCount()).toBe(1);
+          expect(status()).toBe('running');
+        }
+        const final = await run();
+        expect(final.status).toBe(200);
+        expect(await final.json()).toMatchObject({ completed: true, releaseRequired: true, drive: { movedToTrash: 6, preservedFiles: 1 }, cloud: { deletedLearningEvents: 1 } });
+        expect(stateFiles.map(file => file.id)).toEqual(['keep-notes']);
+        expect(eventCount()).toBe(0);
+        expect(status()).toBe('awaiting_release');
+      } finally {
+        Object.assign(target.env, originalBindings);
+        target.driveClient = undefined;
+      }
+    });
+  });
+
   it('clears learning mirrors, preserves bank and identity data, and requires release before fresh writes', async () => {
     const app = createApp(validVerifier);
     const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
