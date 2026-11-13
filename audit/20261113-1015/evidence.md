@@ -24,3 +24,6 @@ Local runs use synthetic data and mocked external services unless otherwise spec
 | Git history secret scan | 1 Google public browser key match in historical commit 85da3f64; actual restrictions unknown | gitleaks 8.30.1 `git --redact=100`; key not recorded |
 | Audit output secret scan | 0 findings | gitleaks 8.30.1 `dir --redact=100` on audit and test paths |
 | Lighthouse isolated local lab | mobile 88 / LCP 3.82s / TBT 68ms / CLS .032; desktop 100 / .76s / 0ms / .003 | Lighthouse 13.6.0, all HTTPS blocked, one run each; not field data |
+
+| AUD-016 | Local standalone build showed undefined PROD; red browser test failed 3 times | `npm run build` then `npx playwright test --config e2e/audit/playwright.standalone.config.ts` |
+| Backup and keyboard | synthetic full-backup mobile and desktop passed; 15 mobile keyboard adaptation tests passed | `e2e/persistence/learning-backup.spec.ts`, `e2e/accessibility/keyboard-and-adaptations.spec.ts` |
