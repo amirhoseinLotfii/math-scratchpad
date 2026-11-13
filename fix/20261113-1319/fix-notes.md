@@ -328,3 +328,13 @@ No production data or external resets are involved. Proceed red-first with clien
 - Code commits: local `c91f7ee8fa9b4927f1b308d0305923b7a7a426e8`; GitHub Data API `7480d998181f403fad6afffcc43b19a936a91ddd`; both point to tree `ecfa27c547fc37c7388893c1dc305840be239367`. PR #94 remains open and draft.
 - No production request, reset, deployment, merge, or protected-data change occurred. The earlier production-targeted sendBeacon probe was blocked before any request was transmitted; this check stayed on local servers with external requests aborted.
 - Next: complete AUD-006's keyboard/browser acceptance matrix, then continue the recorded audit order.
+
+
+## Phase 22 — AUD-006 keyboard acceptance — 2026-11-13 21:49 Asia/Tehran
+
+- The restored AXE setup uses real Enter and Space activation for Import session JSON. Existing pointer coverage remains in the mobile accessibility suite. The keyboard audit also verifies Enter/Space activation for menu actions and Escape focus restoration.
+- `npx playwright test --config=e2e/audit/playwright.keyboard.config.ts --repeat-each=10 --workers=1 --trace=off --reporter=list` passed 120/120: six keyboard cases, ten repeats, mobile-320 and desktop-1440. No intermittent focus or activation failure was observed.
+- `npm run test:a11y:browser -- --project=mobile-320 --project=mobile-390 --project=laptop-1440 --workers=1 --trace=off --reporter=list` passed 76/76, including Axe checks for the Enter and Space import states at all three viewport projects.
+- These tests ran against code tree `ecfa27c547fc37c7388893c1dc305840be239367` (GitHub code head `7480d99`). Browser configs block external requests. No code commit was necessary for this verification; no production request or deployment occurred.
+- AUD-006 is FIXED; AUD-007 keyboard behavior was also reverified by the same 120/120 matrix.
+- Next: AUD-008 mobile-320 visual acceptance and baseline verification.
