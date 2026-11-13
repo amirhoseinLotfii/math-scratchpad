@@ -1,15 +1,15 @@
 # Book Bank Run Progress
 
 - RUN_ID: `20261113-2141` (Asia/Tehran)
-- Status: `RUNNING_CONTENT`
+- Status: `RUNNING_CONTENT` (source-content work is blocked pending OpenStax written permission)
 - Current phase: Phase 1 — template analysis and tooling
-- Current step: complete the real-validator checks for the read-only Chapter 1 template
-- PR #94: `OPEN`, draft, checked 2026-11-13 21:52 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; head `7480d998181f403fad6afffcc43b19a936a91ddd`
-- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` at prior checkpoint `7c3c542bbea4a866d7617d959838bbf881a3a49d` (orphan; this checkpoint creates the next commit); code branch not created (D4)
+- Current step: Chapter 1 template validator completed; pause source extraction and chapter content pending license review
+- PR #94: `OPEN`, draft, checked 2026-11-13 22:22 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; head `94a47eb6b06502ecc45359839eb83c634aff2546`
+- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` at prior checkpoint `577f6f60cb4fbda9b1b816b0298bce4a6615b3f2` (orphan; this checkpoint creates the next commit); code branch not created (D4)
 - PR: https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 - Drive run folder: https://drive.google.com/drive/folders/1_yhCeZtdCezfITDZUsSCw8gt1eUz1lQu
 - Drive subfolders: banks `1eQROvv1xg7Ln8b1h6Hc2qHK4ZWGissdX`; answer-keys `1luJ4NHvosuuvrYa3_n-9oaWRQ4j8x6ey`; reports `1YbPovzCK1ywiX0_SvC2V1UbavQIL0_GP`; source-extracts `1a1IlrL4I_knh966peK-NgL5_4YZJhoiQ`
-- Latest main clone: `/workspace/scratch/e066df6a20b0/readonly-main-20261113-2141`, clean at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`
+- Main source snapshot: `/workspace/scratch/e066df6a20b0/readonly-main-20261113-2141` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; local-only validator files are untracked under `scripts/book/`, with no code branch or app-code commit
 
 ## Environment and Source Checks
 
@@ -48,7 +48,7 @@
 | Gate | Status | Evidence |
 |---|---|---|
 | G1 template statistics | `VERIFIED` | `TEMPLATE-STATS.md` and `analyze-template.mjs` in Drive and notes branch; stats script executed on v21 |
-| G2 real validator on v21 | `NOT_TESTED` | — |
+| G2 real validator on v21 | `VERIFIED` | `CH1-FINDINGS.md`: real `parseBankText` + `parseLessons`; 0 app/parser warnings; template-audit exit 0; size appears as one non-fatal warning |
 | G3 TOC and PDF page map | `NOT_TESTED` | — |
 | G4 chapter banks and render smoke | `NOT_TESTED` | — |
 | G5 combined book and checksums | `NOT_TESTED` | — |
@@ -67,6 +67,7 @@
 ## Verification and Blockers
 
 - Last green test suites: none run in this content run. `npm ci` succeeded; it is not a test suite.
-- Open `BLOCKED` items: none.
+- Open `BLOCKED` items: written OpenStax permission is needed before ingesting book material into this LLM workflow; therefore G3 TOC/source extraction and all chapter content remain `NOT_TESTED`.
+- Official OpenStax Preface checked 2026-11-13: the page includes an AI-ingestion permission restriction; see `LICENSE-GATE.md`.
 - No learning session was started. Protected sync/session data was not read or modified.
-- Checkpoint timestamp: 2026-11-13 21:55 Asia/Tehran.
+- Checkpoint timestamp: 2026-11-13 22:22 Asia/Tehran.
