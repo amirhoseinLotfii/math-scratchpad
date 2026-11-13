@@ -42,3 +42,30 @@
 - Current `booklog/20261113-2141` tree has 10 paths and contains notes, aggregate findings, the template analyzer, and progress only; no bank JSON, answer-key, source-extract, or question/answer text file.
 - `gitleaks` is unavailable. A scoped credential-pattern scan of the new progress, notes, reports, and local tooling had no matches; G15 remains `NOT_TESTED` because the full history secret scan was not run.
 - Content phases remain paused pending permission review; no source page extraction or new chapter bank content was produced.
+
+
+## Owner license instruction — 2026-11-13 22:30 Asia/Tehran
+
+- The official Preface contains an AI-ingestion restriction (source URL is recorded in `LICENSE-GATE.md`). The owner states that if the full sentence cannot be quoted verbatim, proceed using CC BY-NC-SA 4.0.
+- Follow the owner’s scope instruction: continue Phase 1 and content phases; all banks, extracts, and answer keys remain in private Drive; each bank carries OpenStax attribution and CC BY-NC-SA 4.0.
+- Do not represent the owner’s instruction as a written permission letter from OpenStax.
+
+
+## Resume 2026-11-13 23:13 Asia/Tehran
+
+- Followed the owner’s instruction to continue under the stated private, non-commercial CC BY-NC-SA 4.0 project scope. The official Preface source URL and AI-use restriction remain recorded in `reports/LICENSE-GATE.md`; this note does not claim OpenStax permission.
+- Downloaded the three owner-supplied Drive PDF slices read-only to local scratch. They total 1,411 pages and their SHA-256 values match the run manifest. The separate 1,156-page public PDF asset was excluded because its pagination differs.
+- Replaced the stale chapter-2 PDF extractor with one that reads the owner’s actual three slices and preserves absolute PDF page numbers. Added web extraction for separate Practice Test pages, including PDF page ranges.
+- Corrected the official 9.8 web slug to `9-8-solving-systems-with-cramers-rule`; the prior misspelling returned HTTP 404. Normalized the singular category label `Extension` to `Extensions`.
+- Added `verify-toc-pdf.py`; it ran successfully: 12 chapter starts, 73 section starts, 12 review starts, 12 Practice Test starts, 1,411 source pages, 0 mismatches.
+
+
+## Phase 1 completion and Phase 2 plan checkpoint — 2026-11-13 23:44 Asia/Tehran
+
+- Supersedes the earlier 22:22/22:28 pause notes: after the owner explicitly directed continuation under a private, non-commercial CC BY-NC-SA 4.0 scope, the source extraction proceeded. The owner’s instruction is recorded; this is not an OpenStax permission letter.
+- Used the three owner-provided Drive PDF parts as the authoritative source. Together they contain 1,411 pages; their checksums are in `reports/BOOK-TOC.md`. A separate public PDF asset with 1,156 pages was excluded because its pagination differed.
+- PDF TOC verification passed: 12 chapter starts, 73 section starts, 12 review headings, and 12 Practice Test starts; 0 mismatches. `G3` is now `VERIFIED`.
+- Chapters 2–12: 88/88 official web pages fetched, 0 errors after correcting the 9.8 slug. Counts: 4,335 section exercises, 611 review exercises, 353 Practice Test items, 572 examples, 424 Try Its, 1,013 figures, 203 tables.
+- Extracted 294 subsection-heading candidates; 289 match PDF pages by text; five are listed as TODOs for visual mapping. The exact page map and per-chapter plans are in private Drive.
+- Uploaded all Ch. 2–12 web and PDF source extracts to Drive `source-extracts/`; uploaded `BOOK-TOC.md`, the verification/source-comparison reports, and all 11 chapter plans to Drive `reports/`. No source text or answer key was added to Git.
+- Phase 2 content authoring is not complete: no Ch. 2–12 bank, answer key, validator run, or render smoke has been produced. Resume at Chapter 2 bank authoring; preserve the fixed order.
