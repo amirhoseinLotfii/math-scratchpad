@@ -2,7 +2,7 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-3 Blocker, 5 High, 1 Medium; 0 Critical, 0 Low. Findings include static risks, not all reproduced.
+3 Blocker, 1 Critical, 7 High, 1 Medium; 0 Low. Findings include static risks, not all reproduced.
 Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
@@ -30,6 +30,11 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | main | Build | VERIFIED | exit 0, Worker dry run | npm run build; standalone build warned import.meta is empty in IIFE; effect NOT_TESTED |
 | PR 93 | CI gate | FAILED | 90 passed, 1 failed, 515 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43294569144), AUD-007 |
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
+| PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
+| PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Ownership and Notion audit | FAILED | 2 synthetic assertions failed in three runs | worker/test/audit/reset.ownership-and-notion.test.ts; AUD-010 and AUD-011 |
+| main | Connected lesson and AXE | VERIFIED | 3 passed mobile-390 | e2e/lessons/phase3-connected.spec.ts and phase5-a11y.spec.ts, synthetic fixtures |
+| main | npm audit production deps | FAILED | one high advisory, exploitability untested | npm audit --omit=dev; AUD-012 |
 | main | Synthetic epoch release regression | FAILED | failed three independent runs, same epoch twice | worker/test/audit/reset.epoch.second-release.test.ts; AUD-009 |
 | main | Two local resets and old event | FAILED | three runs: old event received HTTP 200 and/or was stored instead of rejection | worker/test/audit/reset.stale-event.two-full-resets.test.ts; Drive disabled; AUD-009 |
 | main | Synthetic lesson persistence | VERIFIED | 1 mobile test passed including answers and reload | e2e/lessons/phase4-persistence.spec.ts, sample fixture |
@@ -182,6 +187,51 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Red test becomes green; local end-to-end tests execute two complete resets, retry each release, submit events from both old generations, and check that fresh writes succeed and unrelated data survives.
 - **Size:** L · **Fix risk:** high
 
+### AUD-010 — Reset selects Drive files by name without an ownership marker
+- **Category:** Data
+- **Severity:** Critical · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (executed); PR 91 59913b8 and PR 92 f384ca4 (static inspection)
+- **Location:** `worker/src/event-store.ts:125`; `worker/src/event-store.ts:485`
+- **Related:** N4 · F1 · F2 · F3 · K4
+- **Evidence:** Three isolated local test runs supplied a fake Drive child called progress.json with no project ownership marker inside a validated synthetic sync folder; the reset invoked the fake trash operation on it. Nothing was trashed on real Drive. Selection matches a filename pattern and protected bank ID, not an ownership marker.
+- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.ownership-and-notion.test.ts`; test `reset.preserves-unmarked-matching-filename` fails.
+- **Expected / Actual:** Only positively identified owned files may be selected / an unmarked matching filename was selected for trash. Real affected file count is unknown.
+- **Root cause:** drive · `worker/src/event-store.ts:485` · filename and parent path are treated as sufficient proof of ownership.
+- **Proposed fix (not executed):** Add durable ownership metadata to new mirrors and use a separately reviewed migration/reconciliation process for legacy files; default unmarked files to preserve.
+- **Fix acceptance:** Fake Drive tests verify unmarked, unrelated, bank, Pomodoro and similarly named files are untouched; only marked files are selected, including pagination and retry scenarios.
+- **Size:** L · **Fix risk:** high
+
+### AUD-011 — Reset clears Notion page references without external reconciliation
+- **Category:** Data
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (executed); PR 91 59913b8 and PR 92 f384ca4 (static inspection)
+- **Location:** `worker/src/event-store.ts:371`; `worker/src/event-store.ts:532`
+- **Related:** N4 · F1 · C8 · K4
+- **Evidence:** Three local Worker test runs inserted a synthetic Notion reference, ran reset with Drive disabled, and observed the local reference count become zero. The inspected reset handler makes no external Notion archive call before clearing references; live Notion rows were not inspected and no external service was modified.
+- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.ownership-and-notion.test.ts`; `reset.retains-notion-reference-until-external-reconciliation` fails.
+- **Expected / Actual:** Retain a recoverable reconciliation journal until owned external rows are verified / references are erased and reset reports completion without that step.
+- **Root cause:** notion · `worker/src/event-store.ts:532` · local projection and page references are deleted before any verified external cleanup.
+- **Proposed fix (not executed):** Keep a durable journal, verify project ownership, and reconcile owned external rows with resumable idempotent handling before final release; never target Pomodoro.
+- **Fix acceptance:** Mocked Notion integration demonstrates failures retain retry state and page IDs; success archives only verified project-owned rows and preserves unrelated rows.
+- **Size:** L · **Fix risk:** high
+
+### AUD-012 — Production dependency audit reports high-severity Zod advisory
+- **Category:** Security
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0
+- **Location:** `package.json`; `src/sync/learning-backup.ts:39`
+- **Related:** J7 · J3
+- **Evidence:** `npm audit --omit=dev --json` reported one high advisory, GHSA-mrhx-c7xc-m3w5, for direct dependency zod 3.25.76. The advisory describes memory exhaustion while validating oversized constrained collections; code contains large array schemas. Exploitability through this application's paths and deployed environments was not tested.
+- **Reproduction:** `npm audit --omit=dev`; inspect [advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). No exploit was run.
+- **Expected / Actual:** No high-severity known vulnerable production dependency / audit identifies one. Application-specific exposure remains unknown.
+- **Root cause:** config · `package.json` · dependency version falls in the advisory's affected range.
+- **Proposed fix (not executed):** Evaluate a supported non-vulnerable Zod upgrade with schema compatibility and input-size limits; the suggested upgrade is a major version and needs migration review.
+- **Fix acceptance:** audit no longer reports the advisory; import and event schema regression, bounded oversized input and memory tests pass.
+- **Size:** M · **Fix risk:** medium
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Confidence | Verification | Location |
 |---|---|---|---|---|---|---|
@@ -196,11 +246,15 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 
 | AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | confirmed | VERIFIED | worker/src/event-store.ts:419 |
 
+| AUD-010 | Reset selects Drive files by name without an ownership marker | Data | Critical | confirmed | VERIFIED | worker/src/event-store.ts:485 |
+| AUD-011 | Reset clears Notion page references without external reconciliation | Data | High | confirmed | VERIFIED | worker/src/event-store.ts:532 |
+| AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | confirmed | VERIFIED | package.json |
+
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
 - K2: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
 - K3: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
-- K4: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
+- K4: NOT_TESTED — live row count remains unknown; local reference deletion confirmed in AUD-011, filename-only Drive selection in AUD-010.
 - K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
 - K6: NOT_TESTED — root cause / actual production behavior not established; see AUD-005.
 - K7: NOT_TESTED — root cause / actual production behavior not established; see AUD-004.
@@ -210,7 +264,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - N1: NOT_TESTED — full behavioral coverage incomplete; static gaps AUD-002 and AUD-003.
 - N2: FAILED — synthetic release epoch test failed; complete reset behavior NOT_TESTED; see AUD-009 and recovery risk AUD-001.
 - N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
-- N4: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
+- N4: FAILED — local fake Drive test selected unmarked file, AUD-010; Notion cleanup/reconciliation gap AUD-011.
 - N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
 - N6: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
 - N7: NOT_TESTED — full behavioral coverage incomplete; release mismatch AUD-004.
@@ -473,6 +527,80 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "depends_on": [],
     "size": "L",
     "fix_risk": "high"
+  },
+  {
+    "id": "AUD-010",
+    "title": "Reset selects Drive files by name without an ownership marker",
+    "category": "Data",
+    "severity": "Critical",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0"
+    ],
+    "location": "worker/src/event-store.ts:485",
+    "requirements": [
+      "N4",
+      "F1",
+      "F2",
+      "F3",
+      "K4"
+    ],
+    "root_cause_layer": "drive",
+    "red_test": "worker/test/audit/reset.ownership-and-notion.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.ownership-and-notion.test.ts",
+    "depends_on": [],
+    "size": "L",
+    "fix_risk": "high"
+  },
+  {
+    "id": "AUD-011",
+    "title": "Reset clears Notion page references without external reconciliation",
+    "category": "Data",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0"
+    ],
+    "location": "worker/src/event-store.ts:532",
+    "requirements": [
+      "N4",
+      "F1",
+      "C8",
+      "K4"
+    ],
+    "root_cause_layer": "notion",
+    "red_test": "worker/test/audit/reset.ownership-and-notion.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.ownership-and-notion.test.ts",
+    "depends_on": [],
+    "size": "L",
+    "fix_risk": "high"
+  },
+  {
+    "id": "AUD-012",
+    "title": "Production dependency audit reports high-severity Zod advisory",
+    "category": "Security",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0"
+    ],
+    "location": "package.json",
+    "requirements": [
+      "J7",
+      "J3"
+    ],
+    "root_cause_layer": "config",
+    "red_test": "",
+    "run_cmd": "npm audit --omit=dev",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "medium"
   }
 ]
 ```
