@@ -5,14 +5,14 @@ Code branch: fix/audit-20261113-1319 (created from verified main 7eeeef0bf7d5243
 Notes branch: fixlog/20261113-1319 (created from audit branch checkpoint 402836207858bb85916803a06722adc5cd0a06e8)
 PR: none
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: Phase 2 — integrate PR #91, #93, #92 and import audit red tests.
-Last green suites on baseline main 7eeeef0: `npm run typecheck` exit 0; `npx vitest run` 75 files / 975 tests passed; `npm ci` exit 0.
-Gate status: baseline type/unit VERIFIED on main; all release gates G1–G15 NOT_TESTED on integration head. No production writes, merge, or deployment.
-Backup status: Drive folder created; initial progress/notes checkpoint pending upload and notes-branch commits.
-Timestamp Asia/Tehran: 2026-11-13 13:29
+Current phase: Phase 2 checkpoint complete — next import all audit red tests, then run integration and audit suites.
+Last green suites: baseline main `npm run typecheck` exit 0 and `npx vitest run` 75 files / 975 tests; integration head `d048850` `npm run test:typecheck` exit 0.
+Gate status: baseline type/unit VERIFIED on main; integration test:typecheck VERIFIED; AUD-006 PARTIAL (browser blocked); other release gates G1–G15 NOT_TESTED. No production writes, merge, or deployment.
+Backup status: Phase 2 checkpoint prepared for Drive and notes branch update.
+Timestamp Asia/Tehran: 2026-11-13 13:34
 
 ## Finding status
-All AUD-001 through AUD-018: Pending; this run has not yet tested or fixed them.
+AUD-006: PARTIAL (Enter restored, Space case added, browser acceptance BLOCKED). AUD-001–005 and AUD-007–018: Pending.
 
 ## Phase 0 observations
 - GitHub connector: available with admin/push permission; main and PR #91/#92/#93 heads match the audit prompt.
@@ -23,3 +23,9 @@ All AUD-001 through AUD-018: Pending; this run has not yet tested or fixed them.
 - Managed-environment status tool is unavailable and `/etc/codex/network-policy.json` is absent. Proxy-mediated read-only HTTP to Pages and Worker succeeds. `node_modules` exists in the audit checkout.
 - Admin reset-status read: BLOCKED/NOT_TESTED because no Worker admin token is available in environment metadata. No token requested in chat.
 - Notion: connector available; not queried because shared Sessions and Pomodoro data are protected and not required for the initial phase.
+
+## Phase 2 remote checkpoint
+- GitHub code branch `fix/audit-20261113-1319` advanced from verified main to `27a98aa8ece559baea07aad90ddd0df28ae6353c` using Git Data API after HTTPS push authentication was unavailable. The branch update used expected old SHA `7eeeef0…` and succeeded without force.
+- Remote integration commits: PR #91 `811655fcd134cd4b46888564df7ab08469b4296c`; PR #93 `9c65f5f66a7991e8edd9fb40148e340220abbf2b`; PR #92 `486e59138a71228c72ea6caa8e96ecb93497cdf1`; AUD-006 repair `27a98aa8ece559baea07aad90ddd0df28ae6353c`.
+- Each remote tree SHA matched the corresponding local commit tree, preserving ordered merge contents and the intended merge parents. Full audit red tests are still not imported.
+- Checkpoint time: 2026-11-13 13:42 UTC / 17:12 Asia/Tehran.
