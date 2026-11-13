@@ -273,3 +273,17 @@ Timestamp: 2026-11-13 15:46 Asia/Tehran.
 - Gitleaks 8.30.1 changed-file scan passed. Whole-repository scan exposed one pre-existing detector match in the untouched `src/features/drive-bank/drive-config.ts`; the matched value was not copied to notes or artifacts and that file was not modified.
 - CI: Audit verification run `43455265327` has `deps-and-dryrun` green and browser regressions in progress; Validate editor run `43455265492` in progress. The Worker audit lock proof remains incomplete because AUD-005's `/reset/execute` route still returns 404. No production changes.
 - Commit: `4db19efc68f427548a62f196161d6847e0a2199c` (`fix(AUD-014): centralize reset write guard across sync paths`). Next: finish CI readout and continue AUD-001.
+
+## AUD-001 / AUD-009 design checkpoint — 2026-11-13 22:50 Asia/Tehran
+
+Before implementation, record the local-only recovery and epoch contract:
+
+1. The editor remains interactive while the persisted server-write guard is active. The status UI says work is saved locally; the guard never places `inert` on the editor. The gate does not trigger Google sign-in or session refresh while pending.
+2. Add an unauthenticated, read-only `GET /reset/status` that returns only `{status, epoch}` with `Cache-Control: no-store`; omit owner identity, reset ID, timestamps, and internal diagnostics. The Durable Object rate-limits this read.
+3. Store the candidate client epoch when a distinct reset ID claims the server reset. Repeated work/release for that reset ID preserves the candidate; a distinct reset ID gets a distinct epoch. While reset is running or awaiting release, the status endpoint may expose the candidate so clients can stamp new local events correctly. Release changes status but retains the same epoch.
+4. Store `creationEpoch` as local outbox metadata, without changing the event payload/schema sent to Worker. Continue accepting local events while the guard is active. Add an IndexedDB quarantine store; when the server candidate differs, atomically move stale rows with their original event IDs and payloads into quarantine. Never discard cached answers or quarantine records.
+5. Poll public status on startup, online, and visible state with bounded backoff. Keep the guard closed for `idle`, `running`, `awaiting_release`, invalid responses, and network errors. On `released` with a valid epoch, quarantine stale rows, persist the server epoch, release the guard once, and resume the regular debounced sync path if a token is already available. If no token exists, keep the durable outbox until later sign-in.
+6. Remove the destructive startup/reset-completion behavior from this recovery path. `prepareLocalLearningReset` must not clear saved learning data; completion only adopts a confirmed server epoch and releases the guard.
+7. Acceptance: stuck-phone simulation with old local cache/outbox and no Google popup; status `awaiting_release`, `released`, and unreachable; preserve item counts and new local events; quarantine old-epoch events; reload while pending; verify editor usability on mobile-390 and laptop-1440. Worker tests verify unauthenticated status is minimal and new epoch writes remain locked until release.
+
+No production data or external resets are involved. Proceed red-first with client, browser, and Worker tests; keep the `/admin/learning-reset` and `/admin/learning-reset/release` routes out of this client flow.
