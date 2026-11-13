@@ -34,7 +34,9 @@ const cacheSchema = z.strictObject({
   updatedAt: isoDateTime,
 });
 const outboxSchema = z.strictObject({
-  id: z.uuid(), event: learnEventSchema, queuedAt: isoDateTime, migrationId: z.optional(z.uuid()),
+  id: z.uuid(), event: learnEventSchema, queuedAt: isoDateTime,
+  creationEpoch: z.optional(z.string().check(z.minLength(8), z.maxLength(128), z.regex(/^[a-zA-Z0-9._:-]+$/))),
+  migrationId: z.optional(z.uuid()),
 }).check(z.refine(record => record.id === record.event.id, { error: 'Outbox key must match its event ID.' }));
 const serverEventSchema = z.strictObject({ seq: z.int().check(z.positive(), z.maximum(Number.MAX_SAFE_INTEGER)), event: learnEventSchema });
 const metaSchema = z.custom<MetaRecord>(value => isRecord(value)
