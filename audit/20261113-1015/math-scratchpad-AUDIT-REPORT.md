@@ -396,11 +396,32 @@ On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistak
 | POST | /session | Google ID | issues Worker session |
 | POST | /session/revoke | owner | revokes session |
 | POST | /admin/learning-reset; /admin/learning-reset/release | admin secret | bounded 4096-byte request; production not called |
+| GET | /admin/learning-reset/status | absent on main; admin secret on deployed PR 91 | live read-only request without token returned 401; no authenticated request (AUD-004) |
 | POST | /events; /state | owner | epoch header; public proxy body limit 250000 bytes, AUD-013 |
 | GET | /state; /sync; /snapshot; /reset/preview | owner | query forwarded to Durable Object |
 | GET/POST | /drive/status, /drive/sync; /notion/status, /notion/sync | owner | mirror operations |
 | POST/GET | /bank/source; /bank/meta; /bank/content | owner | protected source; no live read |
 | POST | /reset/execute | absent | AUD-005 |
+
+### Durable Object SQLite schema (static source review)
+Production DB contents were not queried. Constructor DDL defines:
+- sync_health(destination PK, status, pending_count, last_error, last_synced_at, updated_at)
+- mirror_diagnostics(destination PK, failure_stage, error_code, updated_at)
+- mirror_configuration(destination PK, configured, updated_at)
+- app_state(key PK, value, revision, updated_at); app_state_meta(singleton CHECK=1 PK, revision)
+- notion_projections(projection_type, projection_key composite PK, projection_json); notion_projection_meta(singleton CHECK=1 PK, last_seq)
+- notion_page_refs(kind, external_key composite PK, page_id); notion_state_queue(key PK, revision)
+- notion_mistake_reviews(item_key PK, event_id, review_successes, last_review_event_id); notion_session_mistakes(session_id, page_id composite PK)
+- learning_events(seq AUTOINCREMENT PK, event_id UNIQUE NOT NULL, event_json, event_ts)
+- auth_sessions(token_hash PK, email, sub, created_at, expires_at, revoked_at)
+- bank_source(singleton CHECK=1 PK, file_id, file_name, registered_at)
+- rate_windows(window_start PK, request_count)
+- learning_reset_control(singleton CHECK=1 PK, status, reset_id, completed_at, client_epoch)
+No secondary CREATE INDEX statements were found; uniqueness is supplied by primary keys and learning_events.event_id. Wrangler config declares Durable Object migration v1; constructor DDL creates missing tables and adds client_epoch when absent. This is a static inventory, not a production-schema verification.
+
+### Reset state machines (static only)
+- Client: production startup detects a changed local reset epoch → writes reset-pending guard → clears local learning keys → records the epoch → withholds the sync token while pending → editor is inert and status banner remains. Only completeLocalLearningReset clears the guard after server confirmation; no phone-only recovery path was found (AUD-001). Local/development startup intentionally does not run the production reset.
+- Worker: idle/released → running (claims resetId and waits for active work) → awaiting_release after local DO/mirror reset work → released when the admin release stores the configured epoch. Same-ID retry can resume a running reset; a different ID while running returns 409; same-ID release is accepted idempotently. A caught reset error returns 502 while leaving the row running, so retry must reuse that resetId. Separate completed resets still reuse the configured epoch (AUD-009).
 
 Full request/response/error contract and duplicate type comparison: NOT_TESTED.
 
