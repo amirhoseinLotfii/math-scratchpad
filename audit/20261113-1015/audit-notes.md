@@ -19,3 +19,10 @@
 - AUD-009: executed two complete local Worker reset + release handlers, with external Drive disabled; old-generation synthetic event accepted and stored. Three tests ran: first failed on HTTP 200 instead of 426, two repeats failed on row count 1 instead of 0. No production writes.
 - Main sample lesson persistence browser test passed on mobile 390, including answer entry and reload. This is not the real Chapter 1 bank.
 - Next: inspect external integrations, project APIs, targeted tests and remaining accessibility/security items.
+
+## Phases 3–4 / focused security checkpoint
+- PR 91 Worker 115/115 and PR 92 Worker 122/122 passed locally at pinned heads. PR 93 targeted 56 passed as previously logged; not full suites.
+- AUD-010 and AUD-011: ownership and Notion reference synthetic red tests each failed identically across three runs; no real Drive or Notion data touched.
+- AUD-012: npm audit --omit=dev reports 1 high Zod advisory; actual exploitability not tested.
+- Main connected lesson/a11y fixture tests 3/3 passed on mobile 390.
+- Next: further contract, browser, auth, performance, CI and security review.
