@@ -95,3 +95,16 @@
 - Enumerated all 16 Durable Object SQLite tables and key constraints from constructor DDL. No secondary CREATE INDEX statement found; learning_events.event_id has a UNIQUE constraint. Wrangler config has v1 Durable Object class migration; constructor adds client_epoch if missing. Production DB schema/content was not queried.
 - Documented client guard and server reset state machine. Client can remain inert until authenticated completion; server errors preserve running/resetId for same-ID retry. Distinct reset releases reuse the epoch, tied to AUD-009.
 - Static phase 3 route/schema/state-machine coverage is now recorded; full contract matrix remains NOT_TESTED. No code changed.
+
+## Phase 9/10 closeout — remaining scenarios classified
+- Timestamp: 2026-11-13T12:26+03:30.
+- S2 is BLOCKED by R5 (protected lesson/bank content); synthetic fixtures do not prove Chapter 1. S3 is FAILED by the AUD-002 4 ms POST (the exact five-answer batch remains untested). S4, S5, S6, S8, S11, S14–S16 remain NOT_TESTED with scope limitations in report §10. S17 is BLOCKED because local scheduled sync can enter Drive/Notion calls and no fully isolated scheduled harness was available. S18 remains BLOCKED by ERR_EMPTY_RESPONSE. No production POST/PUT/PATCH/DELETE, sign-in, lesson answer, reset, import or sync was attempted.
+- Phase 10: dependency audit and scoped secret scans ran; Lighthouse ran once per viewport on an isolated loopback build, all external HTTPS blocked. Field metrics, full history completeness, browser-key restrictions, production exploitability and complete headers remain NOT_TESTED.
+- Sections 0–15 updated to distinguish executed behavior from static review and incomplete scenarios. Ready for Phase 11 machine-index/status/self-check.
+
+## Phase 11 — final self-check and completion
+- Timestamp: 2026-11-13T12:38+03:30.
+- Reconciled the 18 detailed findings with the summary table and machine index; all severity totals match (5 Blocker, 1 Critical, 10 High, 1 Medium, 1 Low).
+- Structural self-check passed: A–L 109, N 8, K 8, S 18; all 16 test-matrix rows present; all blockers appear in the blocker table.
+- Gitleaks 8.30.1 scoped scans of audit/<RUN_ID>, tests/audit, worker/test/audit and e2e/audit each found zero leaks. `git diff --check` passed.
+- Report status remains PARTIAL because protected data, owner-only sign-in, live production behaviors and several end-to-end scenarios remain blocked or untested as documented. No application code or production data was changed.
