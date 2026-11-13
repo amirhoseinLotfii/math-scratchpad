@@ -24,3 +24,13 @@
 - Preserve Chapter 1 v21 as read-only. Keep all future bank content, source text, and answer keys out of public Git.
 - Use actual repository code and the live v21 bank as the authorities when they differ from the handoff's measured facts.
 - Use no existing `fix/*` checkout for this run. The current PR #94 stays untouched until it merges; code work remains deferred under D4.
+
+
+## Phase 1 checkpoint — 2026-11-13 22:22 Asia/Tehran
+
+- Implemented `scripts/book/validate-bank.ts`, importing the app’s actual `parseBankText`, `validateBank`, and `parseLessons`; `scripts/book/run-validator.mjs` loads it through Vite SSR because this checkout does not install `vite-node`.
+- Read-only v21 audit: actual app parse verified; 0 `parseBankText` warnings and 0 `parseLessons` warnings; audit exit 0. The sole top-level warning is the expected 1,183,848-byte Chapter 1 file exceeding the new-bank target; template mode does not fail on known v21 defects.
+- `CH1-FINDINGS.md` lists D-a…D-o results and explicit NOT_TESTED source/key checks. The full JSON contains counts and item identifiers only; no question text or answer values.
+- Rechecked PR #94: still `OPEN` and draft. Base unchanged; current head is `94a47eb6b06502ecc45359839eb83c634aff2546`. No changes were made to the PR or app code.
+- OpenStax’s official Preface was checked. It has a restriction requiring prior written permission before book material is ingested into LLM/generative-AI offerings. This is a material blocker for the requested AI-mediated full-book extraction/translation. No new web/PDF book pages were downloaded, no Chapter 2–12 content was produced, and G3 remains NOT_TESTED. See `reports/LICENSE-GATE.md`.
+- The license point is recorded as a blocker for review, not as legal advice. Do not continue source extraction/content generation until the owner confirms written permission or changes scope to original, non-book-derived exercises.
