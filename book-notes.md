@@ -69,3 +69,24 @@
 - Extracted 294 subsection-heading candidates; 289 match PDF pages by text; five are listed as TODOs for visual mapping. The exact page map and per-chapter plans are in private Drive.
 - Uploaded all Ch. 2–12 web and PDF source extracts to Drive `source-extracts/`; uploaded `BOOK-TOC.md`, the verification/source-comparison reports, and all 11 chapter plans to Drive `reports/`. No source text or answer key was added to Git.
 - Phase 2 content authoring is not complete: no Ch. 2–12 bank, answer key, validator run, or render smoke has been produced. Resume at Chapter 2 bank authoring; preserve the fixed order.
+
+
+## Concept page-map completion — 2026-11-13 23:54 Asia/Tehran
+
+- Resolved the five formula-bearing heading misses from the first text-matching pass. Their PDF page starts are 4.7-C05 → 507 and 9.4-C01–C04 → 947, 949, 951, and 953.
+- Updated the source extracts and plans. All 294/294 candidate headings now map to PDF pages; 0 remain unmapped. Evidence is in `reports/CONCEPT-MAP-VERIFICATION.md`.
+
+## Drive refresh and PR checkpoint — 2026-11-13 23:56 Asia/Tehran
+
+- Refreshed Chapters 4 and 9 source extracts/plans, chapter summary, artifact index, and the concept-map verification report in private Drive. Updated the two local-only tooling scripts in Drive as well.
+- Rechecked PR #94: open and draft; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`, head `87506ed06bc21b8e3d9eedbd2de80a2a50a322f7`. No PR or production changes.
+- Phase 2 has not started content authoring yet; all current deliverables remain source extracts and plans.
+
+
+## Item-to-PDF page-map checkpoint — 2026-11-14 00:16 Asia/Tehran
+
+- Added `scripts/book/map-items-pdf.py` as a local-only source-location audit tool. Python syntax check passed, then it generated page-map JSON reports for Chapters 2–12 from the corresponding web and owner-PDF extracts.
+- Across 7,308 extracted objects, 1,743 have a unique strong page match; 4,329 are number-marker candidates that are not treated as confirmed; the remaining 1,236 are ambiguous or unmapped. All 572 Example markers and 409 of 424 Try It markers are unique. The other Try Its and all candidate/ambiguous records remain TODO for visual review.
+- Uploaded the 11 chapter map JSONs, `ITEM-PAGE-MAP-STATUS.md`, and the mapper script to the private Drive run folder. Updated `DRIVE-ARTIFACT-INDEX.json`; all IDs are recorded there.
+- PR #94 was rechecked at 00:16 Asia/Tehran: still `OPEN`, draft, base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`, head `190153b15e5a4c82e49ba7885d9dd628c756f03c`. No PR, code branch, production Worker, learner progress, or bank was changed.
+- Phase 2 bank authoring has not yet produced a chapter bank or answer key. Next work remains visual resolution of Chapter 2 page-map TODOs, then Chapter 2 content authoring.
