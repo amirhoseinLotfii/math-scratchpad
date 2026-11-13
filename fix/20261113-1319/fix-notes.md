@@ -338,3 +338,13 @@ No production data or external resets are involved. Proceed red-first with clien
 - These tests ran against code tree `ecfa27c547fc37c7388893c1dc305840be239367` (GitHub code head `7480d99`). Browser configs block external requests. No code commit was necessary for this verification; no production request or deployment occurred.
 - AUD-006 is FIXED; AUD-007 keyboard behavior was also reverified by the same 120/120 matrix.
 - Next: AUD-008 mobile-320 visual acceptance and baseline verification.
+
+
+## Phase 23 — AUD-008 mobile visual acceptance — 2026-11-13 21:57 Asia/Tehran
+
+- The first CI-equivalent visual run failed before screenshot comparison on the mobile-320 and mobile-390 single-edit states: the test sent a synthetic focus event before `QuestionTimer` had registered its React effect, so elapsed time remained `00:00` rather than the snapshot's `00:03`. Other visual states passed; the separate audit layout/icon matrix passed 6/6.
+- An intermediate attempt to advance with `page.clock.runFor()` while `setFixedTime()` was active also failed because fixed time intentionally freezes `Date`. Removed that approach. The final test waits for the timer output and two animation frames before changing fixed time and dispatching focus. This synchronizes with the existing UI effect; no app UI or screenshot baseline changed.
+- Final visual command `npm run test:visual -- --project=mobile-320 --project=mobile-390 --project=laptop-1440 --workers=1 --trace=off --reporter=list`: 6/6 passed across single-edit, batch-edit, and confidence states at mobile-320 and mobile-390. The existing Linux baselines matched; the 320px baseline images were visually reviewed.
+- Audit layout/icon command `npx playwright test --config=e2e/audit/playwright.layout.config.ts --workers=1 --trace=off --reporter=list`: 6/6 passed across mobile-320, Pixel 7, and desktop. `npm run test:typecheck`, `git diff --check`, and Gitleaks staged scan passed.
+- Code commit local `d79232688e599bbfb06c595e9feaf19a0ae663ff`; GitHub Git Data API `91cccc9f7c252e512fbff010b4a8be5f223a7994`; both point to tree `da493644d97ae3ddbcc9b0262ae7f56766de1d8d`. PR #94 remains open/draft. No production request, deployment, reset, or merge occurred.
+- AUD-008 is reverified FIXED. Next: AUD-005 scoped reset-execute Worker route and saga.
