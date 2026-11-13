@@ -156,3 +156,12 @@ Timestamp: 2026-11-13 15:11 Asia/Tehran.
 - GitHub code branch commit: `14281e2c6c39ce318c441c58b9ae1bb5eceb4e83`; tree `e03c426c09f9bf4cfae3a4afd1627fe182a77de4` matches the staged local tree. Only the isolated fix branch moved; no PR, merge, deployment, or production mutation was made.
 - Status: AUD-012 FIXED by locked patched package and safe local verification; post-fix `npm audit` remains NOT_TESTED as described. Next: AUD-001 blocker review. AUD-005 remains BLOCKED; AUD-006 remains PARTIAL; production/browser gates retain their prior states.
 
+
+## Phase 12 — AUD-001 reset-pending recovery review
+Timestamp: 2026-11-13 15:14 Asia/Tehran.
+
+- Re-read the current gate, app startup/reset flow, Worker-session lookup, and reset client. While the local reset guard is set, the editor is inert and event queue/server writes are suppressed. The gate can clear only after an authenticated `/reset/preview` and `/state` check reports no cloud learning data; it then clears the local resettable data and reloads. A failed or unavailable check leaves the guard in place.
+- AUD-001 remains BLOCKED by AUD-005. If cloud learning data remains, there is no safe server-side clear/reconciliation route in this branch; the scoped reset design and current 404 regression test keep execution disabled. Enabling the editor or clearing the guard without a verified cloud reset could lose current work or allow an old generation to return. Do not weaken the guard or its tests.
+- Existing `tests/unit/server-connection-gate-reset.test.tsx` verifies the no-token state stays locked. The requested real-phone, failed-GIS, empty/nonempty server, interrupted-check, and reload acceptance matrix remains NOT_TESTED; no production or live data call was made in this review.
+- Status: AUD-001 BLOCKED pending the complete AUD-005 reset saga and its tests. No code change. Next: AUD-002 debounce acceptance verification.
+
