@@ -1,7 +1,7 @@
 import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { RotateCcw, Trash2, Plus, BookOpen } from 'lucide-react';
 import { useAppDispatch, useAppSelector, useAppStore } from './hooks';
-import { actions, exerciseOf } from './store';
+import { actions, exerciseOf, type ScratchState } from './store';
 import { example, leaves, stepIsBlank, stepLatex } from './model';
 import { fingerprint, reviewMessage, writeClipboard } from './review';
 import { serialize, validateSession } from './persistence';
@@ -45,7 +45,7 @@ import { ContinueLearningButton, useOptionalReadingPositionContext } from './fea
 import { AppHeader } from './app/app-header';
 import { ExerciseMenu } from './app/exercise-menu';
 import { DialogsHost, type ResetKind } from './app/dialogs-host';
-import { PracticeLauncher, usePracticeLauncher } from './app/practice-launcher';
+import { PracticeLauncher, usePracticeLauncher, type SessionImportPayload } from './app/practice-launcher';
 import { useBankSession } from './app/use-bank-session';
 import { usePracticeEditEvents } from './app/use-practice-edit-events';
 import { useWellbeing } from './app/use-wellbeing';
@@ -57,6 +57,11 @@ const SyncPanel = lazy(() => import('./sync/sync-panel').then(({ SyncPanel: pane
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
 type Decision = 'next' | 'complete' | 'copy';
+function importUndoFingerprint(state: ScratchState) {
+ // QuestionTimer starts a new timing segment after load; that automatic metadata must not consume Undo.
+ const exercises = state.doc.exercises.map(({ elapsedMs, timerRunningSince, timerPaused, ...exercise }) => exercise);
+ return JSON.stringify({ doc: { ...state.doc, exercises }, prefs: state.prefs });
+}
 function freshLessonProgress(lessonId: string): LessonProgress {
  return { lessonId, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedConceptIds: [], completedSectionIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() };
 }
@@ -75,6 +80,11 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
+ const [pendingSessionImport, setPendingSessionImport] = useState<{ payload: SessionImportPayload; source: string } | null>(null);
+ const [sessionImportUndo, setSessionImportUndo] = useState<{ previous: SessionImportPayload; importedSnapshot: string } | null>(null);
+ const sessionSnapshot = importUndoFingerprint(state);
+ const canUndoSessionImport = !!sessionImportUndo && sessionSnapshot === sessionImportUndo.importedSnapshot;
+ useEffect(() => { if (sessionImportUndo && !canUndoSessionImport) setSessionImportUndo(null); }, [canUndoSessionImport, sessionImportUndo]);
  const workspaceTemplateScope = workspaceTemplateStorageKey(state.doc.session?.bankId, state.doc.session?.chapter);
  const [workspaceTemplate, setWorkspaceTemplate] = useState<WorkspaceTemplate>(() => {
   try { return readWorkspaceTemplate(window.localStorage, state.doc.session?.bankId, state.doc.session?.chapter); }
@@ -548,9 +558,33 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  function downloadBackup() { const saved = downloadText(`math-scratchpad-backup-${stamp()}.json`, serialize(store.getState())); if (saved) emitLearnEvent(sessionEventContext, { type: 'backup_created', itemId: `session:${sessionId || 'unknown'}` }); dispatch(actions.notice(saved ? 'Backup file downloaded.' : 'Download blocked. Use Session JSON to copy the backup.')); }
  async function importFile(file: File | undefined) {
   if (!file) return;
-  try { if (file.size > 1000000) throw Error('Backup file is too large.'); const raw = JSON.parse(await file.text()); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); emitLearnEvent(sessionEventContext, { type: 'backup_restored', itemId: file.name }); setShowResults(false); }
+  try { if (file.size > 1000000) throw Error('Backup file is too large.'); const raw = JSON.parse(await file.text()); requestSessionImport(migrateChatDiagnosticSession(raw) ?? validateSession(raw), file.name); }
   catch (error) { dispatch(actions.notice(`Import failed: ${error instanceof Error ? error.message : 'invalid file'}`)); }
   finally { if (fileInput.current) fileInput.current.value = ''; }
+ }
+ function requestSessionImport(payload: SessionImportPayload, source: string) { setPendingSessionImport({ payload, source }); }
+ function cancelSessionImport() { setPendingSessionImport(null); }
+ function confirmSessionImport() {
+  const request = pendingSessionImport;
+  if (!request) return;
+  const current = store.getState();
+  const previous = { doc: current.doc, prefs: current.prefs };
+  emitLearnEvent(sessionEventContext, { type: 'backup_restored', itemId: request.source });
+  dispatch(actions.load(request.payload));
+  setSessionImportUndo({ previous, importedSnapshot: importUndoFingerprint(store.getState()) });
+  setPendingSessionImport(null);
+  setShowResults(false);
+  jsonForm.reset({ json: '' });
+  openInlinePanel('backup');
+  dispatch(actions.notice('Session restored. Undo is available until this session changes or the page reloads.'));
+ }
+ function undoSessionImport() {
+  const undo = sessionImportUndo;
+  if (!undo || importUndoFingerprint(store.getState()) !== undo.importedSnapshot) { setSessionImportUndo(null); return; }
+  dispatch(actions.load(undo.previous));
+  setSessionImportUndo(null);
+  setShowResults(false);
+  dispatch(actions.notice('Previous session restored.'));
  }
  function confirmReset() {
   const kind = resetKind; setResetKind(null);
@@ -710,7 +744,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    <CloudResetPreviewDialog open={cloudPreviewOpen} onOpenChange={setCloudPreviewOpen} runtime={syncRuntime} />
    {lessonPersistenceMessage && <p className="lesson-persistence-warning" role="alert">{lessonPersistenceMessage}</p>}
 
-   <PracticeLauncher launcher={launcher} wide={wide} sessionEventContext={sessionEventContext} onSessionChanged={() => setShowResults(false)} />
+   <PracticeLauncher launcher={launcher} wide={wide} onSessionChanged={() => setShowResults(false)} onRestoreRequest={requestSessionImport} canUndoImport={canUndoSessionImport} onUndoImport={undoSessionImport} />
    {resumeCandidate && <ContinueLearningButton
     title={<span lang={languageForText(resumeCandidate.lesson.title)} dir={contentDirection(resumeCandidate.lesson.title)}><LessonText text={resumeCandidate.lesson.title} /></span>}
     section={resumeCandidate.sectionTitle}
@@ -787,6 +821,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
    shortcuts={{ open: shortcutsOpen, setOpen: setShortcutsOpen }}
    exportWarning={{ questions: exportWarning, dismiss: () => setExportWarning(null), exportAnyway: () => { void exportTutor(true); } }}
    reset={{ kind: resetKind, cancel: () => setResetKind(null), downloadBackup, confirm: confirmReset }}
+   sessionImport={pendingSessionImport ? { source: pendingSessionImport.source, currentExercises: state.doc.exercises.length, incomingExercises: pendingSessionImport.payload.doc.exercises.length, cancel: cancelSessionImport, confirm: confirmSessionImport } : null}
    wellbeing={wellbeing}
    confidence={{ open: !!decision, initial: ex.confidence, invoker: invoker.current, onCancel: cancelDecision, onConfirm: confirmDecision }}
    completion={{ open: complete, totalQuestions: state.doc.exercises.length, answeredQuestions: answeredCount, skippedQuestions: skippedCount, draftQuestions: state.doc.exercises.filter(question => questionStatus(question) === "Draft").length, onClose: () => setComplete(false), onReview: () => { setComplete(false); void copyReview(); }, onCopy: () => { setComplete(false); void copySession(); }, onAnalyze: () => { setComplete(false); setShowResults(true); } }}

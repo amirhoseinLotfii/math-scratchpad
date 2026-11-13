@@ -13,10 +13,35 @@ test('import.session-json.requires-confirmation.before-replacing-existing-work',
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).click();
   await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-  await page.getByRole('menuitem', { name: 'Import session JSON' }).click();
+  const importItem=page.getByRole('menuitem', { name: 'Import session JSON' });
+  await importItem.focus();
+  await importItem.press('Enter');
   const panel=page.getByRole('region', {name:'Session backup'});
   await panel.getByRole('textbox',{name:'Copy or paste session JSON'}).fill(serialize(initialState()));
   await panel.getByRole('button',{name:'Restore'}).click();
-  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value:string }).value), { timeout: 1500 }).toBe('987654');
-  await expect(page.getByRole('dialog', {name:/confirm|replace|restore/i})).toBeVisible();
+  const confirmation=page.getByRole('dialog',{name:'Replace current session?'});
+  await expect(confirmation).toBeVisible();
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value:string }).value)).toBe('987654');
+  await confirmation.getByRole('button',{name:'Keep current work'}).click();
+  await expect(confirmation).toBeHidden();
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value:string }).value)).toBe('987654');
+
+  await panel.getByRole('button',{name:'Restore'}).click();
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button',{name:'Replace session'}).click();
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value:string }).value)).not.toBe('987654');
+  const undo=panel.getByRole('button',{name:'Undo import'});
+  await expect(undo).toBeVisible();
+  await undo.click();
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value:string }).value)).toBe('987654');
+
+  await panel.getByRole('textbox',{name:'Copy or paste session JSON'}).fill(serialize(initialState()));
+  await panel.getByRole('button',{name:'Restore'}).click();
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button',{name:'Replace session'}).click();
+  const secondUndo=panel.getByRole('button',{name:'Undo import'});
+  await expect(secondUndo).toBeVisible();
+  await field.evaluate(element => { const e=element as HTMLElement & {value:string};e.value='2468';e.dispatchEvent(new Event('input',{bubbles:true,composed:true})); });
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & {value:string}).value)).toBe('2468');
+  await expect(secondUndo).toBeHidden();
 });

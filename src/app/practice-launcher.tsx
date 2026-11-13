@@ -10,9 +10,9 @@ import { validateSession } from '../persistence';
 import { migrateChatDiagnosticSession } from '../legacyDiagnostic';
 import { Button } from '../shared/ui/button';
 import { problemSchema, jsonInputSchema } from '../features/session/schemas/session-schema';
-import { emitLearnEvent, type LearnEventContext } from '../sync/events';
 
 export type InlinePanel = 'new' | 'backup' | 'fractions' | 'diagnostic';
+export type SessionImportPayload = ReturnType<typeof validateSession>;
 
 /** State for the inline practice/setup panels (new problem, session JSON, round/diagnostic confirmation). */
 export function usePracticeLauncher() {
@@ -42,7 +42,7 @@ export function usePracticeLauncher() {
 export type PracticeLauncherState = ReturnType<typeof usePracticeLauncher>;
 
 /** Renders the inline practice/setup panels driven by `usePracticeLauncher`. */
-export function PracticeLauncher({ launcher, wide, sessionEventContext, onSessionChanged }: { launcher: PracticeLauncherState; wide: boolean; sessionEventContext: LearnEventContext; onSessionChanged: () => void }) {
+export function PracticeLauncher({ launcher, wide, onSessionChanged, onRestoreRequest, canUndoImport, onUndoImport }: { launcher: PracticeLauncherState; wide: boolean; onSessionChanged: () => void; onRestoreRequest: (session: SessionImportPayload, source: string) => void; canUndoImport: boolean; onUndoImport: () => void }) {
  const dispatch = useAppDispatch();
  const { setup, setSetup, backup, setBackup, confirmExam, setConfirmExam, confirmFractions, setConfirmFractions, problemForm, jsonForm } = launcher;
  const mode = problemForm.watch('mode');
@@ -54,7 +54,7 @@ export function PracticeLauncher({ launcher, wide, sessionEventContext, onSessio
   } catch (error) { problemForm.setError('source', { message: error instanceof Error ? error.message : 'Invalid problem.' }, { shouldFocus: true }); }
  });
  const loadBackup = jsonForm.handleSubmit(value => {
-  try { const raw = JSON.parse(value.json); dispatch(actions.load(migrateChatDiagnosticSession(raw) ?? validateSession(raw))); emitLearnEvent(sessionEventContext, { type: 'backup_restored', itemId: 'session-json' }); setBackup(false); onSessionChanged(); }
+  try { const raw = JSON.parse(value.json); onRestoreRequest(migrateChatDiagnosticSession(raw) ?? validateSession(raw), 'session JSON'); }
   catch (error) { jsonForm.setError('json', { message: error instanceof Error ? error.message : 'Invalid session JSON.' }, { shouldFocus: true }); }
  });
  return <>
@@ -64,6 +64,6 @@ export function PracticeLauncher({ launcher, wide, sessionEventContext, onSessio
    <label htmlFor="problem-input">Problem</label><textarea id="problem-input" {...problemForm.register('source')} maxLength={4000} dir={mode === 'text' ? 'auto' : 'ltr'} aria-invalid={!!problemForm.formState.errors.source} aria-describedby={problemForm.formState.errors.source ? 'problem-error' : undefined} placeholder={mode === 'math' ? example : 'Describe the question'} />
    {problemForm.formState.errors.source && <p id="problem-error" role="alert">{problemForm.formState.errors.source.message}</p>}
    <div className="toolbar"><Button type="submit" variant="default">Start</Button><Button onClick={() => setSetup(false)}>Cancel</Button></div></form></section>}
-  {backup && <section className="setup-panel" aria-label="Session backup"><h2>Session backup</h2><form onSubmit={loadBackup} noValidate><label htmlFor="session-json">Copy or paste session JSON</label><textarea id="session-json" {...jsonForm.register('json')} spellCheck={false} aria-invalid={!!jsonForm.formState.errors.json} aria-describedby={jsonForm.formState.errors.json ? 'json-error' : undefined} /><div className="toolbar"><Button onClick={async () => dispatch(actions.notice(await writeClipboard(jsonForm.getValues('json')) ? 'Session copied.' : 'Select the text and copy manually.'))}>Copy Session</Button><Button type="submit">Restore</Button><Button onClick={() => setBackup(false)}>Close</Button></div>{jsonForm.formState.errors.json && <p id="json-error" role="alert">{jsonForm.formState.errors.json.message}</p>}</form></section>}
+  {backup && <section className="setup-panel" aria-label="Session backup"><h2>Session backup</h2><form onSubmit={loadBackup} noValidate><label htmlFor="session-json">Copy or paste session JSON</label><textarea id="session-json" {...jsonForm.register('json')} spellCheck={false} aria-invalid={!!jsonForm.formState.errors.json} aria-describedby={jsonForm.formState.errors.json ? 'json-error' : undefined} /><div className="toolbar"><Button onClick={async () => dispatch(actions.notice(await writeClipboard(jsonForm.getValues('json')) ? 'Session copied.' : 'Select the text and copy manually.'))}>Copy Session</Button><Button type="submit">Restore</Button><Button onClick={() => setBackup(false)}>Close</Button></div>{jsonForm.formState.errors.json && <p id="json-error" role="alert">{jsonForm.formState.errors.json.message}</p>}</form>{canUndoImport && <div className="mt-3 rounded-md border border-emerald-300/30 p-3"><p role="status">Session imported. You can undo until this session changes or the page reloads.</p><Button type="button" onClick={onUndoImport}>Undo import</Button></div>}</section>}
  </>;
 }

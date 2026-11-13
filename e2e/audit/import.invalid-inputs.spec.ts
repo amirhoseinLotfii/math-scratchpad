@@ -10,7 +10,9 @@ for (const [name, payload] of [
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Show more' }).click();
     await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
-    await page.getByRole('menuitem', { name: 'Import session JSON' }).click();
+    const importItem = page.getByRole('menuitem', { name: 'Import session JSON' });
+    await importItem.focus();
+    await importItem.press('Enter');
     const panel = page.getByRole('region',{name:'Session backup'});
     await panel.getByRole('textbox',{name:'Copy or paste session JSON'}).fill(payload);
     await panel.getByRole('button',{name:'Restore'}).click();
