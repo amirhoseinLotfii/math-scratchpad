@@ -43,3 +43,10 @@
 ## Phase 9 additional checkpoint
 - AUD-014: main sync runtime transmitted seeded synthetic outbox event to fake network despite reset-pending flag, reproduced three times. Server behavior and actual owner phone path untested. PR 93 includes guard, not independently proven by this test.
 - Main dist assets total 7.2 MB including fonts/maps; primary JS 1,622,724 raw bytes, 471,350 gzip bytes (local build). Lighthouse pending.
+
+## Phase 10 performance, security and visual checkpoint
+- Lighthouse isolated loopback, all HTTPS blocked: mobile 88, LCP 3.82s, TBT 68ms, CLS .032; desktop 100, LCP .76s, TBT 0ms, CLS .003. Single lab runs, not field data.
+- Gitleaks 8.30.1 reachable history: 1 browser Google key match at historical commit; code describes public key restriction, Cloud Console settings unverified. Audit output and audit tests scan: 0 findings.
+- AUD-015: missing Import session JSON icon reproduced 3 mobile runs and visually inspected synthetic PR 93 screenshot saved to Drive.
+- PR91 CI failed on invalid JSON setup after Enter; PR93 CI failed a similar interaction. Local extra diagnostic: explicit focus+keyboard Enter succeeded once; direct locator press yielded both failure and success in separate runs. No root cause established.
+- Desktop axe 9/9 and source/test typecheck pass.
