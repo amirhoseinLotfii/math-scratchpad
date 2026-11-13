@@ -135,9 +135,10 @@ test('MathLive inserts and edits calculus and matrix structures without changing
   await page.reload();
   const field = page.locator('math-field[aria-label="Step 1 expression"]');
   await field.click();
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value: string }).value)).not.toBe('');
   await page.keyboard.press('Control+A');
   await page.keyboard.press('Backspace');
-  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('\\placeholder{}');
+  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('');
   await page.getByRole('button', { name: 'Show Keyboard' }).click();
 
   const readLatex = () => field.evaluate(element => (element as HTMLElement & { value: string }).value);
