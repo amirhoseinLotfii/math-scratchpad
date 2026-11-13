@@ -55,3 +55,9 @@
 - PR 93 full app Vitest: 75 files, 980 passed at d1c730c; Worker 114 and typecheck previously passed. Three mocked Google/Drive browser tests passed, with local font serving warnings caused by symlinked dependencies.
 - Self-check corrected summary table placement and rebuilt per-code statuses; no claim that untested scenarios passed.
 - Complete broad E2E gate is not run from audit branch because deliberate red tests are included by default; unvetted test traffic must also be isolated from production first.
+
+## Additional offline and recovery coverage
+- AUD-016: generated standalone HTML fails on startup because `.env.PROD` is undefined in IIFE output; local browser with external network blocked saw alert and no editor. Red test failed three times. First configuration attempt served wrong directory and was corrected; not counted as product failure.
+- Synthetic full-backup fixture passed mobile and desktop, desktop earlier target crash under concurrent load and subsequent rerun passed; no claim of root cause.
+- Mobile keyboard adaptation suite 15/15 passed.
+- K1 static: main ID token request timeout 30 seconds; actual cause and PR 93 fix on owner's account remain untested.
