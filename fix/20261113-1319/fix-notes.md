@@ -307,3 +307,13 @@ No production data or external resets are involved. Proceed red-first with clien
 - Code commit created locally: `d32064e`; GitHub Git Data API checkpoint: `ca11103`. Both point to tree `78d48e1`. PR #94 body was updated with AUD-003 evidence and AUD-017 next; PR remains open/draft.
 - Safety incident: an earlier production-targeted sendBeacon probe was rejected by automatic review before any network request was sent. The test config was changed and inspected so all follow-up browser requests go directly to the local Wrangler Worker. No production write, deploy, reset, merge, or protected-data change occurred.
 - Next: AUD-017 safe confirmation before either import path replaces current work, with synthetic data, red-first tests, and an explicit cancel/confirm/undo acceptance. AUD-016 follows.
+
+## Phase 20 — AUD-017 import confirmation and undo — 2026-11-13 21:32 Asia/Tehran
+
+- Red-first local browser tests on the pre-fix branch confirmed both import routes replaced synthetic current work immediately. No real user data was used.
+- JSON and backup-file imports now parse and validate before opening the same accessible confirmation dialog. The dialog previews current and incoming exercise counts. Cancel leaves current work unchanged; confirmation dispatches the replacement once and stores the previous document/preferences for Undo. Undo is available until imported work/preferences change or the page reloads; automatic question-timer segment metadata is excluded from its invalidation fingerprint.
+- Added E2E coverage for cancellation, replacement, Undo, Undo expiration after a new edit, and malformed/oversized/script-bearing JSON. Added `playwright.import.config.ts` to run the acceptance matrix against a local Vite server at mobile-390 and desktop-1440, with external requests blocked. Added the config to `npm run test:audit`.
+- Verification on code tree `124822f`: Playwright importer matrix 10/10; App/integration Vitest 17 files / 132 passed; `npm run typecheck` and `npm run test:typecheck` passed; `git diff --check` passed; Gitleaks 8.30.1 staged scan found no leaks.
+- Local code commit `f3223f8`; GitHub Git Data API commit `1ec8ba1`; local and remote trees match. PR #94 body now marks AUD-017 FIXED and AUD-016 NEXT; it remains draft/open.
+- No production API calls, resets, deploys, merges, or protected-data changes occurred. The earlier production probe remains blocked before request transmission; current importer tests use only local pages.
+- Next: AUD-016 standalone mount and offline smoke checks.
