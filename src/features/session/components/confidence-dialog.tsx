@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { z } from 'zod';
+import type * as z from 'zod/mini';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../shared/ui/dialog';
 import { Button } from '../../../shared/ui/button';
 import { confidenceSchema } from '../schemas/session-schema';

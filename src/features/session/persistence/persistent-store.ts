@@ -1,5 +1,5 @@
 import { initialKeyboardOpen } from '../../../shared/lib/ui-prefs';
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { example, isoLocal, stepLatex, uid } from '../../../model';
 import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
 import { restoreState, validateSession } from '../../../persistence';
@@ -11,8 +11,8 @@ export const SESSION_KEY = 'math-scratchpad-session-v3';
 const envelopeSchema = z.object({
  version: z.literal(3),
  state: z.object({
-  session: z.object({ doc: z.unknown(), prefs: z.unknown().optional(), keyboardOpen: z.boolean() }),
-  sync: z.object({ revision: z.number().int().nonnegative(), writerId: z.string().min(1).max(100) }),
+  session: z.object({ doc: z.unknown(), prefs: z.optional(z.unknown()), keyboardOpen: z.boolean() }),
+  sync: z.object({ revision: z.number().check(z.int(), z.nonnegative()), writerId: z.string().check(z.minLength(1), z.maxLength(100)) }),
  }),
 });
 type Envelope = { version: number; state: PersistedSession };
