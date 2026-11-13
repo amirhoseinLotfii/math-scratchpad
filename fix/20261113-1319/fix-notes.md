@@ -134,3 +134,13 @@ Timestamp: 2026-11-13 14:53 Asia/Tehran.
 - The integrated audit suite currently reports 12/13 PASS, with only the AUD-005 route-existence test red. This is marked BLOCKED pending a complete implementation contract and acceptance across all affected destinations; no production action or release approval was requested.
 - Next: recheck AUD-018 mirror-failure isolation on the integrated branch, then continue other actionable findings.
 
+
+## Phase 10 — AUD-018 mirror failure isolation
+Timestamp: 2026-11-13 14:56 Asia/Tehran.
+
+- The integrated implementation uses Promise.allSettled for Drive and Notion in the combined Worker sync route and returns sanitized per-destination failures plus subrequest counts. The prior implementation was already present from the integrated PR set; this phase strengthened and verified its acceptance coverage.
+- Expanded the audit test to cover Drive failure with successful Notion completion, both destinations failing without leaking error details, Notion failure with a successful Drive result, and Cron retry signaling with sanitized diagnostic fields and subrequest counts.
+- Verification: targeted audit file 4/4 PASS; full audit suite 15/16 PASS with only AUD-005 still red; `npm run test:worker` 7 files / 125 tests PASS; `npm run test:typecheck` PASS; `git diff --check` PASS; staged Gitleaks 8.30.1 no leaks. No live Cron invocation was made; production invocation details remain NOT_TESTED.
+- GitHub code branch commit: `03a26b800249c5d681ad610535a39b5a28a34c25`; tree `47d951fac4ecd18a487586cb6fa111d16985377f` matches the local verified tree. Only the isolated fix branch moved.
+- Next: AUD-012 dependency advisory verification. AUD-005 remains BLOCKED under the scoped-reset contract; production and browser gates are unchanged.
+
