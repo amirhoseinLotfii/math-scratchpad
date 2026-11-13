@@ -7,6 +7,7 @@ import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSes
 import { LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 
 const MAX_BODY_BYTES = 250_000;
+const MAX_STATE_BODY_BYTES = 2_100_000;
 const PAGES_ORIGIN = 'https://amirhoseinlotfii.github.io';
 
 export type IdTokenVerifier = (token: string, clientId: string) => Promise<GoogleIdentity>;
@@ -146,12 +147,18 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   const authorize = authorizeWith(true);
   const authorizeGoogleOnly = authorizeWith(false);
 
-  const proxy = async (c: AppContext, path: string, method: 'GET' | 'POST', expectsBody = method === 'POST') => {
+  const proxy = async (
+    c: AppContext,
+    path: string,
+    method: 'GET' | 'POST',
+    expectsBody = method === 'POST',
+    maxBodyBytes = MAX_BODY_BYTES,
+  ) => {
     let body: ArrayBuffer | undefined;
     if (expectsBody) {
       const declaredLength = Number(c.req.header('Content-Length') ?? 0);
-      if (declaredLength > MAX_BODY_BYTES) return finalizeResponse(jsonError('payload_too_large', 413), c);
-      body = await readBoundedBody(c.req.raw, MAX_BODY_BYTES) ?? undefined;
+      if (declaredLength > maxBodyBytes) return finalizeResponse(jsonError('payload_too_large', 413), c);
+      body = await readBoundedBody(c.req.raw, maxBodyBytes) ?? undefined;
       if (!body) return finalizeResponse(jsonError('payload_too_large', 413), c);
     }
 
@@ -252,7 +259,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   app.get('/reset/epoch', authorize, c => proxy(c, '/internal/learning-reset/epoch', 'GET'));
   app.get('/reset/preview', authorize, c => proxy(c, '/reset/preview', 'GET'));
   app.get('/state', authorize, c => proxy(c, '/state', 'GET'));
-  app.post('/state', authorize, c => proxy(c, '/state', 'POST'));
+  app.post('/state', authorize, c => proxy(c, '/state', 'POST', true, MAX_STATE_BODY_BYTES));
   app.get('/sync', authorize, c => proxy(c, '/sync', 'GET'));
   app.get('/snapshot', authorize, c => proxy(c, '/snapshot', 'GET'));
   app.get('/drive/status', authorize, c => proxy(c, '/drive/status', 'GET'));
