@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test('menu.import-session.has-consistent-icon.on-mobile', async ({ page }) => {
+test('menu.import-session.has-consistent-icon', async ({ page }) => {
+  await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');

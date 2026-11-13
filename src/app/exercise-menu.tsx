@@ -83,7 +83,7 @@ export function ExerciseMenu({ open: menu, setOpen: setMenu, invokerRef: menuInv
   <DropdownMenuItem onSelect={() => { setMenu(false); a.onCopySession(); }}><Copy aria-hidden="true" /><span>Copy full session JSON<span className="small menu-description">All questions, answers, steps &amp; session data</span></span></DropdownMenuItem>
   <DropdownMenuItem onSelect={() => { setMenu(false); a.onDownloadBackup(); }}><Download aria-hidden="true" />Download backup file</DropdownMenuItem>
   <DropdownMenuItem onSelect={() => { setMenu(false); a.onImportFile(); }}><Upload aria-hidden="true" />Import backup file</DropdownMenuItem>
-  <DropdownMenuItem onSelect={() => { setMenu(false); a.onImportJson(); }}>Import session JSON</DropdownMenuItem>
+  <DropdownMenuItem onSelect={() => { setMenu(false); a.onImportJson(); }}><Upload aria-hidden="true" />Import session JSON</DropdownMenuItem>
   <DropdownMenuItem onSelect={() => { setMenu(false); a.onOpenSync(); }}><Cloud aria-hidden="true" />Cloud sync and migration</DropdownMenuItem>
  </>;
  return <DropdownMenu open={menu} onOpenChange={value => { setMenu(value); if (!value) { setMenuMore(false); setSessionDetailsOpen(false); } }}><DropdownMenuTrigger asChild><Button ref={menuInvoker} aria-label="Exercise menu" size="icon" onPointerDown={event => event.preventDefault()} onKeyDown={rememberMenuKeyboardActivation} onClick={toggleMenuFromClick}><MoreVertical aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Notebook actions" className="notebook-menu" onCloseAutoFocus={event => {

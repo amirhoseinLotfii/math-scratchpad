@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 export default defineConfig({
-  testDir: '.', testMatch: 'layout.initial.spec.ts',
+  testDir: '.', testMatch: ['layout.initial.spec.ts', 'menu.import-icon.spec.ts'],
   use: { baseURL: 'http://127.0.0.1:5194', launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined), args: ['--no-sandbox','--disable-gpu'] } },
   projects: [
     { name:'mobile-320', use:{...devices['Pixel 7'],viewport:{width:320,height:640}} },
