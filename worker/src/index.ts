@@ -101,6 +101,10 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
 
   const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase()));
 
+  app.get('/reset/status', async c => finalizeResponse(
+    await ownerStub(c.env).fetch('https://event-store.internal/internal/learning-reset/client-status'), c,
+  ));
+
   const internalJson = (path: string, body: unknown, env: WorkerEnv) => ownerStub(env).fetch(new Request(
     `https://event-store.internal${path}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },

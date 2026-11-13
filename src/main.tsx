@@ -3,7 +3,6 @@ import { Provider } from './app/store-provider';
 import { App } from './App';
 import { createPersistentStore } from './features/session/persistence/persistent-store';
 import {
-  completeLocalLearningReset,
   initializeLearningStorage,
   initializeAuthenticatedServerStorage,
   refreshAuthenticatedServerStorage,
@@ -15,7 +14,7 @@ import {
 import { getWorkerSession, hydrateWorkerSession } from './sync/worker-session';
 import { ServerConnectionGate } from './sync/server-connection-gate';
 import { BrowserSyncRuntime, setDefaultSyncRuntime } from './sync/runtime';
-import { LEARNING_RESET_REQUIRED_EVENT } from './sync/learning-reset-epoch';
+import { isServerResetStatusVerified, LEARNING_RESET_REQUIRED_EVENT } from './sync/learning-reset-epoch';
 import { ReadingPositionProvider } from './features/progress/reading-position-context';
 import { initializeReadingPositionSync } from './features/progress/reading-position-sync';
 import { initializeThemePreference } from './shared/lib/ui-prefs';
@@ -43,14 +42,13 @@ const isLocalTestOrDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(lo
   && !new URLSearchParams(location.search).has('serverMode');
 
 async function connectAuthenticatedStorage(token: string): Promise<void> {
+  if (isLocalLearningResetPending() || !isServerResetStatusVerified()) {
+    syncRuntime?.setIdToken(token);
+    return;
+  }
   if (!isLocalLearningResetPending() && syncRuntime) await syncRuntime.refreshServerResetEpoch(token);
   if (isLocalLearningResetPending()) {
-    if (!syncRuntime) throw new Error('همگام‌سازی هنوز آماده نیست؛ داده‌های قدیمی این مرورگر به سرور فرستاده نشدند.');
-    if (await syncRuntime.hasCloudLearningData(token)) {
-      throw new Error('داده‌های یادگیری هنوز روی سرور هستند؛ تا پاک‌شدن آن‌ها این مرورگر همگام‌سازی نمی‌شود.');
-    }
-    await completeLocalLearningReset();
-    location.reload();
+    syncRuntime?.setIdToken(token);
     return;
   }
   if (authenticatedStorageToken === token && getAuthenticatedServerStorage()) return;
@@ -110,16 +108,19 @@ void (async () => {
 
   syncRuntime = new BrowserSyncRuntime();
   setDefaultSyncRuntime(syncRuntime);
-  await syncRuntime.start();
+  // The public reset-status check runs in the background; the editor must render from local data while it is unavailable.
+  void syncRuntime.start();
   // A stored Worker session keeps sync working after the one-hour GIS ID token expires.
   await hydrateWorkerSession();
   const sessionToken = getWorkerSession()?.token;
   if (sessionToken) {
-    // Reconcile the server-issued reset generation before enabling any authenticated writes.
-    try { await syncRuntime.refreshServerResetEpoch(sessionToken); }
-    catch { /* Keep local editing available; sync stays retryable until the server can be checked. */ }
+    if (!isLocalLearningResetPending() && isServerResetStatusVerified()) {
+      // Reconcile the server-issued reset generation before enabling any authenticated writes.
+      try { await syncRuntime.refreshServerResetEpoch(sessionToken); }
+      catch { /* Keep local editing available; sync stays retryable until the server can be checked. */ }
+    }
+    syncRuntime.setIdToken(sessionToken);
   }
-  syncRuntime.setIdToken(isLocalLearningResetPending() ? null : sessionToken ?? null);
 
   // Render from local data immediately. Sign-in is only needed to sync the
   // local outbox and learner records; a failed server connection never blocks editing.

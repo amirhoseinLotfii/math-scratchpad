@@ -13,6 +13,7 @@ it('outbox.does-not-send-within-five-seconds.after-first-event', async () => {
   let firstPostTime: number | undefined;
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = new URL(String(input)).pathname;
+    if (path === '/reset/status') return Response.json({ status: 'idle', epoch: LEARNING_RESET_EPOCH });
     if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
     if (path === '/events') {
       firstPostTime = performance.now();

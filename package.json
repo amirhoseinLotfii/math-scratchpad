@@ -16,7 +16,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:typecheck": "tsc -p tsconfig.tests.json --noEmit && tsc -p worker/tsconfig.json --noEmit",
     "test:worker": "vitest run --config worker/vitest.config.ts",
-    "test:audit": "vitest run tests/audit && vitest run --config worker/test/audit/vitest.audit.config.ts && playwright test e2e/audit --project=mobile-320 --project=mobile-390 --project=laptop-1440 --trace=off --workers=1 --reporter=list,html",
+    "test:audit": "vitest run tests/audit && vitest run --config worker/test/audit/vitest.audit.config.ts && playwright test e2e/audit --project=mobile-320 --project=mobile-390 --project=laptop-1440 --trace=off --workers=1 --reporter=list,html && playwright test --config e2e/audit/playwright.reset-pending.config.ts --trace=off --workers=1 --reporter=list,html",
     "worker:build": "wrangler deploy --config worker/wrangler.jsonc --dry-run",
     "test:coverage": "vitest run --coverage",
     "test:a11y": "vitest run tests/accessibility",

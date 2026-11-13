@@ -54,7 +54,7 @@ import { ServerConnectionOverlayContext } from './sync/server-connection-gate';
 const DriveBankPanel = lazy(() => import('./features/drive-bank/drive-bank-panel').then(({ DriveBankPanel: panel }) => ({ default: panel })));
 const SyncPanel = lazy(() => import('./sync/sync-panel').then(({ SyncPanel: panel }) => ({ default: panel })));
 
-const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
+const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
 type Decision = 'next' | 'complete' | 'copy';
 function freshLessonProgress(lessonId: string): LessonProgress {

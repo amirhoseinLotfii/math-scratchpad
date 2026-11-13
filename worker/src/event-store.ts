@@ -278,6 +278,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset') return this.executeLearningReset(request);
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset/release') return this.releaseLearningReset(request);
     if (request.method === 'GET' && url.pathname === '/internal/learning-reset/status') return this.learningResetStatus();
+    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/client-status') return this.learningResetClientStatus();
     if (request.method === 'GET' && url.pathname === '/internal/learning-reset/epoch') return this.learningResetEpoch();
     if (this.isLearningResetLocked() && this.isLearningOrMirrorRoute(url.pathname, request.method)) {
       return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
@@ -410,11 +411,12 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       // An explicit admin takeover lets a new reset id claim a lock orphaned by a lost reset id.
       const orphanTakeover = takeover && current.reset_id !== resetId;
       if (current.status === 'running' && current.reset_id !== resetId && !orphanTakeover) return 'in_progress';
+      if (current.status === 'running' && current.reset_id === resetId) return 'claimed';
       if (current.status === 'awaiting_release' && !orphanTakeover) return current.reset_id === resetId ? 'awaiting_release' : 'in_progress';
       if (current.status === 'released' && current.reset_id === resetId) return 'complete';
       this.ctx.storage.sql.exec(
-        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'running', reset_id = ?, completed_at = NULL, client_epoch = NULL WHERE singleton = 1`,
-        resetId,
+        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'running', reset_id = ?, completed_at = NULL, client_epoch = ? WHERE singleton = 1`,
+        resetId, crypto.randomUUID(),
       );
       return 'claimed';
     });
@@ -504,6 +506,19 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     });
   }
 
+  /** Public clients need only the lock state and current/candidate epoch to recover safely. */
+  private learningResetClientStatus(): Response {
+    const rate = this.consumeRateLimit();
+    if (rate) return rate;
+    const current = this.ctx.storage.sql.exec<{ status: string; client_epoch: string | null }>(
+      `SELECT status, client_epoch FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
+    ).one();
+    const status = ['idle', 'running', 'awaiting_release', 'released'].includes(current.status)
+      ? current.status
+      : 'running';
+    return json({ status, epoch: current.client_epoch ?? LEARNING_RESET_EPOCH });
+  }
+
   private async releaseLearningReset(request: Request): Promise<Response> {
     const body = await readBoundedBody(request, 4_096);
     if (!body) return json({ error: 'payload_too_large' }, 413);
@@ -527,7 +542,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         return 'released';
       }
       if (current.status !== 'awaiting_release' || current.reset_id !== input.resetId) return 'not_ready';
-      const clientEpoch = crypto.randomUUID();
+      const clientEpoch = current.client_epoch ?? crypto.randomUUID();
       this.ctx.storage.sql.exec(
         `UPDATE ${LEARNING_RESET_TABLE} SET status = 'released', client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
         clientEpoch, input.resetId,

@@ -11,7 +11,7 @@ import { queueLearnEvent, readLegacyMigration, type LegacyMigration } from './br
 import { emitTestLearnEvent } from './events';
 import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, type FullLearningBackup, type LearningBackupPreview } from './learning-backup';
 
-const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, driveMirror: null, notionMirror: null };
+const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
 
 function statusLabel(phase: string): string {
   if (phase === 'syncing') return 'در حال ارسال';

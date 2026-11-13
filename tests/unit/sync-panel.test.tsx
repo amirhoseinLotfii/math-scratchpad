@@ -162,6 +162,8 @@ describe('sync and migration panel', () => {
     const mirror = { status: 'synced', pendingCount: 0, quarantinedCount: 0, lastSyncedAt: null, lastError: null };
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
+      if (url.pathname === '/reset/status') return Response.json({ status: 'idle', epoch: '2026-11-12-v3' });
+      if (url.pathname === '/reset/epoch') return Response.json({ epoch: '2026-11-12-v3' });
       if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
       if (url.pathname === '/drive/status' || url.pathname === '/notion/status') return Response.json(mirror);
@@ -201,6 +203,8 @@ describe('sync and migration panel', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input)), method = init?.method ?? 'GET';
       paths.push({ path: url.pathname, method });
+      if (url.pathname === '/reset/status') return Response.json({ status: 'idle', epoch: '2026-11-12-v3' });
+      if (url.pathname === '/reset/epoch') return Response.json({ epoch: '2026-11-12-v3' });
       if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
       if (url.pathname === '/drive/status') return Response.json(drive);

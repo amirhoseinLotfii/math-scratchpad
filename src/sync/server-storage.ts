@@ -13,8 +13,9 @@ import {
   getLearningResetRequestEpoch,
   LEARNING_RESET_EPOCH_HEADER,
   markLocalLearningResetPending,
+  setLocalPendingResetEpoch,
   ServerWriteBlockedError,
-  requestLearningResetReload,
+  isValidLearningResetEpoch,
 } from './learning-reset-epoch';
 
 export type ServerStateRecord = { key: string; value: string | null; revision: number; updatedAt?: string };
@@ -141,8 +142,12 @@ export class ServerBackedStorage implements Storage {
             body: JSON.stringify({ key, value: desiredValue, revision }),
           });
           if (response.status === 426) {
+            const body: unknown = await response.clone().json().catch(() => null);
+            const requiredEpoch = body && typeof body === 'object' && 'requiredEpoch' in body
+              ? (body as { requiredEpoch?: unknown }).requiredEpoch
+              : undefined;
+            if (isValidLearningResetEpoch(requiredEpoch)) setLocalPendingResetEpoch(requiredEpoch);
             markLocalLearningResetPending();
-            requestLearningResetReload();
           }
           if (response.status === 409) {
             const snapshot = await readServerSnapshot(this.token);

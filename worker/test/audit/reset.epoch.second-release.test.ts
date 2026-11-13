@@ -12,7 +12,8 @@ it('reset.epoch.changes-between-distinct-releases', async () => {
     };
     const release = async () => {
       const id = crypto.randomUUID();
-      target.ctx.storage.sql.exec("UPDATE learning_reset_control SET status = 'awaiting_release', reset_id = ? WHERE singleton = 1", id);
+      const candidate = crypto.randomUUID();
+      target.ctx.storage.sql.exec("UPDATE learning_reset_control SET status = 'awaiting_release', reset_id = ?, client_epoch = ? WHERE singleton = 1", id, candidate);
       const response = await target.releaseLearningReset(new Request('https://local.test/internal/learning-reset/release', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId: id }) }));
       expect(response.status).toBe(200);
       return target.ctx.storage.sql.exec('SELECT client_epoch FROM learning_reset_control WHERE singleton = 1').one().client_epoch;
@@ -32,7 +33,8 @@ it('reset.epoch.release-retry-keeps-the-same-generation', async () => {
       releaseLearningReset: (req: Request) => Promise<Response>;
     };
     const resetId = crypto.randomUUID();
-    target.ctx.storage.sql.exec("UPDATE learning_reset_control SET status = 'awaiting_release', reset_id = ? WHERE singleton = 1", resetId);
+    const candidate = crypto.randomUUID();
+    target.ctx.storage.sql.exec("UPDATE learning_reset_control SET status = 'awaiting_release', reset_id = ?, client_epoch = ? WHERE singleton = 1", resetId, candidate);
     const request = () => new Request('https://local.test/internal/learning-reset/release', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId }),
     });

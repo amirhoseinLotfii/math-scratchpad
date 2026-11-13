@@ -2,6 +2,7 @@ import type { LearnEvent } from './events';
 import { subscribeToLearnEvents } from './events';
 import {
   acknowledgeOutbox,
+  completeLocalLearningReset,
   flushLearningStorage,
   getAuthenticatedServerStorage,
   getSyncMeta,
@@ -11,6 +12,7 @@ import {
   reconcileServerLearningResetEpoch,
   readOutboxBatch,
   readOutboxCount,
+  readQuarantineCount,
   setSyncMeta,
   storeServerEvents,
   updateAuthenticatedServerToken,
@@ -22,13 +24,18 @@ import {
   canWriteToServer as isServerWriteAllowed,
   fetchWithServerWriteGuard,
   getStoredServerLearningResetEpoch,
+  hasLocalPendingResetMetadata,
+  isServerResetStatusVerified,
   isValidLearningResetEpoch,
   LEARNING_RESET_EPOCH,
   LEARNING_RESET_EPOCH_HEADER,
+  LOCAL_RESET_STATE_CHANGED_EVENT,
   markLocalLearningResetPending,
+  markServerResetStatusUnknown,
+  markServerResetStatusVerified,
+  setLocalPendingResetEpoch,
   SERVER_WRITE_GUARD_CHANGED_EVENT,
   ServerWriteBlockedError,
-  requestLearningResetReload,
 } from './learning-reset-epoch';
 export { SYNC_API_ORIGIN } from './sync-config';
 const PAGE_LIMIT = 100;
@@ -56,6 +63,7 @@ export type MirrorSyncStatus = {
 export type SyncStatus = {
   phase: SyncPhase;
   pending: number;
+  quarantined: number;
   lastSyncedAt?: string;
   lastError?: string;
   driveMirror: MirrorSyncStatus | null;
@@ -100,8 +108,9 @@ export class BrowserSyncRuntime {
   private readonly scheduleTimeout: typeof globalThis.setTimeout;
   private readonly cancelTimeout: typeof globalThis.clearTimeout;
   private readonly listeners = new Set<() => void>();
-  private current: SyncStatus = { phase: 'idle', pending: 0, driveMirror: null, notionMirror: null };
+  private current: SyncStatus = { phase: 'idle', pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
   private token: string | null = null;
+  private deferredToken: string | null = null;
   private learningResetEpoch = LEARNING_RESET_EPOCH;
   private unsubscribeEvents?: () => void;
   private running?: Promise<void>;
@@ -111,7 +120,11 @@ export class BrowserSyncRuntime {
   private maxWaitTimer?: ReturnType<typeof setTimeout>;
   private keepaliveFlush?: Promise<void>;
   private retryAttempt = 0;
+  private resetPollAttempt = 0;
+  private resetPollTimer?: ReturnType<typeof setTimeout>;
+  private resetPollFlight?: Promise<void>;
   private started = false;
+  private resetStatusReady = false;
 
   constructor(options: RuntimeOptions = {}) {
     this.apiOrigin = (options.apiOrigin ?? SYNC_API_ORIGIN).replace(/\/$/, '');
@@ -130,7 +143,8 @@ export class BrowserSyncRuntime {
     for (const listener of this.listeners) listener();
   }
 
-  private pauseServerWrites(): void {
+  private pauseServerWrites(preserveToken = true): void {
+    if (preserveToken && this.token) this.deferredToken = this.token;
     this.token = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
@@ -139,21 +153,28 @@ export class BrowserSyncRuntime {
   }
 
   private canWriteToServer(): boolean {
-    if (isServerWriteAllowed()) return true;
+    if (this.resetStatusReady && isServerResetStatusVerified() && isServerWriteAllowed()) return true;
     this.pauseServerWrites();
     return false;
   }
 
   private onServerWriteGuardChanged = (): void => {
-    if (!isServerWriteAllowed()) this.pauseServerWrites();
+    if (!this.resetStatusReady || !isServerResetStatusVerified() || !isServerWriteAllowed()) {
+      this.pauseServerWrites();
+      return;
+    }
+    this.token = this.deferredToken;
+    if (this.token) updateAuthenticatedServerToken(this.token);
+    void this.refreshCountAndTrigger().then(() => { if (this.token) void this.syncNow(); });
   };
 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    this.resetStatusReady = false;
+    markServerResetStatusUnknown();
     window.addEventListener(SERVER_WRITE_GUARD_CHANGED_EVENT, this.onServerWriteGuardChanged);
     this.unsubscribeEvents = subscribeToLearnEvents(event => {
-      if (isLocalLearningResetPending()) return;
       void queueLearnEvent(event).then(() => this.refreshCountAndTrigger()).catch(() => {
         this.update({ phase: 'error', lastError: 'رویداد در صف آفلاین ذخیره نشد؛ اتصال یا فضای مرورگر را بررسی کن.' });
       });
@@ -163,7 +184,9 @@ export class BrowserSyncRuntime {
     window.addEventListener('pageshow', this.onWake);
     window.addEventListener('pagehide', this.onPageHide);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
+    const resetStatusCheck = this.refreshResetStatus();
     await this.refreshCount();
+    await resetStatusCheck;
     if (!this.canWriteToServer()) return;
     void this.syncNow();
   }
@@ -176,13 +199,19 @@ export class BrowserSyncRuntime {
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     window.removeEventListener('pagehide', this.onPageHide);
     window.removeEventListener(SERVER_WRITE_GUARD_CHANGED_EVENT, this.onServerWriteGuardChanged);
+    if (this.resetPollTimer) this.cancelTimeout(this.resetPollTimer);
+    this.resetPollTimer = undefined;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.clearEventFlushTimers();
     this.retryTimer = undefined; this.started = false;
   }
 
   setIdToken(token: string | null): void {
-    if (!this.canWriteToServer()) return;
+    this.deferredToken = token;
+    if (!this.resetStatusReady || !isServerResetStatusVerified() || !isServerWriteAllowed()) {
+      this.pauseServerWrites(false);
+      return;
+    }
     this.token = token;
     if (token) updateAuthenticatedServerToken(token);
     if (!token) {
@@ -231,27 +260,82 @@ export class BrowserSyncRuntime {
         throw new SyncRequestError('پاسخ نسل پاک‌سازی سرور معتبر نبود؛ همگام‌سازی متوقف ماند.', undefined, false);
       }
       epoch = value.epoch;
+    } else {
+      const storedEpoch = getStoredServerLearningResetEpoch();
+      if (storedEpoch && storedEpoch !== LEARNING_RESET_EPOCH) {
+        throw new SyncRequestError('سرور نسل تازه را تأیید نکرد؛ همگام‌سازی تا بررسی دوباره متوقف است.', 404, false);
+      }
     }
 
     this.learningResetEpoch = epoch;
-    const storedEpoch = getStoredServerLearningResetEpoch();
-    const requiresReset = storedEpoch !== epoch && (storedEpoch !== null || epoch !== LEARNING_RESET_EPOCH);
-    if (requiresReset && getAuthenticatedServerStorage()) {
-      markLocalLearningResetPending();
-      this.token = null;
-      this.update({ phase: 'needs-auth', lastError: 'نسل پاک‌سازی سرور تغییر کرده؛ ذخیرهٔ قدیمی متوقف شد.' });
-      requestLearningResetReload();
-      return false;
-    }
-
     const reset = await reconcileServerLearningResetEpoch(epoch);
     if (reset) {
-      this.token = null;
-      this.update({ phase: 'needs-auth', lastError: 'نسل پاک‌سازی سرور تغییر کرده؛ ذخیرهٔ محلی پاک‌سازی شد.' });
-      if (this.started) requestLearningResetReload();
-      return false;
+      this.learningResetEpoch = epoch;
+      await this.refreshCount();
     }
     return true;
+  }
+
+  /** Unauthenticated recovery poll; a client lock clears only after a released server epoch. */
+  async refreshResetStatus(): Promise<void> {
+    if (!this.started) return;
+    if (this.resetPollFlight) return this.resetPollFlight;
+    const flight = (async () => {
+      let nextDelay = 60_000;
+      const controller = new AbortController();
+      const timeout = this.scheduleTimeout(() => controller.abort(), 7_000);
+      try {
+        const response = await this.fetcher(`${this.apiOrigin}/reset/status`, { method: 'GET', cache: 'no-store', signal: controller.signal });
+        const value: unknown = await response.json().catch(() => null);
+        if (!response.ok || !isRecord(value) || !['idle', 'running', 'awaiting_release', 'released'].includes(String(value.status))
+          || !isValidLearningResetEpoch(value.epoch) || Object.keys(value).some(key => !['status', 'epoch'].includes(key))) {
+          throw new Error('Reset status response is unavailable or invalid.');
+        }
+        this.resetPollAttempt = 0;
+        const epoch = value.epoch;
+        this.learningResetEpoch = epoch;
+        if (value.status === 'running' || value.status === 'awaiting_release') {
+          if (!isLocalLearningResetPending()) markLocalLearningResetPending();
+          setLocalPendingResetEpoch(epoch);
+          nextDelay = 10_000;
+        } else if (value.status === 'released') {
+          const storedEpoch = getStoredServerLearningResetEpoch();
+          if (isLocalLearningResetPending() || hasLocalPendingResetMetadata() || storedEpoch !== epoch) await completeLocalLearningReset(epoch);
+          else await reconcileServerLearningResetEpoch(epoch);
+          await this.refreshCount();
+          this.update({ quarantined: await readQuarantineCount().catch(() => this.current.quarantined) });
+          nextDelay = 60_000;
+        } else if (isLocalLearningResetPending()) {
+          // The local lock may outlive a server-status transition. Never clear it from idle.
+          nextDelay = 10_000;
+        } else if (hasLocalPendingResetMetadata()) {
+          // Promote events created while status was unverified only after the server confirms its epoch.
+          await completeLocalLearningReset(epoch);
+          await this.refreshCount();
+          this.update({ quarantined: await readQuarantineCount().catch(() => this.current.quarantined) });
+        } else {
+          await reconcileServerLearningResetEpoch(epoch);
+        }
+        this.resetStatusReady = true;
+        markServerResetStatusVerified();
+      } catch {
+        this.resetStatusReady = false;
+        markServerResetStatusUnknown();
+        this.resetPollAttempt += 1;
+        nextDelay = retryDelay(this.resetPollAttempt, this.random);
+      } finally {
+        this.cancelTimeout(timeout);
+        if (this.started && this.resetPollTimer) this.cancelTimeout(this.resetPollTimer);
+        this.resetPollTimer = undefined;
+        if (this.started) this.resetPollTimer = this.scheduleTimeout(() => {
+          this.resetPollTimer = undefined;
+          void this.refreshResetStatus();
+        }, nextDelay);
+        this.resetPollFlight = undefined;
+      }
+    })();
+    this.resetPollFlight = flight;
+    return flight;
   }
 
   observeMirrorStatuses(): () => void {
@@ -369,7 +453,9 @@ export class BrowserSyncRuntime {
 
   private async refreshCount(): Promise<number> {
     const pending = await readOutboxCount().catch(() => 0);
-    this.update({ pending });
+    const quarantined = await readQuarantineCount().catch(() => this.current.quarantined ?? 0);
+    this.update({ pending, quarantined });
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('math-scratchpad:learning-quarantine-changed', { detail: quarantined }));
     return pending;
   }
 
@@ -404,7 +490,10 @@ export class BrowserSyncRuntime {
     this.maxWaitTimer = undefined;
   }
 
-  private onWake = () => { if (this.started && navigator.onLine !== false) void this.syncNow(); };
+  private onWake = () => {
+    if (!this.started || navigator.onLine === false) return;
+    void this.refreshResetStatus().then(() => { if (this.canWriteToServer()) void this.syncNow(); });
+  };
   private onVisibilityChange = () => {
     if (document.visibilityState === 'visible') this.onWake();
     else this.flushKeepaliveBatch();
@@ -458,18 +547,11 @@ export class BrowserSyncRuntime {
       const body: unknown = await response.clone().json().catch(() => null);
       const epoch = isRecord(body) && isValidLearningResetEpoch(body.requiredEpoch) ? body.requiredEpoch : null;
       if (epoch) {
+        markLocalLearningResetPending();
+        setLocalPendingResetEpoch(epoch);
+        await completeLocalLearningReset(epoch);
         this.learningResetEpoch = epoch;
-        const storedEpoch = getStoredServerLearningResetEpoch();
-        if (storedEpoch !== epoch && (storedEpoch !== null || epoch !== LEARNING_RESET_EPOCH)) {
-          if (getAuthenticatedServerStorage()) {
-            markLocalLearningResetPending();
-            requestLearningResetReload();
-          } else {
-            await reconcileServerLearningResetEpoch(epoch);
-          }
-          this.token = null;
-          this.update({ phase: 'needs-auth', lastError: 'نسل پاک‌سازی سرور تغییر کرده؛ ذخیرهٔ قدیمی متوقف شد.' });
-        }
+        await this.refreshCount();
       }
       throw new SyncRequestError('نسل پاک‌سازی تغییر کرده؛ این داده ارسال نشد.', 426, false);
     }

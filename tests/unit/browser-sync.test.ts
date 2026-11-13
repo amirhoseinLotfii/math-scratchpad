@@ -49,6 +49,15 @@ const LESSON_KEY = 'math-scratchpad-lesson-progress-v1:bank%2F1:v21';
 const OLD_SESSION = serialize(initialState());
 const OLD_LESSON = JSON.stringify({ schemaVersion: 1, bankId: 'bank/1', bankVersion: 'v21', lessons: { '1.1': { status: 'learning', checkAnswers: { q1: 'دامنه' } } }, lessonPanelEvents: [] });
 
+function withIdleResetStatus(fetcher: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    if (new URL(String(input)).pathname === '/reset/status') {
+      return Response.json({ status: 'idle', epoch: LEARNING_RESET_EPOCH });
+    }
+    return fetcher(input, init);
+  };
+}
+
 function fixtureEvent(index: number): LearnEvent {
   const suffix = index.toString(16).padStart(12, '0');
   return {
@@ -597,7 +606,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
@@ -635,7 +644,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
@@ -667,7 +676,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
@@ -696,7 +705,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
@@ -731,7 +740,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
@@ -745,7 +754,7 @@ describe('browser sync runtime', () => {
     online.mockRestore();
     runtime.stop();
 
-    const reloadedRuntime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const reloadedRuntime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await reloadedRuntime.start();
     reloadedRuntime.setIdToken('owner-id-token');
     await vi.waitFor(async () => expect(await readOutboxCount()).toBe(0));
@@ -754,16 +763,17 @@ describe('browser sync runtime', () => {
     reloadedRuntime.stop();
   });
 
-  it('does not queue or send learning data while the local reset guard is active', async () => {
+  it('queues local learning data without sending while the local reset guard is active', async () => {
     localStorage.setItem('math-scratchpad-local-learning-reset-pending-v1', '1');
     const fetcher = vi.fn(async () => Response.json({ events: [], cursor: 0 }));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     emitLearnEvent({ bankVersion: 'v21', session: 'reset-pending', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
     runtime.setIdToken('owner-session-token');
     await runtime.syncNow();
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
 
-    expect(await readOutboxCount()).toBe(0);
+    expect(await readOutboxCount()).toBe(1);
     expect(fetcher).not.toHaveBeenCalled();
     expect(runtime.getSnapshot().phase).toBe('needs-auth');
     runtime.stop();
@@ -785,7 +795,7 @@ describe('browser sync runtime', () => {
       if (path === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
@@ -820,7 +830,7 @@ describe('browser sync runtime', () => {
       if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -850,7 +860,7 @@ describe('browser sync runtime', () => {
       if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(resolvePost).toBeTypeOf('function'));
@@ -907,7 +917,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: server.length, through: server.length, hasMore: false });
       return Response.json({ error: 'not found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     emitLearnEvent({ bankVersion: 'v21', session: 's-1', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'check_answer', itemId: 'q-1', userAnswer: '{1,2}', verdict: 'submitted', verdictSource: 'none' });
     await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
@@ -942,7 +952,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: server.length, through: server.length, hasMore: false });
       return Response.json({ error: 'not found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     emitLearnEvent({ bankVersion: 'v21', session: 's-1', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
     await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
@@ -963,7 +973,7 @@ describe('browser sync runtime', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => new URL(String(input)).pathname === '/reset/epoch'
       ? Response.json({ epoch: LEARNING_RESET_EPOCH })
       : Response.json({ events: [], cursor: 0 }));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -976,7 +986,7 @@ describe('browser sync runtime', () => {
     await initializeLearningStorage();
     await queueLearnEvent(fixtureEvent(102));
     const fetcher = vi.fn(async () => Response.json({ error: 'unauthorized' }, { status: 401 }));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('expired-id-token');
     await runtime.syncNow();
@@ -993,7 +1003,7 @@ describe('browser sync runtime', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => new URL(String(input)).pathname === '/reset/epoch'
       ? Response.json({ epoch: LEARNING_RESET_EPOCH })
       : Response.json({ events: [], cursor: 0 }));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -1031,7 +1041,7 @@ describe('browser sync runtime', () => {
       }
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -1068,7 +1078,7 @@ describe('browser sync runtime', () => {
       if (path === '/notion/sync' && init?.method === 'POST') return Response.json({ notion: { status: 'synced' } });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -1095,7 +1105,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/drive/sync' && method === 'POST') return Response.json({ drive: { status: 'synced', pendingCount: 0, lastSyncedAt: null, lastError: null } });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -1120,7 +1130,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/notion/status') return Response.json({ status: 'not_configured', pendingCount: 0, lastSyncedAt: null, lastError: null });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -1138,15 +1148,14 @@ describe('owner-only read-only cloud reset preview', () => {
   };
   it('requires a Google identity token and never sends an anonymous deletion request', async () => {
     const fetcher = vi.fn(async () => Response.json(payload));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await expect(runtime.previewAllReset()).rejects.toThrow('Google sign-in is required');
     expect(fetcher).not.toHaveBeenCalled();
   });
   it('issues exactly one authenticated GET and displays a valid preflight', async () => {
     const fetcher = vi.fn(async () => Response.json(payload));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
-    runtime.setIdToken('owner-test-token');
-    expect(await runtime.previewAllReset()).toMatchObject(payload);
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    expect(await runtime.previewAllReset('owner-test-token')).toMatchObject(payload);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledWith('https://sync.example/reset/preview?scope=all',
       expect.objectContaining({ method: 'GET', headers: { Authorization: 'Bearer owner-test-token' } }));
@@ -1154,7 +1163,6 @@ describe('owner-only read-only cloud reset preview', () => {
   it('rejects invalid preview payloads without claiming any deletion', async () => {
     const fetcher = vi.fn(async () => Response.json({ scope: 'all', canExecute: true }));
     const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
-    runtime.setIdToken('owner-test-token');
-    await expect(runtime.previewAllReset()).rejects.toThrow('پاسخ پیش‌نمایش ریست معتبر نبود');
+    await expect(runtime.previewAllReset('owner-test-token')).rejects.toThrow('پاسخ پیش‌نمایش ریست معتبر نبود');
   });
 });
