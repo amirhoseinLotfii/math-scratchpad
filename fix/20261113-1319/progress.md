@@ -5,10 +5,10 @@ Code branch: fix/audit-20261113-1319
 Notes branch: fixlog/20261113-1319
 PR: #94 (draft) — https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: AUD-008 visual acceptance completed. Next: AUD-005 scoped reset-execute Worker route/saga.
-Latest local code commit: d79232688e599bbfb06c595e9feaf19a0ae663ff (`test(AUD-008): wait for timer effect before snapshot`).
-Latest GitHub code commit: 91cccc9f7c252e512fbff010b4a8be5f223a7994 (`test(AUD-008): wait for timer effect before snapshot`).
-Latest code tree: da493644d97ae3ddbcc9b0262ae7f56766de1d8d; local and remote tree match.
+Current phase: AUD-005 guarded scoped reset is implemented and locally verified; status remains PARTIAL pending real Durable Object eviction and cross-mirror reconciliation coverage.
+Latest local code commit: 4a141642db13521c8bc740673ac051f24c2e9596 (`fix(AUD-005): add guarded scoped reset saga`).
+Latest GitHub code commit: 94a47eb6b06502ecc45359839eb83c634aff2546 (`fix(AUD-005): add guarded scoped reset saga`).
+Latest code tree: ff3bc7a88efb18f371eb4bd5d3f1db028bf0eabf; local and remote tree match.
 Previous notes checkpoint: fbe68d1d21ac58ac1fb6b63d909cb79a77bf773e; tree b3130883044344a3739869ae1abe2ccaf60d6883.
 
 ## Current evidence
@@ -29,6 +29,15 @@ Previous notes checkpoint: fbe68d1d21ac58ac1fb6b63d909cb79a77bf773e; tree b31308
 - Gitleaks 8.30.1 scanned all 25 changed code/test files before commit: zero findings. This source tree was pushed via the GitHub Git Data API because direct `git push` returned `fatal: could not read Username for 'https://github.com': terminal prompts disabled`.
 - GitHub API transfer initially truncated `worker/src/event-store.ts` on intermediate branch commit `817a2adc`. The file was restored from the exact local blob (`bdfcf712…`), tree equality verified, and the draft branch was force-updated with an expected-head lease to clean commit `8fca80c`. The truncated intermediate commits are no longer in the branch history. No production deployment was made.
 
+## AUD-005 current-head evidence
+- Reproduced the original owner-route 404 with the red test before implementation. The route now requires owner authentication, the `SCOPED_RESET_ENABLED=true` feature gate at both the public Worker and Durable Object layers, a UUID idempotency key, a fresh snapshot token, two distinct confirmations, and a final execute step.
+- The Durable Object stores a five-minute operation journal. Execution and the event deletion, Notion projection rebuild, and completed result are committed in one synchronous SQLite transaction. Retries return the journaled result; stale snapshots and concurrent duplicate calls cannot delete twice.
+- The synthetic local test covers read-only preview, both confirmations, execute, a fresh Worker-app retry against the stored result, two concurrent execute retries, stale-preview rejection, fail-closed shared learning state, and preservation of sibling events and app state. The fresh app retry proves the public Worker layer does not own the operation journal; this harness did not force Cloudflare to evict/restart the Durable Object itself.
+- Fail-closed conditions include shared lesson/session/reading state, configured or previously active Drive/Notion mirrors, Notion references/queues/reconciliation records, aggregate events requiring a selective rebuild, and event logs above 5,000 rows. The implementation rebuilds derived Notion projections only for the eligible local-only case. No external reconciliation is attempted.
+- Verification on code tree `ff3bc7a88efb18f371eb4bd5d3f1db028bf0eabf`: target audit 4/4; full Worker audit 11 files / 22 tests; `npm run test:worker` 7 files / 125 tests; `npm run test:typecheck`; `npm run build` passed (Wrangler `--dry-run` only); `git diff --check` passed. `gitleaks` is not installed in this runtime, so no current-head secret scan was run.
+- Main and staging Wrangler configurations omit `SCOPED_RESET_ENABLED`; the public route returns 503 when unset. Only local Vitest bindings enable it. No production request, data write, reset, deploy, or merge occurred.
+- Code delivery: local commit `4a141642db13521c8bc740673ac051f24c2e9596`; GitHub Git Data API commit `94a47eb6b06502ecc45359839eb83c634aff2546`; local and remote trees both `ff3bc7a88efb18f371eb4bd5d3f1db028bf0eabf`. PR #94 remains open/draft.
+
 ## CI
 - Validate editor run `43467439152` (run 662) and Audit verification run `43467439553` (run 7) were triggered on prior head `17c1bf4`; they are not current-head evidence for `91cccc9`. Current-head CI was not read at this checkpoint.
 - Older completed evidence remains on previous heads only: `npm audit --omit=dev` and Wrangler dry-run succeeded on run `43452492066` / head `12b1927`; do not count those as current-head gate evidence.
@@ -38,7 +47,7 @@ AUD-001: FIXED — red-first client tests, local-only gate tests, and mobile/des
 AUD-002: FIXED — prior debounce tests; reverified in current 8-file targeted slice.
 AUD-003: FIXED — real local Worker/DO browser acceptance passes on mobile and desktop, including ambiguous-delivery retry/idempotency and offline outbox retention; current-head unit/type checks pass.
 AUD-004: BLOCKED — SHA wiring exists on branch, but production alignment and coordinated release verification remain.
-AUD-005: BLOCKED — scoped `/reset/execute` saga is incomplete; production flag must remain false.
+AUD-005: PARTIAL — synthetic local event-only saga passes; shared/cloud cases are blocked and production feature flag remains unset. Durable Object eviction and external reconciliation are NOT_TESTED.
 AUD-006: FIXED — keyboard activation and Escape focus restoration verified in 120/120 repeated browser attempts; Axe states 76/76 across mobile-320, mobile-390, and laptop-1440.
 AUD-007: FIXED — compact-menu Enter/Space activation reverified 120/120 repeated attempts across mobile-320 and desktop-1440.
 AUD-008: FIXED — mobile visual baselines reverified 6/6 at 320px and 390px; audit layout/icon suite 6/6.
@@ -54,13 +63,13 @@ AUD-017: FIXED — confirmation/cancel and one-step undo for both import paths; 
 AUD-018: FIXED — prior cron isolation tests; final Worker suite remains.
 
 ## Gate status
-G1 (app/test/Worker typechecks): VERIFIED on `91cccc9` (`npm run test:typecheck`; app typecheck and production build also passed).
+G1 (app/test/Worker typechecks): VERIFIED on `ff3bc7a` (`npm run test:typecheck`; app typecheck and production build passed; Wrangler dry-run only).
 G2 (client): VERIFIED for App/integration tests, 17 files / 132 tests and AUD-017 browser matrix 10/10 at its checkpoint; AUD-016 standalone browser 1/1, AUD-006 keyboard browser 120/120, accessibility browser 76/76, and visual suite 6/6 on `91cccc9`; full unit suite NOT_TESTED on this head.
-G3 (Worker): VERIFIED for the AUD-003 beacon audit slice, 2/2; broader Worker audit slice is 17/18 with AUD-005 route check returning 404 on the preceding checkpoint.
-G4 (audit browser chain): BLOCKED before Playwright by the AUD-005 Worker route test; AUD-003's independent local Worker browser suite is 4/4.
+G3 (Worker): VERIFIED on `ff3bc7a` for `npm run test:worker` (7 files / 125 tests) and the full Worker audit suite (11 files / 22 tests).
+G4 (audit browser chain): NOT_TESTED on `ff3bc7a`; the previous 404 blocker is cleared, but `npm run test:audit` and its downstream browser chain were not run in this phase. AUD-003's independent local Worker browser suite remains 4/4 from its recorded checkpoint.
 G5–G12, G14–G15: NOT_TESTED on this exact head or awaiting CI; inspect CI runs above and update.
 G13 (stuck-phone simulation): VERIFIED in Playwright, 4/4 on mobile-390 and laptop-1440 using synthetic mocked Worker routes. This does not verify real owner sign-in. AUD-003 also has separate real-local-Worker/DO E2E evidence with synthetic auth.
 G11 prior evidence is on an older SHA only; current-head dependency audit and Wrangler dry-run await CI.
 
 Production read-only snapshot was last recorded in the previous checkpoint: Worker version `d376eafb-f0ab-42b9-8409-aab8f9bbaead`; `/health` has no SHA and Pages `/version.json` was 404. An attempted production-targeted page-exit probe was blocked by automatic review before any request was sent; follow-up browser requests target local Workers/servers only. No production write, reset, deploy, merge, or protected-data change occurred.
-Timestamp Asia/Tehran: 2026-11-13 21:57.
+Timestamp Asia/Tehran: 2026-11-13 (AUD-005 phase).
