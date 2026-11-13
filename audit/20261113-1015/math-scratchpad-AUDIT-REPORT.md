@@ -2,7 +2,7 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-3 Blocker, 1 Critical, 8 High, 1 Medium; 0 Low. Findings include static risks, not all reproduced.
+4 Blocker, 1 Critical, 8 High, 1 Medium; 0 Low. Findings include static risks, not all reproduced.
 Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
@@ -32,6 +32,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Outbox while reset pending | FAILED | three runs transmitted queued synthetic event | tests/audit/outbox.reset-pending.test.ts; AUD-014 |
 | main | Outbox 5-second debounce | FAILED | three runs sent after roughly 4 ms | tests/audit/outbox.debounce.test.ts; AUD-002 |
 | main | UI audit mobile-320 | VERIFIED | 9 passed | e2e/ui-audit-regressions.spec.ts |
 | main | Local storage / conflict desktop | VERIFIED | 8 passed | local-storage-sync and server-conflict-resolution |
@@ -55,6 +56,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - AUD-003: Exit and hidden-page flush are absent from main. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
 
 - AUD-009: Distinct reset releases reuse the same epoch. Phone workaround: none verified; avoid any additional reset while this is investigated.
+
+- AUD-014: A pre-existing synthetic outbox event was sent despite the local reset-pending flag; no production data was sent.
 
 ## 5. All findings
 ### AUD-001 — Reset-pending state makes editor inert until authenticated cloud check
@@ -252,6 +255,21 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Boundary tests below, at and above the chosen byte limit, multibyte strings, authenticated public endpoint, retry/reload and oversized clear-error UX; confirm no unbounded memory use.
 - **Size:** M · **Fix risk:** medium
 
+### AUD-014 — Sync runtime sends queued events while local reset is pending
+- **Category:** Data
+- **Severity:** Blocker · **Blocks learning today:** yes
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (executed); PR 93 d1c730c adds a reset-pending check (static inspection and separate existing unit tests, not this red test).
+- **Location:** `src/sync/runtime.ts:265`; `src/sync/runtime.ts:295`
+- **Related:** N2 · B1 · C1 · C6 · K2 · Related AUD-001 · Related AUD-009
+- **Evidence:** Three local unit runs seeded one synthetic IndexedDB outbox event, set the local pending flag, set a synthetic token and invoked sync. A mock `/events` received one POST in each run. The mock accepted it; actual Worker lock, account state and whether this path occurs on the owner's phone were not exercised.
+- **Reproduction:** Run `npx vitest run tests/audit/outbox.reset-pending.test.ts`. It invokes actual main runtime with a fake network and synthetic local data.
+- **Expected / Actual:** No pending-reset learning writes leave the client until verified reconciliation / queued event is posted to the mock despite the local flag.
+- **Root cause:** outbox · `src/sync/runtime.ts:265` · `syncNow` and its write request do not check the local reset guard.
+- **Proposed fix (not executed):** Centralize the pending-reset guard for all write paths and in-flight races, preserve or reconcile queued events according to their creation epoch; evaluate PR 93's guard with dedicated tests before adopting it.
+- **Fix acceptance:** Red test passes; pending guard tests cover startup, token refresh, wake, retry, pagehide and in-flight reset, with a local Worker verifying server lock and old generation rejection.
+- **Size:** M · **Fix risk:** high
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Confidence | Verification | Location |
 |---|---|---|---|---|---|---|
@@ -274,6 +292,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 
 ## Notion read-only aggregate observations
 On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
+
+| AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | confirmed | VERIFIED | src/sync/runtime.ts:265 |
 
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
@@ -352,7 +372,7 @@ Each complete row below is NOT_TESTED unless otherwise stated; partial results d
 - Learning flow: NOT_TESTED — sample fixture passed; actual Chapter 1 and cross-device path remain untested.
 - Outbox/event queue: FAILED — debounce AUD-002; offline reconnect mock passed; remaining assertions incomplete.
 - Exit flush: NOT_TESTED — static absence on main AUD-003.
-- Full reset, lock, epoch: FAILED — local reset/old event AUD-009; phone and external services untested.
+- Full reset, lock, epoch: FAILED — local reset/old event AUD-009 and pending guard AUD-014; phone and external services untested.
 - Google sign-in/Drive: NOT_TESTED — mocked PR 93 units only; real sign-in owner-only.
 - Worker routes: FAILED — state limit AUD-013; complete contract incomplete.
 - Cron: NOT_TESTED — current production failure cause/subrequest count unknown.
@@ -706,6 +726,33 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-014",
+    "title": "Sync runtime sends queued events while local reset is pending",
+    "category": "Data",
+    "severity": "Blocker",
+    "blocker": true,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0",
+      "PR 93 static"
+    ],
+    "location": "src/sync/runtime.ts:265",
+    "requirements": [
+      "N2",
+      "B1",
+      "C1",
+      "C6",
+      "K2"
+    ],
+    "root_cause_layer": "outbox",
+    "red_test": "tests/audit/outbox.reset-pending.test.ts",
+    "run_cmd": "npx vitest run tests/audit/outbox.reset-pending.test.ts",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "high"
   }
 ]
 ```
