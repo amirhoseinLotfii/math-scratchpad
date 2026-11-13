@@ -17,7 +17,7 @@
 - Downloaded the active Chapter 1 v21 bank and private 1.1 answer key to local scratch for read-only template analysis. The bank was not edited, and no answer values were copied to Git or the new bank folder.
 - Template analysis: 1,183,848 UTF-8 bytes / 900,559 UTF-16 code units; 8 lessons, 50 concepts, 708 questions (85 L, 493 X, 80 R, 35 T plus 15 generated items); 39 simple-idea notes; 124 examples whose title/text marks them supplementary; 207 unique image sources across 210 image blocks.
 - Section question references are complete: 708 references, 0 missing, 0 duplicate, 0 unreferenced. The 85 concept check references are a separate expected layer and are not section duplicates.
-- `TEMPLATE-STATS.md` and `analyze-template.mjs` are stored in the Drive `reports/` and `reports/tooling/` folders. The same report and script are to be added to the notes-only branch checkpoint.
+- `TEMPLATE-STATS.md` and `analyze-template.mjs` are stored in Drive `reports/` and `reports/tooling/`, and on the orphan notes-only branch. No bank content, book text, or answer key is in Git.
 
 ## Decisions
 
