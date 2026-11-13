@@ -3,12 +3,12 @@ RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Co
 
 ## 0. TL;DR
 5 Blocker, 1 Critical, 10 High, 1 Medium, 1 Low. Findings include static risks, not all reproduced.
-Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
-Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
+Can learning safely start today? **Conditional: do not start on the phone while the reset-pending banner remains; desktop and cross-device safety are unverified.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
+Shortest path to readiness: align Pages and Worker on one reviewed SHA; fix the reset/epoch/outbox blockers and import replacement guard; pass isolated phone/desktop and release gates.
 
 ## 1. Environment & coverage
-Repository cloned. Node 24.22.1, npm 11.9.0. npm ci --ignore-scripts succeeded; local tests ran. Cloudflare read access succeeded. Google Drive personal identity verified and audit backup created. Read-only Notion aggregate counts were queried for four project-designated sources; shared Sessions was deliberately not counted without a reliable project marker. Real sign-in and protected production data were not touched.
-PARTIAL: Phases 0 and 1 complete; Phase 2 blocker triage partially complete (owner-phone recovery, Chapter 1, and real sign-in remain NOT_TESTED/BLOCKED); Phases 3–7 and 10 are focused, not exhaustive; Phase 8 tests and Phase 9 browser scenarios are partial; Phase 11 self-check pending. Static review does not count as behavioral testing. No claim of exhaustive coverage.
+Repository cloned. Node 24.22.1, npm 11.9.0. npm ci --ignore-scripts succeeded; local tests ran. Cloudflare read access succeeded. Google Drive personal identity verified and audit backup created. Read-only Notion aggregate counts were queried for four project-designated sources; shared Sessions was deliberately not counted without a reliable project marker. Real sign-in and protected production data were not touched. Backups: [Drive audit folder](https://drive.google.com/drive/folders/1-7BbdX9a5_IZ76cWfRUI60R91tYIMdhl) and [GitHub audit branch](https://github.com/amirhoseinLotfii/math-scratchpad/tree/audit/full-20261113-1015).
+PARTIAL: Phases 0 and 1 complete; Phase 2 blocker triage partially complete (owner-phone recovery, Chapter 1, and real sign-in remain NOT_TESTED/BLOCKED); Phase 3 route/schema/state review recorded; Phases 4–7 and 10 are focused, not exhaustive; Phase 8 tests and Phase 9 browser scenarios are partial; Phase 11 self-check completed successfully. Static review does not count as behavioral testing. No claim of exhaustive coverage.
 
 ## 2. Versions & release drift
 - main: 7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf
@@ -71,14 +71,13 @@ PARTIAL: Phases 0 and 1 complete; Phase 2 blocker triage partially complete (own
 | All refs | Full browser / complete audit tests | NOT_TESTED | incomplete | Most scenarios remain |
 
 ## 4. Blockers
-- AUD-001: Reset-pending state makes editor inert until authenticated cloud check. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
-- AUD-003: Exit and hidden-page flush are absent from main. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
-
-- AUD-009: Distinct reset releases reuse the same epoch. Phone workaround: none verified; avoid any additional reset while this is investigated.
-
-- AUD-014: A pre-existing synthetic outbox event was sent despite the local reset-pending flag; no production data was sent.
-
-- AUD-017: Session JSON and file imports replace current synthetic work without a separate confirmation; back up current work before any import.
+| Order | ID | Title | Refs | Size | Phone workaround |
+|---:|---|---|---|---|---|
+| 1 | AUD-001 | Reset-pending state makes editor inert until authenticated cloud check | main, PR 93 | M | No verified workaround; preserve browser data and do not clear/reset/sync manually. |
+| 2 | AUD-009 | Distinct reset releases reuse a static epoch; old-generation event accepted | main, PR 91, PR 93 | L | Avoid further reset or sync until fixed and verified. |
+| 3 | AUD-014 | Runtime can send queued events while reset is pending | main, PR 93 | M | Do not manually authenticate/sync from the pending-reset state. |
+| 4 | AUD-003 | Exit/hidden-page flush is absent from main | main | M | Keep the app open while unsynced; no safe close-tab recovery was verified. |
+| 5 | AUD-017 | Session imports replace current work without confirmation | main | M | Do not import a session or backup into work that must be preserved; save a separate copy first. |
 
 ## 5. All findings
 ### AUD-001 — Reset-pending state makes editor inert until authenticated cloud check
@@ -360,18 +359,18 @@ PARTIAL: Phases 0 and 1 complete; Phase 2 blocker triage partially complete (own
 | AUD-004 | Production Worker and Pages originate from different commits | Release | High | no | confirmed | VERIFIED | production; main 7eeeef0; PR 91 59913b8 | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml | M |
 | AUD-005 | Scoped reset execution is not implemented | Missing | High | no | confirmed | VERIFIED | main 7eeeef0; PR 92 f384ca4 | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 | L |
 | AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/accessibility/axe-states.spec.ts:20 | S |
-| AUD-007 | Import session JSON loses Enter activation intermittently in the compact mobile menu | Accessibility/CI | High | no | confirmed | VERIFIED | main 7eeeef0; PR 91 59913b8; PR 93 d1c730c | src/app/exercise-menu.tsx:86,123–130; e2e/ui-audit-regressions.spec.ts:103 | M |
+| AUD-007 | Import session JSON loses Enter activation intermittently in the compact mobile menu | Accessibility/CI | High | no | confirmed | VERIFIED | main 7eeeef0; PR 91 59913b8; PR 93 d1c730c | src/app/exercise-menu.tsx:86, 123–130; e2e/ui-audit-regressions.spec.ts:103 | M |
 | AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | no | confirmed | VERIFIED | PR 92 f384ca4 | e2e/visual/mobile-layout.spec.ts:23 | M |
-| AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 91 59913b8 static, PR 93 d1c730c static | worker/src/event-store.ts:419 | L |
-| AUD-010 | Reset selects Drive files by name without an ownership marker | Data | Critical | no | confirmed | VERIFIED | main 7eeeef0 | worker/src/event-store.ts:485 | L |
-| AUD-011 | Reset clears Notion page references without external reconciliation | Data | High | no | confirmed | VERIFIED | main 7eeeef0 | worker/src/event-store.ts:532 | L |
-| AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | no | confirmed | VERIFIED | main 7eeeef0 | package.json | M |
-| AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 and PR 93 static | worker/src/index.ts:130 | M |
-| AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 93 static | src/sync/runtime.ts:265 | M |
-| AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | no | confirmed | VERIFIED | main 7eeeef0, PR 93 d1c730c | src/app/exercise-menu.tsx:86 | S |
-| AUD-016 | Standalone HTML fails to mount because production flag is undefined | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 and PR 93 static | scripts/standalone.mjs:4 | S |
-| AUD-017 | Session imports replace current work without confirmation | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 | src/app/practice-launcher.tsx:56; src/App.tsx:551 | M |
-| AUD-018 | Unexpected mirror rejection aborts combined Cron result on main | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 static, PR 93 existing test passed | worker/src/event-store.ts:269 | M |
+| AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0; PR 91 59913b8 and PR 93 d1c730c by static inspection only | src/sync/learning-reset-epoch.ts:1; worker/src/event-store.ts:244; worker/src/event-store.ts:419; src/sync/browser-db.ts:105 | L |
+| AUD-010 | Reset selects Drive files by name without an ownership marker | Data | Critical | no | confirmed | VERIFIED | main 7eeeef0 (executed); PR 91 59913b8 and PR 92 f384ca4 (static inspection) | worker/src/event-store.ts:125; worker/src/event-store.ts:485 | L |
+| AUD-011 | Reset clears Notion page references without external reconciliation | Data | High | no | confirmed | VERIFIED | main 7eeeef0 (executed); PR 91 59913b8 and PR 92 f384ca4 (static inspection) | worker/src/event-store.ts:371; worker/src/event-store.ts:532 | L |
+| AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | no | confirmed | VERIFIED | main 7eeeef0 | package.json; src/sync/learning-backup.ts:39 | M |
+| AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | no | confirmed | VERIFIED | main 7eeeef0 (executed); PR 91 59913b8 and PR 93 d1c730c (static inspection) | worker/src/index.ts:130; worker/src/event-store.ts:742; src/sync/server-storage.ts:125 | M |
+| AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 (executed); PR 93 d1c730c adds a reset-pending check (static inspection and separate existing unit tests, not this red test). | src/sync/runtime.ts:265; src/sync/runtime.ts:295 | M |
+| AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | no | confirmed | VERIFIED | main 7eeeef0 (local test); PR 93 d1c730c (local screenshot) | src/app/exercise-menu.tsx:86 | S |
+| AUD-016 | Standalone HTML fails to mount because production flag is undefined | Bug | High | no | confirmed | VERIFIED | main 7eeeef0 (executed); PR 91 59913b8 and PR 93 d1c730c (static inspection only) | scripts/standalone.mjs:4; src/main.tsx:99 | S |
+| AUD-017 | Session imports replace current work without confirmation | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 (executed); PR 91 and PR 93 not independently tested | src/app/practice-launcher.tsx:56; src/App.tsx:551 | M |
+| AUD-018 | Unexpected mirror rejection aborts combined Cron result on main | Bug | High | no | confirmed | VERIFIED | main 7eeeef0 (executed); PR 91 59913b8 (static); PR 93 d1c730c contains allSettled and its analogous test passed. | worker/src/event-store.ts:269; worker/src/index.ts:239 | M |
 
 ## Notion read-only aggregate observations
 On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
@@ -467,7 +466,7 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - C6: NOT_TESTED — full behavior or coverage not established in this run.
 - C7: NOT_TESTED — full behavior or coverage not established in this run.
 - C8: FAILED — AUD-011
-- C9: NOT_TESTED — full behavior or coverage not established in this run.
+- C9: FAILED — main scoped execute route returned 404 in three local synthetic runs (AUD-005); PR 92 runtime remains NOT_TESTED.
 - C10: NOT_TESTED — full behavior or coverage not established in this run.
 - D1: NOT_TESTED — full behavior or coverage not established in this run.
 - D2: NOT_TESTED — full behavior or coverage not established in this run.
@@ -547,23 +546,23 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - L8: NOT_TESTED — full behavior or coverage not established in this run.
 
 ## 10. Browser scenarios
-- S1: NOT_TESTED — local 320, Pixel 7 and desktop had no pageerror or horizontal overflow and menu opened; full menu and console-error requirements not completely exercised. See e2e/audit/layout.initial.spec.ts.
-- S2: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S3: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S4: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S5: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S6: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S1: NOT_TESTED — local 320, Pixel 7 and desktop had no pageerror or horizontal overflow and the menu opened; console errors and the full menu were not completely exercised. See e2e/audit/layout.initial.spec.ts.
+- S2: BLOCKED — Chapter 1 bank and lesson content are protected by R5; only synthetic lesson fixtures were used. Unblock only with a safe synthetic copy of the bank.
+- S3: FAILED — a one-event synthetic probe sent POST after about 4 ms instead of the required 5-second idle delay (AUD-002); the exact five-answer batching sequence remains NOT_TESTED.
+- S4: NOT_TESTED — no 40-second continuous-event/max-wait run; fake clock coverage is still needed.
+- S5: NOT_TESTED — no tab-close run against a local Worker. Static main handler onPageHide is empty (AUD-003); static inspection is not behavioral evidence.
+- S6: NOT_TESTED — offline mock queued one synthetic edit and flushed on reconnect; the specified three-answer setOffline sequence and no-duplicate check were not run.
 - S7: VERIFIED — local Worker test resent one synthetic event batch and found one row, rejecting the same ID with changed content. Multi-event and concurrent retry coverage remains NOT_TESTED; see worker/tests/sync-worker.test.ts.
-- S8: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S8: NOT_TESTED — no two-browser-context convergence run; desktop local-storage conflict subset is not equivalent.
 - S9: FAILED — two local Worker resets followed by an old-generation event admitted stale data (AUD-009). Browser tab, counter and full external mirror aspects remain NOT_TESTED.
 - S10: VERIFIED — the PR 91 local Worker suite exercised synthetic orphaned lock takeover and release; actual production lock takeover and browser UX remain NOT_TESTED.
-- S11: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S11: NOT_TESTED — main route returns 404 for execute (AUD-005), but scoped preview counts and a full preview→confirm journey were not tested.
 - S12: FAILED — Import session JSON Enter lost focus before key delivery on 4/5 repeated 320 px tests; desktop 5/5 passed. Space/Escape subset passed once; all remaining items and click states remain NOT_TESTED. AUD-007.
 - S13: VERIFIED — mobile-390 local browser tested malformed JSON, a 1,000,001-character input and one script-bearing malformed object; visible errors and no execution were observed. Desktop and other payloads remain NOT_TESTED. See e2e/audit/import.invalid-inputs.spec.ts.
-- S14: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S15: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S16: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S17: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S14: NOT_TESTED — backup fixture passed after IndexedDB was cleared, but the specified Reset all local storage → import journey was not run.
+- S15: NOT_TESTED — no End session/reset action was confirmed in the local app and no event was verified for that complete journey.
+- S16: NOT_TESTED — three mocked PR 93 browser cases passed, but popup-closed, blocked, timeout, access_denied and Drive-before-await coverage was not complete.
+- S17: BLOCKED — invoking local Cron can enter Drive/Notion mirror code; no fully isolated scheduled-trigger harness was available in this audit, and no outbound mirror POST was attempted. Unblock with a local scheduled test whose external fetches are all stubbed.
 - S18: BLOCKED — production page navigation failed twice with ERR_EMPTY_RESPONSE; only read-only HEAD available. The separate nine AXE tests do not establish these scenarios.
 - Real Google sign-in: BLOCKED — owner-only; no account sign-in was attempted.
 
@@ -584,13 +583,38 @@ Each complete row below is NOT_TESTED unless otherwise stated; partial results d
 - Theme and layout: NOT_TESTED — partial 320/mobile tests passed; full visual matrix absent.
 - Offline/network errors: NOT_TESTED — mocked reconnect passed, chaos matrix incomplete.
 - Release: FAILED — deployment SHA mismatch AUD-004.
-- Performance/security: FAILED — high npm advisory AUD-012; Lighthouse/gitleaks/exploitability not tested.
+- Performance/security: FAILED — high npm advisory AUD-012. Isolated Lighthouse and scoped secret scans ran; production exploitability, field performance and key restrictions remain NOT_TESTED.
 
 ## 11. PR analysis & merge order
-PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 returned exit 0, but semantic compatibility was not tested. Consider 91 before 92 after testing, resolve PR 93 independently, then integrate and test one SHA. This is a proposed sequence, not merge authorization.
+PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 returned exit 0, but semantic compatibility was not tested. Recommended order: review/fix PR 91 and its unresolved runtime/CI evidence; then PR 92 after reset-scope isolation; handle PR 93 independently because its test edits overlap with UI/accessibility concerns; integrate and test one SHA. This is a proposed sequence, not merge authorization.
+Minimum safe change set to start learning today cannot be declared from this audit: the reset/epoch/outbox blockers, destructive import behavior, CI failures, and Pages/Worker drift remain unresolved. Do not infer that any current PR is ready to merge.
 
 ## 12. Proposed fix plan
-1. Repair the confirmed old-generation replay risk and verify two-device behavior; reproduce lock, sign-in and exit scenarios and establish safe recovery. 2. Resolve confirmed CI failures and restore keyboard checks. 3. Integrate scoped reset only after data isolation tests. 4. Align release SHA, rerun full browser, worker, security and release gates.
+
+### Stage 1 — blockers
+1. Align the pending-reset guard, monotonically distinct reset epochs and event rejection (AUD-001, AUD-009, AUD-014); verify lock recovery without deleting local work.
+2. Repair the outbox debounce and exit/hidden-page flush contract (AUD-002, AUD-003); verify local persistence, retry ordering and no duplicate delivery.
+3. Add an explicit safe confirmation before either import path replaces current work (AUD-017).
+4. Only after those fixes, verify the phone and desktop learning path against synthetic data and a same-SHA Worker.
+
+### Stage 2 — critical and high
+Resolve the state-size proxy mismatch (AUD-013), missing scoped execute route (AUD-005), ownership/reconciliation gaps (AUD-010/011), standalone launch (AUD-016), Cron failure isolation (AUD-018), production dependency advisory (AUD-012), CI failures (AUD-007/008), and deployment drift (AUD-004). Keep PR 92 scope operations isolated and idempotent.
+
+### Stage 3 — remaining
+Review the public browser key restrictions, improve menu icon/keyboard behavior (AUD-015/AUD-007), measure field performance, complete route/error contracts, and finish device/accessibility scenarios.
+
+### Release gates
+- Typecheck, unit, Worker, integration and full Playwright suites pass on the exact integrated SHA; no unexplained skips or weakened keyboard assertions.
+- All Blocker fixes pass synthetic two-device/outbox/reset/import tests; no production data used by those tests.
+- Pages and Worker identify the same SHA; health reports the deployed SHA and the observed deployment matches it.
+- Mobile 320 px, Pixel 7 and desktop accessibility/visual checks pass; keyboard Enter, Space and Escape are repeatable.
+- Security review resolves or explicitly accepts the high dependency advisory and verifies browser API key restrictions before release.
+
+### Owner phone checklist before starting
+1. Keep current browser storage and app data intact.
+2. Do not use Reset all local storage, import a session, or trigger cloud reset while the pending-reset banner is visible.
+3. Do not answer lessons on this phone until the pending state is cleared through a verified recovery and the app reports a connected, stable state.
+4. After an audited release, open the Pages app and confirm the reset banner is gone before starting a lesson. No terminal action is required.
 
 ### Performance and secret scan
 - Local Lighthouse single runs, production build served on loopback with all HTTPS requests blocked: mobile performance 88/100, LCP 3.82 s, TBT 68 ms, CLS 0.032; desktop 100/100, LCP 0.76 s, TBT 0 ms, CLS 0.003. These are isolated lab measurements, not production field data or a statistically representative benchmark.
@@ -601,7 +625,7 @@ PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 retur
 No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify browser API key HTTP-referrer and API restrictions, authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
 
 ## 14. Appendix
-Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red tests: worker/test/audit/reset.epoch.second-release.test.ts, reset.stale-event.second-release.test.ts and reset.stale-event.two-full-resets.test.ts (run command in AUD-009). Synthetic screenshot is linked in AUD-015; production user-data verification and full security review remain NOT_TESTED. `npm audit` found one high advisory (AUD-012). HEAD requests to Pages and Worker observed HSTS on Pages and did not expose CSP/COOP in the returned headers; security impact and all response paths were NOT_TESTED. No secrets or raw traces included.
+Audit branch: audit/full-20261113-1015. Latest remote checkpoint before finalization: f7abae1fe9d5b874a9d611f126df661ee21ea020; the linked branch contains later final-report commits. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red tests: worker/test/audit/reset.epoch.second-release.test.ts, reset.stale-event.second-release.test.ts and reset.stale-event.two-full-resets.test.ts (run command in AUD-009). Synthetic screenshot is linked in AUD-015; production user-data verification and full security review remain NOT_TESTED. `npm audit` found one high advisory (AUD-012). HEAD requests to Pages and Worker observed HSTS on Pages and did not expose CSP/COOP in the returned headers; security impact and all response paths were NOT_TESTED. Final structural self-check PASS: 18/18 findings aligned across detail, summary and machine index; severity counts 5/1/10/1/1; A–L 109, N 8, K 8, S 18, test matrix 16; scoped gitleaks scans clean. No secrets or raw traces included.
 
 ## 15. Machine index
 ```json
@@ -765,9 +789,7 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 91 59913b8",
-      "PR 93 d1c730c"
+      "main 7eeeef0; PR 91 59913b8; PR 93 d1c730c"
     ],
     "location": "src/app/exercise-menu.tsx:86, 123–130; e2e/ui-audit-regressions.spec.ts:103",
     "requirements": [
@@ -816,11 +838,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 91 59913b8 static",
-      "PR 93 d1c730c static"
+      "main 7eeeef0; PR 91 59913b8 and PR 93 d1c730c by static inspection only"
     ],
-    "location": "worker/src/event-store.ts:419",
+    "location": "src/sync/learning-reset-epoch.ts:1; worker/src/event-store.ts:244; worker/src/event-store.ts:419; src/sync/browser-db.ts:105",
     "requirements": [
       "N2",
       "C5",
@@ -843,9 +863,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0"
+      "main 7eeeef0 (executed); PR 91 59913b8 and PR 92 f384ca4 (static inspection)"
     ],
-    "location": "worker/src/event-store.ts:485",
+    "location": "worker/src/event-store.ts:125; worker/src/event-store.ts:485",
     "requirements": [
       "N4",
       "F1",
@@ -869,9 +889,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0"
+      "main 7eeeef0 (executed); PR 91 59913b8 and PR 92 f384ca4 (static inspection)"
     ],
-    "location": "worker/src/event-store.ts:532",
+    "location": "worker/src/event-store.ts:371; worker/src/event-store.ts:532",
     "requirements": [
       "N4",
       "F1",
@@ -896,7 +916,7 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "refs": [
       "main 7eeeef0"
     ],
-    "location": "package.json",
+    "location": "package.json; src/sync/learning-backup.ts:39",
     "requirements": [
       "J7",
       "J3"
@@ -917,10 +937,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 91 and PR 93 static"
+      "main 7eeeef0 (executed); PR 91 59913b8 and PR 93 d1c730c (static inspection)"
     ],
-    "location": "worker/src/index.ts:130",
+    "location": "worker/src/index.ts:130; worker/src/event-store.ts:742; src/sync/server-storage.ts:125",
     "requirements": [
       "A1",
       "A2",
@@ -945,10 +964,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 93 static"
+      "main 7eeeef0 (executed); PR 93 d1c730c adds a reset-pending check (static inspection and separate existing unit tests, not this red test)."
     ],
-    "location": "src/sync/runtime.ts:265",
+    "location": "src/sync/runtime.ts:265; src/sync/runtime.ts:295",
     "requirements": [
       "N2",
       "B1",
@@ -972,8 +990,7 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 93 d1c730c"
+      "main 7eeeef0 (local test); PR 93 d1c730c (local screenshot)"
     ],
     "location": "src/app/exercise-menu.tsx:86",
     "requirements": [
@@ -997,10 +1014,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 91 and PR 93 static"
+      "main 7eeeef0 (executed); PR 91 59913b8 and PR 93 d1c730c (static inspection only)"
     ],
-    "location": "scripts/standalone.mjs:4",
+    "location": "scripts/standalone.mjs:4; src/main.tsx:99",
     "requirements": [
       "G1",
       "G2",
@@ -1023,7 +1039,7 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0"
+      "main 7eeeef0 (executed); PR 91 and PR 93 not independently tested"
     ],
     "location": "src/app/practice-launcher.tsx:56; src/App.tsx:551",
     "requirements": [
@@ -1046,11 +1062,9 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
-      "main 7eeeef0",
-      "PR 91 static",
-      "PR 93 existing test passed"
+      "main 7eeeef0 (executed); PR 91 59913b8 (static); PR 93 d1c730c contains allSettled and its analogous test passed."
     ],
-    "location": "worker/src/event-store.ts:269",
+    "location": "worker/src/event-store.ts:269; worker/src/index.ts:239",
     "requirements": [
       "N6",
       "E2",
