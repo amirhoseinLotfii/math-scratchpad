@@ -3,7 +3,7 @@ RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Co
 
 ## 0. TL;DR
 3 Blocker, 5 High, 1 Medium; 0 Critical, 0 Low. Findings include static risks, not all reproduced.
-Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch. No safe phone-only recovery was verified.
+Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
 ## 1. Environment & coverage
@@ -31,6 +31,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 93 | CI gate | FAILED | 90 passed, 1 failed, 515 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43294569144), AUD-007 |
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | main | Synthetic epoch release regression | FAILED | failed three independent runs, same epoch twice | worker/test/audit/reset.epoch.second-release.test.ts; AUD-009 |
+| main | Two local resets and old event | FAILED | three runs: old event received HTTP 200 and/or was stored instead of rejection | worker/test/audit/reset.stale-event.two-full-resets.test.ts; Drive disabled; AUD-009 |
+| main | Synthetic lesson persistence | VERIFIED | 1 mobile test passed including answers and reload | e2e/lessons/phase4-persistence.spec.ts, sample fixture |
 | main | Offline outbox, mocked network | VERIFIED | mobile 390: 1 passed; desktop: 2 passed | e2e/persistence/offline-outbox.spec.ts; no real Worker or Google service |
 | main | Synthetic lesson resume | VERIFIED | 2 mobile tests passed | e2e/lessons/resume-learning.spec.ts; fixture only, no Chapter 1 |
 | main | Inline keyboard placement | VERIFIED | 1 mobile test passed in isolated rerun | e2e/lessons/keyboard-placement-regression.spec.ts; an earlier concurrent run failed during trace cleanup after both processes used same output dir; not attributed to application |
@@ -172,9 +174,9 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Refs affected:** main 7eeeef0; PR 91 59913b8 and PR 93 d1c730c by static inspection only
 - **Location:** `src/sync/learning-reset-epoch.ts:1`; `worker/src/event-store.ts:244`; `worker/src/event-store.ts:419`; `src/sync/browser-db.ts:105`
 - **Related:** N2 · C5 · C7 · B11 · Related AUD-001
-- **Evidence:** Three local Worker test executions failed identically: two distinct reset IDs released from a synthetic `awaiting_release` state produced `2026-11-12-v3` both times. The release handler writes the compile-time constant; event writes compare against that value, and local preparation also compares to the same constant. Stale event acceptance and complete reset flow were not executed. The test manipulates only local Durable Object state and calls the actual release handler; it does not execute full Drive cleanup.
-- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts` against main. Test `worker/test/audit/reset.epoch.second-release.test.ts` simulates completion for two unique IDs, calls the release handler twice, and expects distinct epoch values.
-- **Expected / Actual:** Each distinct completed reset changes the generation / both releases write the same hardcoded value. Therefore an old device holding that value can pass the generation comparison after a subsequent reset; actual resurrection across devices remains NOT_TESTED.
+- **Evidence:** Three local Worker test executions failed identically: two distinct reset IDs released from a synthetic `awaiting_release` state produced `2026-11-12-v3` both times. The release handler writes the compile-time constant; event writes compare against that value, and local preparation also compares to the same constant. A further local test executed two complete Worker reset and release handlers with Drive explicitly disabled. A synthetic event prepared before the second reset was accepted with HTTP 200 and stored afterward; three runs failed the rejection assertion. An invalid epoch control returned 426 in a separate isolated test. No real external service or owner data was touched.
+- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.stale-event.two-full-resets.test.ts` against main. It executes two Worker resets and releases on an isolated Durable Object, disables Drive, and submits a synthetic event from the first epoch after the second reset.
+- **Expected / Actual:** Each distinct completed reset changes the generation / both releases write the same hardcoded value. A synthetic event carrying the earlier epoch was accepted and stored after the second local reset. An actual two-device browser journey and external mirrors remain NOT_TESTED.
 - **Root cause:** worker / state · `worker/src/event-store.ts:419` · release writes a code constant rather than a new server-issued generation per distinct reset, and the client relies on that same constant.
 - **Proposed fix (not executed):** Persist a monotonic or unique server-issued epoch per reset; deliver it safely to clients, associate queued events with their creation epoch, reject stale writes and require verified reconciliation, while preserving idempotent release retries and migration compatibility.
 - **Fix acceptance:** Red test becomes green; local end-to-end tests execute two complete resets, retry each release, submit events from both old generations, and check that fresh writes succeed and unrelated data survives.
@@ -237,13 +239,13 @@ All entries below are NOT_TESTED in full; static observations are linked where a
 PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 returned exit 0, but semantic compatibility was not tested. Consider 91 before 92 after testing, resolve PR 93 independently, then integrate and test one SHA. This is a proposed sequence, not merge authorization.
 
 ## 12. Proposed fix plan
-1. Synthetic reproduction of lock, sign-in and exit scenarios; establish safe recovery. 2. Resolve confirmed CI failures and restore keyboard checks. 3. Integrate scoped reset only after data isolation tests. 4. Align release SHA, rerun full browser, worker, security and release gates.
+1. Repair the confirmed old-generation replay risk and verify two-device behavior; reproduce lock, sign-in and exit scenarios and establish safe recovery. 2. Resolve confirmed CI failures and restore keyboard checks. 3. Integrate scoped reset only after data isolation tests. 4. Align release SHA, rerun full browser, worker, security and release gates.
 
 ## 13. Owner-only actions & open items
 No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
 
 ## 14. Appendix
-Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red test: worker/test/audit/reset.epoch.second-release.test.ts (run command in AUD-009). Screenshots for delivery, production user-data verification and full security review: NOT_TESTED. No secrets or raw traces included.
+Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red tests: worker/test/audit/reset.epoch.second-release.test.ts, reset.stale-event.second-release.test.ts and reset.stale-event.two-full-resets.test.ts (run command in AUD-009). Screenshots for delivery, production user-data verification and full security review: NOT_TESTED. No secrets or raw traces included.
 
 ## 15. Machine index
 ```json
@@ -466,8 +468,8 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
       "B11"
     ],
     "root_cause_layer": "worker",
-    "red_test": "worker/test/audit/reset.epoch.second-release.test.ts",
-    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts",
+    "red_test": "worker/test/audit/reset.stale-event.two-full-resets.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.stale-event.two-full-resets.test.ts",
     "depends_on": [],
     "size": "L",
     "fix_risk": "high"
