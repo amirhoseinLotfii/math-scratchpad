@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { readOutboxCount, readOutboxEvents } from '../support/indexeddb';
 import { GOOGLE_AUTH_BUTTON_NAME, installFakeGoogleAuth, openSyncPanel } from '../support/sync-panel';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
 
@@ -9,6 +10,14 @@ async function installSyncWorker(page: Page, getOnline: () => boolean, posted: A
   const server: Array<{ seq: number; event: Record<string, unknown> }> = [];
   await page.route(`${API}/**`, async route => {
     const request = route.request(), url = new URL(request.url());
+    if (url.pathname === '/reset/status' && request.method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+      });
+      return;
+    }
     if (url.pathname === '/session' && request.method() === 'POST') {
       await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
       return;
