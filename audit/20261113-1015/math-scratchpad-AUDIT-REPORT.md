@@ -2,7 +2,7 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-4 Blocker, 1 Critical, 8 High, 1 Medium; 0 Low. Findings include static risks, not all reproduced.
+4 Blocker, 1 Critical, 8 High, 1 Medium, 1 Low. Findings include static risks, not all reproduced.
 Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
@@ -32,6 +32,10 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Desktop AXE | VERIFIED | 9 passed on laptop-1440 | e2e/accessibility/axe-states.spec.ts |
+| main | Source/test typecheck | VERIFIED | exit 0 | npm run test:typecheck |
+| PR 91 | CI gate | FAILED | invalid-json accessibility setup timed out on Enter, retried; 597 not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43266173382), related AUD-007 |
+| main | Icon consistency | FAILED | three mobile-320 local runs: missing SVG | e2e/audit/menu.import-icon.spec.ts; AUD-015 |
 | main | Outbox while reset pending | FAILED | three runs transmitted queued synthetic event | tests/audit/outbox.reset-pending.test.ts; AUD-014 |
 | main | Outbox 5-second debounce | FAILED | three runs sent after roughly 4 ms | tests/audit/outbox.debounce.test.ts; AUD-002 |
 | main | UI audit mobile-320 | VERIFIED | 9 passed | e2e/ui-audit-regressions.spec.ts |
@@ -157,7 +161,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Refs affected:** PR 93 d1c730c
 - **Location:** e2e/ui-audit-regressions.spec.ts:103
 - **Related:** I2 L3 L4
-- **Evidence:** Run 43294569144 mobile-320 UI-AUDIT-07 failed and failed on retry: Session backup region not found after Enter; 90 passed and 515 did not run. Root cause is unresolved: keyboard interaction, focus, or test setup are possibilities.
+- **Evidence:** PR 93 run 43294569144 UI-AUDIT-07 failed twice: Session backup region not found after Enter; 90 passed and 515 did not run. PR 91 run 43266173382 timed out twice waiting for the same JSON textbox following Enter; 597 did not run. Local PR 93 reproduction also failed. A separate local experiment succeeded when explicitly focusing the item before keyboard Enter, and direct locator press yielded both success and failure in separate runs. This suggests a timing/focus or test interaction issue, but does not establish its root cause or which real keyboard paths fail.
 - **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
 - **Expected / Actual:** Contract and acceptance behavior below / evidence above.
 - **Root cause:** layer CI; e2e/ui-audit-regressions.spec.ts:103; mechanism or unresolved cause as stated in evidence.
@@ -270,6 +274,21 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Red test passes; pending guard tests cover startup, token refresh, wake, retry, pagehide and in-flight reset, with a local Worker verifying server lock and old generation rejection.
 - **Size:** M · **Fix risk:** high
 
+### AUD-015 — Import session JSON lacks the icon used by adjacent Data actions
+- **Category:** UX
+- **Severity:** Low · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (local test); PR 93 d1c730c (local screenshot)
+- **Location:** `src/app/exercise-menu.tsx:86`
+- **Related:** N8 · I8 · K5
+- **Evidence:** Three local mobile-320 Playwright runs found zero decorative SVG icons in the Import session JSON item; neighboring Data actions have icons. [Synthetic PR 93 screenshot](https://drive.google.com/file/d/17yrKftfZ7Xt6g5-2B3btmKxu3mpV-vOf/view) was visually inspected. This visual mismatch is separate from the unresolved keyboard failure in AUD-007.
+- **Reproduction:** `npx playwright test e2e/audit/menu.import-icon.spec.ts --project=mobile-320 --workers=1`.
+- **Expected / Actual:** Consistent Data action icon pattern / this item has no icon.
+- **Root cause:** UI · `src/app/exercise-menu.tsx:86` · item is rendered as text without the decorative icon used by adjacent actions.
+- **Proposed fix (not executed):** Add an appropriate shared decorative icon and preserve the accessible name and interaction behavior.
+- **Fix acceptance:** Red test passes at mobile and desktop widths; keyboard and screen-reader names remain unchanged.
+- **Size:** S · **Fix risk:** low
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Confidence | Verification | Location |
 |---|---|---|---|---|---|---|
@@ -289,6 +308,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | confirmed | VERIFIED | package.json |
 
 | AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | confirmed | VERIFIED | worker/src/index.ts:130 |
+
+| AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | confirmed | VERIFIED | src/app/exercise-menu.tsx:86 |
 
 ## Notion read-only aggregate observations
 On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
@@ -392,8 +413,13 @@ PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 retur
 ## 12. Proposed fix plan
 1. Repair the confirmed old-generation replay risk and verify two-device behavior; reproduce lock, sign-in and exit scenarios and establish safe recovery. 2. Resolve confirmed CI failures and restore keyboard checks. 3. Integrate scoped reset only after data isolation tests. 4. Align release SHA, rerun full browser, worker, security and release gates.
 
+### Performance and secret scan
+- Local Lighthouse single runs, production build served on loopback with all HTTPS requests blocked: mobile performance 88/100, LCP 3.82 s, TBT 68 ms, CLS 0.032; desktop 100/100, LCP 0.76 s, TBT 0 ms, CLS 0.003. These are isolated lab measurements, not production field data or a statistically representative benchmark.
+- Main built primary JavaScript: 1,622,724 bytes raw, 471,350 gzip; `dist/assets` approximately 7.2 MiB including maps and fonts.
+- Gitleaks 8.30.1 scanned local reachable Git history: one Google browser API key match in `src/features/drive-bank/drive-config.ts` at historical commit 85da3f64; the code labels it a public key restricted to Pages and Picker. Actual Cloud Console restrictions and usage cannot be verified here. No key value is included in this report. Scan of audit Markdown and audit test directories reported zero findings. Full history/ref completeness and key restrictions remain NOT_TESTED.
+
 ## 13. Owner-only actions & open items
-No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
+No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify browser API key HTTP-referrer and API restrictions, authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
 
 ## 14. Appendix
 Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red tests: worker/test/audit/reset.epoch.second-release.test.ts, reset.stale-event.second-release.test.ts and reset.stale-event.two-full-resets.test.ts (run command in AUD-009). Screenshots for delivery, production user-data verification and full security review: NOT_TESTED. `npm audit` found one high advisory (AUD-012). HEAD requests to Pages and Worker observed HSTS on Pages and did not expose CSP/COOP in the returned headers; security impact and all response paths were NOT_TESTED. No secrets or raw traces included.
@@ -753,6 +779,31 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "depends_on": [],
     "size": "M",
     "fix_risk": "high"
+  },
+  {
+    "id": "AUD-015",
+    "title": "Import session JSON lacks the icon used by adjacent Data actions",
+    "category": "UX",
+    "severity": "Low",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0",
+      "PR 93 d1c730c"
+    ],
+    "location": "src/app/exercise-menu.tsx:86",
+    "requirements": [
+      "N8",
+      "I8",
+      "K5"
+    ],
+    "root_cause_layer": "UI",
+    "red_test": "e2e/audit/menu.import-icon.spec.ts",
+    "run_cmd": "npx playwright test e2e/audit/menu.import-icon.spec.ts --project=mobile-320 --workers=1",
+    "depends_on": [],
+    "size": "S",
+    "fix_risk": "low"
   }
 ]
 ```
