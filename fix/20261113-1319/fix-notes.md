@@ -317,3 +317,14 @@ No production data or external resets are involved. Proceed red-first with clien
 - Local code commit `f3223f8`; GitHub Git Data API commit `1ec8ba1`; local and remote trees match. PR #94 body now marks AUD-017 FIXED and AUD-016 NEXT; it remains draft/open.
 - No production API calls, resets, deploys, merges, or protected-data changes occurred. The earlier production probe remains blocked before request transmission; current importer tests use only local pages.
 - Next: AUD-016 standalone mount and offline smoke checks.
+
+
+## Phase 21 — AUD-016 standalone mount — 2026-11-13 21:41 Asia/Tehran
+
+- Red-first local regression reproduced the standalone failure: the IIFE page referenced `import.meta.env.PROD` at runtime, but IIFE output has no `import.meta`.
+- Updated `scripts/standalone.mjs` to define `DEV=false`, `PROD=true`, and the optional sync API origin as `undefined` for standalone output. Generated `dist/standalone.html` was checked to contain no `import.meta` references.
+- Added offline Playwright acceptance with external requests blocked. It verifies the editor mounts, a synthetic expression edit to `2468` enters the emergency local draft journal, the value restores after reload, and there are no external responses or page errors. Result: 1/1 passed.
+- Verification: `npm run build` passed (Vite production build, standalone generation, and Wrangler deploy dry-run only); `npm run test:typecheck` passed; `npm run test:ux` passed 43/43; `npm run test:a11y` passed 34/34; Gitleaks staged scan and `git diff --check` were clean. Full unit and Worker suites were not rerun on this head.
+- Code commits: local `c91f7ee8fa9b4927f1b308d0305923b7a7a426e8`; GitHub Data API `7480d998181f403fad6afffcc43b19a936a91ddd`; both point to tree `ecfa27c547fc37c7388893c1dc305840be239367`. PR #94 remains open and draft.
+- No production request, reset, deployment, merge, or protected-data change occurred. The earlier production-targeted sendBeacon probe was blocked before any request was transmitted; this check stayed on local servers with external requests aborted.
+- Next: complete AUD-006's keyboard/browser acceptance matrix, then continue the recorded audit order.
