@@ -1,0 +1,21 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "math-scratchpad-sync-aud003-e2e",
+  "main": "./test/e2e-entry.ts",
+  "compatibility_date": "2026-11-02",
+  "durable_objects": {
+    "bindings": [
+      { "name": "EVENT_STORE", "class_name": "LearningEventStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["LearningEventStore"] }
+  ],
+  "vars": {
+    "ALLOWED_ORIGIN": "http://127.0.0.1:5195",
+    "OWNER_EMAIL": "qa-fixture@example.test",
+    "GOOGLE_CLIENT_ID": "aud-003-local-e2e",
+    "EVENT_RATE_LIMIT": "600",
+    "RELEASE_ENV": "test"
+  }
+}
