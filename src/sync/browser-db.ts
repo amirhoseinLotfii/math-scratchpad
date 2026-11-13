@@ -6,6 +6,7 @@ import {
   LOCAL_SERVER_RESET_EPOCH_KEY,
   isValidLearningResetEpoch,
   markLocalLearningResetPending,
+  notifyServerWriteGuardReleased,
 } from './learning-reset-epoch';
 import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
 
@@ -111,7 +112,10 @@ export async function prepareLocalLearningReset(): Promise<boolean> {
     if (storage.getItem(LOCAL_RESET_EPOCH_KEY) === LOCAL_RESET_EPOCH) return isLocalLearningResetPending();
 
     // Write the guard first so a failed or interrupted deletion can never hydrate old work.
-    storage.setItem(LOCAL_RESET_PENDING_KEY, '1');
+    markLocalLearningResetPending();
+    if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== '1') {
+      throw new Error('The local reset guard could not be set; sync remains paused.');
+    }
     await clearLocalLearningData();
     storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
     return true;
@@ -149,6 +153,7 @@ export async function completeLocalLearningReset(): Promise<void> {
   await clearLocalLearningData();
   storage.removeItem(LOCAL_RESET_PENDING_KEY);
   if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== null) throw new Error('The local reset guard could not be cleared; sync remains paused.');
+  notifyServerWriteGuardReleased();
 }
 
 async function clearLocalLearningData(): Promise<void> {

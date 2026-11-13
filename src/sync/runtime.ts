@@ -19,11 +19,15 @@ import {
 import { SYNC_API_ORIGIN } from './sync-config';
 import { reportApiUnauthorized } from './api-unauthorized';
 import {
+  canWriteToServer as isServerWriteAllowed,
+  fetchWithServerWriteGuard,
   getStoredServerLearningResetEpoch,
   isValidLearningResetEpoch,
   LEARNING_RESET_EPOCH,
   LEARNING_RESET_EPOCH_HEADER,
   markLocalLearningResetPending,
+  SERVER_WRITE_GUARD_CHANGED_EVENT,
+  ServerWriteBlockedError,
   requestLearningResetReload,
 } from './learning-reset-epoch';
 export { SYNC_API_ORIGIN } from './sync-config';
@@ -126,9 +130,28 @@ export class BrowserSyncRuntime {
     for (const listener of this.listeners) listener();
   }
 
+  private pauseServerWrites(): void {
+    this.token = null;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    this.clearEventFlushTimers();
+    this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
+  }
+
+  private canWriteToServer(): boolean {
+    if (isServerWriteAllowed()) return true;
+    this.pauseServerWrites();
+    return false;
+  }
+
+  private onServerWriteGuardChanged = (): void => {
+    if (!isServerWriteAllowed()) this.pauseServerWrites();
+  };
+
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    window.addEventListener(SERVER_WRITE_GUARD_CHANGED_EVENT, this.onServerWriteGuardChanged);
     this.unsubscribeEvents = subscribeToLearnEvents(event => {
       if (isLocalLearningResetPending()) return;
       void queueLearnEvent(event).then(() => this.refreshCountAndTrigger()).catch(() => {
@@ -141,10 +164,7 @@ export class BrowserSyncRuntime {
     window.addEventListener('pagehide', this.onPageHide);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     await this.refreshCount();
-    if (isLocalLearningResetPending()) {
-      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
-      return;
-    }
+    if (!this.canWriteToServer()) return;
     void this.syncNow();
   }
 
@@ -155,17 +175,14 @@ export class BrowserSyncRuntime {
     window.removeEventListener('pageshow', this.onWake);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     window.removeEventListener('pagehide', this.onPageHide);
+    window.removeEventListener(SERVER_WRITE_GUARD_CHANGED_EVENT, this.onServerWriteGuardChanged);
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.clearEventFlushTimers();
     this.retryTimer = undefined; this.started = false;
   }
 
   setIdToken(token: string | null): void {
-    if (isLocalLearningResetPending()) {
-      this.token = null;
-      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
-      return;
-    }
+    if (!this.canWriteToServer()) return;
     this.token = token;
     if (token) updateAuthenticatedServerToken(token);
     if (!token) {
@@ -335,15 +352,10 @@ export class BrowserSyncRuntime {
   }
 
   async syncNow(): Promise<void> {
+    if (!this.canWriteToServer()) return;
     if (this.running) return this.running;
     if (!this.started) return;
     this.clearEventFlushTimers();
-    if (isLocalLearningResetPending()) {
-      this.token = null;
-      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
-      await this.refreshCount();
-      return;
-    }
     if (!this.token) {
       const pending = await this.refreshCount();
       this.update({ phase: pending ? 'needs-auth' : 'idle' });
@@ -363,16 +375,13 @@ export class BrowserSyncRuntime {
 
   private async refreshCountAndTrigger() {
     const pending = await this.refreshCount();
-    if (isLocalLearningResetPending()) {
-      this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
-      return;
-    }
+    if (!this.canWriteToServer()) return;
     if (this.token) this.scheduleEventFlush();
     else this.update({ phase: pending ? 'needs-auth' : this.current.phase === 'synced' ? 'synced' : 'idle' });
   }
 
   private scheduleEventFlush(): void {
-    if (!this.started || !this.token || isLocalLearningResetPending()) return;
+    if (!this.started || !this.token || !this.canWriteToServer()) return;
     if (this.debounceTimer) this.cancelTimeout(this.debounceTimer);
     this.debounceTimer = this.scheduleTimeout(() => {
       this.debounceTimer = undefined;
@@ -395,7 +404,7 @@ export class BrowserSyncRuntime {
     this.maxWaitTimer = undefined;
   }
 
-  private onWake = () => { if (this.started && navigator.onLine !== false && !isLocalLearningResetPending()) void this.syncNow(); };
+  private onWake = () => { if (this.started && navigator.onLine !== false) void this.syncNow(); };
   private onVisibilityChange = () => {
     if (document.visibilityState === 'visible') this.onWake();
     else this.flushKeepaliveBatch();
@@ -403,7 +412,7 @@ export class BrowserSyncRuntime {
   private onPageHide = () => this.flushKeepaliveBatch();
 
   private flushKeepaliveBatch(): void {
-    if (!this.started || !this.token || this.running || this.keepaliveFlush || isLocalLearningResetPending() || navigator.onLine === false) return;
+    if (!this.started || !this.token || this.running || this.keepaliveFlush || !this.canWriteToServer() || navigator.onLine === false) return;
     this.clearEventFlushTimers();
     const flush = this.pushOutbox({ keepalive: true, maxBytes: MAX_KEEPALIVE_BATCH_BYTES }).catch(() => {
       // The durable outbox remains the source of truth and will retry on the next visit.
@@ -414,21 +423,31 @@ export class BrowserSyncRuntime {
   private async request(path: string, init: RequestInit, tokenOverride?: string, allowNotFound = false): Promise<Response> {
     const token = tokenOverride ?? this.token;
     if (!token) throw new SyncRequestError('Google sign-in is required.', 401, false);
-    const isLearningWrite = init.method?.toUpperCase() === 'POST' && (path === '/events' || path === '/state');
-    if (isLearningWrite && isLocalLearningResetPending()) {
-      throw new SyncRequestError('ارسال تا پایان پاک‌سازی متوقف است؛ هیچ داده‌ای فرستاده نشد.', 409, false);
+    const method = (init.method ?? 'GET').toUpperCase();
+    const isServerWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+    if (isServerWrite && !this.canWriteToServer()) {
+      throw new SyncRequestError('ارسال تا تأیید پایان پاک‌سازی متوقف است؛ هیچ داده‌ای فرستاده نشد.', 409, false);
     }
+    const isLearningWrite = init.method?.toUpperCase() === 'POST' && (path === '/events' || path === '/state');
     let response: Response;
     try {
-      response = await this.fetcher(`${this.apiOrigin}${path}`, {
+      const requestInit: RequestInit = {
         ...init,
         headers: {
           ...(init.headers ?? {}),
           Authorization: `Bearer ${token}`,
           ...(isLearningWrite ? { [LEARNING_RESET_EPOCH_HEADER]: this.learningResetEpoch } : {}),
         },
-      });
-    } catch { throw new SyncRequestError('شبکه در دسترس نیست؛ داده‌ها در صف آفلاین می‌مانند.'); }
+      };
+      response = isServerWrite
+        ? await fetchWithServerWriteGuard(this.fetcher, `${this.apiOrigin}${path}`, requestInit)
+        : await this.fetcher(`${this.apiOrigin}${path}`, requestInit);
+    } catch (error) {
+      if (error instanceof ServerWriteBlockedError || (isServerWrite && !this.canWriteToServer())) {
+        throw new SyncRequestError('ارسال تا تأیید پایان پاک‌سازی متوقف است؛ هیچ داده‌ای فرستاده نشد.', 409, false);
+      }
+      throw new SyncRequestError('شبکه در دسترس نیست؛ داده‌ها در صف آفلاین می‌مانند.');
+    }
     if (response.status === 401) {
       // An expired or revoked Worker session is forgotten so a fresh GIS login can mint a new one.
       reportApiUnauthorized(token);
@@ -516,6 +535,9 @@ export class BrowserSyncRuntime {
       }
       const confirmed = selected.filter(item => acknowledged.has(item.id));
       if (confirmed.length !== selected.length) throw new SyncRequestError('سرور همهٔ رویدادهای دسته را تأیید نکرد؛ رویدادها در صف باقی ماندند.');
+      if (!this.canWriteToServer()) {
+        throw new SyncRequestError('پاک‌سازی هنگام ارسال آغاز شد؛ رویدادها تا تأیید دوباره در صف ماندند.', 409, false);
+      }
       await acknowledgeOutbox(confirmed.map(item => item.id));
       await this.refreshCount();
       if (options.keepalive) return;
@@ -572,6 +594,11 @@ export class BrowserSyncRuntime {
       if (this.mirrorStatusObservers > 0) await this.refreshMirrorStatuses();
       if (hasMore || pending) this.scheduleRetry(100);
     } catch (error) {
+      if (!this.canWriteToServer()) {
+        await this.refreshCount();
+        this.update({ phase: 'needs-auth', lastError: 'ارسال تا تأیید پایان پاک‌سازی متوقف است.' });
+        return;
+      }
       const message = error instanceof Error ? error.message : 'همگام‌سازی ناموفق بود.';
       const requestError = error instanceof SyncRequestError ? error : undefined;
       if (requestError?.status === 401) this.token = null;
@@ -586,6 +613,7 @@ export class BrowserSyncRuntime {
   }
 
   private scheduleRetry(delayMs: number): void {
+    if (!this.canWriteToServer()) return;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => { this.retryTimer = undefined; void this.syncNow(); }, delayMs);
   }

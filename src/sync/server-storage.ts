@@ -8,9 +8,12 @@ import { SYNC_API_ORIGIN } from './sync-config';
 import { reportApiUnauthorized } from './api-unauthorized';
 import { keepLocalServerConflictValue, mergeServerStateValues } from './server-conflict-merge';
 import {
+  canWriteToServer,
+  fetchWithServerWriteGuard,
   getLearningResetRequestEpoch,
   LEARNING_RESET_EPOCH_HEADER,
   markLocalLearningResetPending,
+  ServerWriteBlockedError,
   requestLearningResetReload,
 } from './learning-reset-epoch';
 
@@ -125,9 +128,10 @@ export class ServerBackedStorage implements Storage {
       let desiredValue = value;
       // Fast, bounded retries for transient Cloudflare/network errors and stale revisions.
       for (let attempt = 0; attempt < 4; attempt++) {
+        if (!canWriteToServer()) throw new ServerWriteBlockedError();
         const revision = this.revisions.get(key) ?? 0;
         try {
-          response = await fetch(`${SYNC_API_ORIGIN}/state`, {
+          response = await fetchWithServerWriteGuard(fetch, `${SYNC_API_ORIGIN}/state`, {
             method: 'POST', cache: 'no-store',
             headers: {
               'Content-Type': 'application/json',
@@ -174,6 +178,7 @@ export class ServerBackedStorage implements Storage {
           }
           if (response.status !== 429 && response.status < 500) break;
         } catch (error) {
+          if (error instanceof ServerWriteBlockedError) throw error;
           lastNetworkError = error instanceof Error ? error : new Error('Network request failed.');
         }
         if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 250 * (2 ** attempt)));
@@ -186,6 +191,7 @@ export class ServerBackedStorage implements Storage {
           ? 'ورود Google منقضی شده است؛ ذخیرهٔ روی سرور تأیید نشد.'
           : `ذخیرهٔ سروری ${key} ناموفق بود (HTTP ${response.status}).`);
       const result: unknown = await response.json();
+      if (!canWriteToServer()) throw new ServerWriteBlockedError();
       if (!result || typeof result !== 'object' || !Number.isSafeInteger((result as { revision?: unknown }).revision))
         throw new Error('تأیید ذخیرهٔ سروری معتبر نبود.');
       this.revisions.set(key, Number((result as { revision: number }).revision));
