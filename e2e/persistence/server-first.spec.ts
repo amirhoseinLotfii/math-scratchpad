@@ -2,6 +2,7 @@ import { test, expect, mathField, mathValue, clickMathKeys } from '../support/te
 import { readLearningCache } from '../support/indexeddb';
 import { storageKey } from '../support/mobile-journey';
 import { stepLatex } from '../../src/model';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 const bankCacheKey = 'math-scratchpad-drive-bank-cache-v1:test';
 const bankCacheValue = 'x'.repeat(260_000);
@@ -67,6 +68,13 @@ test('local-first editor keeps work editable offline, mirrors after sign-in, and
   await page.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', async route => {
     const request = route.request(), pathname = new URL(request.url()).pathname;
     calls.push(request.method() + ' ' + pathname);
+    if (pathname === '/reset/status' && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+      });
+    }
     if (pathname === '/session' && request.method() === 'POST') {
       return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
     }
