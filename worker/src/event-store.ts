@@ -18,6 +18,7 @@ import {
 } from './notion-projection';
 import {
   createNotionClient,
+  archiveVerifiedNotionResetPage,
   notionDataSourcesFromEnv,
   notionErrorCode,
   NotionRequestQueue,
@@ -44,6 +45,7 @@ const MAX_STATE_BODY_BYTES = 2_100_000;
 const MAX_STATE_VALUE_BYTES = 1_000_000;
 const MAX_BATCH_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+const NOTION_RESET_RECONCILIATION_PER_CALL = 10;
 const RATE_WINDOW_MS = 60_000;
 
 type StoredEvent = { seq: number; event: LearnEvent };
@@ -220,6 +222,20 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projection_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), last_seq INTEGER NOT NULL)');
     ctx.storage.sql.exec('INSERT OR IGNORE INTO notion_projection_meta (singleton, last_seq) VALUES (1, 0)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_page_refs (kind TEXT NOT NULL, external_key TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (kind, external_key))');
+    ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS notion_reset_reconciliation (
+      reset_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      external_key TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      owner_marker TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      reconciled_at TEXT,
+      PRIMARY KEY (reset_id, kind, external_key)
+    )`);
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_state_queue (key TEXT PRIMARY KEY, revision INTEGER NOT NULL)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_mistake_reviews (item_key TEXT PRIMARY KEY, event_id TEXT NOT NULL, review_successes INTEGER NOT NULL, last_review_event_id TEXT)');
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_session_mistakes (session_id TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (session_id, page_id))');
@@ -403,8 +419,21 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return 'claimed';
     });
     if (claim === 'in_progress') return json({ error: 'learning_reset_in_progress' }, 409);
-    if (claim === 'awaiting_release') return json({ completed: true, releaseRequired: true });
-    if (claim === 'complete') return json({ error: 'learning_reset_already_complete' }, 409);
+    if (claim === 'awaiting_release' || claim === 'complete') {
+      const dataSources = notionDataSourcesFromEnv(this.env);
+      if (dataSources && this.env.NOTION_API_KEY && this.notionResetReconciliationPendingCount(resetId) > 0) {
+        this.activeLearningResetId = resetId;
+        try {
+          const notion = await this.reconcileNotionResetReferences(resetId);
+          if (claim === 'awaiting_release') return json({ completed: true, releaseRequired: true, notion });
+          return json({ completed: true, releaseRequired: false, notion });
+        } finally {
+          if (this.activeLearningResetId === resetId) this.activeLearningResetId = undefined;
+        }
+      }
+      if (claim === 'complete') return json({ error: 'learning_reset_already_complete' }, 409);
+      return json({ completed: true, releaseRequired: true, notion: { pending: this.notionResetReconciliationPendingCount(resetId) } });
+    }
 
     this.activeLearningResetId = resetId;
     try {
@@ -425,6 +454,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         // Partial Drive progress: keep the lock and every cloud record until a later retry finishes Drive.
         return json({ completed: false, inProgress: true, drive: driveResult, retryWithSameResetId: true }, 202);
       }
+      this.journalNotionResetReferences(resetId);
+      const dataSources = notionDataSourcesFromEnv(this.env);
+      const notion = dataSources && this.env.NOTION_API_KEY
+        ? await this.reconcileNotionResetReferences(resetId)
+        : { archived: 0, protected: 0, unverified: 0, retryable: 0, pending: this.notionResetReconciliationPendingCount(resetId) };
+      if (notion.pending > 0 && dataSources && this.env.NOTION_API_KEY) {
+        return json({ completed: false, inProgress: true, notion, retryWithSameResetId: true }, 202);
+      }
       const cloudResult = this.clearLearningRecords();
       await this.ctx.storage.delete(DRIVE_STATE_KEY);
       await this.ctx.storage.delete(NOTION_MIRROR_STATE_KEY);
@@ -440,6 +477,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         releaseRequired: true,
         drive: driveResult,
         cloud: cloudResult,
+        notion,
         preserved: { bankSourceRecords: cloudResult.bankSourceRecords, activeAuthSessions: cloudResult.activeAuthSessions },
       });
     } catch (error) {
@@ -589,6 +627,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     deletedAppStateRecords: number;
     deletedNotionProjectionRecords: number;
     deletedNotionReferences: number;
+    retainedNotionReferences: number;
+    pendingNotionReconciliation: number;
     deletedQueuedMirrorRecords: number;
     bankSourceRecords: number;
     activeAuthSessions: number;
@@ -600,7 +640,9 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         deletedLearningEvents: count('SELECT COUNT(*) AS count FROM learning_events'),
         deletedAppStateRecords: count("SELECT COUNT(*) AS count FROM app_state WHERE key NOT IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')"),
         deletedNotionProjectionRecords: count('SELECT COUNT(*) AS count FROM notion_projections'),
-        deletedNotionReferences: count('SELECT COUNT(*) AS count FROM notion_page_refs'),
+        deletedNotionReferences: 0,
+        retainedNotionReferences: count('SELECT COUNT(*) AS count FROM notion_page_refs'),
+        pendingNotionReconciliation: this.notionResetReconciliationPendingCount(),
         deletedQueuedMirrorRecords: count('SELECT COUNT(*) AS count FROM notion_state_queue')
           + count('SELECT COUNT(*) AS count FROM notion_mistake_reviews')
           + count('SELECT COUNT(*) AS count FROM notion_session_mistakes'),
@@ -613,7 +655,6 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = 0 WHERE singleton = 1');
       this.ctx.storage.sql.exec('DELETE FROM notion_projections');
       this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = 0 WHERE singleton = 1');
-      this.ctx.storage.sql.exec('DELETE FROM notion_page_refs');
       this.ctx.storage.sql.exec('DELETE FROM notion_state_queue');
       this.ctx.storage.sql.exec('DELETE FROM notion_mistake_reviews');
       this.ctx.storage.sql.exec('DELETE FROM notion_session_mistakes');
@@ -623,6 +664,112 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       this.ctx.storage.sql.exec("DELETE FROM sqlite_sequence WHERE name = 'learning_events'");
       return summary;
     });
+  }
+
+  private journalNotionResetReferences(resetId: string): number {
+    const refs = this.ctx.storage.sql.exec<{ kind: string; external_key: string; page_id: string }>(
+      'SELECT kind, external_key, page_id FROM notion_page_refs ORDER BY kind, external_key',
+    ).toArray();
+    const now = new Date().toISOString();
+    this.ctx.storage.transactionSync(() => {
+      for (const ref of refs) {
+        const status = ['attempt', 'app-state', 'chapter-snapshot', 'mistake', 'concept', 'daily'].includes(ref.kind)
+          ? 'pending' : 'protected';
+        this.ctx.storage.sql.exec(
+          'INSERT OR IGNORE INTO notion_reset_reconciliation (reset_id, kind, external_key, page_id, owner_marker, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          resetId, ref.kind, ref.external_key, ref.page_id, 'math-scratchpad', status, now,
+        );
+      }
+    });
+    return refs.length;
+  }
+
+  private notionResetReconciliationPendingCount(resetId?: string): number {
+    const row = resetId === undefined
+      ? this.ctx.storage.sql.exec<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE status IN ('pending', 'retry', 'ownership_unverified')`,
+      ).one()
+      : this.ctx.storage.sql.exec<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE reset_id = ? AND status IN ('pending', 'retry', 'ownership_unverified')`,
+        resetId,
+      ).one();
+    return Number(row.count);
+  }
+
+  private async reconcileNotionResetReferences(resetId: string): Promise<{
+    archived: number;
+    protected: number;
+    unverified: number;
+    retryable: number;
+    pending: number;
+  }> {
+    const dataSources = notionDataSourcesFromEnv(this.env);
+    if (!dataSources || !this.env.NOTION_API_KEY) {
+      return { archived: 0, protected: 0, unverified: 0, retryable: 0, pending: this.notionResetReconciliationPendingCount(resetId) };
+    }
+    this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY, this.budgetedFetch);
+    const rows = this.ctx.storage.sql.exec<{
+      kind: string; external_key: string; page_id: string; owner_marker: string; attempts: number;
+    }>(
+      `SELECT kind, external_key, page_id, owner_marker, attempts FROM notion_reset_reconciliation
+       WHERE reset_id = ? AND status IN ('pending', 'retry', 'ownership_unverified') ORDER BY kind, external_key LIMIT ?`,
+      resetId, NOTION_RESET_RECONCILIATION_PER_CALL,
+    ).toArray();
+    const totals = { archived: 0, protected: 0, unverified: 0, retryable: 0, pending: 0 };
+    for (const row of rows) {
+      const now = new Date().toISOString();
+      if (row.owner_marker !== 'math-scratchpad') {
+        this.ctx.storage.sql.exec(
+          `UPDATE notion_reset_reconciliation SET status = 'ownership_unverified', attempts = attempts + 1,
+           last_attempt_at = ?, last_error = 'ownership_marker_mismatch' WHERE reset_id = ? AND kind = ? AND external_key = ?`,
+          now, resetId, row.kind, row.external_key,
+        );
+        totals.unverified += 1;
+        continue;
+      }
+      try {
+        const result = await archiveVerifiedNotionResetPage(this.createNotionContext(dataSources, now), {
+          kind: row.kind, externalKey: row.external_key, pageId: row.page_id,
+        });
+        if (result === 'archived') {
+          this.ctx.storage.transactionSync(() => {
+            this.ctx.storage.sql.exec(
+              `UPDATE notion_reset_reconciliation SET status = 'archived', attempts = attempts + 1,
+               last_attempt_at = ?, last_error = NULL, reconciled_at = ? WHERE reset_id = ? AND kind = ? AND external_key = ?`,
+              now, now, resetId, row.kind, row.external_key,
+            );
+            this.ctx.storage.sql.exec(
+              'DELETE FROM notion_page_refs WHERE kind = ? AND external_key = ? AND page_id = ?',
+              row.kind, row.external_key, row.page_id,
+            );
+          });
+          totals.archived += 1;
+        } else if (result === 'protected') {
+          this.ctx.storage.sql.exec(
+            `UPDATE notion_reset_reconciliation SET status = 'protected', attempts = attempts + 1,
+             last_attempt_at = ?, last_error = NULL WHERE reset_id = ? AND kind = ? AND external_key = ?`,
+            now, resetId, row.kind, row.external_key,
+          );
+          totals.protected += 1;
+        } else {
+          this.ctx.storage.sql.exec(
+            `UPDATE notion_reset_reconciliation SET status = 'ownership_unverified', attempts = attempts + 1,
+             last_attempt_at = ?, last_error = 'ownership_unverified' WHERE reset_id = ? AND kind = ? AND external_key = ?`,
+            now, resetId, row.kind, row.external_key,
+          );
+          totals.unverified += 1;
+        }
+      } catch (error) {
+        this.ctx.storage.sql.exec(
+          `UPDATE notion_reset_reconciliation SET status = 'retry', attempts = attempts + 1,
+           last_attempt_at = ?, last_error = ? WHERE reset_id = ? AND kind = ? AND external_key = ?`,
+          now, notionErrorCode(error), resetId, row.kind, row.external_key,
+        );
+        totals.retryable += 1;
+      }
+    }
+    totals.pending = this.notionResetReconciliationPendingCount(resetId);
+    return totals;
   }
 
 
@@ -1269,6 +1416,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async syncNotion(): Promise<NotionMirrorStatus> {
     if (this.isLearningResetLocked()) return this.getNotionStatus();
+    const reconciliationPending = this.notionResetReconciliationPendingCount();
+    if (reconciliationPending > 0) {
+      const current = await this.getNotionStatus();
+      return { ...current, status: 'pending', pendingCount: Math.max(current.pendingCount, reconciliationPending) };
+    }
     if (!notionDataSourcesFromEnv(this.env)) return this.getNotionStatus();
     if (this.notionSyncPromise) return this.notionSyncPromise;
     this.notionSyncPromise = this.performNotionSync().finally(() => { this.notionSyncPromise = undefined; });

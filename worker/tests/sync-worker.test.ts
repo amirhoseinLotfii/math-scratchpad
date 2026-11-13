@@ -143,21 +143,37 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     await runInDurableObject(stub, async instance => {
       const target = instance as unknown as {
         env: WorkerEnv;
+        notionClient?: unknown;
         syncDrive: () => Promise<unknown>;
         syncNotion: () => Promise<unknown>;
         alarm: () => Promise<void>;
+      };
+      const originalBindings = {
+        GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET,
+        GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+        NOTION_API_KEY: target.env.NOTION_API_KEY,
+        notionClient: target.notionClient,
       };
       Object.assign(target.env, {
         GOOGLE_DRIVE_CLIENT_SECRET: 'test-not-secret',
         GOOGLE_DRIVE_REFRESH_TOKEN: 'test-not-token',
         NOTION_API_KEY: 'test-not-secret',
       });
-      const calls: string[] = [];
-      target.syncDrive = async () => { calls.push('drive'); throw new Error('timeout'); };
-      target.syncNotion = async () => { calls.push('notion'); return {}; };
-      await target.alarm();
-      expect(calls).toContain('notion');
-      expect(calls).toContain('drive');
+      try {
+        const calls: string[] = [];
+        target.syncDrive = async () => { calls.push('drive'); throw new Error('timeout'); };
+        target.syncNotion = async () => { calls.push('notion'); return {}; };
+        await target.alarm();
+        expect(calls).toContain('notion');
+        expect(calls).toContain('drive');
+      } finally {
+        Object.assign(target.env, {
+          GOOGLE_DRIVE_CLIENT_SECRET: originalBindings.GOOGLE_DRIVE_CLIENT_SECRET,
+          GOOGLE_DRIVE_REFRESH_TOKEN: originalBindings.GOOGLE_DRIVE_REFRESH_TOKEN,
+          NOTION_API_KEY: originalBindings.NOTION_API_KEY,
+        });
+        target.notionClient = originalBindings.notionClient;
+      }
     });
   });
 
@@ -573,6 +589,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     await runInDurableObject(stub, async instance => {
       const target = instance as unknown as {
         env: WorkerEnv;
+        notionClient?: unknown;
         driveClient?: {
           diagnosticStage: string;
           readFileMetadata: (id: string, fields: string) => Promise<Record<string, unknown>>;
@@ -593,12 +610,16 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         GOOGLE_CLIENT_ID: target.env.GOOGLE_CLIENT_ID,
         GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET,
         GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+        NOTION_API_KEY: target.env.NOTION_API_KEY,
+        notionClient: target.notionClient,
       };
       Object.assign(target.env, {
         GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
         GOOGLE_DRIVE_CLIENT_SECRET: 'test-drive-secret',
         GOOGLE_DRIVE_REFRESH_TOKEN: 'test-drive-refresh-token',
+        NOTION_API_KEY: undefined,
       });
+      target.notionClient = undefined;
 
       try {
         const sql = target.ctx.storage.sql;
@@ -668,7 +689,9 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
             deletedLearningEvents: 1,
             deletedAppStateRecords: 1,
             deletedNotionProjectionRecords: 1,
-            deletedNotionReferences: 1,
+            deletedNotionReferences: 0,
+            retainedNotionReferences: 1,
+            pendingNotionReconciliation: 1,
             deletedQueuedMirrorRecords: 3,
             bankSourceRecords: 1,
             activeAuthSessions: 1,
@@ -685,7 +708,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         const count = (table: string) => Number(sql.exec<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`).one().count);
         expect(count('learning_events')).toBe(0);
         expect(count('notion_projections')).toBe(0);
-        expect(count('notion_page_refs')).toBe(0);
+        expect(count('notion_page_refs')).toBe(1);
         expect(count('notion_state_queue')).toBe(0);
         expect(count('notion_mistake_reviews')).toBe(0);
         expect(count('notion_session_mistakes')).toBe(0);
@@ -722,7 +745,13 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         });
         expect(freshWrite.status).toBe(200);
       } finally {
-        Object.assign(target.env, originalBindings);
+        Object.assign(target.env, {
+          GOOGLE_CLIENT_ID: originalBindings.GOOGLE_CLIENT_ID,
+          GOOGLE_DRIVE_CLIENT_SECRET: originalBindings.GOOGLE_DRIVE_CLIENT_SECRET,
+          GOOGLE_DRIVE_REFRESH_TOKEN: originalBindings.GOOGLE_DRIVE_REFRESH_TOKEN,
+          NOTION_API_KEY: originalBindings.NOTION_API_KEY,
+        });
+        target.notionClient = originalBindings.notionClient;
       }
     });
   });
