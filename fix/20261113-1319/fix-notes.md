@@ -144,3 +144,15 @@ Timestamp: 2026-11-13 14:56 Asia/Tehran.
 - GitHub code branch commit: `03a26b800249c5d681ad610535a39b5a28a34c25`; tree `47d951fac4ecd18a487586cb6fa111d16985377f` matches the local verified tree. Only the isolated fix branch moved.
 - Next: AUD-012 dependency advisory verification. AUD-005 remains BLOCKED under the scoped-reset contract; production and browser gates are unchanged.
 
+
+## Phase 11 — AUD-012 Zod high-severity advisory
+Timestamp: 2026-11-13 15:11 Asia/Tehran.
+
+- Verified the advisory against GitHub's reviewed record, GHSA-mrhx-c7xc-m3w5: Zod versions before 4.6.6 are affected; 4.6.6 is patched. The baseline lock had production `zod@3.25.76` and the supplied audit report recorded one high advisory. Reference: https://github.com/advisories/GHSA-mrhx-c7xc-m3w5.
+- Updated the production dependency and lockfile to exact `zod@4.6.6`; promoted the same already-locked registry artifact/integrity from the nested Cloudflare test dependency to the root. `npm ls zod --all --offline` reports one deduped 4.6.6 for the root, resolver, and Worker test plugin. Offline npm lock regeneration was unavailable because registry metadata was not cached (`ENOTCACHED`), so the existing verified lock entry was promoted without registry access.
+- Migrated the app's schemas to `zod/mini` functional checks so the patched Zod 4 runtime stays tree-shakable. Preserved strict/loose object behavior, validation bounds, custom paths/messages, and schema inferred types. A 20,000-item array probe was rejected at the array bound before its element validator ran (0 element checks).
+- Verification: `npm test` — 77 files / 985 tests PASS and Worker — 7 files / 125 tests PASS; `npm run typecheck` and `npm run test:typecheck` PASS; local `vite build` PASS; `node scripts/standalone.mjs` PASS at 2,691,726 bytes (below its 3,000,000-byte guard); `git diff --check` PASS; staged Gitleaks reported no leaks.
+- Post-fix `npm audit --omit=dev` is NOT_TESTED: automatic review rejected the networked audit before execution because sending a dependency tree/private package names to `registry.npmjs.org` was not authorized. The full `npm run build` was likewise BLOCKED before execution because it includes `wrangler deploy --dry-run`, which may send a bundle or metadata to Cloudflare. No workaround was used; local Vite/standalone build succeeded. Worker dry-run remains NOT_TESTED.
+- GitHub code branch commit: `14281e2c6c39ce318c441c58b9ae1bb5eceb4e83`; tree `e03c426c09f9bf4cfae3a4afd1627fe182a77de4` matches the staged local tree. Only the isolated fix branch moved; no PR, merge, deployment, or production mutation was made.
+- Status: AUD-012 FIXED by locked patched package and safe local verification; post-fix `npm audit` remains NOT_TESTED as described. Next: AUD-001 blocker review. AUD-005 remains BLOCKED; AUD-006 remains PARTIAL; production/browser gates retain their prior states.
+
