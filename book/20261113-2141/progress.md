@@ -4,8 +4,8 @@
 - Status: `RUNNING_CONTENT`
 - Current phase: Phase 2 — chapter bank authoring
 - Current step: Phase 1 is VERIFIED. All Ch. 2–12 source pages and chapter plans are in private Drive. Begin authoring Chapter 2 in the fixed order; no chapter bank or answer key has been built yet.
-- PR #94: `OPEN`, draft, checked 2026-11-13 23:15 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; latest head `6d3d65c1e8003f86d248ef044742e7d04f9f756f`. No PR/production changes.
-- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` latest commit before this checkpoint `3c3234a139dcc04cfedf1ddf6f507606084d597a`; code branch not created (D4).
+- PR #94: `OPEN`, draft, checked 2026-11-13 23:46 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; latest head `87506ed06bc21b8e3d9eedbd2de80a2a50a322f7`. No PR/production changes.
+- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` latest commit before this checkpoint `422e97fe8756c905887f3033708d883cb2b9f3df`; code branch not created (D4).
 - PR URL: https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 - Drive run folder: https://drive.google.com/drive/folders/1_yhCeZtdCezfITDZUsSCw8gt1eUz1lQu
 - Drive subfolders: banks `1eQROvv1xg7Ln8b1h6Hc2qHK4ZWGissdX`; answer-keys `1luJ4NHvosuuvrYa3_n-9oaWRQ4j8x6ey`; reports `1YbPovzCK1ywiX0_SvC2V1UbavQIL0_GP`; source-extracts `1a1IlrL4I_knh966peK-NgL5_4YZJhoiQ`; tooling `1EZvIgF24tqyGVldRpxJh2HeVrCTEYevS
@@ -66,4 +66,4 @@
 - No user learning session, attempt, sync folder, GitHub PR, or production Worker was changed.
 - Open BLOCKED items: none. The owner directed this run to proceed with private noncommercial CC BY-NC-SA 4.0 scope; the official Preface’s AI-use text remains documented in `reports/LICENSE-GATE.md`, which does not claim written permission.
 
-- Checkpoint timestamp: 2026-11-13 23:45:14 +0330.
+- Checkpoint timestamp: 2026-11-13 23:46 Asia/Tehran.
