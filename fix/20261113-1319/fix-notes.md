@@ -60,3 +60,9 @@ Direct `git push` could not authenticate in this environment. The GitHub Git Dat
 | AUD-006 Enter/Space repair | `27a98aa8ece559baea07aad90ddd0df28ae6353c` | `0498f64328871a12cbffcb1ce44ce62bc77ec4d8` |
 
 The remote branch head is the final AUD-006 commit above. PR #91/#92/#93 remain open. This is an isolated integration branch; no production write, deploy, or merge into main occurred. The next phase imports the audit red tests and runs them before fixing findings.
+
+## Phase 3 — audit regression suite import — 2026-11-13 17:17 Asia/Tehran
+
+Imported the 21 tracked audit test/config files from the local `audit/full-20261113-1015` branch into the isolated code branch. The directories are `tests/audit/`, `worker/test/audit/`, and `e2e/audit/`. The import is committed locally as `7c9c741fbfdf45246046d7ea1562480471624a92` and synchronized to GitHub code branch head `a8bec16b19ce01f879b1788c8b466001c66f18fc`; the remote tree SHA exactly matches the local commit tree.
+
+Gitleaks 8.30.1 returned zero findings on each imported directory, and `git diff --cached --check` passed. A broad exploratory scan of the full worktree reported one finding; it was not present in any imported audit directory. No secret value was included in logs or this note. The regression suites have not yet been executed; they remain the next phase.
