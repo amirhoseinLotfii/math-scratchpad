@@ -75,7 +75,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 
 - AUD-014: A pre-existing synthetic outbox event was sent despite the local reset-pending flag; no production data was sent.
 
-- AUD-017: Session JSON restore replaces current synthetic work without a separate confirmation; back up current work before any import.
+- AUD-017: Session JSON and file imports replace current synthetic work without a separate confirmation; back up current work before any import.
 
 ## 5. All findings
 ### AUD-001 — Reset-pending state makes editor inert until authenticated cloud check
@@ -141,12 +141,12 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 ### AUD-005 — Scoped reset execution is not implemented
 - **Category:** Missing
 - **Severity:** High · **Blocks learning today:** no
-- **Confidence:** likely · **Verification:** NOT_TESTED
+- **Confidence:** confirmed · **Verification:** VERIFIED
 - **Refs affected:** main 7eeeef0; PR 92 f384ca4
 - **Location:** worker/src/index.ts:219; PR 92 worker/src/index.ts:231
 - **Related:** N3 C9 K6
-- **Evidence:** Both inspected route lists expose GET /reset/preview but no /reset/execute. PR 92 scoped-reset-plan.ts:38–45 explicitly describes a future transactional planner. No production write or endpoint probing was performed.
-- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Evidence:** A local synthetic Worker request to POST /reset/execute returned 404 in three prior runs and again after environment restoration. Both inspected route lists expose GET /reset/preview but no /reset/execute. PR 92 scoped-reset-plan.ts:38–45 explicitly describes a future transactional planner. No production write or endpoint probing was performed.
+- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.scoped-execute-route.test.ts`. This establishes missing routing only; execution semantics still need full tests.
 - **Expected / Actual:** Contract and acceptance behavior below / evidence above.
 - **Root cause:** layer worker; worker/src/index.ts:219; PR 92 worker/src/index.ts:231; mechanism or unresolved cause as stated in evidence.
 - **Proposed fix (not executed):** Design journaled scoped execution with isolation, idempotency and ownership checks across all layers.
@@ -318,17 +318,17 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Standalone red test passes, offline smoke tests verify editor, storage reload and no unintended external requests; Vite Pages build remains green.
 - **Size:** S · **Fix risk:** medium
 
-### AUD-017 — Session JSON restore replaces current work without confirmation
+### AUD-017 — Session imports replace current work without confirmation
 - **Category:** Data
 - **Severity:** Blocker · **Blocks learning today:** yes
 - **Confidence:** confirmed · **Verification:** VERIFIED
 - **Refs affected:** main 7eeeef0 (executed); PR 91 and PR 93 not independently tested
-- **Location:** `src/app/practice-launcher.tsx:56`
+- **Location:** `src/app/practice-launcher.tsx:56`; `src/App.tsx:551`
 - **Related:** G7 · G8 · test matrix Session/backup/import
-- **Evidence:** Three local mobile browser runs entered a synthetic expression, pasted a different valid serialized session and pressed Restore. The previous expression was replaced immediately and no separate confirmation dialog appeared. External requests were blocked. This demonstrates replacement of current UI state; durable recovery options and actual user's data were not examined.
-- **Reproduction:** `npx playwright test e2e/audit/import.requires-confirmation.spec.ts --project=mobile-390 --workers=1`. The red test expects existing work to remain until a confirmation is presented.
+- **Evidence:** Three local mobile browser runs entered a synthetic expression, pasted a different valid serialized session and pressed Restore. The previous expression was replaced immediately and no separate confirmation dialog appeared. The separate Import backup file flow produced the same replacement in three local mobile runs after the environment was restored. External requests were blocked. This demonstrates replacement of current UI state; durable recovery options and actual user's data were not examined.
+- **Reproduction:** `npx playwright test e2e/audit/import.requires-confirmation.spec.ts e2e/audit/import.file-confirmation.spec.ts --project=mobile-390 --workers=1`. Both red tests expect existing work to remain until a confirmation is presented.
 - **Expected / Actual:** A destructive session replacement requires a reviewable confirmation and preservation or backup path / valid JSON is loaded immediately when Restore is pressed.
-- **Root cause:** UI / state · `src/app/practice-launcher.tsx:56` · successful parsing directly dispatches `actions.load` without an intervening confirmation or backup.
+- **Root cause:** UI / state · `src/app/practice-launcher.tsx:56` · both JSON-text and file-import handlers directly dispatch `actions.load` after parsing without an intervening confirmation or backup.
 - **Proposed fix (not executed):** Preview consequences, provide an explicit cancel-first replacement confirmation, and offer a verified backup or recoverable undo before dispatching the replacement.
 - **Fix acceptance:** Red test passes on mobile and desktop; cancel leaves current session intact, confirm replaces exactly once, and recovery from accidental import is verified.
 - **Size:** M · **Fix risk:** medium
@@ -355,7 +355,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-002 | Outbox initiates sync immediately instead of five-second trailing debounce | Contract violation | High | no | confirmed | VERIFIED | main 7eeeef0 | src/sync/runtime.ts:285 | M |
 | AUD-003 | Exit and hidden-page flush are absent from main | Contract violation | Blocker | yes | likely | NOT_TESTED | main 7eeeef0 | src/sync/runtime.ts:102; src/sync/runtime.ts:292 | M |
 | AUD-004 | Production Worker and Pages originate from different commits | Release | High | no | confirmed | VERIFIED | production; main 7eeeef0; PR 91 59913b8 | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml | M |
-| AUD-005 | Scoped reset execution is not implemented | Missing | High | no | likely | NOT_TESTED | main 7eeeef0; PR 92 f384ca4 | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 | L |
+| AUD-005 | Scoped reset execution is not implemented | Missing | High | no | confirmed | VERIFIED | main 7eeeef0; PR 92 f384ca4 | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 | L |
 | AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/accessibility/axe-states.spec.ts:20 | S |
 | AUD-007 | PR 93 CI gate fails on mobile session backup workflow | CI/test | High | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/ui-audit-regressions.spec.ts:103 | M |
 | AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | no | confirmed | VERIFIED | PR 92 f384ca4 | e2e/visual/mobile-layout.spec.ts:23 | M |
@@ -367,7 +367,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-014 | Sync runtime sends queued events while local reset is pending | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 93 static | src/sync/runtime.ts:265 | M |
 | AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | no | confirmed | VERIFIED | main 7eeeef0, PR 93 d1c730c | src/app/exercise-menu.tsx:86 | S |
 | AUD-016 | Standalone HTML fails to mount because production flag is undefined | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 and PR 93 static | scripts/standalone.mjs:4 | S |
-| AUD-017 | Session JSON restore replaces current work without confirmation | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 | src/app/practice-launcher.tsx:56 | M |
+| AUD-017 | Session imports replace current work without confirmation | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 | src/app/practice-launcher.tsx:56; src/App.tsx:551 | M |
 | AUD-018 | Unexpected mirror rejection aborts combined Cron result on main | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 static, PR 93 existing test passed | worker/src/event-store.ts:269 | M |
 
 ## Notion read-only aggregate observations
@@ -380,7 +380,7 @@ On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistak
 - K3: NOT_TESTED — actual production Cron error remains unknown. An unexpected rejection causes main combined request to fail (AUD-018); PR 93 equivalent isolated test passed.
 - K4: NOT_TESTED — ownership and shared Sessions remain unresolved; aggregate Math Attempts count is 5, local reference deletion is confirmed in AUD-011, filename-only Drive selection in AUD-010.
 - K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
-- K6: NOT_TESTED — root cause / actual production behavior not established; see AUD-005.
+- K6: FAILED — local main Worker scoped execute route returns 404 (AUD-005); PR 92 is static-only and production was not probed.
 - K7: NOT_TESTED — root cause / actual production behavior not established; see AUD-004.
 - K8: FAILED — main mocked runtime violates 5-second debounce (AUD-002); full production behavior and exit flush remain untested (AUD-003).
 
@@ -403,7 +403,7 @@ Full request/response/error contract and duplicate type comparison: NOT_TESTED.
 
 - N1: FAILED — debounce behavior failed in three mocked local runs (AUD-002); exit flush static gap AUD-003; full browser/real Worker validation remains incomplete.
 - N2: FAILED — two complete local Worker resets allowed an old event (AUD-009); external mirror reconciliation and real-device behavior remain NOT_TESTED; see AUD-001 and AUD-014.
-- N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
+- N3: FAILED — local main Worker scoped execute route returns 404 (AUD-005); preview correctness and PR 92 runtime remain NOT_TESTED.
 - N4: FAILED — local fake Drive test selected unmarked file, AUD-010; Notion cleanup/reconciliation gap AUD-011.
 - N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
 - N6: FAILED — unexpected rejection fails combined Cron route on main (AUD-018); complete subrequest accounting remains NOT_TESTED.
@@ -532,7 +532,7 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - S7: VERIFIED — local Worker test resent one synthetic event batch and found one row, rejecting the same ID with changed content. Multi-event and concurrent retry coverage remains NOT_TESTED; see worker/tests/sync-worker.test.ts.
 - S8: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S9: FAILED — two local Worker resets followed by an old-generation event admitted stale data (AUD-009). Browser tab, counter and full external mirror aspects remain NOT_TESTED.
-- S10: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S10: VERIFIED — the PR 91 local Worker suite exercised synthetic orphaned lock takeover and release; actual production lock takeover and browser UX remain NOT_TESTED.
 - S11: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S12: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S13: VERIFIED — mobile-390 local browser tested malformed JSON, a 1,000,001-character input and one script-bearing malformed object; visible errors and no execution were observed. Desktop and other payloads remain NOT_TESTED. See e2e/audit/import.invalid-inputs.spec.ts.
@@ -553,7 +553,7 @@ Each complete row below is NOT_TESTED unless otherwise stated; partial results d
 - Worker routes: FAILED — state limit AUD-013; complete contract incomplete.
 - Cron: FAILED — local unexpected-rejection isolation test failed, AUD-018; production failure cause and subrequest count remain unknown.
 - Drive/Notion adapters: FAILED — synthetic reset ownership and references AUD-010/011; live effects not touched.
-- Scoped reset: NOT_TESTED — no execute route statically (AUD-005).
+- Scoped reset: FAILED — local main route returns 404 (AUD-005); safe end-to-end execution remains untested.
 - Multi-device: NOT_TESTED — desktop local-storage conflict tests pass, full convergence untested.
 - Session, backup, import: FAILED — destructive JSON replacement has no confirmation (AUD-017); backup fixture passed, full matrix incomplete.
 - Menu and accessibility: NOT_TESTED — selected AXE/mobile checks passed, all items/keyboard coverage incomplete.
@@ -690,8 +690,8 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "category": "Missing",
     "severity": "High",
     "blocker": false,
-    "confidence": "likely",
-    "verification": "NOT_TESTED",
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
     "refs": [
       "main 7eeeef0; PR 92 f384ca4"
     ],
@@ -702,8 +702,8 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
       "K6"
     ],
     "root_cause_layer": "worker",
-    "red_test": "",
-    "run_cmd": "",
+    "red_test": "worker/test/audit/reset.scoped-execute-route.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/reset.scoped-execute-route.test.ts",
     "depends_on": [],
     "size": "L",
     "fix_risk": "high"
@@ -988,7 +988,7 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
   },
   {
     "id": "AUD-017",
-    "title": "Session JSON restore replaces current work without confirmation",
+    "title": "Session imports replace current work without confirmation",
     "category": "Data",
     "severity": "Blocker",
     "blocker": true,
@@ -997,14 +997,14 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "refs": [
       "main 7eeeef0"
     ],
-    "location": "src/app/practice-launcher.tsx:56",
+    "location": "src/app/practice-launcher.tsx:56; src/App.tsx:551",
     "requirements": [
       "G7",
       "G8"
     ],
     "root_cause_layer": "UI",
-    "red_test": "e2e/audit/import.requires-confirmation.spec.ts",
-    "run_cmd": "npx playwright test e2e/audit/import.requires-confirmation.spec.ts --project=mobile-390 --workers=1",
+    "red_test": "e2e/audit/import.requires-confirmation.spec.ts; e2e/audit/import.file-confirmation.spec.ts",
+    "run_cmd": "npx playwright test e2e/audit/import.requires-confirmation.spec.ts e2e/audit/import.file-confirmation.spec.ts --project=mobile-390 --workers=1",
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
