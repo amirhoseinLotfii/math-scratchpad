@@ -3,9 +3,9 @@
 - RUN_ID: `20261113-2141` (Asia/Tehran)
 - Status: `RUNNING_CONTENT`
 - Current phase: Phase 2 — chapter bank authoring
-- Current step: Phase 1 is VERIFIED. Item-to-PDF page maps were generated for Chapters 2–12. Strong/unique matches: 1,743/7,308; 4,329 number-only page candidates still need visual confirmation. No chapter bank or answer key exists yet; next is manual review and Chapter 2 authoring.
-- PR #94: `OPEN`, draft, checked 2026-11-14 00:16 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; latest head `190153b15e5a4c82e49ba7885d9dd628c756f03c`. No PR/production changes.
-- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` latest commit before this checkpoint `44875a96aaafad04291caea3d7bc25f946550dc2`; code branch not created (D4).
+- Current step: Phase 1 is VERIFIED. Chapter 2.1 now has 18/18 learn-check drafts (12 Example variants + 6 Try Its); SymPy computations passed 18/18 and Try It number-token checks passed 6/6. This is not a bank or completed key. Next: author concept blocks, then all X/R/T items for Chapter 2.
+- PR #94: `OPEN`, draft, checked 2026-11-14 00:34 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; latest head `190153b15e5a4c82e49ba7885d9dd628c756f03c`. No PR/production changes.
+- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` latest commit before this checkpoint `81622a73d71e32f10bfce7de83ff4902125e5b9d`; code branch not created (D4).
 - PR URL: https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 - Drive run folder: https://drive.google.com/drive/folders/1_yhCeZtdCezfITDZUsSCw8gt1eUz1lQu
 - Drive subfolders: banks `1eQROvv1xg7Ln8b1h6Hc2qHK4ZWGissdX`; answer-keys `1luJ4NHvosuuvrYa3_n-9oaWRQ4j8x6ey`; reports `1YbPovzCK1ywiX0_SvC2V1UbavQIL0_GP`; source-extracts `1a1IlrL4I_knh966peK-NgL5_4YZJhoiQ`; tooling `1EZvIgF24tqyGVldRpxJh2HeVrCTEYevS
@@ -63,13 +63,20 @@
 - Mapper script is in private Drive `reports/tooling/`. It found strong/unique matches for 572/572 Examples, 409/424 Try Its, and a smaller set of exercise/figure items. Number-only matches are explicitly `CANDIDATE_*`, not confirmed. Manual TODOs remain.
 - No bank, answer key, coverage validator, or app smoke has been produced for Chapter 2. G4 and G5 remain `NOT_TESTED`.
 
+## Chapter 2.1 learn-check authoring checkpoint — 2026-11-14 00:34 Asia/Tehran
+
+- Created a private draft with 18 unique learn checks: one concrete variant for each of 12 Examples, followed by the 6 Try Its. Prompt references, concept IDs, section IDs, and PDF/printed-page provenance are included.
+- SymPy 1.14.0 verified all 18 computed answers. Exact number-token back-check passed for all 6 translated Try Its; question draft contains no answer fields. Structural checks passed for 18 sequential IDs, unique source references, mapped concepts, and balanced LaTeX delimiters.
+- The draft JSON, the private partial answer-key draft (L01–L18), and its SymPy log are in private Drive; their IDs are in `DRIVE-ARTIFACT-INDEX.json`. They are clearly marked drafts and are not imported as a bank.
+- No full Chapter 2 lesson blocks, X/R/T questions, completed bank, completed answer key, coverage validator, or render smoke exists yet; G4 remains `NOT_TESTED`.
+
 ## Remaining Work / TODOs
 
-- Build Persian lesson blocks, all learn checks, X/R/T questions, and private answer keys in the fixed order. Compute and verify solutions; add supplementary examples only after SymPy checks.
+- Finish Chapter 2.1 concept blocks, book examples, all 76 X items, 45 R items, and 33 T items; complete answer key and coverage checks before marking the chapter done. Then proceed in the fixed chapter order.
 - Map every example, Try It, figure, and exercise to its concept; translate alt text/captions; create per-block page numbers.
 - Concept-page mapping is complete: 294/294. The five formula-bearing headings and their pages are documented in `CONCEPT-MAP-VERIFICATION.md`.
 - Run validator and 390px/1440px app smoke per chapter after each bank exists.
 - No user learning session, attempt, sync folder, GitHub PR, or production Worker was changed.
 - Open BLOCKED items: none. The owner directed this run to proceed with private noncommercial CC BY-NC-SA 4.0 scope; the official Preface’s AI-use text remains documented in `reports/LICENSE-GATE.md`, which does not claim written permission.
 
-- Checkpoint timestamp: 2026-11-14 00:16 Asia/Tehran.
+- Checkpoint timestamp: 2026-11-14 00:34 Asia/Tehran.
