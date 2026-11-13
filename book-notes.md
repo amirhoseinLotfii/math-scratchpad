@@ -90,3 +90,12 @@
 - Uploaded the 11 chapter map JSONs, `ITEM-PAGE-MAP-STATUS.md`, and the mapper script to the private Drive run folder. Updated `DRIVE-ARTIFACT-INDEX.json`; all IDs are recorded there.
 - PR #94 was rechecked at 00:16 Asia/Tehran: still `OPEN`, draft, base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`, head `190153b15e5a4c82e49ba7885d9dd628c756f03c`. No PR, code branch, production Worker, learner progress, or bank was changed.
 - Phase 2 bank authoring has not yet produced a chapter bank or answer key. Next work remains visual resolution of Chapter 2 page-map TODOs, then Chapter 2 content authoring.
+
+
+## Chapter 2.1 learn-check authoring checkpoint — 2026-11-14 00:34 Asia/Tehran
+
+- Authored 18 learn-check drafts for `PC-2.1`: one concrete, source-linked question for each of the 12 book Examples, then one translation for each of the 6 Try Its. Each question has a unique `PC-2.1-L01`…`L18` ID, concept/section mapping, source ID, and PDF/printed page provenance.
+- Ran SymPy 1.14.0 exact-arithmetic checks: 18/18 pass. Number-token back-check against the extracted English + MathML inputs: 6/6 Try Its pass. The question draft has no answer fields; a separate partial answer-key draft holds all 18 answers.
+- Draft structure check passed: 18 unique sequential IDs, 18 unique source references, valid draft concept mapping, balanced `\(…\)` delimiters, 18/18 answer-key rows, and 18/18 SymPy log entries. This was not the app bank validator; the file is explicitly `DRAFT_NOT_BANK`.
+- Updated private Drive drafts and `DRIVE-ARTIFACT-INDEX.json`. No final bank/key was uploaded as complete; no repo code or learner data changed.
+- Rechecked PR #94 at 00:34 Asia/Tehran: still open/draft, base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`, head `190153b15e5a4c82e49ba7885d9dd628c756f03c`.
