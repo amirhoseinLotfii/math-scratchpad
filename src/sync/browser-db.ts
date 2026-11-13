@@ -1,6 +1,12 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
-import { LEARNING_RESET_EPOCH } from './learning-reset-epoch';
+import {
+  LEARNING_RESET_EPOCH,
+  LOCAL_RESET_PENDING_KEY,
+  LOCAL_SERVER_RESET_EPOCH_KEY,
+  isValidLearningResetEpoch,
+  markLocalLearningResetPending,
+} from './learning-reset-epoch';
 import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
 
 export const LEARNING_DB_NAME = 'math-scratchpad-sync-v2';
@@ -12,7 +18,6 @@ export const LEARNING_SERVER_EVENTS_STORE = 'serverEvents';
 export const LEARNING_META_STORE = 'meta';
 export const LEGACY_MIGRATION_META_KEY = 'legacy-migration-v1';
 const LOCAL_RESET_EPOCH_KEY = 'math-scratchpad-local-learning-reset-epoch-v1';
-const LOCAL_RESET_PENDING_KEY = 'math-scratchpad-local-learning-reset-pending-v1';
 const LOCAL_RESET_EPOCH = LEARNING_RESET_EPOCH;
 const LEGACY_MIGRATION_LOCK_NAME = 'math-scratchpad-legacy-migration-v1';
 const LEGACY_MIGRATION_LOCK_KEY = 'legacy-migration-lock-v1';
@@ -83,7 +88,8 @@ function isIndexedDbCacheKey(key: string): boolean {
 }
 
 function isProtectedLocalDataKey(key: string): boolean {
-  return key === DEVICE_ID_KEY || key === DRIVE_CONFIG_KEY || key.startsWith(BANK_CACHE_PREFIX) || AUTH_STORAGE_KEYS.has(key);
+  return key === DEVICE_ID_KEY || key === DRIVE_CONFIG_KEY || key === LOCAL_SERVER_RESET_EPOCH_KEY
+    || key.startsWith(BANK_CACHE_PREFIX) || AUTH_STORAGE_KEYS.has(key);
 }
 
 function isResettableLocalDataKey(key: string): boolean {
@@ -108,6 +114,30 @@ export async function prepareLocalLearningReset(): Promise<boolean> {
     storage.setItem(LOCAL_RESET_PENDING_KEY, '1');
     await clearLocalLearningData();
     storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
+    return true;
+  });
+}
+
+/** Reconcile browser learning data against a server-issued reset generation before sync. */
+export async function reconcileServerLearningResetEpoch(epoch: string): Promise<boolean> {
+  if (!isValidLearningResetEpoch(epoch)) throw new Error('The server reset epoch is invalid; sync remains paused.');
+  const storage = localStorageIfAvailable();
+  if (!storage) throw new Error('Local browser storage is unavailable; old learning data was left untouched and sync is paused.');
+  return withLegacyMigrationLock(async () => {
+    const current = storage.getItem(LOCAL_SERVER_RESET_EPOCH_KEY);
+    if (current === epoch) return false;
+    if (!current && epoch === LEARNING_RESET_EPOCH) {
+      storage.setItem(LOCAL_SERVER_RESET_EPOCH_KEY, epoch);
+      return false;
+    }
+
+    // Set the guard before touching data so concurrent sync paths cannot send old work.
+    markLocalLearningResetPending();
+    if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== '1') {
+      throw new Error('The local reset guard could not be set; sync remains paused.');
+    }
+    await clearLocalLearningData();
+    storage.setItem(LOCAL_SERVER_RESET_EPOCH_KEY, epoch);
     return true;
   });
 }

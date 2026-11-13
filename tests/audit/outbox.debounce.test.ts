@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { initializeLearningStorage, resetLearningDbForTests } from '../../src/sync/browser-db';
 import { emitLearnEvent, resetLearnEventRuntimeForTests } from '../../src/sync/events';
 import { BrowserSyncRuntime } from '../../src/sync/runtime';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 afterEach(async () => { resetLearnEventRuntimeForTests(); await resetLearningDbForTests(); vi.unstubAllGlobals(); localStorage.clear(); });
 it('outbox.does-not-send-within-five-seconds.after-first-event', async () => {
@@ -12,6 +13,7 @@ it('outbox.does-not-send-within-five-seconds.after-first-event', async () => {
   let firstPostTime: number | undefined;
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = new URL(String(input)).pathname;
+    if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
     if (path === '/events') {
       firstPostTime = performance.now();
       const body = JSON.parse(String(init?.body));

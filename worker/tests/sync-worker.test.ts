@@ -711,9 +711,10 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         expect(release.status).toBe(200);
         expect(await release.json()).toMatchObject({ released: true });
         expect((await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } })).status).toBe(426);
+        const currentEpoch = sql.exec<{ client_epoch: string }>('SELECT client_epoch FROM learning_reset_control WHERE singleton = 1').one().client_epoch;
         const freshWrite = await call(app, '/events', {
           token: 'valid-test-token', body: { events: [makeEvent()] },
-          extraHeaders: { [LEARNING_RESET_EPOCH_HEADER]: LEARNING_RESET_EPOCH },
+          extraHeaders: { [LEARNING_RESET_EPOCH_HEADER]: currentEpoch },
         });
         expect(freshWrite.status).toBe(200);
       } finally {

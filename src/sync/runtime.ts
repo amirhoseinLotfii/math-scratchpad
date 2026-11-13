@@ -8,6 +8,7 @@ import {
   isLearningStorageKey,
   isLocalLearningResetPending,
   queueLearnEvent,
+  reconcileServerLearningResetEpoch,
   readOutboxBatch,
   readOutboxCount,
   setSyncMeta,
@@ -17,7 +18,14 @@ import {
 
 import { SYNC_API_ORIGIN } from './sync-config';
 import { reportApiUnauthorized } from './api-unauthorized';
-import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from './learning-reset-epoch';
+import {
+  getStoredServerLearningResetEpoch,
+  isValidLearningResetEpoch,
+  LEARNING_RESET_EPOCH,
+  LEARNING_RESET_EPOCH_HEADER,
+  markLocalLearningResetPending,
+  requestLearningResetReload,
+} from './learning-reset-epoch';
 export { SYNC_API_ORIGIN } from './sync-config';
 const PAGE_LIMIT = 100;
 const MAX_PULL_PAGES_PER_RUN = 100;
@@ -90,6 +98,7 @@ export class BrowserSyncRuntime {
   private readonly listeners = new Set<() => void>();
   private current: SyncStatus = { phase: 'idle', pending: 0, driveMirror: null, notionMirror: null };
   private token: string | null = null;
+  private learningResetEpoch = LEARNING_RESET_EPOCH;
   private unsubscribeEvents?: () => void;
   private running?: Promise<void>;
   private mirrorStatusObservers = 0;
@@ -193,6 +202,39 @@ export class BrowserSyncRuntime {
     const value: unknown = await response.json();
     if (!isRecord(value) || !Array.isArray(value.records)) throw new Error('پاسخ وضعیت ذخیره‌سازی سرور معتبر نبود؛ همگام‌سازی متوقف ماند.');
     return value.records.some(record => isRecord(record) && typeof record.key === 'string' && isLearningStorageKey(record.key));
+  }
+
+  /** Read the owner-scoped generation before enabling sync or hydrating server-backed storage. */
+  async refreshServerResetEpoch(token?: string): Promise<boolean> {
+    const response = await this.request('/reset/epoch', { method: 'GET' }, token, true);
+    let epoch = LEARNING_RESET_EPOCH;
+    if (response.status !== 404) {
+      const value: unknown = await response.json();
+      if (!isRecord(value) || !isValidLearningResetEpoch(value.epoch)) {
+        throw new SyncRequestError('پاسخ نسل پاک‌سازی سرور معتبر نبود؛ همگام‌سازی متوقف ماند.', undefined, false);
+      }
+      epoch = value.epoch;
+    }
+
+    this.learningResetEpoch = epoch;
+    const storedEpoch = getStoredServerLearningResetEpoch();
+    const requiresReset = storedEpoch !== epoch && (storedEpoch !== null || epoch !== LEARNING_RESET_EPOCH);
+    if (requiresReset && getAuthenticatedServerStorage()) {
+      markLocalLearningResetPending();
+      this.token = null;
+      this.update({ phase: 'needs-auth', lastError: 'نسل پاک‌سازی سرور تغییر کرده؛ ذخیرهٔ قدیمی متوقف شد.' });
+      requestLearningResetReload();
+      return false;
+    }
+
+    const reset = await reconcileServerLearningResetEpoch(epoch);
+    if (reset) {
+      this.token = null;
+      this.update({ phase: 'needs-auth', lastError: 'نسل پاک‌سازی سرور تغییر کرده؛ ذخیرهٔ محلی پاک‌سازی شد.' });
+      if (this.started) requestLearningResetReload();
+      return false;
+    }
+    return true;
   }
 
   observeMirrorStatuses(): () => void {
@@ -369,7 +411,7 @@ export class BrowserSyncRuntime {
     this.keepaliveFlush = flush;
   }
 
-  private async request(path: string, init: RequestInit, tokenOverride?: string): Promise<Response> {
+  private async request(path: string, init: RequestInit, tokenOverride?: string, allowNotFound = false): Promise<Response> {
     const token = tokenOverride ?? this.token;
     if (!token) throw new SyncRequestError('Google sign-in is required.', 401, false);
     const isLearningWrite = init.method?.toUpperCase() === 'POST' && (path === '/events' || path === '/state');
@@ -383,7 +425,7 @@ export class BrowserSyncRuntime {
         headers: {
           ...(init.headers ?? {}),
           Authorization: `Bearer ${token}`,
-          ...(isLearningWrite ? { [LEARNING_RESET_EPOCH_HEADER]: LEARNING_RESET_EPOCH } : {}),
+          ...(isLearningWrite ? { [LEARNING_RESET_EPOCH_HEADER]: this.learningResetEpoch } : {}),
         },
       });
     } catch { throw new SyncRequestError('شبکه در دسترس نیست؛ داده‌ها در صف آفلاین می‌مانند.'); }
@@ -391,6 +433,26 @@ export class BrowserSyncRuntime {
       // An expired or revoked Worker session is forgotten so a fresh GIS login can mint a new one.
       reportApiUnauthorized(token);
       throw new SyncRequestError('ورود گوگل منقضی شده است؛ دوباره متصل شو.', 401, false);
+    }
+    if (response.status === 404 && allowNotFound) return response;
+    if (response.status === 426 && isLearningWrite) {
+      const body: unknown = await response.clone().json().catch(() => null);
+      const epoch = isRecord(body) && isValidLearningResetEpoch(body.requiredEpoch) ? body.requiredEpoch : null;
+      if (epoch) {
+        this.learningResetEpoch = epoch;
+        const storedEpoch = getStoredServerLearningResetEpoch();
+        if (storedEpoch !== epoch && (storedEpoch !== null || epoch !== LEARNING_RESET_EPOCH)) {
+          if (getAuthenticatedServerStorage()) {
+            markLocalLearningResetPending();
+            requestLearningResetReload();
+          } else {
+            await reconcileServerLearningResetEpoch(epoch);
+          }
+          this.token = null;
+          this.update({ phase: 'needs-auth', lastError: 'نسل پاک‌سازی سرور تغییر کرده؛ ذخیرهٔ قدیمی متوقف شد.' });
+        }
+      }
+      throw new SyncRequestError('نسل پاک‌سازی تغییر کرده؛ این داده ارسال نشد.', 426, false);
     }
     if (response.status === 429) {
       const seconds = Number(response.headers.get('Retry-After'));
@@ -501,6 +563,7 @@ export class BrowserSyncRuntime {
   private async runSync(): Promise<void> {
     this.update({ phase: 'syncing', lastError: undefined });
     try {
+      if (!(await this.refreshServerResetEpoch())) return;
       await this.pushOutbox();
       const hasMore = await this.pullEvents();
       const pending = await this.refreshCount();

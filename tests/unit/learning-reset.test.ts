@@ -8,6 +8,7 @@ import {
   LEARNING_SERVER_EVENTS_STORE,
   completeLocalLearningReset,
   getLearningDb,
+  reconcileServerLearningResetEpoch,
   initializeLearningStorage,
   isLocalLearningResetPending,
   prepareLocalLearningReset,
@@ -37,6 +38,30 @@ afterEach(async () => {
 });
 
 describe('coordinated local learning reset', () => {
+  it('clears queued events once for every new server reset generation', async () => {
+    await initializeLearningStorage();
+    const db = await getLearningDb();
+    await db.put(LEARNING_CACHE_STORE, {
+      key: 'math-scratchpad-session-v3', value: '{"answer":"before reset"}', updatedAt: new Date().toISOString(),
+    });
+    await queueLearnEvent(oldAnswer);
+
+    expect(await reconcileServerLearningResetEpoch('2026-11-12-v3')).toBe(false);
+    expect(await readOutboxCount()).toBe(1);
+
+    expect(await reconcileServerLearningResetEpoch('server-generation-one')).toBe(true);
+    expect(isLocalLearningResetPending()).toBe(true);
+    expect(await readOutboxCount()).toBe(0);
+    expect(await db.get(LEARNING_CACHE_STORE, 'math-scratchpad-session-v3')).toBeUndefined();
+    await completeLocalLearningReset();
+
+    await queueLearnEvent({ ...oldAnswer, id: 'reset-test-event-two' });
+    expect(await reconcileServerLearningResetEpoch('server-generation-one')).toBe(false);
+    expect(await readOutboxCount()).toBe(1);
+    expect(await reconcileServerLearningResetEpoch('server-generation-two')).toBe(true);
+    expect(await readOutboxCount()).toBe(0);
+  });
+
   it('clears data created while cloud cleanup was pending and preserves login, device, Drive, and bank data', async () => {
     await prepareLocalLearningReset();
     await initializeLearningStorage();

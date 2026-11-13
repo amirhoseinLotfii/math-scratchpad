@@ -249,6 +249,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   });
 
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
+  app.get('/reset/epoch', authorize, c => proxy(c, '/internal/learning-reset/epoch', 'GET'));
   app.get('/reset/preview', authorize, c => proxy(c, '/reset/preview', 'GET'));
   app.get('/state', authorize, c => proxy(c, '/state', 'GET'));
   app.post('/state', authorize, c => proxy(c, '/state', 'POST'));

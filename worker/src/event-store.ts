@@ -262,13 +262,14 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset') return this.executeLearningReset(request);
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset/release') return this.releaseLearningReset(request);
     if (request.method === 'GET' && url.pathname === '/internal/learning-reset/status') return this.learningResetStatus();
+    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/epoch') return this.learningResetEpoch();
     if (this.isLearningResetLocked() && this.isLearningOrMirrorRoute(url.pathname, request.method)) {
       return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
     }
     if (request.method === 'POST' && ['/events', '/state'].includes(url.pathname)) {
       const requiredEpoch = this.requiredLearningClientEpoch();
       if (requiredEpoch && request.headers.get(LEARNING_RESET_EPOCH_HEADER) !== requiredEpoch) {
-        return json({ error: 'client_update_required' }, 426);
+        return json({ error: 'client_update_required', requiredEpoch }, 426);
       }
     }
     if (request.method === 'POST' && url.pathname.startsWith('/internal/session/')) return this.handleSession(url.pathname, request);
@@ -341,6 +342,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return this.ctx.storage.sql.exec<{ client_epoch: string | null }>(
       `SELECT client_epoch FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
     ).toArray()[0]?.client_epoch ?? null;
+  }
+
+  private learningResetEpoch(): Response {
+    if (this.isLearningResetLocked()) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
+    return json({ epoch: this.requiredLearningClientEpoch() ?? LEARNING_RESET_EPOCH });
   }
 
   private isLearningOrMirrorRoute(pathname: string, method: string): boolean {
@@ -470,20 +476,23 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return json({ error: 'invalid_reset_request' }, 400);
     }
     const status = this.ctx.storage.transactionSync(() => {
-      const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null }>(
-        `SELECT status, reset_id FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
+      const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null; client_epoch: string | null }>(
+        `SELECT status, reset_id, client_epoch FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
       ).one();
       if (current.status === 'released' && current.reset_id === input.resetId) {
-        this.ctx.storage.sql.exec(
-          `UPDATE ${LEARNING_RESET_TABLE} SET client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
-          LEARNING_RESET_EPOCH, input.resetId,
-        );
+        if (!current.client_epoch) {
+          this.ctx.storage.sql.exec(
+            `UPDATE ${LEARNING_RESET_TABLE} SET client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
+            crypto.randomUUID(), input.resetId,
+          );
+        }
         return 'released';
       }
       if (current.status !== 'awaiting_release' || current.reset_id !== input.resetId) return 'not_ready';
+      const clientEpoch = crypto.randomUUID();
       this.ctx.storage.sql.exec(
         `UPDATE ${LEARNING_RESET_TABLE} SET status = 'released', client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
-        LEARNING_RESET_EPOCH, input.resetId,
+        clientEpoch, input.resetId,
       );
       return 'released';
     });

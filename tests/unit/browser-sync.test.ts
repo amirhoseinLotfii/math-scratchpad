@@ -42,6 +42,7 @@ import {
   verifyLegacyMigrationOnServer,
 } from '../../src/sync/legacy-migration';
 import { BrowserSyncRuntime } from '../../src/sync/runtime';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 const SESSION_KEY = 'math-scratchpad-session-v3';
 const LESSON_KEY = 'math-scratchpad-lesson-progress-v1:bank%2F1:v21';
@@ -770,7 +771,9 @@ describe('browser sync runtime', () => {
   it('retains every event when the server omits an acknowledgement ID', async () => {
     await initializeLearningStorage();
     await queueLearnEvent(fixtureEvent(101));
-    const fetcher = vi.fn(async () => Response.json({ events: [], cursor: 0 }));
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => new URL(String(input)).pathname === '/reset/epoch'
+      ? Response.json({ epoch: LEARNING_RESET_EPOCH })
+      : Response.json({ events: [], cursor: 0 }));
     const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
@@ -798,14 +801,16 @@ describe('browser sync runtime', () => {
     await initializeLearningStorage();
     const oversized = { ...fixtureEvent(103), questionText: 'x'.repeat(200_000) } as LearnEvent;
     await queueLearnEvent(oversized);
-    const fetcher = vi.fn();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => new URL(String(input)).pathname === '/reset/epoch'
+      ? Response.json({ epoch: LEARNING_RESET_EPOCH })
+      : Response.json({ events: [], cursor: 0 }));
     const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
     expect(runtime.getSnapshot()).toMatchObject({ phase: 'error', pending: 1 });
     expect(runtime.getSnapshot().lastError).toMatch(/حد مجاز سرور/);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.some(([input, init]) => new URL(String(input)).pathname === '/events' && init?.method === 'POST')).toBe(false);
     expect(await readOutboxCount()).toBe(1);
     runtime.stop();
   });
