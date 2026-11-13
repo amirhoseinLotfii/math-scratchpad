@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { resetLearningDatabase } from '../support/indexeddb';
+import { dismissWellbeing } from '../support/test';
 
 const views = [
   { width: 320, height: 740 },
@@ -18,8 +19,7 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
     await page.goto('/');
     await resetLearningDatabase(page);
     await page.goto('/e2e/fixtures/lesson-connected-preview.html');
-    const batchStart = page.getByRole('dialog', { name: 'Before you start this batch' });
-    if (await batchStart.isVisible().catch(() => false)) await batchStart.getByRole('button', { name: 'Skip for now' }).click();
+    await dismissWellbeing(page);
     await expect(page.getByText('Sample practice 1.')).toBeVisible();
     await expect(page.locator('.step.current-step')).toBeVisible();
     // The editor restores each test profile's keyboard preference asynchronously.
@@ -109,8 +109,7 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
   await page.goto('/');
   await resetLearningDatabase(page);
   await page.goto('/e2e/fixtures/lesson-connected-preview.html');
-  const batchStart = page.getByRole('dialog', { name: 'Before you start this batch' });
-  if (await batchStart.isVisible().catch(() => false)) await batchStart.getByRole('button', { name: 'Skip for now' }).click();
+  await dismissWellbeing(page);
   const exerciseMenu = page.getByRole('button', { name: 'Exercise menu' });
   await exerciseMenu.focus();
   await page.keyboard.press('Enter');

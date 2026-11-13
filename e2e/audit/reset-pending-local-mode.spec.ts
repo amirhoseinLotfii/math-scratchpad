@@ -132,7 +132,7 @@ test('stuck-phone.local-only-keeps-answers-and-releases-only-after-the-server', 
   const beforeReload = beforeReloadRecords.length;
   expect(beforeReload).toBeGreaterThanOrEqual(2);
   expect(candidateEvents.length).toBeGreaterThan(0);
-  expect(writes.length).toBe(writeCountAtPendingStart);
+  expect(writes.slice(writeCountAtPendingStart), 'no server writes while reset is awaiting release').toEqual([]);
   expect(await page.evaluate(() => (window as Window & { __resetPopupCalls?: number }).__resetPopupCalls ?? 0)).toBe(0);
   expect(googleRequests).toBe(googleRequestsBeforePending);
 
