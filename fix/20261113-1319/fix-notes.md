@@ -207,3 +207,15 @@ Timestamp: 2026-11-13 15:35 Asia/Tehran.
 - `git diff --check` passed. Gitleaks was NOT_RUN because the executable is absent in this runtime; this phase adds only focus handling and test code, with no credentials or secret material.
 - Next: AUD-008 mobile-320 visual CI failure.
 
+
+## Phase 17 — AUD-008 mobile visual baseline drift
+Timestamp: 2026-11-13 15:42 Asia/Tehran.
+
+- Reproduced the CI screenshot mismatch locally. At mobile-320 the current single-edit image differed by 27,477 pixels (11%); batch-edit differed by 26,971 (8%) and confidence by 30,872 (9%). The audit's original PR 92 run `43278685074` reported 27,690 pixels (11%) for single-edit. The mismatch also reproduced in all three states at mobile-390 and mobile-430 (about 8–11%).
+- Inspected expected, actual, and pixel-diff images. The current UI contains the newer Workspace selector and palette; the audit's Git history ties both to changes after the old baseline. The diff also includes editor-focus and modal-placement changes; their full history was not separately isolated. The initial app view at 320/390/430 has no horizontal overflow, verified separately.
+- Refreshed only the nine Linux snapshots for single-edit, batch-edit, and confidence at widths 320, 390, and 430. Linux is the renderer used by the configured `ubuntu-latest` CI. Windows snapshots were left as-is because this Linux runtime cannot generate Windows-rendered baselines.
+- Verification: visual matrix with snapshot updates completed 9/9; repeat run without update completed 9/9. The existing initial-layout overflow/menu test passed 3/3 at mobile-320, 390, and 430. `git diff --check` passed. This phase did not run the full test suite.
+- Status: AUD-008 FIXED for the Linux CI renderer by aligning baselines with the current reviewed UI; no frontend code changed. Local commit `4caa996b41af826ea1100828d398e1fded235e4c`; GitHub code branch commit `f00e16ddd7afa62e887444ee1638074be32a83a1`; local and remote tree both `4181ae33768933839edb961a9d380704ecd55bef`. No PR, merge, deployment, or live data change.
+- Gitleaks was NOT_RUN because the executable is absent in this runtime. The nine generated PNG baselines contain no credentials or secret material.
+- Next: AUD-014 queued-event suppression while reset is pending.
+
