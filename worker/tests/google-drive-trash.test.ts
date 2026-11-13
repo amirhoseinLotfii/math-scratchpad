@@ -48,8 +48,8 @@ function makeClient(fetchDrive: (url: URL, init: RequestInit) => Response | Prom
   return { client: new GoogleDriveClient(env, fetcher, () => Date.UTC(2026, 10, 12)), calls };
 }
 
-function fileMetadataResponse(trashed = false): Response {
-  return jsonResponse({ id: FILE_ID, mimeType: 'application/x-ndjson', parents: [PARENT_ID], trashed });
+function fileMetadataResponse(trashed = false, appProperties: Record<string, string> = { msOwner: 'math-scratchpad', msKind: 'events' }): Response {
+  return jsonResponse({ id: FILE_ID, mimeType: 'application/x-ndjson', parents: [PARENT_ID], trashed, appProperties });
 }
 
 describe('Google Drive learning mirror trash', () => {
@@ -67,7 +67,7 @@ describe('Google Drive learning mirror trash', () => {
       throw new Error(`Unexpected Drive request: ${init.method} ${url.pathname}`);
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).resolves.toBe(true);
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).resolves.toBe(true);
 
     expect(calls.map(({ url, init }) => `${init.method} ${url.pathname}`)).toEqual([
       `GET /drive/v3/files/${FILE_ID}`,
@@ -81,8 +81,37 @@ describe('Google Drive learning mirror trash', () => {
       return fileMetadataResponse(true);
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).resolves.toBe(false);
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).resolves.toBe(false);
     expect(calls).toHaveLength(1);
+  });
+
+  it('preserves a direct child without the matching application ownership marker', async () => {
+    const { client, calls } = makeClient(async () => fileMetadataResponse(false, { msOwner: 'notion-pomodoro', msKind: 'events' }));
+
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).resolves.toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('reads application ownership markers across every Drive result page', async () => {
+    const { client, calls } = makeClient(async url => {
+      if (!url.searchParams.has('pageToken')) {
+        return jsonResponse({
+          files: [{ id: 'owned-first', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: [PARENT_ID], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } }],
+          nextPageToken: 'page-two',
+        });
+      }
+      return jsonResponse({
+        files: [{ id: 'unmarked-second', name: 'progress.json', mimeType: 'application/json', parents: [PARENT_ID] }],
+      });
+    });
+
+    await expect(client.listFilesInFolder(PARENT_ID)).resolves.toEqual([
+      { id: 'owned-first', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: [PARENT_ID], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } },
+      { id: 'unmarked-second', name: 'progress.json', mimeType: 'application/json', parents: [PARENT_ID] },
+    ]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url.searchParams.get('fields')).toContain('appProperties');
+    expect(calls[1].url.searchParams.get('pageToken')).toBe('page-two');
   });
 
   it('maps a batch subrequest error to a sanitized Drive error and status stage', async () => {
@@ -92,7 +121,7 @@ describe('Google Drive learning mirror trash', () => {
       return batchResponse(403, { error: { message: 'private service response detail' } });
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'permission_denied' });
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).rejects.toMatchObject({ code: 'permission_denied' });
     expect(client.diagnosticStage).toBe('drive_trash_batch_http_403');
     expect(client.diagnosticStage).not.toContain('private');
   });
@@ -107,7 +136,7 @@ describe('Google Drive learning mirror trash', () => {
       throw failure;
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).rejects.toMatchObject({ code: 'network_error' });
     expect(client.diagnosticStage).toBe('drive_trash_fetch_rejected_connect_timeout');
     expect(client.diagnosticStage).not.toContain('private');
     expect(client.diagnosticStage).not.toContain('credentials');
@@ -170,7 +199,7 @@ describe('Google Drive learning mirror trash', () => {
       throw new Error('private mutation failure detail');
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).rejects.toMatchObject({ code: 'network_error' });
     expect(calls).toHaveLength(2);
     expect(client.diagnosticStage).toBe('drive_trash_fetch_rejected_generic_error');
     expect(client.diagnosticStage).not.toContain('private');
@@ -226,7 +255,7 @@ describe('Google Drive learning mirror trash', () => {
       return jsonResponse({ id: FILE_ID, trashed: true, parents: [PARENT_ID] });
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).rejects.toMatchObject({ code: 'invalid_response' });
     expect(client.diagnosticStage).toBe('drive_trash_http_200');
   });
 
@@ -236,7 +265,7 @@ describe('Google Drive learning mirror trash', () => {
       return jsonResponse({ id: FILE_ID, mimeType: 'application/x-ndjson', parents: ['different-folder'], trashed: false });
     });
 
-    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID)).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(client.trashFileInFolder(FILE_ID, PARENT_ID, 'events')).rejects.toMatchObject({ code: 'invalid_response' });
     expect(calls).toHaveLength(1);
   });
 });

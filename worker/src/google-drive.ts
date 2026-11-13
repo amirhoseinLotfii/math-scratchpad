@@ -35,8 +35,10 @@ export class DriveMirrorError extends Error {
 export type DriveFileRef = { id: string; etag: string };
 export type DriveFileContent = DriveFileRef & { content: string };
 export type DriveSnapshotRef = { id: string; name: string; sha256: string };
-export type DriveFolderChild = { id: string; name: string; mimeType: string; parents: string[] };
-type DriveFileMetadata = { id?: unknown; name?: unknown; mimeType?: unknown; parents?: unknown; trashed?: unknown };
+export type DriveMirrorKind = 'events' | 'state' | 'backups';
+export const MATH_SCRATCHPAD_DRIVE_OWNER = 'math-scratchpad';
+export type DriveFolderChild = { id: string; name: string; mimeType: string; parents: string[]; appProperties?: Record<string, string> };
+type DriveFileMetadata = { id?: unknown; name?: unknown; mimeType?: unknown; parents?: unknown; trashed?: unknown; appProperties?: unknown };
 type MergeContent = (remote: string, desired: string) => string;
 type DriveRequestStage =
   | 'drive_folder_lookup'
@@ -47,6 +49,34 @@ type DriveRequestStage =
   | 'drive_update'
   | 'drive_trash'
   | 'drive_upload';
+
+type MirrorAppProperties = { msOwner: string; msKind: DriveMirrorKind | 'other' };
+
+function mirrorKindForName(name: string): DriveMirrorKind | 'other' {
+  if (/^events_\d{4}-\d{2}\.jsonl$/i.test(name)) return 'events';
+  if (/^sync_backup_\d{4}-\d{2}-\d{2}\.json$/i.test(name)) return 'backups';
+  if (/^(?:progress|editor_state|sync_manifest|server_state)\.json$/i.test(name)) return 'state';
+  return 'other';
+}
+
+function mirrorAppProperties(kind: DriveMirrorKind | 'other'): MirrorAppProperties {
+  return { msOwner: MATH_SCRATCHPAD_DRIVE_OWNER, msKind: kind };
+}
+
+export function hasLearningMirrorOwnership(value: unknown, expectedKind?: DriveMirrorKind | 'other'): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const properties = value as Record<string, unknown>;
+  return properties.msOwner === MATH_SCRATCHPAD_DRIVE_OWNER
+    && (expectedKind ? properties.msKind === expectedKind : ['events', 'state', 'backups'].includes(String(properties.msKind)));
+}
+
+function parseAppProperties(value: unknown): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DriveMirrorError('invalid_response');
+  const properties = value as Record<string, unknown>;
+  if (Object.values(properties).some(property => typeof property !== 'string')) throw new DriveMirrorError('invalid_response');
+  return properties as Record<string, string>;
+}
 
 /**
  * Minimal Drive v3 client for the owner-only mirror. It never calls the
@@ -124,7 +154,7 @@ export class GoogleDriveClient {
       q: `'${escapeQuery(parentId)}' in parents and trashed = false`,
       spaces: 'drive',
       pageSize: '1000',
-      fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed)',
+      fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed,appProperties)',
     });
     const files = await this.listFiles(query, file => file.trashed !== true
       && Array.isArray(file.parents) && file.parents.includes(parentId), 'drive_file_lookup');
@@ -134,19 +164,27 @@ export class GoogleDriveClient {
         || !file.parents.every(parent => typeof parent === 'string')) {
         throw new DriveMirrorError('invalid_response');
       }
-      return { id: file.id, name: file.name, mimeType: file.mimeType, parents: file.parents as string[] };
+      const appProperties = parseAppProperties(file.appProperties);
+      return {
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        parents: file.parents as string[],
+        ...(appProperties ? { appProperties } : {}),
+      };
     });
   }
 
   /** Move a verified direct child file to Drive trash; never deletes folders. */
-  async trashFileInFolder(id: string, parentId: string): Promise<boolean> {
-    const metadata = await this.readFileMetadata(id, 'id,mimeType,parents,trashed');
+  async trashFileInFolder(id: string, parentId: string, expectedKind: DriveMirrorKind): Promise<boolean> {
+    const metadata = await this.readFileMetadata(id, 'id,mimeType,parents,trashed,appProperties');
     const parents = metadata.parents;
     if (metadata.id !== id || metadata.trashed === true || metadata.mimeType === FOLDER_MIME_TYPE
       || !Array.isArray(parents) || !parents.includes(parentId)) {
       if (metadata.trashed === true) return false;
       throw new DriveMirrorError('invalid_response');
     }
+    if (!hasLearningMirrorOwnership(metadata.appProperties, expectedKind)) return false;
     const boundary = `mathscratchpad_reset_${crypto.randomUUID().replace(/-/g, '')}`;
     const patchBody = JSON.stringify({ trashed: true });
     const path = `/drive/v3/files/${encodeURIComponent(id)}?fields=id%2Ctrashed%2Cparents`;
@@ -185,9 +223,10 @@ export class GoogleDriveClient {
     content: string;
   }): Promise<DriveSnapshotRef> {
     const name = await snapshotName(input.logicalName, input.content);
+    const kind = mirrorKindForName(input.logicalName);
     const store: SnapshotStore = {
       find: candidate => this.findFileIds(candidate, input.parentId, input.mimeType),
-      create: candidate => this.createSnapshotFile(candidate, input.parentId, input.mimeType, input.content),
+      create: candidate => this.createSnapshotFile(candidate, input.parentId, input.mimeType, input.content, kind),
       read: id => this.readTextContent(id),
     };
     try {
@@ -321,25 +360,27 @@ export class GoogleDriveClient {
     return found;
   }
 
-  private async createSnapshotFile(name: string, parentId: string, mimeType: string, content: string): Promise<string> {
+  private async createSnapshotFile(name: string, parentId: string, mimeType: string, content: string, kind: DriveMirrorKind | 'other'): Promise<string> {
+    const appProperties = mirrorAppProperties(kind);
+    const fields = 'id,name,mimeType,parents,appProperties';
     let response: Response;
     if (utf8Length(content) > MULTIPART_UPLOAD_LIMIT_BYTES) {
       response = await this.resumableUpload({
-        url: `${DRIVE_UPLOAD_API}?uploadType=resumable&fields=id,name,mimeType,parents`,
+        url: `${DRIVE_UPLOAD_API}?uploadType=resumable&fields=${encodeURIComponent(fields)}`,
         method: 'POST',
         mimeType,
         content,
-        metadata: { name, mimeType, parents: [parentId] },
+        metadata: { name, mimeType, parents: [parentId], appProperties },
       });
     } else {
       const boundary = `mathscratchpad_${crypto.randomUUID().replace(/-/g, '')}`;
-      const metadata = JSON.stringify({ name, mimeType, parents: [parentId] });
+      const metadata = JSON.stringify({ name, mimeType, parents: [parentId], appProperties });
       const body = [
         `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
         `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n${content}\r\n`,
         `--${boundary}--`,
       ].join('');
-      response = await this.apiFetch(`${DRIVE_UPLOAD_API}?uploadType=multipart&fields=id,name,mimeType,parents`, {
+      response = await this.apiFetch(`${DRIVE_UPLOAD_API}?uploadType=multipart&fields=${encodeURIComponent(fields)}`, {
         method: 'POST',
         headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
         body,
@@ -348,25 +389,30 @@ export class GoogleDriveClient {
     if (!response.ok) throw errorForStatus(response.status);
     const file = await readJson<DriveFileMetadata>(response);
     if (typeof file.id !== 'string' || file.name !== name || file.mimeType !== mimeType
-      || !Array.isArray(file.parents) || !file.parents.includes(parentId)) {
+      || !Array.isArray(file.parents) || !file.parents.includes(parentId)
+      || !hasLearningMirrorOwnership(file.appProperties, kind)) {
       throw new DriveMirrorError('invalid_response');
     }
     return file.id;
   }
 
   private async createTextFile(name: string, parentId: string, mimeType: string, content: string): Promise<DriveFileContent> {
+    const kind = mirrorKindForName(name);
+    const appProperties = mirrorAppProperties(kind);
+    const fields = 'id,name,mimeType,parents,appProperties';
     if (utf8Length(content) > MULTIPART_UPLOAD_LIMIT_BYTES) {
       const response = await this.resumableUpload({
-        url: `${DRIVE_UPLOAD_API}?uploadType=resumable&fields=id,name,mimeType,parents`,
+        url: `${DRIVE_UPLOAD_API}?uploadType=resumable&fields=${encodeURIComponent(fields)}`,
         method: 'POST',
         mimeType,
         content,
-        metadata: { name, mimeType, parents: [parentId] },
+        metadata: { name, mimeType, parents: [parentId], appProperties },
       });
       if (!response.ok) throw errorForStatus(response.status);
       const file = await readJson<DriveFileMetadata>(response);
       if (typeof file.id !== 'string' || file.name !== name || file.mimeType !== mimeType
-        || !Array.isArray(file.parents) || !file.parents.includes(parentId)) {
+        || !Array.isArray(file.parents) || !file.parents.includes(parentId)
+        || !hasLearningMirrorOwnership(file.appProperties, kind)) {
         throw new DriveMirrorError('invalid_response');
       }
       const etag = response.headers.get('ETag');
@@ -377,13 +423,13 @@ export class GoogleDriveClient {
     }
 
     const boundary = `mathscratchpad_${crypto.randomUUID().replace(/-/g, '')}`;
-    const metadata = JSON.stringify({ name, mimeType, parents: [parentId] });
+    const metadata = JSON.stringify({ name, mimeType, parents: [parentId], appProperties });
     const body = [
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
       `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n${content}\r\n`,
       `--${boundary}--`,
     ].join('');
-    const response = await this.apiFetch(`${DRIVE_UPLOAD_API}?uploadType=multipart&fields=id,name,mimeType,parents`, {
+    const response = await this.apiFetch(`${DRIVE_UPLOAD_API}?uploadType=multipart&fields=${encodeURIComponent(fields)}`, {
       method: 'POST',
       headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body,
@@ -391,7 +437,8 @@ export class GoogleDriveClient {
     if (!response.ok) throw errorForStatus(response.status);
     const file = await readJson<DriveFileMetadata>(response);
     if (typeof file.id !== 'string' || file.name !== name || file.mimeType !== mimeType
-      || !Array.isArray(file.parents) || !file.parents.includes(parentId)) {
+      || !Array.isArray(file.parents) || !file.parents.includes(parentId)
+      || !hasLearningMirrorOwnership(file.appProperties, kind)) {
       throw new DriveMirrorError('invalid_response');
     }
     const etag = response.headers.get('ETag');

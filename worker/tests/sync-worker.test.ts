@@ -525,8 +525,9 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
           'events-folder': folder('events-folder', 'events', 'sync-folder'),
           'state-folder': folder('state-folder', 'state', 'sync-folder'),
         };
-        let stateFiles = Array.from({ length: 30 }, (_, index) => ({
+        let stateFiles: Array<{ id: string; name: string; mimeType: string; parents: string[]; appProperties?: Record<string, string> }> = Array.from({ length: 30 }, (_, index) => ({
           id: `mirror-${index}`, name: `progress.sha256-${index.toString(16).padStart(64, '0')}.json`, mimeType: 'application/json', parents: ['state-folder'],
+          appProperties: { msOwner: 'math-scratchpad', msKind: 'state' },
         }));
         stateFiles.push({ id: 'keep-notes', name: 'notes.txt', mimeType: 'text/plain', parents: ['state-folder'] });
         target.driveClient = {
@@ -630,19 +631,22 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
           'state-folder': { id: 'state-folder', name: 'state', mimeType: 'application/vnd.google-apps.folder', parents: ['sync-folder'], trashed: false },
           'backup-folder': { id: 'backup-folder', name: '06_Backups', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
         };
-        const child = (id: string, name: string, parentId: string, mimeType = 'application/json') => ({ id, name, mimeType, parents: [parentId] });
+        const child = (id: string, name: string, parentId: string, mimeType = 'application/json', kind?: 'events' | 'state' | 'backups') => ({
+          id, name, mimeType, parents: [parentId],
+          ...(kind ? { appProperties: { msOwner: 'math-scratchpad', msKind: kind } } : {}),
+        });
         const filesByFolder = new Map([
           ['events-folder', [
-            child('mirror-events', 'events_2026-11.jsonl', 'events-folder', 'application/x-ndjson'),
-            child('bank-protected', 'progress.json', 'events-folder'),
+            child('mirror-events', 'events_2026-11.jsonl', 'events-folder', 'application/x-ndjson', 'events'),
             child('course-source', 'lesson-source.pdf', 'events-folder', 'application/pdf'),
             child('nested-folder', 'nested', 'events-folder', 'application/vnd.google-apps.folder'),
           ]],
           ['state-folder', [
-            child('mirror-progress', 'progress.json', 'state-folder'),
+            child('bank-protected', 'progress.json', 'state-folder', 'application/json', 'state'),
+            child('mirror-progress', 'progress.json', 'state-folder', 'application/json', 'state'),
             child('unrelated-state', 'notes.txt', 'state-folder', 'text/plain'),
           ]],
-          ['backup-folder', [child('mirror-backup', 'sync_backup_2026-11-12.json', 'backup-folder')]],
+          ['backup-folder', [child('mirror-backup', 'sync_backup_2026-11-12.json', 'backup-folder', 'application/json', 'backups')]],
         ]);
         const trashed: Array<{ id: string; parentId: string }> = [];
         target.driveClient = {

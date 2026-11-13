@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
 import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
-import { DriveMirrorError, GoogleDriveClient, type DriveFileRef, type DriveMirrorErrorCode, type DriveFolderChild, type DriveSnapshotRef } from './google-drive';
+import { DriveMirrorError, GoogleDriveClient, hasLearningMirrorOwnership, type DriveFileRef, type DriveMirrorErrorCode, type DriveFolderChild, type DriveMirrorKind, type DriveSnapshotRef } from './google-drive';
 import { snapshotName } from './immutable-snapshot';
 import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from './session';
 import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
@@ -529,20 +529,23 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (!syncId) return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 1 };
     await this.assertDriveFolder(client, syncId, '03_Sync', rootId);
 
-    const targetFolders: Array<{ id: string; parentId: string; name: string }> = [{ id: syncId, parentId: rootId, name: '03_Sync' }];
+    const targetFolders: Array<{ id: string; parentId: string; kind: DriveMirrorKind }> = [
+      { id: syncId, parentId: rootId, kind: 'state' },
+    ];
     for (const name of ['events', 'state'] as const) {
       const storedId = stored?.[name === 'events' ? 'eventsId' : 'stateId'];
       const id = storedId ?? await client.findFolderId(name, syncId);
       if (id) {
         await this.assertDriveFolder(client, id, name, syncId);
-        targetFolders.push({ id, parentId: syncId, name });
+        targetFolders.push({ id, parentId: syncId, kind: name });
       }
     }
     const backupsId = stored?.backupsId ?? await client.findFolderId('06_Backups', rootId);
     if (backupsId) {
       await this.assertDriveFolder(client, backupsId, '06_Backups', rootId);
-      targetFolders.push({ id: backupsId, parentId: rootId, name: '06_Backups' });
+      targetFolders.push({ id: backupsId, parentId: rootId, kind: 'backups' });
     }
+    const foldersFound = targetFolders.length + 1;
 
     let movedToTrash = 0;
     let inspectedFiles = 0;
@@ -559,18 +562,18 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           preservedFiles += 1;
           continue;
         }
-        if (!isLearningMirrorFileName(child.name)) {
+        if (!isLearningMirrorFileName(child.name) || !hasLearningMirrorOwnership(child.appProperties, folder.kind)) {
           preservedFiles += 1;
           continue;
         }
         if (trashAttempts >= LEARNING_RESET_TRASH_PER_CALL) {
-          return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound: targetFolders.length + 1, remainingLearningMirrors: true };
+          return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound, remainingLearningMirrors: true };
         }
         trashAttempts += 1;
-        if (await client.trashFileInFolder(child.id, folder.id)) movedToTrash += 1;
+        if (await client.trashFileInFolder(child.id, folder.id, folder.kind)) movedToTrash += 1;
       }
     }
-    return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound: targetFolders.length + 1 };
+    return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound };
   }
 
   private async assertDriveFolder(client: GoogleDriveClient, id: string, name: string, parentId: string): Promise<void> {

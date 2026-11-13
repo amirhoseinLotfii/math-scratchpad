@@ -291,8 +291,9 @@ describe('Google Drive REST client', () => {
       requests.push({ path: url.pathname, method, body });
       if (url.pathname === '/drive/v3/files' && method === 'GET') return jsonResponse({ files: [] });
       if (url.pathname === '/upload/drive/v3/files' && method === 'POST') {
-        expect(body).toContain('name');
-        return jsonResponse({ id: 'new-file', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: ['events-folder'] }, 200, { ETag: '"v1"' });
+        expect(body).toContain('"msOwner":"math-scratchpad"');
+        expect(body).toContain('"msKind":"events"');
+        return jsonResponse({ id: 'new-file', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: ['events-folder'], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } }, 200, { ETag: '"v1"' });
       }
       throw new Error(`Unexpected Drive request: ${method} ${url.pathname}`);
     });
@@ -321,9 +322,11 @@ describe('Google Drive REST client', () => {
       }
       if (url.pathname === '/upload/drive/v3/files' && method === 'POST') {
         expect(String(init.body)).toContain(physicalName);
+        expect(String(init.body)).toContain('"msOwner":"math-scratchpad"');
+        expect(String(init.body)).toContain('"msKind":"events"');
         created = true;
         storedContent = content;
-        return jsonResponse({ id: 'snapshot-1', name: physicalName, mimeType: 'application/x-ndjson', parents: ['events-folder'] });
+        return jsonResponse({ id: 'snapshot-1', name: physicalName, mimeType: 'application/x-ndjson', parents: ['events-folder'], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } });
       }
       if (url.pathname === '/drive/v3/files/snapshot-1' && url.searchParams.get('alt') === 'media') {
         return new Response(storedContent, { status: 200 });
@@ -340,7 +343,7 @@ describe('Google Drive REST client', () => {
 
   it('uses resumable uploads above 5 MB and verifies the created file metadata', async () => {
     const content = 'x'.repeat(5 * 1024 * 1024 + 1);
-    const requests: Array<{ path: string; method: string; uploadLength?: string; ifMatch?: string; bodyLength: number }> = [];
+    const requests: Array<{ path: string; method: string; uploadLength?: string; ifMatch?: string; bodyLength: number; metadata?: string }> = [];
     const fetcher = withGoogleAuth((url, init) => {
       const headers = new Headers(init.headers);
       const body = typeof init.body === 'string' ? init.body : '';
@@ -350,6 +353,7 @@ describe('Google Drive REST client', () => {
         uploadLength: headers.get('X-Upload-Content-Length') ?? undefined,
         ifMatch: headers.get('If-Match') ?? undefined,
         bodyLength: body.length,
+        metadata: url.pathname === '/upload/drive/v3/files' && init.method === 'POST' ? body : undefined,
       });
       if (url.pathname === '/drive/v3/files' && init.method === 'GET') return jsonResponse({ files: [] });
       if (url.pathname === '/upload/drive/v3/files' && init.method === 'POST') {
@@ -357,7 +361,7 @@ describe('Google Drive REST client', () => {
         return new Response(null, { status: 200, headers: { Location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=test-upload' } });
       }
       if (url.searchParams.get('upload_id') === 'test-upload' && init.method === 'PUT') {
-        return jsonResponse({ id: 'large-file', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: ['events-folder'] }, 200, { ETag: '"large-v1"' });
+        return jsonResponse({ id: 'large-file', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: ['events-folder'], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } }, 200, { ETag: '"large-v1"' });
       }
       throw new Error(`Unexpected Drive request: ${init.method ?? 'GET'} ${url.pathname}`);
     });
@@ -369,6 +373,7 @@ describe('Google Drive REST client', () => {
     expect(saved).toEqual({ id: 'large-file', etag: '"large-v1"', content });
     expect(requests.map(request => request.method)).toEqual(['GET', 'POST', 'PUT']);
     expect(requests[1]).toMatchObject({ uploadLength: String(5 * 1024 * 1024 + 1), bodyLength: expect.any(Number) });
+    expect(JSON.parse(requests[1].metadata!).appProperties).toEqual({ msOwner: 'math-scratchpad', msKind: 'events' });
     expect(requests[2]).toMatchObject({ bodyLength: content.length });
   });
 
