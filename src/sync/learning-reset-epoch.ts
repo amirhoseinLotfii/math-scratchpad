@@ -57,6 +57,15 @@ export async function fetchWithServerWriteGuard(
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return fetcher(input, init);
   if (!canWriteToServer()) throw new ServerWriteBlockedError();
 
+  // A browser may abort a keepalive request when its document is discarded if the
+  // request carries an AbortSignal. Check the shared guard before and after send;
+  // the Worker remains authoritative while this unload-safe request is in flight.
+  if (init.keepalive) {
+    const response = await fetcher(input, init);
+    if (!canWriteToServer()) throw new ServerWriteBlockedError();
+    return response;
+  }
+
   const controller = new AbortController();
   const callerSignal = init.signal;
   const abortFromCaller = () => controller.abort(callerSignal?.reason);

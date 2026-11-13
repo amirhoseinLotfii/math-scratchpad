@@ -4,7 +4,7 @@ import { verifyGoogleIdToken } from './auth';
 import { readBoundedBody } from './body';
 import type { GoogleIdentity, WorkerEnv } from './env';
 import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSessionToken } from './session';
-import { LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
+import { isValidLearningResetEpoch, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 
 const MAX_BODY_BYTES = 250_000;
 const MAX_STATE_BODY_BYTES = 2_100_000;
@@ -259,6 +259,48 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     return finalizeResponse(response, c);
   });
 
+  // pagehide uses sendBeacon with a safelisted text/plain body so a CORS preflight
+  // cannot prevent the browser from queueing the request during document teardown.
+  app.post('/events/beacon', async c => {
+    const allowedOrigin = c.env.ALLOWED_ORIGIN || PAGES_ORIGIN;
+    if (c.req.header('Origin') !== allowedOrigin) return finalizeResponse(jsonError('origin_not_allowed', 403), c);
+    if (c.req.header('Content-Type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'text/plain') {
+      return finalizeResponse(jsonError('invalid_content_type', 415), c);
+    }
+    const declaredLength = Number(c.req.header('Content-Length') ?? 0);
+    if (declaredLength > MAX_BODY_BYTES) return finalizeResponse(jsonError('payload_too_large', 413), c);
+    const raw = await readBoundedBody(c.req.raw, MAX_BODY_BYTES);
+    if (!raw) return finalizeResponse(jsonError('payload_too_large', 413), c);
+    let input: { sessionToken?: unknown; epoch?: unknown; events?: unknown };
+    try { input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)) ?? {}; }
+    catch { return finalizeResponse(jsonError('invalid_beacon_payload', 400), c); }
+    if (typeof input.sessionToken !== 'string' || input.sessionToken.length > 10_000
+      || !isSessionToken(input.sessionToken) || !isWellFormedSessionToken(input.sessionToken)) {
+      return finalizeResponse(jsonError('unauthorized', 401), c);
+    }
+    if (!isValidLearningResetEpoch(input.epoch) || !Array.isArray(input.events)
+      || input.events.length < 1 || input.events.length > 50) {
+      return finalizeResponse(jsonError('invalid_beacon_payload', 400), c);
+    }
+    const verified = await internalJson('/internal/session/verify', {
+      tokenHash: await hashSessionToken(input.sessionToken),
+    }, c.env);
+    if (!verified.ok) return finalizeResponse(jsonError(verified.status === 401 ? 'session_invalid' : 'unauthorized', 401), c);
+    const record = await verified.json() as { email?: unknown; sub?: unknown };
+    if (typeof record.email !== 'string' || typeof record.sub !== 'string') {
+      return finalizeResponse(jsonError('unauthorized', 401), c);
+    }
+    const identity: GoogleIdentity = { sub: record.sub, email: record.email, email_verified: true };
+    if (!isOwner(identity, c.env)) return finalizeResponse(jsonError('unauthorized', 401), c);
+
+    const id = c.env.EVENT_STORE.idFromName(identity.email.trim().toLowerCase());
+    const response = await c.env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', [LEARNING_RESET_EPOCH_HEADER]: input.epoch },
+      body: JSON.stringify({ events: input.events }),
+    }));
+    return finalizeResponse(response, c);
+  });
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
   app.get('/reset/epoch', authorize, c => proxy(c, '/internal/learning-reset/epoch', 'GET'));
   app.get('/reset/preview', authorize, c => proxy(c, '/reset/preview', 'GET'));

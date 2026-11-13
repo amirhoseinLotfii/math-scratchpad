@@ -16,6 +16,7 @@ import {
   setSyncMeta,
   storeServerEvents,
   updateAuthenticatedServerToken,
+  type OutboxRecord,
 } from './browser-db';
 
 import { SYNC_API_ORIGIN } from './sync-config';
@@ -108,6 +109,7 @@ export class BrowserSyncRuntime {
   private readonly scheduleTimeout: typeof globalThis.setTimeout;
   private readonly cancelTimeout: typeof globalThis.clearTimeout;
   private readonly listeners = new Set<() => void>();
+  private readonly keepaliveOutbox = new Map<string, OutboxRecord>();
   private current: SyncStatus = { phase: 'idle', pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
   private token: string | null = null;
   private deferredToken: string | null = null;
@@ -118,7 +120,8 @@ export class BrowserSyncRuntime {
   private retryTimer?: ReturnType<typeof setTimeout>;
   private debounceTimer?: ReturnType<typeof setTimeout>;
   private maxWaitTimer?: ReturnType<typeof setTimeout>;
-  private keepaliveFlush?: Promise<void>;
+  private keepaliveFlushInProgress = false;
+  private readonly beaconQueuedEventIds = new Set<string>();
   private retryAttempt = 0;
   private resetPollAttempt = 0;
   private resetPollTimer?: ReturnType<typeof setTimeout>;
@@ -164,8 +167,9 @@ export class BrowserSyncRuntime {
       return;
     }
     this.token = this.deferredToken;
+    this.beaconQueuedEventIds.clear();
     if (this.token) updateAuthenticatedServerToken(this.token);
-    void this.refreshCountAndTrigger().then(() => { if (this.token) void this.syncNow(); });
+    void this.refreshKeepaliveOutbox().then(() => this.refreshCountAndTrigger()).then(() => { if (this.token) void this.syncNow(); });
   };
 
   async start(): Promise<void> {
@@ -175,7 +179,10 @@ export class BrowserSyncRuntime {
     markServerResetStatusUnknown();
     window.addEventListener(SERVER_WRITE_GUARD_CHANGED_EVENT, this.onServerWriteGuardChanged);
     this.unsubscribeEvents = subscribeToLearnEvents(event => {
-      void queueLearnEvent(event).then(() => this.refreshCountAndTrigger()).catch(() => {
+      void queueLearnEvent(event).then(() => {
+        this.keepaliveOutbox.set(event.id, { id: event.id, event, queuedAt: event.ts, creationEpoch: this.learningResetEpoch });
+        return this.refreshCountAndTrigger();
+      }).catch(() => {
         this.update({ phase: 'error', lastError: 'رویداد در صف آفلاین ذخیره نشد؛ اتصال یا فضای مرورگر را بررسی کن.' });
       });
     });
@@ -187,6 +194,7 @@ export class BrowserSyncRuntime {
     const resetStatusCheck = this.refreshResetStatus();
     await this.refreshCount();
     await resetStatusCheck;
+    await this.refreshKeepaliveOutbox().catch(() => {});
     if (!this.canWriteToServer()) return;
     void this.syncNow();
   }
@@ -203,6 +211,8 @@ export class BrowserSyncRuntime {
     this.resetPollTimer = undefined;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.clearEventFlushTimers();
+    this.keepaliveFlushInProgress = false;
+    this.beaconQueuedEventIds.clear();
     this.retryTimer = undefined; this.started = false;
   }
 
@@ -459,6 +469,12 @@ export class BrowserSyncRuntime {
     return pending;
   }
 
+  private async refreshKeepaliveOutbox(): Promise<void> {
+    const batch = await readOutboxBatch(MAX_BATCH_EVENTS);
+    this.keepaliveOutbox.clear();
+    for (const record of batch) this.keepaliveOutbox.set(record.id, record);
+  }
+
   private async refreshCountAndTrigger() {
     const pending = await this.refreshCount();
     if (!this.canWriteToServer()) return;
@@ -492,21 +508,57 @@ export class BrowserSyncRuntime {
 
   private onWake = () => {
     if (!this.started || navigator.onLine === false) return;
+    this.beaconQueuedEventIds.clear();
     void this.refreshResetStatus().then(() => { if (this.canWriteToServer()) void this.syncNow(); });
   };
   private onVisibilityChange = () => {
     if (document.visibilityState === 'visible') this.onWake();
     else this.flushKeepaliveBatch();
   };
-  private onPageHide = () => this.flushKeepaliveBatch();
+  private onPageHide = () => {
+    this.flushKeepaliveBatch();
+  };
 
   private flushKeepaliveBatch(): void {
-    if (!this.started || !this.token || this.running || this.keepaliveFlush || !this.canWriteToServer() || navigator.onLine === false) return;
+    if (!this.started || !this.token || this.keepaliveFlushInProgress || !this.canWriteToServer() || navigator.onLine === false) return;
     this.clearEventFlushTimers();
-    const flush = this.pushOutbox({ keepalive: true, maxBytes: MAX_KEEPALIVE_BATCH_BYTES }).catch(() => {
+    // The page may be discarded before an async fetch starts. Queue a simple beacon synchronously;
+    // the Worker authenticates its session token and deduplicates IDs when the durable outbox retries.
+    const available = [...this.keepaliveOutbox.values()]
+      .filter(record => !this.beaconQueuedEventIds.has(record.id))
+      .slice(0, MAX_BATCH_EVENTS);
+    if (!available.length) return;
+
+    const selected: OutboxRecord[] = [];
+    let payload = '';
+    for (const record of available) {
+      const next = [...selected, record];
+      const candidate = JSON.stringify({
+        sessionToken: this.token,
+        epoch: this.learningResetEpoch,
+        events: next.map(item => item.event),
+      });
+      if (new TextEncoder().encode(candidate).byteLength > MAX_KEEPALIVE_BATCH_BYTES) break;
+      selected.push(record);
+      payload = candidate;
+    }
+    if (!selected.length) return;
+
+    try {
+      const queued = typeof navigator.sendBeacon === 'function'
+        && navigator.sendBeacon(`${this.apiOrigin}/events/beacon`, new Blob([payload], { type: 'text/plain;charset=UTF-8' }));
+      if (queued) {
+        for (const record of selected) this.beaconQueuedEventIds.add(record.id);
+        return;
+      }
+    } catch {
+      // Fall through to fetch keepalive for browsers that reject or lack sendBeacon.
+    }
+
+    this.keepaliveFlushInProgress = true;
+    void this.pushOutbox({ keepalive: true, maxBytes: MAX_KEEPALIVE_BATCH_BYTES }).catch(() => {
       // The durable outbox remains the source of truth and will retry on the next visit.
-    }).finally(() => { if (this.keepaliveFlush === flush) this.keepaliveFlush = undefined; });
-    this.keepaliveFlush = flush;
+    }).finally(() => { this.keepaliveFlushInProgress = false; });
   }
 
   private async request(path: string, init: RequestInit, tokenOverride?: string, allowNotFound = false): Promise<Response> {
@@ -589,7 +641,9 @@ export class BrowserSyncRuntime {
     const maxBytes = options.maxBytes ?? MAX_BATCH_BYTES;
     while (true) {
       if (isLocalLearningResetPending()) return;
-      const batch = await readOutboxBatch(MAX_BATCH_EVENTS);
+      const batch = options.keepalive
+        ? [...this.keepaliveOutbox.values()].slice(0, MAX_BATCH_EVENTS)
+        : await readOutboxBatch(MAX_BATCH_EVENTS);
       if (!batch.length) return;
       const selected: typeof batch = [];
       let bytes = 2;
@@ -620,7 +674,13 @@ export class BrowserSyncRuntime {
       if (!this.canWriteToServer()) {
         throw new SyncRequestError('پاک‌سازی هنگام ارسال آغاز شد؛ رویدادها تا تأیید دوباره در صف ماندند.', 409, false);
       }
-      await acknowledgeOutbox(confirmed.map(item => item.id));
+      const confirmedIds = confirmed.map(item => item.id);
+      await acknowledgeOutbox(confirmedIds);
+      for (const id of confirmedIds) {
+        this.keepaliveOutbox.delete(id);
+        this.beaconQueuedEventIds.delete(id);
+      }
+      if (options.keepalive) await this.refreshKeepaliveOutbox();
       await this.refreshCount();
       if (options.keepalive) return;
     }

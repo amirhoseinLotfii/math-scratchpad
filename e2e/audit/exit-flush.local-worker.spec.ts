@@ -1,32 +1,25 @@
 import { expect, test } from '../support/test';
 import { GOOGLE_AUTH_BUTTON_NAME, installFakeGoogleAuth, openSyncPanel } from '../support/sync-panel';
 
-const productionApi = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
 const localApi = 'http://127.0.0.1:8789';
 
 type StoredEvent = { id: string; event: { id: string; type?: string; steps?: string[] } };
 type WorkerSnapshot = { events: Array<{ seq: number; event: { id: string } }>; cursor: number; through: number; snapshotCursor: number; hasMore: boolean };
+type ApiRequest = { path: string; method: string; body?: unknown; at: number };
 
-async function installLocalWorkerRoute(page: import('@playwright/test').Page, requests: Array<{ path: string; method: string; body?: unknown; at: number }>) {
-  let dropNextEventsResponse = false;
+function observeLocalWorkerRequests(page: import('@playwright/test').Page, requests: ApiRequest[]): void {
   const context = page.context();
   context.on('request', request => {
     const url = new URL(request.url());
-    if (url.origin !== productionApi) return;
-    requests.push({ path: url.pathname, method: request.method(), body: request.postDataJSON() ?? undefined, at: Date.now() });
-  });
-  await context.route(`${productionApi}/**`, async route => {
-    const url = route.request().url().replace(productionApi, localApi);
-    const response = await route.fetch({ url });
-    const requestUrl = new URL(route.request().url());
-    if (dropNextEventsResponse && route.request().method() === 'POST' && requestUrl.pathname === '/events') {
-      dropNextEventsResponse = false;
-      await route.abort('failed');
-      return;
+    if (url.origin !== localApi) return;
+    let body: unknown;
+    const postData = request.postData();
+    if (postData) {
+      try { body = JSON.parse(postData); }
+      catch { try { body = request.postDataJSON(); } catch { /* Keep non-JSON request bodies out of the audit log. */ } }
     }
-    await route.fulfill({ response });
+    requests.push({ path: url.pathname, method: request.method(), body, at: Date.now() });
   });
-  return { dropNextEventsResponse: () => { dropNextEventsResponse = true; } };
 }
 
 async function readOutboxRecords(page: import('@playwright/test').Page): Promise<StoredEvent[]> {
@@ -64,22 +57,37 @@ async function readWorkerSessionToken(page: import('@playwright/test').Page): Pr
   });
 }
 
-async function readWorkerEvents(page: import('@playwright/test').Page): Promise<WorkerSnapshot['events']> {
-  const token = await readWorkerSessionToken(page);
+async function readWorkerEvents(page: import('@playwright/test').Page, existingToken?: string): Promise<WorkerSnapshot['events']> {
+  const token = existingToken ?? await readWorkerSessionToken(page);
   if (!token) throw new Error('The synthetic Worker session was not persisted in this browser context.');
-  const result = await page.evaluate(async ({ localApi, token }) => {
-    const response = await fetch(`${localApi}/snapshot?cursor=0&limit=100`, {
-      headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+  const events: WorkerSnapshot['events'] = [];
+  let cursor = 0;
+  let through: number | undefined;
+  for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+    const params = new URLSearchParams({ cursor: String(cursor), limit: '100' });
+    if (through !== undefined) params.set('through', String(through));
+    const response = await page.context().request.get(`${localApi}/snapshot?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    return { status: response.status, body: await response.json() as WorkerSnapshot };
-  }, { localApi, token });
-  expect(result.status).toBe(200);
-  return result.body.events;
+    if (!response.ok()) throw new Error(`Local Worker snapshot returned ${response.status()}.`);
+    const body = await response.json() as WorkerSnapshot;
+    events.push(...body.events);
+    through ??= body.snapshotCursor;
+    if (!body.hasMore) return events;
+    if (body.cursor <= cursor) throw new Error('Local Worker snapshot pagination did not advance.');
+    cursor = body.cursor;
+  }
+  throw new Error('Local Worker snapshot exceeded the E2E pagination limit.');
 }
 
-async function connectAndEdit(page: import('@playwright/test').Page, answer: string, requests: Array<{ path: string; method: string; body?: unknown; at: number }>) {
+async function connectAndEdit(
+  page: import('@playwright/test').Page,
+  answer: string,
+  requests: ApiRequest[],
+  beforeEdit?: () => Promise<void>,
+) {
   await installFakeGoogleAuth(page);
-  const localWorkerRoute = await installLocalWorkerRoute(page, requests);
+  observeLocalWorkerRequests(page, requests);
   const panel = await openSyncPanel(page);
   const sessionResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/session' && response.status() === 201);
   await page.getByRole('button', { name: GOOGLE_AUTH_BUTTON_NAME }).click();
@@ -89,6 +97,7 @@ async function connectAndEdit(page: import('@playwright/test').Page, answer: str
   const field = page.locator('math-field[aria-label="Step 1 expression"]');
   await expect(field).toBeVisible();
   await expect(panel.getByText(/همگام‌شده با سرور/)).toBeVisible();
+  await beforeEdit?.();
   await field.evaluate((element, nextValue) => {
     const mathfield = element as HTMLElement & { value: string };
     mathfield.value = nextValue;
@@ -98,41 +107,49 @@ async function connectAndEdit(page: import('@playwright/test').Page, answer: str
   await expect.poll(async () => (await readOutboxRecords(page)).some(row => row.event.type === 'step_edited' && row.event.steps?.includes(answer))).toBe(true);
   const edited = (await readOutboxRecords(page)).find(row => row.event.type === 'step_edited' && row.event.steps?.includes(answer));
   if (!edited) throw new Error('The answer event was not found in the durable outbox.');
-  return { panel, eventId: edited.id, localWorkerRoute };
+  await expect.poll(async () => {
+    const text = await panel.getByText(/\d+ رویداد در صف محلی/).textContent();
+    return Number.parseInt(text ?? '0', 10);
+  }).toBeGreaterThan(0);
+  return { panel, eventId: edited.id };
 }
 
 test('exit-flush.pagehide-sends-the-outbox-within-two-seconds-and-Worker-deduplicates-on-reopen', async ({ page, context }) => {
-  const requests: Array<{ path: string; method: string; body?: unknown; at: number }> = [];
+  const requests: ApiRequest[] = [];
   const answer = '24680';
-  const { eventId, panel, localWorkerRoute } = await connectAndEdit(page, answer, requests);
+  let allowRegularRetry = false;
+  const blockNormalRetry = async (route: import('@playwright/test').Route) => {
+    if (allowRegularRetry) await route.continue();
+    else await route.abort();
+  };
+  const { eventId, panel } = await connectAndEdit(page, answer, requests, async () => {
+    await context.route(`${localApi}/events`, blockNormalRetry);
+  });
   await expect(panel.getByText(/همگام‌شده با سرور/)).toBeVisible();
-  const queuedRequestCount = requests.length;
+  const sessionToken = await readWorkerSessionToken(page);
+  if (!sessionToken) throw new Error('The synthetic Worker session was not persisted in this browser context.');
   const closeStarted = Date.now();
-  localWorkerRoute.dropNextEventsResponse();
-  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-  await expect.poll(() => requests.slice(queuedRequestCount).some(item => item.path === '/events' && item.method === 'POST'
-    && JSON.stringify(item.body).includes(eventId) && item.at - closeStarted < 2_000), { timeout: 2_000 }).toBe(true);
+  await page.goto('about:blank');
+  await expect.poll(async () => (await readWorkerEvents(page, sessionToken)).filter(row => row.event.id === eventId), { timeout: 2_000 }).toHaveLength(1);
   expect(Date.now() - closeStarted).toBeLessThan(2_000);
-  await expect.poll(async () => (await readWorkerEvents(page)).filter(row => row.event.id === eventId)).toHaveLength(1);
-  await expect.poll(async () => (await readOutboxRecords(page)).some(row => row.id === eventId)).toBe(true);
-  await page.close();
-
   const reopened = await context.newPage();
   await reopened.goto('/');
   const field = reopened.locator('math-field[aria-label="Step 1 expression"]');
   await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe(answer);
+  await expect.poll(async () => (await readOutboxRecords(reopened)).some(row => row.id === eventId)).toBe(true);
+  allowRegularRetry = true;
   await expect.poll(async () => (await readOutboxRecords(reopened)).every(row => row.id !== eventId)).toBe(true);
-  await expect.poll(async () => (await readWorkerEvents(reopened)).filter(row => row.event.id === eventId)).toHaveLength(1);
+  await expect.poll(async () => (await readWorkerEvents(reopened, sessionToken)).filter(row => row.event.id === eventId)).toHaveLength(1);
+  await context.unroute(`${localApi}/events`, blockNormalRetry);
   await reopened.close();
 });
 
 test('exit-flush.offline-pagehide-keeps-the-event-durable-and-syncs-on-reconnect', async ({ page, context }) => {
   const requests: Array<{ path: string; method: string; body?: unknown; at: number }> = [];
   const answer = '13579';
-  const { eventId, panel } = await connectAndEdit(page, answer, requests);
-  await expect(panel.getByText(/همگام‌شده با سرور/)).toBeVisible();
+  const { eventId, panel } = await connectAndEdit(page, answer, requests, () => context.setOffline(true));
+  await expect(panel.getByText(/\d+ رویداد در صف محلی/)).toBeVisible();
   const contextRequests = requests.length;
-  await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
   await expect.poll(async () => (await readOutboxRecords(page)).some(row => row.id === eventId)).toBe(true);
   expect(requests.slice(contextRequests).some(item => item.path === '/events' && item.method === 'POST'
@@ -144,7 +161,6 @@ test('exit-flush.offline-pagehide-keeps-the-event-durable-and-syncs-on-reconnect
   await reopened.goto('/');
   const field = reopened.locator('math-field[aria-label="Step 1 expression"]');
   await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe(answer);
-  await expect.poll(async () => (await readOutboxRecords(reopened)).some(row => row.id === eventId)).toBe(true);
   await expect.poll(async () => (await readOutboxRecords(reopened)).some(row => row.id === eventId), { timeout: 15_000 }).toBe(false);
   await expect.poll(async () => (await readWorkerEvents(reopened)).filter(row => row.event.id === eventId)).toHaveLength(1);
   await reopened.close();
