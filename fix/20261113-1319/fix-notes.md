@@ -125,3 +125,12 @@ Timestamp: 2026-11-13 14:49 Asia/Tehran.
 - GitHub code branch commit: `91fb29681990b62e74a3ec35cbf3d486f3a07671`; tree `45443e9b2ad53c604df5b8dd64db21f7d120560f` matches the local verified tree. Wrangler emitted a multiple-environment warning during dry-run; no deploy occurred.
 - No live Notion or production action was performed during this phase. Next: AUD-005 scoped reset route.
 
+
+## Phase 9 — AUD-005 scoped reset execution review
+Timestamp: 2026-11-13 14:53 Asia/Tehran.
+
+- AUD-005 remains BLOCKED. The audit asks for /reset/execute, but the reviewed scoped-reset design explicitly says execution is not implemented and the branch is NOT READY FOR MERGE OR PRODUCTION. Its proposed acceptance requires a durable saga across Durable Object data, browser/offline queues, Drive, Notion aggregates, scope generations, restart/retry, and preservation of unrelated learning records.
+- This repository also has a Worker regression test asserting /reset/execute remains 404. Adding a route that merely returns a different status would satisfy only route existence and would falsely imply a safe selective reset. Enabling a partial deletion path would violate the design's preservation and reconciliation contract. No code or test was weakened; no destructive route was added.
+- The integrated audit suite currently reports 12/13 PASS, with only the AUD-005 route-existence test red. This is marked BLOCKED pending a complete implementation contract and acceptance across all affected destinations; no production action or release approval was requested.
+- Next: recheck AUD-018 mirror-failure isolation on the integrated branch, then continue other actionable findings.
+
