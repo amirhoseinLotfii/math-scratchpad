@@ -8,4 +8,4 @@ Counts: Blocker 5; Critical 1; High 10; Medium 1; Low 1
 GitHub: checkpoint backup via connector
 Drive: personal account verified; folder 1-7BbdX9a5_IZ76cWfRUI60R91tYIMdhl
 Cloudflare: read connected
-Notion: not tested
+Notion: count-only connected for four project-designated sources; shared Sessions not counted
