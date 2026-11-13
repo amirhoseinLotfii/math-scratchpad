@@ -104,3 +104,14 @@ Timestamp: 2026-11-13 14:27 Asia/Tehran.
 - Local commit: `378ef0238ea7cedb7a0bdaeca2019f590646824f`. GitHub branch commit: `b0700a24aa32485224b4f7a33644d27dfc44f8e3`; tree `0c0f34b4272eab1701772c027c26cb3545a61825` matches the local tree. HTTPS push was unavailable in this runtime; the authorized GitHub Git Data connector advanced only `fix/audit-20261113-1319`.
 - No production or live Drive mutation was performed. Next: AUD-011 Notion reconciliation journal.
 
+
+## Phase 7 — AUD-011 durable Notion reference reconciliation
+Timestamp: 2026-11-13 14:45 Asia/Tehran.
+
+- Added the additive `notion_reset_reconciliation` journal with reset ID, kind, external key, Notion page ID, local owner marker, status, attempts, last attempt/error, and reconciliation timestamp. Reset now retains `notion_page_refs` until a page is verified and archived successfully; failures stay retryable, and unverified ownership stays journaled for recheck. New sync work is held while unresolved reconciliation remains.
+- Before archive, the mockable Notion client retrieves the page and verifies its configured data source, matching stable row key, and app-specific markers (including Data Mode/isTest or mirror format). Session and unknown kinds such as Pomodoro are protected and never retrieved or archived.
+- TDD evidence: the Phase 4 audit run had the AUD-011 red finding (reset deleted Notion references). New reset/reconciliation audit tests now pass 4/4. `npm run test:worker` passed 7 files / 125 tests; `npm run test:typecheck` passed; `git diff --check` passed; staged Gitleaks 8.30.1 reported no leaks.
+- The first full Worker run exposed a test-environment leak of a dummy Notion key: a reset test attempted a `pages.retrieve` read and DNS failed before a response. No archive/update call ran. Test setup now restores that dummy binding and disables Notion for the unrelated reset case; subsequent runs passed. All acceptance-specific Notion calls use the fake client, with no successful live Notion read or write.
+- GitHub code branch commit: `239d640a42e0b71d40b751a298ac61977f49ab0a`; tree `6a6673f022f5c6588645f557340994b5fffb0ae4` matches the local verified tree. Only the isolated fix branch moved. No release, merge, production mutation, or Notion archive was performed.
+- Next: AUD-013 state payload limit. AUD-005 and other outstanding findings remain open; release gates and browser checks retain their prior NOT_TESTED/BLOCKED states.
+
