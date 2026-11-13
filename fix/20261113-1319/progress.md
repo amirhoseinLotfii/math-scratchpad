@@ -5,32 +5,50 @@ Code branch: fix/audit-20261113-1319
 Notes branch: fixlog/20261113-1319
 PR: #94 (draft) — https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: AUD-014 committed; AUD-001/AUD-009 design recorded before implementation. Next: red-first local-only/stuck-phone tests.
-Latest GitHub code commit: 4db19efc68f427548a62f196161d6847e0a2199c (`fix(AUD-014): centralize reset write guard across sync paths`).
-Latest notes branch commit before this checkpoint: 99694518057ed820c71a4a7d4b7bf1ea7e2bb8f9.
+Current phase: AUD-001 local-only recovery implemented and accepted in targeted tests. Next: AUD-003 pagehide/hidden browser acceptance.
+Latest GitHub code commit: 8fca80cf7899bc78bf23c3ea8bea2a9312448a0f (`fix(AUD-001): keep stuck clients editable in local mode`).
+Latest code tree: 73eef9b8c304e778a3c9a4c6fb071cb7c6d147ad; local and remote tree match.
+Latest notes commit before this checkpoint: 91175b04aeef1b87d56bc924af007f61169c52b9.
 
 ## Current evidence
-- `npm run typecheck` and `npm run test:typecheck` passed on the AUD-014 tree.
-- `npx vitest run tests/unit/browser-sync.test.ts tests/unit/learning-reset.test.ts tests/audit/outbox.reset-pending.test.ts`: 3 files, 51 tests passed.
-- Local Worker epoch regression: `reset.stale-event.second-release.test.ts` and `reset.epoch.second-release.test.ts`: 2 files, 3 tests passed.
-- AUD-014 tests were first run against the pre-fix code: server-backed `/state` wrote despite the pending guard, and an in-flight `/events` acknowledgement removed the queued event. Both failed as expected. After the fix, tests cover startup/token setting, debounce and max-wait, online/focus/pageshow, visibility/pagehide, retry cancellation, `/state`, request abortion, and retaining an unacknowledged outbox item.
-- Gitleaks 8.30.1 changed-file scan passed. A separate whole-repository scan found one existing detector match in untouched `src/features/drive-bank/drive-config.ts`; no value was copied into notes or artifacts.
-- No production write, merge, deployment, reset, or protected-data change has occurred.
+- AUD-001 tests were red before implementation: the client had no public `/reset/status` endpoint and reset preparation/completion removed local learning state. The new implementation preserves IndexedDB answers/outbox, stamps events created while server status is unknown, and quarantines old-epoch outbox entries only after receiving a valid epoch.
+- Startup sets the global server-write guard unknown before token restoration. The editor renders from local data while the public status request runs; Google auth and authenticated writes stay blocked until status is valid. Status network failure does not fabricate a persisted reset flag.
+- Targeted client verification on tree `73eef9b`: `npm run typecheck`; `npm run test:typecheck`; Vitest 8 files / 78 tests, including status-unverified writes, offline local queue, reset preservation, guard and debounce; Playwright reset-pending scenario 4/4 across mobile-390 and laptop-1440. Worker client-status/candidate-generation tests: 4 files / 5 tests passed. `git diff --check` passed.
+- Gitleaks 8.30.1 scanned all 25 changed code/test files before commit: zero findings. This source tree was pushed via the GitHub Git Data API because direct `git push` returned `fatal: could not read Username for 'https://github.com': terminal prompts disabled`.
+- GitHub API transfer initially truncated `worker/src/event-store.ts` on intermediate branch commit `817a2adc`. The file was restored from the exact local blob (`bdfcf712…`), tree equality verified, and the draft branch was force-updated with an expected-head lease to clean commit `8fca80c`. The truncated intermediate commits are no longer in the branch history. No production deployment was made.
 
 ## CI
-- Audit verification run 3: run `43455265327` on `4db19ef`; `deps-and-dryrun` is green. The browser job was still running its audit unit/Worker/browser regression step at last check.
-- Validate editor run `43455265492` was still in progress at last check.
-- Earlier Audit verification run 1 was cancelled by a following push; run 2 on `12b1927` had green `deps-and-dryrun` but its final browser outcome was not yet confirmed in this checkpoint.
+- Validate editor run `43463462380` (run 661) and Audit verification run `43463462396` (run 6) were pending when this checkpoint was prepared on head `8fca80cf`. Inspect final results after they complete.
+- Older completed evidence remains on previous heads only: `npm audit --omit=dev` and Wrangler dry-run succeeded on run `43452492066` / head `12b1927`; do not count those as current-head gate evidence.
 
 ## Finding status
-AUD-001: BLOCKED (local-only recovery and stuck-phone acceptance remain; mandatory for release). AUD-002: FIXED (prior checkpoint; reverify in the full gate). AUD-003: PARTIAL (local browser acceptance remains). AUD-004: BLOCKED (release SHA wiring and production alignment remain). AUD-005: BLOCKED (scoped execute saga incomplete; production flag must remain false). AUD-006: PARTIAL (Enter restored; full keyboard/browser acceptance remains). AUD-007: FIXED (prior checkpoint; reverify). AUD-008: FIXED (prior checkpoint; reverify). AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-018: FIXED (prior checkpoint; reverify). AUD-014: PARTIAL (client guards and regression tests are green; CI and local Worker lock proof remain). AUD-015: FIXED (`12b1927`, red-to-green icon acceptance). AUD-016–017: NOT_STARTED.
+AUD-001: FIXED — red-first client tests, local-only gate tests, and mobile/desktop reset-pending E2E passed.
+AUD-002: FIXED — prior debounce tests; reverified in current 8-file targeted slice.
+AUD-003: PARTIAL — keepalive implementation exists; local Worker/browser exit-flush acceptance remains.
+AUD-004: BLOCKED — SHA wiring exists on branch, but production alignment and coordinated release verification remain.
+AUD-005: BLOCKED — scoped `/reset/execute` saga is incomplete; production flag must remain false.
+AUD-006: PARTIAL — Enter and Space coverage restored; full acceptance matrix remains.
+AUD-007: FIXED — prior repeated keyboard/browser acceptance; reverify in final gate.
+AUD-008: FIXED — prior Linux visual baseline alignment; final full visual gate remains.
+AUD-009: FIXED — server-issued candidate epochs and public minimal status endpoint reverified in current Worker tests.
+AUD-010: FIXED — prior Drive ownership tests; final Worker suite remains.
+AUD-011: FIXED — prior Notion reconciliation-journal tests; final Worker suite remains.
+AUD-012: FIXED — prior dependency advisory fix; current-head npm audit remains.
+AUD-013: FIXED — prior route-specific payload limit tests; final Worker suite remains.
+AUD-014: PARTIAL — shared write guard and reset acceptance pass; local Worker lock proof and complete current-head gates remain.
+AUD-015: FIXED — prior decorative icon acceptance; reverify in final gate.
+AUD-016: NOT_STARTED.
+AUD-017: NOT_STARTED.
+AUD-018: FIXED — prior cron isolation tests; final Worker suite remains.
 
 ## Gate status
-G1: VERIFIED on `4db19ef` (app and test/Worker type checks pass).
-G2: VERIFIED for the targeted AUD-014 unit/audit slice (51/51); full current-head unit suite remains NOT_TESTED.
-G3: VERIFIED for the targeted epoch Worker slice (3/3); full current-head Worker suite remains NOT_TESTED.
-G4: BLOCKED by AUD-005 (`POST /reset/execute` returns 404 in the audit suite); the chained Playwright stage was not reached on `12b1927`.
-G5–G10, G12–G15: IN_PROGRESS/NOT_TESTED on the current complete PR run; inspect the final CI results before the release gate.
-G11: VERIFIED on `4db19ef` by Audit verification run 3 `deps-and-dryrun` (dependency audit and Wrangler dry run passed).
+G1 (app/test/Worker typechecks): VERIFIED on `8fca80cf`.
+G2 (client): VERIFIED for the focused slice, 8 files / 78 tests; full unit suite NOT_TESTED on this head.
+G3 (Worker): VERIFIED for the focused reset slice, 4 files / 5 tests; full Worker suite NOT_TESTED on this head.
+G4 (audit browser chain): BLOCKED by AUD-005 route/saga not implemented yet.
+G5–G12, G14–G15: NOT_TESTED on this exact head or awaiting CI; inspect CI runs above and update.
+G13 (stuck-phone simulation): VERIFIED in Playwright, 4/4 on mobile-390 and laptop-1440 using synthetic mocked Worker routes. This does not verify real owner sign-in.
+G11 prior evidence is on an older SHA only; current-head dependency audit and Wrangler dry-run await CI.
 
-Production read-only snapshot is unchanged from the prior checkpoint: Worker version `d376eafb-f0ab-42b9-8409-aab8f9bbaead` at 100%; `/health` omits environment/SHA; Pages `/version.json` is 404. Worker admin status remains NOT_TESTED per the handoff fallback. Timestamp Asia/Tehran: 2026-11-13 22:50.
+Production read-only snapshot was last recorded in the previous checkpoint: Worker version `d376eafb-f0ab-42b9-8409-aab8f9bbaead`; `/health` has no SHA and Pages `/version.json` was 404. No new live production read was made during this checkpoint. No merge, production write, reset, deploy, or protected-data change occurred.
+Timestamp Asia/Tehran: 2026-11-13 20:01.
