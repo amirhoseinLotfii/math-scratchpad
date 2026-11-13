@@ -1,22 +1,24 @@
 # Progress
 RUN_ID: 20261113-1319
-Status: PAUSED — hard platform limit
+Status: RUNNING
 Code branch: fix/audit-20261113-1319
 Notes branch: fixlog/20261113-1319
-PR: none
+PR: none (verified by GitHub search at 2026-11-13 18:43 Asia/Tehran; draft creation is next)
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: Phase 19 — BLOCKED before AUD-015; local execution environment unavailable.
-Latest GitHub code commit: f00e16ddd7afa62e887444ee1638074be32a83a1 (tree 4181ae33768933839edb961a9d380704ecd55bef; local equivalent 4caa996b41af826ea1100828d398e1fded235e4c).
-Last full green before recent small patches: npm test 77 files / 985 tests and Worker 7 files / 125 tests; typecheck and test:typecheck; local Vite build; standalone 2,691,726 bytes; AUD-002 targeted tests 5/5; AUD-003 browser-sync unit file 44/44; staged Gitleaks 0 findings. Current targeted green checks: AUD-007 keyboard-ux 15/15, keyboard browser suite 6/6 mobile-320 and 6/6 desktop, UI-AUDIT-07 1/1; AUD-008 visual matrix 9/9 across 320/390/430 and no-overflow/menu check 3/3.
-Audit regression suite: prior integrated result 15/16 pass; AUD-005 is the sole red test and remains BLOCKED by the full scoped-reset contract. Post-fix npm audit and Wrangler dry-run remain NOT_TESTED after automatic review rejected their network egress; Cron production behavior remains NOT_TESTED.
-Gate status: Release gates G1–G15 remain NOT_TESTED pending exact PR head. Targeted AUD-007/AUD-008 browser checks passed; full browser matrix and production Cron remain NOT_TESTED. The local execution environment became unavailable during AUD-014, so further local edits and test reruns are BLOCKED. No merge, production deployment, or live data mutation.
-Backup status: Phase 18 is saved in fixlog and in supplemental Drive Doc https://docs.google.com/document/d/1-JmeATJI5hp8ivkmSHJsENNa9PPdES7VqWAP8dRiFLI/edit (moved into the run folder and read back). Original Drive progress.md and fix-notes.md remain at Phase 17 because the local executor cannot upload replacements.
-Timestamp Asia/Tehran: 2026-11-13 15:46
+Current phase: R0 bootstrap complete; R1 draft PR and CI test runners next. Resume at AUD-015 after R1; AUD-014 remains PARTIAL and must meet its full acceptance before any release.
+Latest GitHub code commit: f00e16ddd7afa62e887444ee1638074be32a83a1 (tree 4181ae33768933839edb961a9d380704ecd55bef).
+Latest notes branch commit before this checkpoint: 20a8589712e195a1a633b9566261b41107448051.
+Last verified on current code head f00e16d in this run: npm ci (270 packages); npm run typecheck; npx vitest run 77 files / 987 tests; npm run test:worker 7 files / 125 tests.
+Production read-only check: Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead at 100%; /health is {ok, service} only. Pages returns 200; /version.json is 404. No live writes.
+Environment: repository clone and npm install succeeded; Node 24.22.1, npm 11.9.0, Git 2.52.0. /usr/bin/chromium 156.0.8078.79 is available; Playwright browser link cache is absent; Docker is unavailable. Gitleaks 8.30.1 is available. gh CLI has no login; use the connected GitHub integration for remote writes. Cloudflare read works; write scope unknown. Worker admin token unavailable; status read is skipped per fallback.
+Backups: source progress on fixlog is newer than Drive; this checkpoint will update both and verify readback.
+Timestamp Asia/Tehran: 2026-11-13 18:43
 
 ## Finding status
-AUD-001: BLOCKED (cannot safely unlock without complete cloud reset/reconciliation; depends on AUD-005). AUD-002: FIXED (5s debounce, 30s max wait, immediate flush, retry verified). AUD-003: PARTIAL (local hide/exit/reload unit tests pass; full Worker/browser E2E NOT_TESTED). AUD-004: BLOCKED (production Pages/Worker SHA drift confirmed; resolution requires an approved coordinated release). AUD-005: BLOCKED (high-risk scope reset saga incomplete; endpoint remains disabled by design). AUD-006: PARTIAL (Enter restored; acceptance remains NOT_TESTED). AUD-007: FIXED (compact-menu pointerleave no longer steals focus from inline actions; mobile and desktop keyboard suites pass). AUD-008: FIXED (refreshed Linux mobile visual baselines; 320/390/430 screenshot matrix passes). AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-018: FIXED. AUD-014: PARTIAL (static guards and focused test exist; full current acceptance NOT_TESTED, especially in-flight reset and local Worker verification). AUD-015–017: BLOCKED / NOT_STARTED (local executor unavailable).
+AUD-001: BLOCKED (local-only recovery still needs implementation and stuck-phone acceptance; must be unblocked for release). AUD-002: FIXED. AUD-003: PARTIAL (unit behavior green; full browser/local-Worker acceptance remains NOT_TESTED). AUD-004: BLOCKED (production SHA drift; code wiring and coordinated release remain open). AUD-005: BLOCKED (scoped execute saga incomplete; production flag must remain false). AUD-006: PARTIAL (Enter restored; full keyboard/browser acceptance remains NOT_TESTED). AUD-007: FIXED. AUD-008: FIXED. AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-018: FIXED. AUD-014: PARTIAL (guards and focused test exist; full acceptance NOT_TESTED). AUD-015–017: NOT_STARTED.
 
-
-## Phase 19 — hard platform limit
-
-Retried local execution after the Phase 18 checkpoint; the executor returned “No usable execution environment is available.” This blocks local source edits, test execution, and the remaining audit phases. AUD-015–017 are explicitly NOT_STARTED/BLOCKED; no static-only inference is recorded as a fix. The supplemental Phase 18 Google Doc is in the run folder and its contents were read back. No merge, production deployment, or live data mutation occurred.
+## Gate status
+G1: NOT_TESTED (test:typecheck still required).
+G2: VERIFIED on f00e16d (987 unit/DOM tests passed).
+G3: VERIFIED on f00e16d (125 Worker tests passed).
+G4–G15: NOT_TESTED on a PR head. No PR exists yet.

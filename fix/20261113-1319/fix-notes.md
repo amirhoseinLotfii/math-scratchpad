@@ -229,3 +229,27 @@ Timestamp: 2026-11-13 15:46 Asia/Tehran.
 - This phase's runtime/test rerun and any local edits are BLOCKED: the unified executor reported `No usable execution environment is available`. The exact current local commit/tree could not be queried again; the last verified local code commit remains `4caa996b41af826ea1100828d398e1fded235e4c` / tree `4181ae33768933839edb961a9d380704ecd55bef`, matching GitHub code branch commit `f00e16ddd7afa62e887444ee1638074be32a83a1`.
 - Status: AUD-014 PARTIAL; source guard and regression test are present, but current full acceptance is NOT_TESTED and no new fix is claimed. No production or live data call was made.
 - Next: AUD-015 Import session JSON decorative icon, subject to executor recovery.
+
+## Resume 2026-11-13 18:43 Asia/Tehran
+
+- RUN_ID remains `20261113-1319`; resumed from the existing branches and Drive folder. No new run, branch, folder, or PR was created.
+- The GitHub `fixlog/20261113-1319` progress (modified 15:46 Tehran, Phase 19 blocked before AUD-015) is newer than Drive `progress.md` (modified 15:42 Tehran, Phase 17 / AUD-014 next), so the branch copy is authoritative. The supplemental Phase 18 Drive document also records AUD-014 as PARTIAL. Resume after the recorded executor failure, with AUD-014 still PARTIAL and AUD-015–017 not started; do not redo any FIXED finding.
+- Re-cloned the repository and verified `fix/audit-20261113-1319` HEAD `f00e16ddd7afa62e887444ee1638074be32a83a1` and tree `4181ae33768933839edb961a9d380704ecd55bef`. `origin/main` remains `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; #91, #92, and #93 heads remain `59913b8fb45bfe07ca2f31614efb1843b2b5569d`, `f384ca4fe9b4844df15a528ecb41529f138794ef`, and `d1c730c643d1aef994a5f9fc9afe09876cca18fd`. Each remains open. A precise GitHub search confirmed no PR from the run branch.
+- Bootstrap: `npm ci --no-audit --no-fund` succeeded (270 packages). `npm run typecheck` succeeded; `npx vitest run` passed 77 files / 987 tests; `npm run test:worker` passed 7 files / 125 tests. These are baseline results at `f00e16d`; they do not verify a future PR head.
+- Production read-only drift check: Cloudflare deployment `6bbfd5a8-6641-483f-a478-65fa408b36b1` still serves Worker version `d376eafb-f0ab-42b9-8409-aab8f9bbaead` at 100%, annotated with PR #91 commit `59913b8`. `/health` returns only `{ok, service}`; Pages is HTTP 200 and `/version.json` is 404. No production write or reset endpoint call occurred.
+- Environment/tool availability:
+
+| Tool | Available | Fallback |
+|---|---|---|
+| Chromium | `/usr/bin/chromium` 156.0.8078.79 exists; Playwright browser cache is absent | Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium` for local Playwright. Kernel browser previously returned HTTP 403 due billing gate. |
+| Docker | Not installed | Run browser jobs in GitHub Actions. |
+| Network egress | Git clone, npm install, and proxied GETs succeeded; direct registry probe earlier timed out | Use GitHub Actions for `npm audit` / Wrangler dry-run if the proxy denies those endpoints. |
+| GitHub CLI | Installed, but `gh auth status` says not logged in | GitHub connector has admin/push permission; use its Git data APIs and PR/Actions tools. |
+| Cloudflare write | Not verified; read-only account/deployment API works | Try the connected Cloudflare API only for authorized staging after preparation; if denied, report no Worker deploy path and do not merge. |
+| Worker admin token | Unavailable; no token requested in chat | Skip the read-only reset status check per fallback; leave status NOT_TESTED. |
+| Drive write | Connected personal Drive; existing run folder and files read successfully | Update only the two run files in the stated folder and verify readback. |
+| Gitleaks | Official Linux binary 8.30.1 available at `/workspace/scratch/8e8a0f874e58/tools/gitleaks` | Use the documented regex fallback only if that binary stops working. |
+
+- The managed `environment_status` tool and `/etc/codex/network-policy.json` are unavailable. This is recorded as a tooling limit; the current observed network still supports clone/install/GET.
+- No user secrets were received. The Worker reset status remains NOT_TESTED. Protected learning, bank, Pomodoro, `03_Sync`, Notion Sessions, and production data were not touched.
+- Next: complete this R0 checkpoint, create the single draft PR and CI fallback jobs, then resume findings using the current source-of-truth status.
