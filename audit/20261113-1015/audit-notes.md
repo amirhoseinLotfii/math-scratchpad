@@ -50,3 +50,8 @@
 - AUD-015: missing Import session JSON icon reproduced 3 mobile runs and visually inspected synthetic PR 93 screenshot saved to Drive.
 - PR91 CI failed on invalid JSON setup after Enter; PR93 CI failed a similar interaction. Local extra diagnostic: explicit focus+keyboard Enter succeeded once; direct locator press yielded both failure and success in separate runs. No root cause established.
 - Desktop axe 9/9 and source/test typecheck pass.
+
+## Additional coverage checkpoint
+- PR 93 full app Vitest: 75 files, 980 passed at d1c730c; Worker 114 and typecheck previously passed. Three mocked Google/Drive browser tests passed, with local font serving warnings caused by symlinked dependencies.
+- Self-check corrected summary table placement and rebuilt per-code statuses; no claim that untested scenarios passed.
+- Complete broad E2E gate is not run from audit branch because deliberate red tests are included by default; unvetted test traffic must also be isolated from production first.
