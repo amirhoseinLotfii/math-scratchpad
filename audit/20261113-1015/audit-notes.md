@@ -74,3 +74,9 @@
 ## Cron and exception handling checkpoint
 - AUD-018: three isolated main Worker tests injected a Drive rejection; combined sync route rejected instead of returning both results. Notion task cancellation was not demonstrated. PR93 existing analogous test passed in 114-test Worker suite; actual production Cron failure still unknown.
 - A narrow fake Worker storage exception returned 5xx rather than 401; suspected auth error masking was not reproduced.
+
+## Resume after environment replacement
+- Recreated local checkout from audit branch and reinstalled locked dependencies. Restored RUN_ID, branch and finding IDs from stored progress; no production data writes.
+- AUD-005: synthetic local POST scoped execute returned 404 in three previous attempts and one after environment restoration. PR92 still only statically examined.
+- AUD-017: Import backup file path independently replaced synthetic current work without separate confirmation in three local mobile runs; unified with prior text-import finding.
+- S10: PR91 local Worker test covered orphaned lock takeover and release; real production lock not altered.
