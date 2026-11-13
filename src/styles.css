@@ -1368,4 +1368,29 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
   pointer-events: auto;
 }
 
+@media (max-width: 479px) {
+  #math-scratchpad-redux .server-connection-gate {
+    margin: 8px;
+    padding: 8px;
+  }
+  #math-scratchpad-redux .server-connection-gate-header { gap: 4px; }
+  #math-scratchpad-redux .server-connection-gate-header strong { font-size: 13px; }
+  #math-scratchpad-redux .server-connection-gate > .server-connection-gate-message {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  #math-scratchpad-redux .server-connection-gate-google { margin-top: 4px; }
+  #math-scratchpad-redux .server-connection-gate .google-login-control > p {
+    margin: 4px 0;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  #math-scratchpad-redux .server-connection-gate .google-login-control [role="alert"] {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+}
+
 #math-scratchpad-redux [data-server-editor] { display: contents; }
