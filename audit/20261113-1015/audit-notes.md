@@ -65,3 +65,8 @@
 ## Import validation checkpoint
 - AUD-017: three local mobile runs replaced a synthetic existing expression with a valid imported session immediately, without a separate confirmation. No real data, no external requests. The red test expects old work to persist until confirmation.
 - S13: three local mobile browser tests passed for malformed JSON, 1,000,001-character oversized input, and one script-bearing malformed object; error visible, no injected script execution. Scope is limited to those inputs and device.
+
+## CI visual and isolated layout checkpoint
+- PR 92 CI screenshot expected/actual inspected. Actual shows Workspace selector and different palette; selector git-blamed to 9a14772, after baseline snapshot c05bcf4. Theme tokens also changed in later ancestor 4ea691c. PR92 delta from PR91 touches no frontend or visual baseline. Remaining pixel causes not established. Synthetic expected and actual screenshots backed up to Drive.
+- Isolated initial layout 3/3 passed (320, Pixel 7, desktop): no pageerror or horizontal overflow before menu; menu opened. Full S1 still incomplete.
+- S7 one-event retry local Worker test passed, including changed-content rejection; 112 tests were intentionally filtered in targeted run. S9 failed by AUD-009.
