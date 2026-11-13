@@ -32,6 +32,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Initial synthetic layout | VERIFIED | 3 passed on 320, Pixel 7 and 1440 desktop: no horizontal overflow or pageerror before menu | e2e/audit/layout.initial.spec.ts, external requests blocked |
+| main | Duplicate delivery | VERIFIED | one Worker test passed: same event retry stored once, conflicting content rejected; 112 tests filtered out | worker/tests/sync-worker.test.ts |
 | main | Session JSON replace confirmation | FAILED | 3 local mobile runs replaced synthetic work without confirmation | e2e/audit/import.requires-confirmation.spec.ts; AUD-017 |
 | main | Invalid session JSON | VERIFIED | 3 mobile tests: invalid, oversized and script-bearing malformed input displayed error; no test script executed | e2e/audit/import.invalid-inputs.spec.ts; no general XSS guarantee |
 | main | Standalone offline build | FAILED | editor never mounts; undefined PROD, 3 browser test failures | e2e/audit/standalone.start.spec.ts; AUD-016 |
@@ -185,10 +187,10 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Refs affected:** PR 92 f384ca4
 - **Location:** e2e/visual/mobile-layout.spec.ts:23
 - **Related:** H1 L3
-- **Evidence:** Run 43278685074 failed single-edit snapshot and its retry: 27,690 pixels differed (11%) against 3% tolerance; 93 passed, 512 did not run. Actual visual cause not established.
+- **Evidence:** Run 43278685074 failed single-edit snapshot and its retry: 27,690 pixels differed (11%) against 3% tolerance; 93 passed, 512 did not run. CI expected and actual images were inspected: the actual adds a Workspace selector and changes palette. The baseline snapshot last changed at c05bcf4; git blame identifies selector introduction in 9a14772, a later ancestor of main; theme-token change 4ea691c is also a later ancestor. PR 92 changes no frontend/snapshot files relative to its PR 91 base. These observations support baseline drift; the complete cause of pixel differences remains unproven. [Expected](https://drive.google.com/file/d/1MGBmxuM8vOclZ1MvdYNZc_6OQG0dWQV2/view) · [Actual](https://drive.google.com/file/d/1SLmcjifTDSy4rRtLBjhlXM4iXcPCbVAG/view).
 - **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
 - **Expected / Actual:** Contract and acceptance behavior below / evidence above.
-- **Root cause:** layer CI; e2e/visual/mobile-layout.spec.ts:23; mechanism or unresolved cause as stated in evidence.
+- **Root cause:** layer CI; e2e/visual/mobile-layout.spec.ts:23; selector was introduced after the baseline; palette and remaining pixel causes require review.
 - **Proposed fix (not executed):** Inspect CI baseline, actual and diff on exact head before deciding whether UI or baseline requires change.
 - **Fix acceptance:** Repeat on CI-equivalent renderer; review screenshots on 320 px, then pass visual suite.
 - **Size:** M · **Fix risk:** medium
@@ -502,15 +504,15 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - L8: NOT_TESTED — full behavior or coverage not established in this run.
 
 ## 10. Browser scenarios
-- S1: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S1: NOT_TESTED — local 320, Pixel 7 and desktop had no pageerror or horizontal overflow and menu opened; full menu and console-error requirements not completely exercised. See e2e/audit/layout.initial.spec.ts.
 - S2: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S3: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S4: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S5: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S6: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S7: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S7: VERIFIED — local Worker test resent one synthetic event batch and found one row, rejecting the same ID with changed content. Multi-event and concurrent retry coverage remains NOT_TESTED; see worker/tests/sync-worker.test.ts.
 - S8: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S9: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S9: FAILED — two local Worker resets followed by an old-generation event admitted stale data (AUD-009). Browser tab, counter and full external mirror aspects remain NOT_TESTED.
 - S10: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S11: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S12: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
