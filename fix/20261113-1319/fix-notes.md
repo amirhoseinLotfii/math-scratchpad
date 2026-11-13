@@ -19,10 +19,21 @@ Timestamp: 2026-11-13 13:19 Asia/Tehran.
 | Browser | KERNEL read context available; browser creation BLOCKED | Session creation returned 403: billing payment method required. Fallback: local Playwright, `curl` GET/HEAD, and report prod interactive checks BLOCKED. |
 | Code execution / network | Available with limits | Node 24.22.1, npm 11.9.0, Git 2.52.0; `node_modules` present in the audit checkout. The runtime-status tool is absent and `/etc/codex/network-policy.json` is absent. Proxied public Pages/Worker GET requests returned 200. |
 | Notion | Optional connector available | Not queried; shared Sessions and all Pomodoro data are protected. |
-| Gitleaks | Available | `/tmp/ms-gitleaks/gitleaks` 8.30.1. Run on new/changed artifacts before each checkpoint upload or GitHub commit. |
+| Gitleaks | Available | `/workspace/scratch/8e8a0f874e58/tools/gitleaks` 8.30.1 from the official Linux release. Run on new/changed artifacts before each checkpoint upload or GitHub commit. |
 
 - `GET /health` returned HTTP 200 with `{"ok":true,"service":"math-scratchpad-sync"}`; current endpoint omits required `env` and `sha` fields (AUD-004).
 - Pages HEAD returned HTTP 200; `GET /version.json` returned 404 (AUD-004).
 - Current production Worker deployment matches the recorded version and time; no production mutation was attempted.
 - Worker admin status was not read because the required admin token is unavailable; use the prompt's fallback and keep phone-recovery server status NOT_TESTED.
 - Main SHA was independently verified through GitHub API and matches local `origin/main`; no drift from the audit baseline.
+
+## Phase 1 — main baseline and isolated workspace
+Timestamp: 2026-11-13 13:27 Asia/Tehran.
+
+- Created local worktree `/workspace/scratch/8e8a0f874e58/repo-fix` on `fix/audit-20261113-1319` from verified `origin/main` SHA `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; the prior dirty audit checkout remains untouched.
+- `npm ci`: exit 0, 271 packages installed from the existing lockfile.
+- `npm run typecheck`: VERIFIED, exit 0 on main baseline.
+- `npx vitest run`: VERIFIED, 75 files and 975 tests passed on main baseline (42.61 s).
+- `npx playwright install chromium`: BLOCKED after two attempts; download of Chrome for Testing 156.0.8078.4 returned a truncated/invalid 0 MiB archive. KERNEL browser-session creation is independently BLOCKED by an organization billing gate. Browser E2E will be attempted in GitHub CI; local browser verification remains BLOCKED unless a usable preinstalled browser is found.
+- No application code or test files were changed during this phase. Worktree baseline SHA is unchanged.
+- Gitleaks 8.30.1 official Linux binary installed under the scratch tools directory; initial fix artifacts scan returned zero findings.
