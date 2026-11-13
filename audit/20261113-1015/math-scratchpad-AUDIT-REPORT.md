@@ -2,8 +2,8 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-2 Blocker, 5 High, 1 Medium; 0 Critical, 0 Low. Findings include static risks, not all reproduced.
-Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, and exit-flush is absent in main. No safe phone-only recovery was verified.
+3 Blocker, 5 High, 1 Medium; 0 Critical, 0 Low. Findings include static risks, not all reproduced.
+Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch. No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
 ## 1. Environment & coverage
@@ -30,11 +30,19 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | main | Build | VERIFIED | exit 0, Worker dry run | npm run build; standalone build warned import.meta is empty in IIFE; effect NOT_TESTED |
 | PR 93 | CI gate | FAILED | 90 passed, 1 failed, 515 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43294569144), AUD-007 |
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
-| All refs | Full browser / new audit tests | NOT_TESTED | incomplete | No new audit test produced |
+| main | Synthetic epoch release regression | FAILED | failed three independent runs, same epoch twice | worker/test/audit/reset.epoch.second-release.test.ts; AUD-009 |
+| main | Offline outbox, mocked network | VERIFIED | mobile 390: 1 passed; desktop: 2 passed | e2e/persistence/offline-outbox.spec.ts; no real Worker or Google service |
+| main | Synthetic lesson resume | VERIFIED | 2 mobile tests passed | e2e/lessons/resume-learning.spec.ts; fixture only, no Chapter 1 |
+| main | Inline keyboard placement | VERIFIED | 1 mobile test passed in isolated rerun | e2e/lessons/keyboard-placement-regression.spec.ts; an earlier concurrent run failed during trace cleanup after both processes used same output dir; not attributed to application |
+| PR 93 | Targeted unit | VERIFIED | 4 files, 56 tests passed | browser-sync, google-auth, google-id-token, server-connection-gate-reset tests |
+| PR 93 | UI-AUDIT-07 mobile-320 | FAILED | same missing backup region as CI | local exact head, symlinked node_modules; Vite font allow-list warning is a local environment limitation |
+| All refs | Full browser / complete audit tests | NOT_TESTED | incomplete | Most scenarios remain |
 
 ## 4. Blockers
 - AUD-001: Reset-pending state makes editor inert until authenticated cloud check. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
 - AUD-003: Exit and hidden-page flush are absent from main. Phone workaround: none verified; do not clear storage, reset, or sync as an ad-hoc remedy.
+
+- AUD-009: Distinct reset releases reuse the same epoch. Phone workaround: none verified; avoid any additional reset while this is investigated.
 
 ## 5. All findings
 ### AUD-001 — Reset-pending state makes editor inert until authenticated cloud check
@@ -157,6 +165,21 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Repeat on CI-equivalent renderer; review screenshots on 320 px, then pass visual suite.
 - **Size:** M · **Fix risk:** medium
 
+### AUD-009 — Distinct reset releases reuse a static epoch
+- **Category:** Data
+- **Severity:** Blocker · **Blocks learning today:** yes
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0; PR 91 59913b8 and PR 93 d1c730c by static inspection only
+- **Location:** `src/sync/learning-reset-epoch.ts:1`; `worker/src/event-store.ts:244`; `worker/src/event-store.ts:419`; `src/sync/browser-db.ts:105`
+- **Related:** N2 · C5 · C7 · B11 · Related AUD-001
+- **Evidence:** Three local Worker test executions failed identically: two distinct reset IDs released from a synthetic `awaiting_release` state produced `2026-11-12-v3` both times. The release handler writes the compile-time constant; event writes compare against that value, and local preparation also compares to the same constant. Stale event acceptance and complete reset flow were not executed. The test manipulates only local Durable Object state and calls the actual release handler; it does not execute full Drive cleanup.
+- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts` against main. Test `worker/test/audit/reset.epoch.second-release.test.ts` simulates completion for two unique IDs, calls the release handler twice, and expects distinct epoch values.
+- **Expected / Actual:** Each distinct completed reset changes the generation / both releases write the same hardcoded value. Therefore an old device holding that value can pass the generation comparison after a subsequent reset; actual resurrection across devices remains NOT_TESTED.
+- **Root cause:** worker / state · `worker/src/event-store.ts:419` · release writes a code constant rather than a new server-issued generation per distinct reset, and the client relies on that same constant.
+- **Proposed fix (not executed):** Persist a monotonic or unique server-issued epoch per reset; deliver it safely to clients, associate queued events with their creation epoch, reject stale writes and require verified reconciliation, while preserving idempotent release retries and migration compatibility.
+- **Fix acceptance:** Red test becomes green; local end-to-end tests execute two complete resets, retry each release, submit events from both old generations, and check that fresh writes succeed and unrelated data survives.
+- **Size:** L · **Fix risk:** high
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Confidence | Verification | Location |
 |---|---|---|---|---|---|---|
@@ -168,6 +191,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | confirmed | VERIFIED | e2e/accessibility/axe-states.spec.ts:20 |
 | AUD-007 | PR 93 CI gate fails on mobile session backup workflow | CI/test | High | confirmed | VERIFIED | e2e/ui-audit-regressions.spec.ts:103 |
 | AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | confirmed | VERIFIED | e2e/visual/mobile-layout.spec.ts:23 |
+
+| AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | confirmed | VERIFIED | worker/src/event-store.ts:419 |
 
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
@@ -181,7 +206,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 
 ## 8. Contract & requirements
 - N1: NOT_TESTED — full behavioral coverage incomplete; static gaps AUD-002 and AUD-003.
-- N2: NOT_TESTED — full behavioral coverage incomplete; recovery risk AUD-001.
+- N2: FAILED — synthetic release epoch test failed; complete reset behavior NOT_TESTED; see AUD-009 and recovery risk AUD-001.
 - N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
 - N4: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
 - N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
@@ -205,7 +230,7 @@ All entries below are NOT_TESTED in full; static observations are linked where a
 - L: L1 NOT_TESTED, L2 NOT_TESTED, L3 NOT_TESTED, L4 NOT_TESTED, L5 NOT_TESTED, L6 NOT_TESTED, L7 NOT_TESTED, L8 NOT_TESTED.
 
 ## 10. Browser scenarios
-- S1–S18: NOT_TESTED — complete specified scenarios were not executed. The separate nine AXE tests do not establish these scenarios.
+- S1–S18: NOT_TESTED — complete specified scenarios were not executed; mocked offline reconnect and fixture lesson resume covered portions but not the full scenarios. The separate nine AXE tests do not establish these scenarios.
 - Real Google sign-in: BLOCKED — owner-only; no account sign-in was attempted.
 
 ## 11. PR analysis & merge order
@@ -218,7 +243,7 @@ PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 retur
 No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
 
 ## 14. Appendix
-Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Screenshots, red tests, production user-data verification and full security review: NOT_TESTED. No secrets or raw traces included.
+Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red test: worker/test/audit/reset.epoch.second-release.test.ts (run command in AUD-009). Screenshots for delivery, production user-data verification and full security review: NOT_TESTED. No secrets or raw traces included.
 
 ## 15. Machine index
 ```json
@@ -419,6 +444,33 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-009",
+    "title": "Distinct reset releases reuse a static epoch",
+    "category": "Data",
+    "severity": "Blocker",
+    "blocker": true,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0",
+      "PR 91 59913b8 static",
+      "PR 93 d1c730c static"
+    ],
+    "location": "worker/src/event-store.ts:419",
+    "requirements": [
+      "N2",
+      "C5",
+      "C7",
+      "B11"
+    ],
+    "root_cause_layer": "worker",
+    "red_test": "worker/test/audit/reset.epoch.second-release.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts",
+    "depends_on": [],
+    "size": "L",
+    "fix_risk": "high"
   }
 ]
 ```
