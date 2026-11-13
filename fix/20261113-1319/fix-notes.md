@@ -217,5 +217,15 @@ Timestamp: 2026-11-13 15:42 Asia/Tehran.
 - Verification: visual matrix with snapshot updates completed 9/9; repeat run without update completed 9/9. The existing initial-layout overflow/menu test passed 3/3 at mobile-320, 390, and 430. `git diff --check` passed. This phase did not run the full test suite.
 - Status: AUD-008 FIXED for the Linux CI renderer by aligning baselines with the current reviewed UI; no frontend code changed. Local commit `4caa996b41af826ea1100828d398e1fded235e4c`; GitHub code branch commit `f00e16ddd7afa62e887444ee1638074be32a83a1`; local and remote tree both `4181ae33768933839edb961a9d380704ecd55bef`. No PR, merge, deployment, or live data change.
 - Gitleaks was NOT_RUN because the executable is absent in this runtime. The nine generated PNG baselines contain no credentials or secret material.
-- Next: AUD-014 queued-event suppression while reset is pending.
+- Next: AUD-015 Import session JSON icon, subject to executor recovery.
 
+
+
+## Phase 18 — AUD-014 reset-pending outbox review (runtime blocked)
+Timestamp: 2026-11-13 15:46 Asia/Tehran.
+
+- Read-only GitHub review of the current fix branch found reset-pending guards in event subscription, startup, `setIdToken`, `syncNow`, event scheduling, wake and keepalive paths, plus a final check before POST `/events` or `/state`. `pushOutbox` also checks the flag before each batch. The regression file `tests/audit/outbox.reset-pending.test.ts` is present and seeds an outbox event, sets the guard, starts the runtime, sets a synthetic token, calls `syncNow`, and expects no POST.
+- The current acceptance asks for startup, token refresh, wake, retry, pagehide, in-flight reset, and local Worker verification. The focused test source does not cover all those cases. An already in-flight POST cannot be recalled after it has been sent; the interaction between the reset marker and that race needs execution-level verification.
+- This phase's runtime/test rerun and any local edits are BLOCKED: the unified executor reported `No usable execution environment is available`. The exact current local commit/tree could not be queried again; the last verified local code commit remains `4caa996b41af826ea1100828d398e1fded235e4c` / tree `4181ae33768933839edb961a9d380704ecd55bef`, matching GitHub code branch commit `f00e16ddd7afa62e887444ee1638074be32a83a1`.
+- Status: AUD-014 PARTIAL; source guard and regression test are present, but current full acceptance is NOT_TESTED and no new fix is claimed. No production or live data call was made.
+- Next: AUD-015 Import session JSON decorative icon, subject to executor recovery.
