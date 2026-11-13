@@ -2,7 +2,7 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-3 Blocker, 1 Critical, 7 High, 1 Medium; 0 Low. Findings include static risks, not all reproduced.
+3 Blocker, 1 Critical, 8 High, 1 Medium; 0 Low. Findings include static risks, not all reproduced.
 Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
@@ -32,6 +32,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Public versus DO state size | FAILED | 3 local runs: direct 300 KB state succeeds, public route returns 413 | worker/test/audit/state.proxy-limit.test.ts; AUD-013 |
 | main | Ownership and Notion audit | FAILED | 2 synthetic assertions failed in three runs | worker/test/audit/reset.ownership-and-notion.test.ts; AUD-010 and AUD-011 |
 | main | Connected lesson and AXE | VERIFIED | 3 passed mobile-390 | e2e/lessons/phase3-connected.spec.ts and phase5-a11y.spec.ts, synthetic fixtures |
 | main | npm audit production deps | FAILED | one high advisory, exploitability untested | npm audit --omit=dev; AUD-012 |
@@ -232,6 +233,21 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** audit no longer reports the advisory; import and event schema regression, bounded oversized input and memory tests pass.
 - **Size:** M · **Fix risk:** medium
 
+### AUD-013 — Public Worker rejects state payloads accepted by the Durable Object
+- **Category:** Contract violation
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (executed); PR 91 59913b8 and PR 93 d1c730c (static inspection)
+- **Location:** `worker/src/index.ts:130`; `worker/src/event-store.ts:742`; `src/sync/server-storage.ts:125`
+- **Related:** A1 · A2 · A4 · A8 · E7 · G3
+- **Evidence:** Three local Worker test runs sent a synthetic 300,000-byte value. Direct Durable Object state write returned 200; the authenticated public Worker path returned 413 before forwarding. The public proxy caps all request bodies at 250,000 bytes while the DO allows a 2,100,000-byte envelope and a 1,000,000-byte value. Actual user data size, loss, and real deployment behavior were not tested.
+- **Reproduction:** Run `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/state.proxy-limit.test.ts`. The test uses a fake verifier and isolated local DO.
+- **Expected / Actual:** A state value within the documented internal limit should have a consistent public contract / public proxy rejects it with 413.
+- **Root cause:** network / worker · `worker/src/index.ts:134` · shared body-size cap is applied to `/state` before the larger state-specific limit.
+- **Proposed fix (not executed):** Align bounded route-specific limits and validation across proxy and DO, define an explicit supported maximum, and surface a recoverable client error without losing locally saved work.
+- **Fix acceptance:** Boundary tests below, at and above the chosen byte limit, multibyte strings, authenticated public endpoint, retry/reload and oversized clear-error UX; confirm no unbounded memory use.
+- **Size:** M · **Fix risk:** medium
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Confidence | Verification | Location |
 |---|---|---|---|---|---|---|
@@ -250,6 +266,8 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-011 | Reset clears Notion page references without external reconciliation | Data | High | confirmed | VERIFIED | worker/src/event-store.ts:532 |
 | AUD-012 | Production dependency audit reports high-severity Zod advisory | Security | High | confirmed | VERIFIED | package.json |
 
+| AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | confirmed | VERIFIED | worker/src/index.ts:130 |
+
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
 - K2: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
@@ -261,6 +279,22 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - K8: NOT_TESTED — root cause / actual production behavior not established; see AUD-002 and AUD-003.
 
 ## 8. Contract & requirements
+
+### Route map (main, static only)
+| Method | Public path | Authentication | Contract notes |
+|---|---|---|---|
+| GET | /health | none | returns service/ok; no SHA |
+| POST | /session | Google ID | issues Worker session |
+| POST | /session/revoke | owner | revokes session |
+| POST | /admin/learning-reset; /admin/learning-reset/release | admin secret | bounded 4096-byte request; production not called |
+| POST | /events; /state | owner | epoch header; public proxy body limit 250000 bytes, AUD-013 |
+| GET | /state; /sync; /snapshot; /reset/preview | owner | query forwarded to Durable Object |
+| GET/POST | /drive/status, /drive/sync; /notion/status, /notion/sync | owner | mirror operations |
+| POST/GET | /bank/source; /bank/meta; /bank/content | owner | protected source; no live read |
+| POST | /reset/execute | absent | AUD-005 |
+
+Full request/response/error contract and duplicate type comparison: NOT_TESTED.
+
 - N1: NOT_TESTED — full behavioral coverage incomplete; static gaps AUD-002 and AUD-003.
 - N2: FAILED — synthetic release epoch test failed; complete reset behavior NOT_TESTED; see AUD-009 and recovery risk AUD-001.
 - N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
@@ -299,7 +333,7 @@ PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 retur
 No safe user action has been verified to remove the pending lock. Do not start by clearing app storage or triggering reset. Google Cloud checklist when appropriate: verify authorized Pages/localhost JavaScript origins, OAuth consent publishing state and test users, required Drive scopes, and Pages COOP behavior. Do not share credentials.
 
 ## 14. Appendix
-Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red tests: worker/test/audit/reset.epoch.second-release.test.ts, reset.stale-event.second-release.test.ts and reset.stale-event.two-full-resets.test.ts (run command in AUD-009). Screenshots for delivery, production user-data verification and full security review: NOT_TESTED. No secrets or raw traces included.
+Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs, current GitHub job logs linked above, local command outputs summarized in section 3. Red tests: worker/test/audit/reset.epoch.second-release.test.ts, reset.stale-event.second-release.test.ts and reset.stale-event.two-full-resets.test.ts (run command in AUD-009). Screenshots for delivery, production user-data verification and full security review: NOT_TESTED. `npm audit` found one high advisory (AUD-012). HEAD requests to Pages and Worker observed HSTS on Pages and did not expose CSP/COOP in the returned headers; security impact and all response paths were NOT_TESTED. No secrets or raw traces included.
 
 ## 15. Machine index
 ```json
@@ -598,6 +632,34 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "root_cause_layer": "config",
     "red_test": "",
     "run_cmd": "npm audit --omit=dev",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-013",
+    "title": "Public Worker rejects state payloads accepted by the Durable Object",
+    "category": "Contract violation",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0",
+      "PR 91 and PR 93 static"
+    ],
+    "location": "worker/src/index.ts:130",
+    "requirements": [
+      "A1",
+      "A2",
+      "A4",
+      "A8",
+      "E7",
+      "G3"
+    ],
+    "root_cause_layer": "worker",
+    "red_test": "worker/test/audit/state.proxy-limit.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/state.proxy-limit.test.ts",
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
