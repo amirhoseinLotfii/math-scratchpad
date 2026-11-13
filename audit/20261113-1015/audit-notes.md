@@ -88,3 +88,10 @@
 - Hypotheses by likelihood: (1) compact-menu focus/roving-focus interaction around inline Data role=group at src/app/exercise-menu.tsx:123–130; (2) touch emulation plus pointer hover in this test path; (3) asynchronous compact-layout initialization. Exact root cause remains unisolated after repeated attempts; no app code changed.
 - Updated AUD-007, K5, N8, I2, I3, I4, G7, G8, S12 and menu test matrix. Full menu matrix, all other S12 actions, S14/S15, and live production browser remain NOT_TESTED/BLOCKED.
 - Evidence added to evidence.md; typecheck passed. Secret scan of audit/<RUN_ID>, tests/audit, worker/test/audit and e2e/audit returned zero findings. A repository-root scan separately found the previously documented browser API key at src/features/drive-bank/drive-config.ts:4; it is not copied into audit files or the report.
+
+## Phase 3 — route, schema and reset-state static review
+- Timestamp: 2026-11-13T12:20+03:30.
+- Extracted 18 public main Worker handlers from worker/src/index.ts. Main has no GET /admin/learning-reset/status; deployed PR 91 does, and the unauthenticated live GET had returned 401. Route map now records ref drift as AUD-004. All listed proxy routes were checked; full per-route input/output/error contract and every client call comparison remain NOT_TESTED.
+- Enumerated all 16 Durable Object SQLite tables and key constraints from constructor DDL. No secondary CREATE INDEX statement found; learning_events.event_id has a UNIQUE constraint. Wrangler config has v1 Durable Object class migration; constructor adds client_epoch if missing. Production DB schema/content was not queried.
+- Documented client guard and server reset state machine. Client can remain inert until authenticated completion; server errors preserve running/resetId for same-ID retry. Distinct reset releases reuse the epoch, tied to AUD-009.
+- Static phase 3 route/schema/state-machine coverage is now recorded; full contract matrix remains NOT_TESTED. No code changed.
