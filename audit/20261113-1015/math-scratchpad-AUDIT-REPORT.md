@@ -2,7 +2,7 @@
 RUN_ID 20261113-1015 · 2026-11-13 Asia/Tehran · status: PARTIAL · auditor: Codex
 
 ## 0. TL;DR
-5 Blocker, 1 Critical, 9 High, 1 Medium, 1 Low. Findings include static risks, not all reproduced.
+5 Blocker, 1 Critical, 10 High, 1 Medium, 1 Low. Findings include static risks, not all reproduced.
 Can learning safely start today? **Undetermined; do not assume safe cross-device persistence.** A reset-pending browser can be locked, exit-flush is absent in main, and distinct reset releases reuse the same epoch; an old-generation event was accepted after two complete local Worker resets (Drive disabled). No safe phone-only recovery was verified.
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
@@ -32,6 +32,9 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Cron mirror rejection | FAILED | 3 synthetic runs: unexpected Drive rejection escaped combined request | worker/test/audit/cron.isolates-mirror-failures.test.ts; AUD-018 |
+| PR 93 | Cron mirror isolation | VERIFIED | existing equivalent Worker test passed as part of 114 Worker tests | worker/tests/sync-worker.test.ts:108 |
+| main | Auth downstream storage exception | VERIFIED | synthetic storage failure returned 5xx rather than 401 | worker/test/audit/auth.downstream-error.test.ts; narrow test |
 | main | Initial synthetic layout | VERIFIED | 3 passed on 320, Pixel 7 and 1440 desktop: no horizontal overflow or pageerror before menu | e2e/audit/layout.initial.spec.ts, external requests blocked |
 | main | Duplicate delivery | VERIFIED | one Worker test passed: same event retry stored once, conflicting content rejected; 112 tests filtered out | worker/tests/sync-worker.test.ts |
 | main | Session JSON replace confirmation | FAILED | 3 local mobile runs replaced synthetic work without confirmation | e2e/audit/import.requires-confirmation.spec.ts; AUD-017 |
@@ -330,6 +333,21 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Red test passes on mobile and desktop; cancel leaves current session intact, confirm replaces exactly once, and recovery from accidental import is verified.
 - **Size:** M · **Fix risk:** medium
 
+### AUD-018 — Unexpected mirror rejection aborts combined Cron result on main
+- **Category:** Bug
+- **Severity:** High · **Blocks learning today:** no
+- **Confidence:** confirmed · **Verification:** VERIFIED
+- **Refs affected:** main 7eeeef0 (executed); PR 91 59913b8 (static); PR 93 d1c730c contains allSettled and its analogous test passed.
+- **Location:** `worker/src/event-store.ts:269`; `worker/src/index.ts:239`
+- **Related:** N6 · E2 · E3 · K3
+- **Evidence:** Three isolated Worker tests replaced Drive sync with a throwing synthetic function and Notion sync with a successful synthetic function. The combined `/internal/sync-all` request rejected instead of returning both destination results. The two tasks are started together; the test does not establish that the Notion task is cancelled. PR 93 existing `keeps cron mirror syncs independent...` test passed in its full Worker suite. The production Cron's actual failure reason and request count remain unknown.
+- **Reproduction:** `npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/cron.isolates-mirror-failures.test.ts`.
+- **Expected / Actual:** Unexpected failure in one mirror is converted to a sanitized per-destination error while the other result remains observable / Promise.all rejects the combined operation.
+- **Root cause:** cron · `worker/src/event-store.ts:270` · the combined route awaits `Promise.all`, so a rejected promise rejects the whole response.
+- **Proposed fix (not executed):** Evaluate PR 93's allSettled handling and bounded subrequest accounting, preserve independent results and retry diagnostics, and test on integrated release candidate.
+- **Fix acceptance:** Red test passes; test both destinations throwing, successful peer completion, retry, sanitized logs, and subrequest budget across real mocked pagination.
+- **Size:** M · **Fix risk:** medium
+
 ## 6. Findings summary table
 | ID | Title | Category | Severity | Blocks learning today | Confidence | Verification | Refs | Location | Size |
 |---|---|---|---|---|---|---|---|---|---|
@@ -350,6 +368,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-015 | Import session JSON lacks the icon used by adjacent Data actions | UX | Low | no | confirmed | VERIFIED | main 7eeeef0, PR 93 d1c730c | src/app/exercise-menu.tsx:86 | S |
 | AUD-016 | Standalone HTML fails to mount because production flag is undefined | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 and PR 93 static | scripts/standalone.mjs:4 | S |
 | AUD-017 | Session JSON restore replaces current work without confirmation | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0 | src/app/practice-launcher.tsx:56 | M |
+| AUD-018 | Unexpected mirror rejection aborts combined Cron result on main | Bug | High | no | confirmed | VERIFIED | main 7eeeef0, PR 91 static, PR 93 existing test passed | worker/src/event-store.ts:269 | M |
 
 ## Notion read-only aggregate observations
 On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
@@ -358,7 +377,7 @@ On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistak
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — main One Tap path has a 30-second timeout at src/sync/google-id-token.ts:185; PR 93 separates identity and Drive flows, but the owner’s actual timeout cause and effective fix remain unverified. See AUD-001.
 - K2: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
-- K3: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
+- K3: NOT_TESTED — actual production Cron error remains unknown. An unexpected rejection causes main combined request to fail (AUD-018); PR 93 equivalent isolated test passed.
 - K4: NOT_TESTED — ownership and shared Sessions remain unresolved; aggregate Math Attempts count is 5, local reference deletion is confirmed in AUD-011, filename-only Drive selection in AUD-010.
 - K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
 - K6: NOT_TESTED — root cause / actual production behavior not established; see AUD-005.
@@ -387,7 +406,7 @@ Full request/response/error contract and duplicate type comparison: NOT_TESTED.
 - N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
 - N4: FAILED — local fake Drive test selected unmarked file, AUD-010; Notion cleanup/reconciliation gap AUD-011.
 - N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
-- N6: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
+- N6: FAILED — unexpected rejection fails combined Cron route on main (AUD-018); complete subrequest accounting remains NOT_TESTED.
 - N7: FAILED — Worker deployment and Pages release identify different source commits; see AUD-004.
 - N8: NOT_TESTED — full behavioral coverage incomplete; keyboard coverage gap AUD-006 and CI AUD-007.
 
@@ -438,7 +457,7 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - D10: NOT_TESTED — full behavior or coverage not established in this run.
 - D11: NOT_TESTED — full behavior or coverage not established in this run.
 - E1: NOT_TESTED — full behavior or coverage not established in this run.
-- E2: NOT_TESTED — full behavior or coverage not established in this run.
+- E2: FAILED — synthetic mirror rejection aborts combined response on main; AUD-018.
 - E3: NOT_TESTED — full behavior or coverage not established in this run.
 - E4: NOT_TESTED — full behavior or coverage not established in this run.
 - E5: NOT_TESTED — full behavior or coverage not established in this run.
@@ -532,7 +551,7 @@ Each complete row below is NOT_TESTED unless otherwise stated; partial results d
 - Full reset, lock, epoch: FAILED — local reset/old event AUD-009 and pending guard AUD-014; phone and external services untested.
 - Google sign-in/Drive: NOT_TESTED — mocked PR 93 units only; real sign-in owner-only.
 - Worker routes: FAILED — state limit AUD-013; complete contract incomplete.
-- Cron: NOT_TESTED — current production failure cause/subrequest count unknown.
+- Cron: FAILED — local unexpected-rejection isolation test failed, AUD-018; production failure cause and subrequest count remain unknown.
 - Drive/Notion adapters: FAILED — synthetic reset ownership and references AUD-010/011; live effects not touched.
 - Scoped reset: NOT_TESTED — no execute route statically (AUD-005).
 - Multi-device: NOT_TESTED — desktop local-storage conflict tests pass, full convergence untested.
@@ -986,6 +1005,33 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "root_cause_layer": "UI",
     "red_test": "e2e/audit/import.requires-confirmation.spec.ts",
     "run_cmd": "npx playwright test e2e/audit/import.requires-confirmation.spec.ts --project=mobile-390 --workers=1",
+    "depends_on": [],
+    "size": "M",
+    "fix_risk": "medium"
+  },
+  {
+    "id": "AUD-018",
+    "title": "Unexpected mirror rejection aborts combined Cron result on main",
+    "category": "Bug",
+    "severity": "High",
+    "blocker": false,
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
+    "refs": [
+      "main 7eeeef0",
+      "PR 91 static",
+      "PR 93 existing test passed"
+    ],
+    "location": "worker/src/event-store.ts:269",
+    "requirements": [
+      "N6",
+      "E2",
+      "E3",
+      "K3"
+    ],
+    "root_cause_layer": "cron",
+    "red_test": "worker/test/audit/cron.isolates-mirror-failures.test.ts",
+    "run_cmd": "npx vitest run --config worker/test/audit/vitest.audit.config.ts worker/test/audit/cron.isolates-mirror-failures.test.ts",
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
