@@ -42,3 +42,9 @@ Local runs use synthetic data and mocked external services unless otherwise spec
 | Audit-output secret scan | 0 findings in each of audit/<RUN_ID>, tests/audit, worker/test/audit, e2e/audit | gitleaks 8.30.1, separate directory scans |
 
 | Phase 3 static review | 18 main Worker route handlers; production admin status route exists on PR 91 but not main; SQLite DDL and reset transitions reviewed | worker/src/index.ts; worker/src/event-store.ts; worker/wrangler.jsonc; src/sync/browser-db.ts; src/main.tsx |
+
+| Phase 9/10 closeout | S2, S17 and S18 BLOCKED with reasons; S3 FAILED by AUD-002; remaining S4–S16 statuses and partial scopes recorded in report §10 | report §10 and audit-notes.md |
+| Phase 10 summary | isolated Lighthouse mobile/desktop lab runs; npm audit one high advisory; separate scoped gitleaks scans clean | report §12; npm audit --omit=dev; gitleaks 8.30.1 |
+| Final self-check | PASS: 18/18 detail, summary and machine-index findings aligned; severity 5/1/10/1/1; A–L 109, N 8, K 8, S 18; test matrix 16 | Local structural validation, 2026-11-13 12:38 Asia/Tehran |
+| Final scoped secret scans | 0 findings in each of four audit/test directories | Gitleaks 8.30.1, 2026-11-13 |
+| Final whitespace check | `git diff --check` exit 0 | local working tree |
