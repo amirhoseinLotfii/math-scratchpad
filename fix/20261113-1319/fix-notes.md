@@ -37,3 +37,26 @@ Timestamp: 2026-11-13 13:27 Asia/Tehran.
 - `npx playwright install chromium`: BLOCKED after two attempts; download of Chrome for Testing 156.0.8078.4 returned a truncated/invalid 0 MiB archive. KERNEL browser-session creation is independently BLOCKED by an organization billing gate. Browser E2E will be attempted in GitHub CI; local browser verification remains BLOCKED unless a usable preinstalled browser is found.
 - No application code or test files were changed during this phase. Worktree baseline SHA is unchanged.
 - Gitleaks 8.30.1 official Linux binary installed under the scratch tools directory; initial fix artifacts scan returned zero findings.
+
+## Phase 2 — integration base and AUD-006 repair
+Timestamp: 2026-11-13 13:34 Asia/Tehran.
+
+- Integrated PR #91 (`d98e136`), PR #93 (`f1642f3`), and PR #92 (`0d1bfa2`) into one local branch in the requested order. Each merge applied without conflicts.
+- Immediately restored `press('Enter')` in `e2e/accessibility/axe-states.spec.ts` and added a separate Space-driven AXE state. Existing pointer/tap coverage remains in `e2e/mobile-accessibility.spec.ts`; it was not weakened. Commit: `d048850` (`test(AUD-006): restore keyboard Enter in axe setup`).
+- AUD-006 fix status: PARTIAL. `npm run test:typecheck` returned exit 0 after the change. The targeted mobile AXE test could not launch: Chromium headless shell revision 1248 is absent. This is a local environment BLOCKED result, not an application test failure; CI remains required.
+- Gitleaks 8.30.1 scanned the staged changes for all three PR merges and the AUD-006 file; each scan returned zero findings. `git diff --check` passed for each merge and for the test change.
+- Audit red tests/configs have not yet been imported; next step is to copy the complete audit test directories from the audit branch, scan, commit, and run them.
+- PR #91/#92/#93 remain open; no GitHub PR was created yet for this integration branch. No production writes or merges were performed.
+
+## Phase 2 remote code-branch checkpoint — 2026-11-13 17:12 Asia/Tehran
+
+Direct `git push` could not authenticate in this environment. The GitHub Git Data API fallback created the ordered integration commits and advanced `fix/audit-20261113-1319` with a non-forced expected-SHA update from main. Verified local/remote tree SHA equality at each step:
+
+| Local change | GitHub commit | Tree SHA |
+|---|---|---|
+| PR #91 merge | `811655fcd134cd4b46888564df7ab08469b4296c` | `b9221a84a5405f6b1bf170b30f0476bc1a9216a0` |
+| PR #93 merge | `9c65f5f66a7991e8edd9fb40148e340220abbf2b` | `50416ee2f6e5fd1126faca5fb6380f5e1970e9c9` |
+| PR #92 merge | `486e59138a71228c72ea6caa8e96ecb93497cdf1` | `a89889b200695a2abfa039486602075f89783064` |
+| AUD-006 Enter/Space repair | `27a98aa8ece559baea07aad90ddd0df28ae6353c` | `0498f64328871a12cbffcb1ce44ce62bc77ec4d8` |
+
+The remote branch head is the final AUD-006 commit above. PR #91/#92/#93 remain open. This is an isolated integration branch; no production write, deploy, or merge into main occurred. The next phase imports the audit red tests and runs them before fixing findings.
