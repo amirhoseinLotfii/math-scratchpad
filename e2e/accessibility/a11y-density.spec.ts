@@ -71,11 +71,17 @@ test('the full confidence labels remain touch-sized across narrow and wide viewp
 
   for (const size of sizes) {
     await page.setViewportSize(size);
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
     const dimensions = await confidenceLabels.evaluateAll(labels => labels.map(label => {
       const { width, height } = label.getBoundingClientRect();
-      return { width, height };
+      return { label: label.textContent?.trim() ?? '', width, height };
     }));
-    expect(dimensions.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
+    expect(
+      dimensions.every(({ width, height }) => width >= 44 && height >= 44),
+      `Confidence labels below 44×44 at ${size.width}×${size.height}: ${JSON.stringify(dimensions)}`,
+    ).toBe(true);
     const pageWidths = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
     expect(pageWidths.content).toBeLessThanOrEqual(pageWidths.viewport);
     await page.screenshot({ path: `/tmp/math-scratchpad-a11y-confidence-${size.width}x${size.height}.png`, fullPage: true });
