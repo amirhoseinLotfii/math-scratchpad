@@ -8,7 +8,7 @@ Next: verify reset state and auth on synthetic environment; repair and test outb
 
 ## 1. Environment & coverage
 Repository cloned. Node 24.22.1, npm 11.9.0. npm ci --ignore-scripts succeeded; local tests ran. Cloudflare read access succeeded. Google Drive personal identity verified and audit backup created. Read-only Notion aggregate counts were queried for four project-designated sources; shared Sessions was deliberately not counted without a reliable project marker. Real sign-in and protected production data were not touched.
-PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 performed; phase 8 and most scenarios not completed. Static review does not count as a behavioral test. No claim of exhaustive coverage.
+PARTIAL: Phases 0 and 1 complete; Phase 2 blocker triage partially complete (owner-phone recovery, Chapter 1, and real sign-in remain NOT_TESTED/BLOCKED); Phases 3–7 and 10 are focused, not exhaustive; Phase 8 tests and Phase 9 browser scenarios are partial; Phase 11 self-check pending. Static review does not count as behavioral testing. No claim of exhaustive coverage.
 
 ## 2. Versions & release drift
 - main: 7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf
@@ -27,6 +27,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | main | Targeted sync/auth | VERIFIED | 3 files, 44 tests passed | npx vitest run tests/unit/browser-sync.test.ts tests/unit/learning-reset-client.test.ts tests/unit/google-auth.test.ts |
 | main | AXE mobile-320 | VERIFIED | 9 passed | npx playwright test e2e/accessibility/axe-states.spec.ts --project=mobile-320 --workers=1 |
 | main | UI-AUDIT-07 mobile-320 | VERIFIED | 1 passed | same test passed on main, not PR 93; local run |
+| main | Import JSON keyboard activation | FAILED | Pixel 7 emulation at 320 px: Enter focus test failed 4/5 repeats (target received no keydown/click after blur); desktop passed 5/5 | e2e/audit/menu.keyboard.spec.ts; AUD-007 |
 | main | Build | VERIFIED | exit 0, Worker dry run | npm run build; standalone build warned import.meta is empty in IIFE; effect NOT_TESTED |
 | PR 93 | CI gate | FAILED | 90 passed, 1 failed, 515 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43294569144), AUD-007 |
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
@@ -38,10 +39,12 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | main | Initial synthetic layout | VERIFIED | 3 passed on 320, Pixel 7 and 1440 desktop: no horizontal overflow or pageerror before menu | e2e/audit/layout.initial.spec.ts, external requests blocked |
 | main | Duplicate delivery | VERIFIED | one Worker test passed: same event retry stored once, conflicting content rejected; 112 tests filtered out | worker/tests/sync-worker.test.ts |
 | main | Session JSON replace confirmation | FAILED | 3 local mobile runs replaced synthetic work without confirmation | e2e/audit/import.requires-confirmation.spec.ts; AUD-017 |
+| main | Backup-file replace confirmation | FAILED | 3 local mobile runs replaced synthetic work before any confirmation dialog | e2e/audit/import.file-confirmation.spec.ts; AUD-017 |
 | main | Invalid session JSON | VERIFIED | 3 mobile tests: invalid, oversized and script-bearing malformed input displayed error; no test script executed | e2e/audit/import.invalid-inputs.spec.ts; no general XSS guarantee |
 | main | Standalone offline build | FAILED | editor never mounts; undefined PROD, 3 browser test failures | e2e/audit/standalone.start.spec.ts; AUD-016 |
 | main | Full backup fixture | VERIFIED | mobile and desktop each passed; desktop initially crashed under concurrent load, rerun passed | e2e/persistence/learning-backup.spec.ts |
 | main | Keyboard adaptations | VERIFIED | 15 passed mobile-320 | e2e/accessibility/keyboard-and-adaptations.spec.ts |
+| main | Menu keyboard subset | FAILED | Initial 10 targeted Enter/Space/Escape cases passed once; repeat Enter activation of Import session JSON failed 4/5 on 320 px and passed 5/5 on desktop; Escape+focus restoration passed 2/2 | e2e/audit/menu.keyboard.spec.ts; AUD-007 |
 | main | Desktop AXE | VERIFIED | 9 passed on laptop-1440 | e2e/accessibility/axe-states.spec.ts |
 | main | Source/test typecheck | VERIFIED | exit 0 | npm run test:typecheck |
 | PR 91 | CI gate | FAILED | invalid-json accessibility setup timed out on Enter, retried; 597 not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43266173382), related AUD-007 |
@@ -168,19 +171,19 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 - **Fix acceptance:** Real keyboard Enter and Space across device projects; assert dialog opens and focus returns.
 - **Size:** S · **Fix risk:** low
 
-### AUD-007 — PR 93 CI gate fails on mobile session backup workflow
-- **Category:** CI/test
+### AUD-007 — Import session JSON loses Enter activation intermittently in the compact mobile menu
+- **Category:** Accessibility/CI
 - **Severity:** High · **Blocks learning today:** no
 - **Confidence:** confirmed · **Verification:** VERIFIED
-- **Refs affected:** PR 93 d1c730c
-- **Location:** e2e/ui-audit-regressions.spec.ts:103
-- **Related:** I2 L3 L4
-- **Evidence:** PR 93 run 43294569144 UI-AUDIT-07 failed twice: Session backup region not found after Enter; 90 passed and 515 did not run. PR 91 run 43266173382 timed out twice waiting for the same JSON textbox following Enter; 597 did not run. Local PR 93 reproduction also failed. A separate local experiment succeeded when explicitly focusing the item before keyboard Enter, and direct locator press yielded both success and failure in separate runs. This suggests a timing/focus or test interaction issue, but does not establish its root cause or which real keyboard paths fail.
-- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
-- **Expected / Actual:** Contract and acceptance behavior below / evidence above.
-- **Root cause:** layer CI; e2e/ui-audit-regressions.spec.ts:103; mechanism or unresolved cause as stated in evidence.
-- **Proposed fix (not executed):** Reproduce locally against exact PR head, inspect focus/DOM and fix the actual failure without weakening the assertion.
-- **Fix acceptance:** Run UI-AUDIT-07 three times on PR head and verify Enter/Space and mouse.
+- **Refs affected:** main 7eeeef0; PR 91 59913b8; PR 93 d1c730c
+- **Location:** src/app/exercise-menu.tsx:86, 123–130; e2e/ui-audit-regressions.spec.ts:103
+- **Related:** N8 K5 I2 L3 L4 · Related AUD-006
+- **Evidence:** PR 93 run 43294569144 UI-AUDIT-07 failed twice after Enter; PR 91 run 43266173382 timed out twice on the same workflow. On main, the added focused keyboard test failed 4/5 repeated runs at Pixel 7 emulation 320×640: the target received a focus then blur, remained unactivated (no keydown/click), and the menu itself regained focus; desktop passed 5/5. A separate locator.press('Enter') test failed 2/3 mobile repeats and passed 3/3 desktop repeats. An initial one-shot subset passed, so the defect is intermittent. Static code shows the compact path places Data actions inside an inline role=group, whereas desktop uses Radix submenu content; this is a likely focus-management trigger, not a proven root cause.
+- **Reproduction:** npx playwright test --config e2e/audit/playwright.keyboard.config.ts -g 'menu.import-json.opens-with-Enter' --workers=1 --repeat-each=5; inspect per-run [AUDIT_MENU_KEYBOARD] diagnostics. Test file: e2e/audit/menu.keyboard.spec.ts.
+- **Expected / Actual:** Enter on the focused Import session JSON item opens Session backup / on 4 of 5 narrow-mobile repeats, focus was redirected to the menu before key delivery and the backup panel did not open.
+- **Root cause:** likely compact-menu focus management in the UI (src/app/exercise-menu.tsx:123–130); exact Radix/focus transition remains unisolated.
+- **Proposed fix (not executed):** Make compact submenu items remain in the keyboard roving-focus sequence; retain explicit Enter and Space tests on Pixel 7, 320 px, and desktop.
+- **Fix acceptance:** The audit spec passes 10/10 repeated attempts per device for both Enter and Space, Esc closes and returns focus, and UI-AUDIT-07 passes on the exact PR head.
 - **Size:** M · **Fix risk:** medium
 
 ### AUD-008 — PR 92 mobile-320 visual CI gate fails
@@ -357,7 +360,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | AUD-004 | Production Worker and Pages originate from different commits | Release | High | no | confirmed | VERIFIED | production; main 7eeeef0; PR 91 59913b8 | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml | M |
 | AUD-005 | Scoped reset execution is not implemented | Missing | High | no | confirmed | VERIFIED | main 7eeeef0; PR 92 f384ca4 | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 | L |
 | AUD-006 | PR 93 replaced Enter with pointer click in AXE setup | CI/test | Medium | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/accessibility/axe-states.spec.ts:20 | S |
-| AUD-007 | PR 93 CI gate fails on mobile session backup workflow | CI/test | High | no | confirmed | VERIFIED | PR 93 d1c730c | e2e/ui-audit-regressions.spec.ts:103 | M |
+| AUD-007 | Import session JSON loses Enter activation intermittently in the compact mobile menu | Accessibility/CI | High | no | confirmed | VERIFIED | main 7eeeef0; PR 91 59913b8; PR 93 d1c730c | src/app/exercise-menu.tsx:86,123–130; e2e/ui-audit-regressions.spec.ts:103 | M |
 | AUD-008 | PR 92 mobile-320 visual CI gate fails | CI/test | High | no | confirmed | VERIFIED | PR 92 f384ca4 | e2e/visual/mobile-layout.spec.ts:23 | M |
 | AUD-009 | Distinct reset releases reuse a static epoch | Data | Blocker | yes | confirmed | VERIFIED | main 7eeeef0, PR 91 59913b8 static, PR 93 d1c730c static | worker/src/event-store.ts:419 | L |
 | AUD-010 | Reset selects Drive files by name without an ownership marker | Data | Critical | no | confirmed | VERIFIED | main 7eeeef0 | worker/src/event-store.ts:485 | L |
@@ -379,7 +382,7 @@ On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistak
 - K2: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
 - K3: NOT_TESTED — actual production Cron error remains unknown. An unexpected rejection causes main combined request to fail (AUD-018); PR 93 equivalent isolated test passed.
 - K4: NOT_TESTED — ownership and shared Sessions remain unresolved; aggregate Math Attempts count is 5, local reference deletion is confirmed in AUD-011, filename-only Drive selection in AUD-010.
-- K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
+- K5: FAILED — Import session JSON lost keyboard focus before Enter on 4/5 repeated 320 px runs; complete item matrix and exact root cause remain NOT_TESTED (AUD-007).
 - K6: FAILED — local main Worker scoped execute route returns 404 (AUD-005); PR 92 is static-only and production was not probed.
 - K7: NOT_TESTED — root cause / actual production behavior not established; see AUD-004.
 - K8: FAILED — main mocked runtime violates 5-second debounce (AUD-002); full production behavior and exit flush remain untested (AUD-003).
@@ -408,7 +411,7 @@ Full request/response/error contract and duplicate type comparison: NOT_TESTED.
 - N5: NOT_TESTED — full behavioral coverage incomplete; requires dedicated validation.
 - N6: FAILED — unexpected rejection fails combined Cron route on main (AUD-018); complete subrequest accounting remains NOT_TESTED.
 - N7: FAILED — Worker deployment and Pages release identify different source commits; see AUD-004.
-- N8: NOT_TESTED — full behavioral coverage incomplete; keyboard coverage gap AUD-006 and CI AUD-007.
+- N8: FAILED — Import session JSON Enter activation intermittently failed on 320 px (AUD-007); full all-item Enter/Space matrix remains NOT_TESTED.
 
 ## 9. Review checklist
 Each code records a narrow executed failure or an explicit limitation; NOT_TESTED means no complete check, even if some static evidence exists.
@@ -482,8 +485,8 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - G4: NOT_TESTED — full behavior or coverage not established in this run.
 - G5: NOT_TESTED — full behavior or coverage not established in this run.
 - G6: NOT_TESTED — full behavior or coverage not established in this run.
-- G7: NOT_TESTED — full behavior or coverage not established in this run.
-- G8: NOT_TESTED — full behavior or coverage not established in this run.
+- G7: FAILED — Import backup file replaced synthetic current work without confirmation (AUD-017); complete backup journeys remain NOT_TESTED.
+- G8: FAILED — Import session JSON replaced synthetic current work without confirmation (AUD-017); invalid-input subset is separately covered.
 - G9: NOT_TESTED — full behavior or coverage not established in this run.
 - G10: NOT_TESTED — full behavior or coverage not established in this run.
 - H1: NOT_TESTED — full behavior or coverage not established in this run.
@@ -495,9 +498,9 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - H7: NOT_TESTED — full behavior or coverage not established in this run.
 - H8: NOT_TESTED — full behavior or coverage not established in this run.
 - I1: NOT_TESTED — full behavior or coverage not established in this run.
-- I2: NOT_TESTED — full behavior or coverage not established in this run.
-- I3: NOT_TESTED — full behavior or coverage not established in this run.
-- I4: NOT_TESTED — full behavior or coverage not established in this run.
+- I2: FAILED — Import session JSON Enter activation intermittently failed on Pixel 7 emulation at 320 px (AUD-007); all menu items remain NOT_TESTED.
+- I3: VERIFIED — Escape closed the opened menu in the focused audit spec on both 320 px Pixel 7 and desktop; this does not cover every menu state.
+- I4: VERIFIED — the focused audit spec observed Escape returning focus to the Exercise menu button on both 320 px Pixel 7 and desktop.
 - I5: NOT_TESTED — full behavior or coverage not established in this run.
 - I6: NOT_TESTED — full behavior or coverage not established in this run.
 - I7: NOT_TESTED — full behavior or coverage not established in this run.
@@ -534,7 +537,7 @@ Each code records a narrow executed failure or an explicit limitation; NOT_TESTE
 - S9: FAILED — two local Worker resets followed by an old-generation event admitted stale data (AUD-009). Browser tab, counter and full external mirror aspects remain NOT_TESTED.
 - S10: VERIFIED — the PR 91 local Worker suite exercised synthetic orphaned lock takeover and release; actual production lock takeover and browser UX remain NOT_TESTED.
 - S11: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
-- S12: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S12: FAILED — Import session JSON Enter lost focus before key delivery on 4/5 repeated 320 px tests; desktop 5/5 passed. Space/Escape subset passed once; all remaining items and click states remain NOT_TESTED. AUD-007.
 - S13: VERIFIED — mobile-390 local browser tested malformed JSON, a 1,000,001-character input and one script-bearing malformed object; visible errors and no execution were observed. Desktop and other payloads remain NOT_TESTED. See e2e/audit/import.invalid-inputs.spec.ts.
 - S14: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
 - S15: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
@@ -556,7 +559,7 @@ Each complete row below is NOT_TESTED unless otherwise stated; partial results d
 - Scoped reset: FAILED — local main route returns 404 (AUD-005); safe end-to-end execution remains untested.
 - Multi-device: NOT_TESTED — desktop local-storage conflict tests pass, full convergence untested.
 - Session, backup, import: FAILED — destructive JSON replacement has no confirmation (AUD-017); backup fixture passed, full matrix incomplete.
-- Menu and accessibility: NOT_TESTED — selected AXE/mobile checks passed, all items/keyboard coverage incomplete.
+- Menu and accessibility: FAILED — Enter activation of Import session JSON failed intermittently on 320 px (AUD-007); other menu items and complete accessibility matrix remain NOT_TESTED.
 - Theme and layout: NOT_TESTED — partial 320/mobile tests passed; full visual matrix absent.
 - Offline/network errors: NOT_TESTED — mocked reconnect passed, chaos matrix incomplete.
 - Release: FAILED — deployment SHA mismatch AUD-004.
@@ -734,24 +737,28 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
   },
   {
     "id": "AUD-007",
-    "title": "PR 93 CI gate fails on mobile session backup workflow",
-    "category": "CI/test",
+    "title": "Import session JSON loses Enter activation intermittently in the compact mobile menu",
+    "category": "Accessibility/CI",
     "severity": "High",
     "blocker": false,
     "confidence": "confirmed",
     "verification": "VERIFIED",
     "refs": [
+      "main 7eeeef0",
+      "PR 91 59913b8",
       "PR 93 d1c730c"
     ],
-    "location": "e2e/ui-audit-regressions.spec.ts:103",
+    "location": "src/app/exercise-menu.tsx:86, 123–130; e2e/ui-audit-regressions.spec.ts:103",
     "requirements": [
+      "N8",
+      "K5",
       "I2",
       "L3",
       "L4"
     ],
-    "root_cause_layer": "CI",
-    "red_test": "",
-    "run_cmd": "",
+    "root_cause_layer": "UI accessibility (likely compact-menu focus management; exact transition unisolated)",
+    "red_test": "e2e/audit/menu.keyboard.spec.ts",
+    "run_cmd": "npx playwright test --config e2e/audit/playwright.keyboard.config.ts -g 'menu.import-json.opens-with-Enter' --workers=1 --repeat-each=5",
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
