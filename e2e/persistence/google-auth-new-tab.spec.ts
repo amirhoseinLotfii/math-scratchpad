@@ -1,5 +1,6 @@
 import type { BrowserContext } from '@playwright/test';
 import { expect, test, type Page } from '../support/test';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 const AUTH_ID_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
 const AUTH_ID_HINT_KEY = 'math-scratchpad-google-id-session-v1';
@@ -54,6 +55,13 @@ async function installGoogleAuthFixture(context: BrowserContext) {
   await context.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', async route => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
+    if (pathname === '/reset/status' && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+      });
+    }
     if (pathname === '/session' && request.method() === 'POST') {
       return route.fulfill({
         status: 201,
