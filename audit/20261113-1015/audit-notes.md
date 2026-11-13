@@ -39,3 +39,7 @@
 - Production Pages browser navigation failed twice with ERR_EMPTY_RESPONSE; no writes were attempted, so S18 BLOCKED. HEAD requests succeeded earlier.
 - Notion count-only: Math Attempts 5, Mistakes 0, Concepts 0, Daily Reports 0. Shared Sessions not counted; ownership not inferred.
 - Combined audit tests 6 red assertions across 5 test files; these red tests are deliberate findings, not a passing suite.
+
+## Phase 9 additional checkpoint
+- AUD-014: main sync runtime transmitted seeded synthetic outbox event to fake network despite reset-pending flag, reproduced three times. Server behavior and actual owner phone path untested. PR 93 includes guard, not independently proven by this test.
+- Main dist assets total 7.2 MB including fonts/maps; primary JS 1,622,724 raw bytes, 471,350 gzip bytes (local build). Lighthouse pending.
