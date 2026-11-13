@@ -115,3 +115,13 @@ Timestamp: 2026-11-13 14:45 Asia/Tehran.
 - GitHub code branch commit: `239d640a42e0b71d40b751a298ac61977f49ab0a`; tree `6a6673f022f5c6588645f557340994b5fffb0ae4` matches the local verified tree. Only the isolated fix branch moved. No release, merge, production mutation, or Notion archive was performed.
 - Next: AUD-013 state payload limit. AUD-005 and other outstanding findings remain open; release gates and browser checks retain their prior NOT_TESTED/BLOCKED states.
 
+
+## Phase 8 — AUD-013 public state payload limit
+Timestamp: 2026-11-13 14:49 Asia/Tehran.
+
+- TDD red: `state.accepts-valid-300kb-value-through-public-worker` returned 413 through the authenticated public Worker, while the direct Durable Object path returned 200. Root cause: the shared proxy body cap was 250,000 bytes even though the state endpoint accepts up to 2,100,000 bytes.
+- Added a state-specific 2,100,000-byte streaming cap to the public proxy, matching the Durable Object; all other proxy routes retain their existing 250,000-byte default. The 300 KB value now succeeds through both paths.
+- Verification: target audit test 1/1 PASS; `npm run test:worker` 7 files / 125 tests PASS; `npm run test:typecheck` PASS; `npm run worker:build` dry-run PASS; `git diff --check` PASS; staged Gitleaks 8.30.1 found no leaks. Full audit Worker suite: 12/13 tests pass; only AUD-005 scoped reset route remains red (404).
+- GitHub code branch commit: `91fb29681990b62e74a3ec35cbf3d486f3a07671`; tree `45443e9b2ad53c604df5b8dd64db21f7d120560f` matches the local verified tree. Wrangler emitted a multiple-environment warning during dry-run; no deploy occurred.
+- No live Notion or production action was performed during this phase. Next: AUD-005 scoped reset route.
+
