@@ -5,14 +5,14 @@ Code branch: fix/audit-20261113-1319 (created from verified main 7eeeef0bf7d5243
 Notes branch: fixlog/20261113-1319 (created from audit branch checkpoint 402836207858bb85916803a06722adc5cd0a06e8)
 PR: none
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: Phase 4 checkpoint complete — resolve confirmed red findings one at a time; browser-only acceptance remains blocked.
+Current phase: Phase 5 checkpoint complete — AUD-009 fixed; next fix critical AUD-010 ownership-safe mirror selection.
 Last green suites: baseline main `npm run typecheck` exit 0 and `npx vitest run` 75 files / 975 tests; integration head `d048850` `npm run test:typecheck` exit 0.
-Gate status: integrated root Vitest 982/982, Worker 123/123, test:typecheck, and build VERIFIED; 7 audit Worker failures reproduce; browser E2E BLOCKED by missing Chromium; release gates G1–G15 remain NOT_TESTED. No production writes, merge, or deployment.
-Backup status: Phase 4 checkpoint prepared for Drive and notes branch update.
+Gate status: integrated root Vitest 985/985, Worker 123/123, test:typecheck, and build VERIFIED; AUD-009 acceptance green; remaining audit Worker reds: AUD-005/010/011/013. Browser E2E BLOCKED by missing Chromium; release gates G1–G15 remain NOT_TESTED. No production writes, merge, or deployment.
+Backup status: Phase 5 checkpoint prepared for Drive and notes branch update.
 Timestamp Asia/Tehran: 2026-11-13 13:34
 
 ## Finding status
-AUD-006: PARTIAL (Enter restored, Space case added, browser acceptance BLOCKED). AUD-001–005 and AUD-007–018: Pending.
+AUD-006: PARTIAL (Enter restored; browser acceptance BLOCKED). AUD-009: FIXED locally and regression-tested. AUD-001–005, AUD-007–008, AUD-010–018: Pending.
 
 ## Phase 0 observations
 - GitHub connector: available with admin/push permission; main and PR #91/#92/#93 heads match the audit prompt.
@@ -43,3 +43,11 @@ AUD-006: PARTIAL (Enter restored, Space case added, browser acceptance BLOCKED).
 - Audit Playwright keyboard and standalone suites could not launch Chromium: required headless-shell executable is absent. Classified BLOCKED/NOT_TESTED, not a product assertion result. The build reports that `import.meta` is empty in IIFE output at `src/main.tsx:99`, corroborating AUD-016; browser acceptance remains BLOCKED.
 - Base integrated root suite, Worker suite, typecheck, and build all passed. No finding is marked fully fixed from these results alone.
 - Phase 4 checkpoint time: 2026-11-13 13:53 UTC / 17:23 Asia/Tehran.
+
+## Phase 5 — AUD-009 reset generation fix
+- Each distinct reset release now persists a fresh UUID generation; retrying a release with the same reset ID keeps the same generation. The owner-authenticated `/reset/epoch` endpoint returns the current generation; stale writes receive 426 with the required generation.
+- Client startup and sync preflight reconcile the server generation before writes. On mismatch, a local reset guard is set before clearing learning data; dynamic generation metadata is preserved separately from the build-time reset marker. Learning writes use the reconciled generation. A late 426 fails closed and triggers reload/reconciliation.
+- Acceptance: targeted Worker audit tests (two full resets, per-release retry, stale generation rejected, current generation accepted) 5 passed / 1 skipped; client local reset/header tests passed. Integrated root 77 files / 985 tests, Worker 7 files / 123 tests, `npm run test:typecheck`, and `npm run build` all passed.
+- Remaining audit Worker failures after this fix: AUD-005, AUD-010, AUD-011, AUD-013. Browser E2E remains BLOCKED; no production write or deployment.
+- Local fix commit `a61760ec1971c09f14ea40236f80f69e039f5f3f`; GitHub branch commit `8a1e78be40ad6c7d87811af47e680c7e96513c86`; tree SHA `e57078ce02d55e23d0fbe58cdced6ec8fe3e0143` matches.
+- Phase 5 checkpoint time: 2026-11-13 14:08 UTC / 17:38 Asia/Tehran.
