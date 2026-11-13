@@ -61,3 +61,7 @@
 - Synthetic full-backup fixture passed mobile and desktop, desktop earlier target crash under concurrent load and subsequent rerun passed; no claim of root cause.
 - Mobile keyboard adaptation suite 15/15 passed.
 - K1 static: main ID token request timeout 30 seconds; actual cause and PR 93 fix on owner's account remain untested.
+
+## Import validation checkpoint
+- AUD-017: three local mobile runs replaced a synthetic existing expression with a valid imported session immediately, without a separate confirmation. No real data, no external requests. The red test expects old work to persist until confirmation.
+- S13: three local mobile browser tests passed for malformed JSON, 1,000,001-character oversized input, and one script-bearing malformed object; error visible, no injected script execution. Scope is limited to those inputs and device.
