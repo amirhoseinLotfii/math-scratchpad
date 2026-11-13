@@ -27,3 +27,5 @@ Local runs use synthetic data and mocked external services unless otherwise spec
 
 | AUD-016 | Local standalone build showed undefined PROD; red browser test failed 3 times | `npm run build` then `npx playwright test --config e2e/audit/playwright.standalone.config.ts` |
 | Backup and keyboard | synthetic full-backup mobile and desktop passed; 15 mobile keyboard adaptation tests passed | `e2e/persistence/learning-backup.spec.ts`, `e2e/accessibility/keyboard-and-adaptations.spec.ts` |
+| AUD-017 | 3 mobile runs: valid JSON immediately replaced synthetic current expression; no separate confirmation | `npx playwright test e2e/audit/import.requires-confirmation.spec.ts --project=mobile-390 --workers=1` |
+| S13 | 3 local mobile invalid/oversized/script-bearing malformed payloads showed error; no injected script execution | `npx playwright test e2e/audit/import.invalid-inputs.spec.ts --project=mobile-390 --workers=1` |
