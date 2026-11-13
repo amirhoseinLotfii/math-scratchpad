@@ -165,3 +165,11 @@ Timestamp: 2026-11-13 15:14 Asia/Tehran.
 - Existing `tests/unit/server-connection-gate-reset.test.tsx` verifies the no-token state stays locked. The requested real-phone, failed-GIS, empty/nonempty server, interrupted-check, and reload acceptance matrix remains NOT_TESTED; no production or live data call was made in this review.
 - Status: AUD-001 BLOCKED pending the complete AUD-005 reset saga and its tests. No code change. Next: AUD-002 debounce acceptance verification.
 
+
+## Phase 13 — AUD-002 outbox debounce verification
+Timestamp: 2026-11-13 15:16 Asia/Tehran.
+
+- The current integrated branch already contains a 5,000 ms trailing timer reset by every persisted event and a 30,000 ms max-wait timer started once per burst. `syncNow()` clears both timers for explicit flushes; the retry timer remains separate, and wake/pagehide paths can flush promptly.
+- Targeted verification: `tests/audit/outbox.debounce.test.ts` confirms no first POST before five seconds; `tests/unit/browser-sync.test.ts` confirms grouped trailing debounce, 30-second max wait during continuing activity, retained outbox/retry after reconnect, and pagehide keepalive flush. 5 tests passed across 2 files (38 filtered out).
+- Status: AUD-002 FIXED by independently verified implementation and tests; no additional code change or live Worker call. Latest code branch stays `14281e2c6c39ce318c441c58b9ae1bb5eceb4e83` / tree `e03c426c09f9bf4cfae3a4afd1627fe182a77de4`. Next: AUD-003 exit/hidden-page flush review.
+
