@@ -173,3 +173,12 @@ Timestamp: 2026-11-13 15:16 Asia/Tehran.
 - Targeted verification: `tests/audit/outbox.debounce.test.ts` confirms no first POST before five seconds; `tests/unit/browser-sync.test.ts` confirms grouped trailing debounce, 30-second max wait during continuing activity, retained outbox/retry after reconnect, and pagehide keepalive flush. 5 tests passed across 2 files (38 filtered out).
 - Status: AUD-002 FIXED by independently verified implementation and tests; no additional code change or live Worker call. Latest code branch stays `14281e2c6c39ce318c441c58b9ae1bb5eceb4e83` / tree `e03c426c09f9bf4cfae3a4afd1627fe182a77de4`. Next: AUD-003 exit/hidden-page flush review.
 
+
+## Phase 14 — AUD-003 hidden/exit durable flush
+Timestamp: 2026-11-13 15:19 Asia/Tehran.
+
+- The current runtime registers both `pagehide` and `visibilitychange`; hidden/exit flush is bounded to 60 KB, authenticated, acknowledged before outbox removal, and retains the durable queue on failure. The full local Worker/browser E2E acceptance remains unavailable because Chromium is missing; KERNEL browser creation previously returned 403. No production Worker call was made.
+- Added unit regression coverage for hidden-page flush, simultaneous `visibilitychange` + `pagehide` deduplication, acknowledgment-only queue removal, and offline pagehide retaining IndexedDB data for a newly created runtime after reload. Existing pagehide test remains.
+- Verification: entire `tests/unit/browser-sync.test.ts` 44/44 PASS; targeted typechecks PASS; prior full `npm test` 77 files / 985 tests and Worker 7 files / 125 tests PASS. `git diff --check` and staged Gitleaks PASS. Real browser/local Worker E2E, server observation after browser close, and production behavior remain NOT_TESTED.
+- Status: AUD-003 PARTIAL — implementation and durable unit behaviors are verified; the full Worker/browser E2E acceptance remains BLOCKED/NOT_TESTED due the unavailable browser. GitHub code commit `49f7c96c0fce5f5ae57273ba8c221c202a278885`; tree `a5f2467d3f9b8293af24e38fd32354a8ee9dba50`. Next: AUD-004 Pages/Worker deployment SHA drift.
+
