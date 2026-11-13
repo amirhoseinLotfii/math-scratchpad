@@ -661,6 +661,78 @@ describe('browser sync runtime', () => {
     runtime.stop();
   });
 
+  it('flushes a hidden page once even when pagehide arrives during the same keepalive request', async () => {
+    await initializeLearningStorage();
+    let resolvePost: ((response: Response) => void) | undefined;
+    let posted: { init?: RequestInit; body: { events: LearnEvent[] } } | undefined;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (url.pathname === '/events') {
+        posted = { init, body: JSON.parse(String(init?.body)) as { events: LearnEvent[] } };
+        return await new Promise<Response>(resolve => { resolvePost = resolve; });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'hidden-page', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(posted).toBeDefined());
+    window.dispatchEvent(new Event('pagehide'));
+    expect(fetcher.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/events')).toHaveLength(1);
+    expect(posted?.init?.keepalive).toBe(true);
+    expect(await readOutboxCount()).toBe(1);
+
+    resolvePost?.(Response.json({ events: posted!.body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: posted!.body.events.length }));
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(0));
+    visibility.mockRestore();
+    runtime.stop();
+  });
+
+  it('keeps an offline pagehide batch durable and sends it after a reload', async () => {
+    await initializeLearningStorage();
+    const posted: Array<{ body: { events: LearnEvent[] }; init?: RequestInit }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted.push({ body, init });
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'offline-pagehide', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(fetcher.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/events')).toHaveLength(0);
+    expect(await readOutboxCount()).toBe(1);
+    online.mockRestore();
+    runtime.stop();
+
+    const reloadedRuntime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    await reloadedRuntime.start();
+    reloadedRuntime.setIdToken('owner-id-token');
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(0));
+    expect(posted).toHaveLength(1);
+    expect(posted[0]?.body.events).toHaveLength(1);
+    reloadedRuntime.stop();
+  });
+
   it('does not queue or send learning data while the local reset guard is active', async () => {
     localStorage.setItem('math-scratchpad-local-learning-reset-pending-v1', '1');
     const fetcher = vi.fn(async () => Response.json({ events: [], cursor: 0 }));
