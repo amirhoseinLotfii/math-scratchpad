@@ -94,3 +94,13 @@ Gitleaks 8.30.1 returned zero findings on each imported directory, and `git diff
 - `git diff --check` and staged Gitleaks scan passed. Full audit Worker suite still has red AUD-005, AUD-010, AUD-011, AUD-013. Playwright acceptance remains BLOCKED by missing Chromium.
 
 Local commit: `a61760ec1971c09f14ea40236f80f69e039f5f3f`. GitHub code branch commit: `8a1e78be40ad6c7d87811af47e680c7e96513c86`. The exact local/remote tree SHA is `e57078ce02d55e23d0fbe58cdced6ec8fe3e0143`. No main merge or production deployment.
+
+## Phase 6 — AUD-010 Drive ownership markers
+Timestamp: 2026-11-13 14:27 Asia/Tehran.
+
+- TDD red evidence: before the change, `reset.preserves-unmarked-matching-filename` failed because the unmarked `progress.json` file was selected for trash.
+- New Drive files created by mirror upload paths receive private `appProperties` with `msOwner=math-scratchpad` and a kind (`events`, `state`, `backups`, or `other`). Existing legacy files are not adopted or migrated. Reset now requires an exact owner marker, the matching kind, and a recognized mirror filename; the trash operation re-reads and checks metadata before mutation. Bank IDs remain explicitly protected; unmarked, foreign-owner, unrelated `03_Sync`, and similarly named files are preserved.
+- Acceptance: audit ownership test 1 passed; Google Drive ownership/pagination checks and upload marker checks 5 passed; `npm run test:worker` passed 7 files / 125 tests; `npm run test:typecheck` passed. `git diff --check` passed. Staged Gitleaks 8.30.1 scan reported no leaks.
+- Local commit: `378ef0238ea7cedb7a0bdaeca2019f590646824f`. GitHub branch commit: `b0700a24aa32485224b4f7a33644d27dfc44f8e3`; tree `0c0f34b4272eab1701772c027c26cb3545a61825` matches the local tree. HTTPS push was unavailable in this runtime; the authorized GitHub Git Data connector advanced only `fix/audit-20261113-1319`.
+- No production or live Drive mutation was performed. Next: AUD-011 Notion reconciliation journal.
+
