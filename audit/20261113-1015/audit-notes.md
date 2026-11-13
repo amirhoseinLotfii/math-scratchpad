@@ -70,3 +70,7 @@
 - PR 92 CI screenshot expected/actual inspected. Actual shows Workspace selector and different palette; selector git-blamed to 9a14772, after baseline snapshot c05bcf4. Theme tokens also changed in later ancestor 4ea691c. PR92 delta from PR91 touches no frontend or visual baseline. Remaining pixel causes not established. Synthetic expected and actual screenshots backed up to Drive.
 - Isolated initial layout 3/3 passed (320, Pixel 7, desktop): no pageerror or horizontal overflow before menu; menu opened. Full S1 still incomplete.
 - S7 one-event retry local Worker test passed, including changed-content rejection; 112 tests were intentionally filtered in targeted run. S9 failed by AUD-009.
+
+## Cron and exception handling checkpoint
+- AUD-018: three isolated main Worker tests injected a Drive rejection; combined sync route rejected instead of returning both results. Notion task cancellation was not demonstrated. PR93 existing analogous test passed in 114-test Worker suite; actual production Cron failure still unknown.
+- A narrow fake Worker storage exception returned 5xx rather than 401; suspected auth error masking was not reproduced.
