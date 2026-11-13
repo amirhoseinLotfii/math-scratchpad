@@ -182,3 +182,16 @@ Timestamp: 2026-11-13 15:19 Asia/Tehran.
 - Verification: entire `tests/unit/browser-sync.test.ts` 44/44 PASS; targeted typechecks PASS; prior full `npm test` 77 files / 985 tests and Worker 7 files / 125 tests PASS. `git diff --check` and staged Gitleaks PASS. Real browser/local Worker E2E, server observation after browser close, and production behavior remain NOT_TESTED.
 - Status: AUD-003 PARTIAL — implementation and durable unit behaviors are verified; the full Worker/browser E2E acceptance remains BLOCKED/NOT_TESTED due the unavailable browser. GitHub code commit `49f7c96c0fce5f5ae57273ba8c221c202a278885`; tree `a5f2467d3f9b8293af24e38fd32354a8ee9dba50`. Next: AUD-004 Pages/Worker deployment SHA drift.
 
+
+## Phase 15 — AUD-004 production Pages/Worker SHA drift
+Timestamp: 2026-11-13 15:24 Asia/Tehran.
+
+- Read-only recheck confirmed the successful GitHub Pages run `43238966350` completed on `main` SHA `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`. Cloudflare's current 100% Worker deployment is deployment `6bbfd5a8-6641-483f-a478-65fa408b36b1`, version `d376eafb-f0ab-42b9-8409-aab8f9bbaead`, annotated `fix/learning-reset-stuck-lock 59913b8`, created `2026-11-12T17:08:08Z`. The deployed source refs differ.
+- `main`'s Worker environment type has no release SHA binding, and its Pages workflow builds and deploys on a `main` push independently. The repository currently has `ci.yml`, `pages.yml`, and `pr71-ux-evidence.yml`; no coordinated Worker+Pages release workflow was found. Production `/health` evidence in the audit report returned only `ok` and `service`, so it does not attest the deployed commit.
+- The isolated fix branch contains a health response that can expose `RELEASE_ENV` and `RELEASE_SHA`, but the release pipeline still needs to provide the actual immutable SHA to both artifacts and deploy them together. This code branch has not been merged or released. Source-only work cannot resolve the currently deployed mismatch.
+- Status: AUD-004 BLOCKED pending an approved, coordinated Pages/Worker release and post-deploy identity comparison. No Cloudflare write, Pages deployment, merge, or live change was made. No code change in this phase.
+- Evidence: GitHub Actions run `43238966350` (`success`, head SHA `7eeeef0...`); read-only Cloudflare deployment list (100% on `d376eafb...`, annotation `59913b8`).
+- Latest code branch remains `49f7c96c0fce5f5ae57273ba8c221c202a278885`, tree `a5f2467d3f9b8293af24e38fd32354a8ee9dba50`. No test suite ran in this phase because this was a read-only release-state audit.
+- Checkpoint whitespace checks passed. Gitleaks was NOT_RUN because the executable is absent in this runtime; this phase adds only public deployment/run identifiers and commit SHAs, with no credentials or secret material.
+- Next: AUD-007 compact mobile menu Enter activation.
+
