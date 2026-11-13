@@ -7,7 +7,7 @@ Can learning safely start today? **Undetermined; do not assume safe cross-device
 Next: verify reset state and auth on synthetic environment; repair and test outbox; resolve both CI failures and release drift.
 
 ## 1. Environment & coverage
-Repository cloned. Node 24.22.1, npm 11.9.0. npm ci --ignore-scripts succeeded; local tests ran. Cloudflare read access succeeded. Google Drive root was listable; account identity was not established, so no project backup was created there. Notion live rows not queried. Real sign-in and protected production data were not touched.
+Repository cloned. Node 24.22.1, npm 11.9.0. npm ci --ignore-scripts succeeded; local tests ran. Cloudflare read access succeeded. Google Drive personal identity verified and audit backup created. Read-only Notion aggregate counts were queried for four project-designated sources; shared Sessions was deliberately not counted without a reliable project marker. Real sign-in and protected production data were not touched.
 PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 performed; phase 8 and most scenarios not completed. Static review does not count as a behavioral test. No claim of exhaustive coverage.
 
 ## 2. Versions & release drift
@@ -32,6 +32,10 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | PR 92 | CI gate | FAILED | 93 passed, 1 failed, 512 did not run | [run](https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43278685074), AUD-008 |
 | PR 91 | Worker tests | VERIFIED | 6 files, 115 passed | local, exact head 59913b8 |
 | PR 92 | Worker tests | VERIFIED | 7 files, 122 passed | local, exact head f384ca4 |
+| main | Outbox 5-second debounce | FAILED | three runs sent after roughly 4 ms | tests/audit/outbox.debounce.test.ts; AUD-002 |
+| main | UI audit mobile-320 | VERIFIED | 9 passed | e2e/ui-audit-regressions.spec.ts |
+| main | Local storage / conflict desktop | VERIFIED | 8 passed | local-storage-sync and server-conflict-resolution |
+| PR 93 | Worker and typecheck | VERIFIED | 114 worker tests and typecheck passed | local pinned head |
 | main | Public versus DO state size | FAILED | 3 local runs: direct 300 KB state succeeds, public route returns 413 | worker/test/audit/state.proxy-limit.test.ts; AUD-013 |
 | main | Ownership and Notion audit | FAILED | 2 synthetic assertions failed in three runs | worker/test/audit/reset.ownership-and-notion.test.ts; AUD-010 and AUD-011 |
 | main | Connected lesson and AXE | VERIFIED | 3 passed mobile-390 | e2e/lessons/phase3-connected.spec.ts and phase5-a11y.spec.ts, synthetic fixtures |
@@ -71,12 +75,12 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 ### AUD-002 — Outbox initiates sync immediately instead of five-second trailing debounce
 - **Category:** Contract violation
 - **Severity:** High · **Blocks learning today:** no
-- **Confidence:** likely · **Verification:** NOT_TESTED
+- **Confidence:** confirmed · **Verification:** VERIFIED
 - **Refs affected:** main 7eeeef0
 - **Location:** src/sync/runtime.ts:285
 - **Related:** N1 B2 B3 B4 K8
-- **Evidence:** After queue persistence refreshCountAndTrigger calls syncNow immediately when authenticated. PR 93 adds debounce and maximum-wait timers at runtime.ts:322–345, but behavior has not been independently verified.
-- **Reproduction:** Inspect the referenced source and run the acceptance test below. Red test: n/a (not created in this partial run).
+- **Evidence:** Three local mocked unit runs observed the first event POST approximately 4 ms after emission rather than after 5 seconds. After queue persistence refreshCountAndTrigger calls syncNow immediately when authenticated. PR 93 adds debounce and maximum-wait timers at runtime.ts:322–345, but behavior has not been independently verified.
+- **Reproduction:** Run `npx vitest run tests/audit/outbox.debounce.test.ts`. This uses a synthetic event, mocked network and wall-clock timing; fake-timer max-wait coverage remains outstanding.
 - **Expected / Actual:** Contract and acceptance behavior below / evidence above.
 - **Root cause:** layer outbox; src/sync/runtime.ts:285; mechanism or unresolved cause as stated in evidence.
 - **Proposed fix (not executed):** Introduce tested 5-second trailing debounce and 30-second maximum wait, respecting explicit flushes and retries.
@@ -252,7 +256,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 | ID | Title | Category | Severity | Confidence | Verification | Location |
 |---|---|---|---|---|---|---|
 | AUD-001 | Reset-pending state makes editor inert until authenticated cloud check | Bug | Blocker | likely | NOT_TESTED | src/sync/server-connection-gate.tsx:135; src/main.tsx:42 |
-| AUD-002 | Outbox initiates sync immediately instead of five-second trailing debounce | Contract violation | High | likely | NOT_TESTED | src/sync/runtime.ts:285 |
+| AUD-002 | Outbox initiates sync immediately instead of five-second trailing debounce | Contract violation | High | confirmed | VERIFIED | src/sync/runtime.ts:285 |
 | AUD-003 | Exit and hidden-page flush are absent from main | Contract violation | Blocker | likely | NOT_TESTED | src/sync/runtime.ts:102; src/sync/runtime.ts:292 |
 | AUD-004 | Production Worker and Pages originate from different commits | Release | High | confirmed | VERIFIED | Worker deployment d376eafb-f0ab-42b9-8409-aab8f9bbaead; .github/workflows/pages.yml |
 | AUD-005 | Scoped reset execution is not implemented | Missing | High | likely | NOT_TESTED | worker/src/index.ts:219; PR 92 worker/src/index.ts:231 |
@@ -268,11 +272,14 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 
 | AUD-013 | Public Worker rejects state payloads accepted by the Durable Object | Contract violation | High | confirmed | VERIFIED | worker/src/index.ts:130 |
 
+## Notion read-only aggregate observations
+On 2026-11-13, aggregate counts from configured sources: Math Attempts 5; Mistakes 0; Concepts 0; Daily Reports 0. These are entire data-source counts, not proof of project ownership, deletion eligibility, or the age/type of the rows. Sessions is a shared core database; it was not counted because that could include protected Pomodoro records and no validated filter was established. No row contents were read or changed. See AUD-011.
+
 ## 7. Known issues K1–K8
 - K1: NOT_TESTED — root cause / actual production behavior not established; see AUD-001.
 - K2: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
 - K3: NOT_TESTED — root cause / actual production behavior not established; requires dedicated tests and live-safe evidence.
-- K4: NOT_TESTED — live row count remains unknown; local reference deletion confirmed in AUD-011, filename-only Drive selection in AUD-010.
+- K4: NOT_TESTED — ownership and shared Sessions remain unresolved; aggregate Math Attempts count is 5, local reference deletion is confirmed in AUD-011, filename-only Drive selection in AUD-010.
 - K5: NOT_TESTED — root cause / actual production behavior not established; see AUD-006 and AUD-007.
 - K6: NOT_TESTED — root cause / actual production behavior not established; see AUD-005.
 - K7: NOT_TESTED — root cause / actual production behavior not established; see AUD-004.
@@ -295,7 +302,7 @@ PARTIAL: Phases 0–2 incomplete; focused portions of phases 3–7 and 9–10 pe
 
 Full request/response/error contract and duplicate type comparison: NOT_TESTED.
 
-- N1: NOT_TESTED — full behavioral coverage incomplete; static gaps AUD-002 and AUD-003.
+- N1: FAILED — debounce behavior failed in three mocked local runs (AUD-002); exit flush static gap AUD-003; full browser/real Worker validation remains incomplete.
 - N2: FAILED — synthetic release epoch test failed; complete reset behavior NOT_TESTED; see AUD-009 and recovery risk AUD-001.
 - N3: NOT_TESTED — full behavioral coverage incomplete; missing execution AUD-005.
 - N4: FAILED — local fake Drive test selected unmarked file, AUD-010; Notion cleanup/reconciliation gap AUD-011.
@@ -320,8 +327,44 @@ All entries below are NOT_TESTED in full; static observations are linked where a
 - L: L1 NOT_TESTED, L2 NOT_TESTED, L3 NOT_TESTED, L4 NOT_TESTED, L5 NOT_TESTED, L6 NOT_TESTED, L7 NOT_TESTED, L8 NOT_TESTED.
 
 ## 10. Browser scenarios
-- S1–S18: NOT_TESTED — complete specified scenarios were not executed; mocked offline reconnect and fixture lesson resume covered portions but not the full scenarios. The separate nine AXE tests do not establish these scenarios.
+- S1: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S2: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S3: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S4: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S5: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S6: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S7: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S8: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S9: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S10: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S11: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S12: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S13: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S14: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S15: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S16: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S17: NOT_TESTED — complete specified scenario not executed; fixture and mock subsets are in section 3.
+- S18: BLOCKED — production page navigation failed twice with ERR_EMPTY_RESPONSE; only read-only HEAD available. The separate nine AXE tests do not establish these scenarios.
 - Real Google sign-in: BLOCKED — owner-only; no account sign-in was attempted.
+
+### Test matrix coverage
+Each complete row below is NOT_TESTED unless otherwise stated; partial results do not prove the whole row.
+- Learning flow: NOT_TESTED — sample fixture passed; actual Chapter 1 and cross-device path remain untested.
+- Outbox/event queue: FAILED — debounce AUD-002; offline reconnect mock passed; remaining assertions incomplete.
+- Exit flush: NOT_TESTED — static absence on main AUD-003.
+- Full reset, lock, epoch: FAILED — local reset/old event AUD-009; phone and external services untested.
+- Google sign-in/Drive: NOT_TESTED — mocked PR 93 units only; real sign-in owner-only.
+- Worker routes: FAILED — state limit AUD-013; complete contract incomplete.
+- Cron: NOT_TESTED — current production failure cause/subrequest count unknown.
+- Drive/Notion adapters: FAILED — synthetic reset ownership and references AUD-010/011; live effects not touched.
+- Scoped reset: NOT_TESTED — no execute route statically (AUD-005).
+- Multi-device: NOT_TESTED — desktop local-storage conflict tests pass, full convergence untested.
+- Session, backup, import: NOT_TESTED — partial menu and local storage tests only.
+- Menu and accessibility: NOT_TESTED — selected AXE/mobile checks passed, all items/keyboard coverage incomplete.
+- Theme and layout: NOT_TESTED — partial 320/mobile tests passed; full visual matrix absent.
+- Offline/network errors: NOT_TESTED — mocked reconnect passed, chaos matrix incomplete.
+- Release: FAILED — deployment SHA mismatch AUD-004.
+- Performance/security: FAILED — high npm advisory AUD-012; Lighthouse/gitleaks/exploitability not tested.
 
 ## 11. PR analysis & merge order
 PR 92 is stacked on PR 91. Pairwise git merge-tree for 91/93, 92/93, 91/92 returned exit 0, but semantic compatibility was not tested. Consider 91 before 92 after testing, resolve PR 93 independently, then integrate and test one SHA. This is a proposed sequence, not merge authorization.
@@ -370,8 +413,8 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
     "category": "Contract violation",
     "severity": "High",
     "blocker": false,
-    "confidence": "likely",
-    "verification": "NOT_TESTED",
+    "confidence": "confirmed",
+    "verification": "VERIFIED",
     "refs": [
       "main 7eeeef0"
     ],
@@ -384,8 +427,8 @@ Audit branch: audit/full-20261113-1015. Evidence sources: source at pinned SHAs,
       "K8"
     ],
     "root_cause_layer": "outbox",
-    "red_test": "",
-    "run_cmd": "",
+    "red_test": "tests/audit/outbox.debounce.test.ts",
+    "run_cmd": "npx vitest run tests/audit/outbox.debounce.test.ts",
     "depends_on": [],
     "size": "M",
     "fix_risk": "medium"
