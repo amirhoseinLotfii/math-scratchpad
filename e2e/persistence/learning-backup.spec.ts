@@ -9,7 +9,7 @@ const EVENT_ID = '22222222-2222-4222-8222-222222222222';
 async function seedLearningRecords(page: Page) {
   await page.evaluate(async ({ cacheKey, eventId }) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('math-scratchpad-sync-v2', 1);
+      const request = indexedDB.open('math-scratchpad-sync-v2');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -35,7 +35,7 @@ async function seedLearningRecords(page: Page) {
 async function clearLearningRecords(page: Page) {
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('math-scratchpad-sync-v2', 1);
+      const request = indexedDB.open('math-scratchpad-sync-v2');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -49,7 +49,7 @@ async function clearLearningRecords(page: Page) {
 async function inspectRestoredRecords(page: Page) {
   return page.evaluate(async cacheKey => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('math-scratchpad-sync-v2', 1);
+      const request = indexedDB.open('math-scratchpad-sync-v2');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
