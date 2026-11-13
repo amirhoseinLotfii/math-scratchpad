@@ -26,3 +26,9 @@
 - AUD-012: npm audit --omit=dev reports 1 high Zod advisory; actual exploitability not tested.
 - Main connected lesson/a11y fixture tests 3/3 passed on mobile 390.
 - Next: further contract, browser, auth, performance, CI and security review.
+
+## Phases 5–7 checkpoint
+- AUD-013: local public Worker returns 413 for 300 KB state while direct DO accepts it; reproduced three runs. PR 91 and PR 93 share this static limit.
+- PR 93 keyboard test change occurred in b305a95; 776fd7fc changed only comment. Other auth test changes reviewed selectively; exhaustive quality review remains NOT_TESTED.
+- Pairwise merge-tree had no textual conflicts, but semantic compatibility and integrated suites remain NOT_TESTED. PR 92 is based on PR 91.
+- HEAD response inspection observed HSTS, no reported CSP/COOP on Pages; not a complete security review.
