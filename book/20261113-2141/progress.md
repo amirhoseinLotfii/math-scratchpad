@@ -4,11 +4,12 @@
 - Status: `RUNNING_CONTENT` (source-content work is blocked pending OpenStax written permission)
 - Current phase: Phase 1 — template analysis and tooling
 - Current step: Chapter 1 template validator completed; pause source extraction and chapter content pending license review
-- PR #94: `OPEN`, draft, checked 2026-11-13 22:22 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; head `94a47eb6b06502ecc45359839eb83c634aff2546`
-- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` at prior checkpoint `577f6f60cb4fbda9b1b816b0298bce4a6615b3f2` (orphan; this checkpoint creates the next commit); code branch not created (D4)
+- PR #94: `OPEN`, draft, checked 2026-11-13 22:28 Asia/Tehran; base `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; head `94a47eb6b06502ecc45359839eb83c634aff2546`
+- Branches: `main` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; notes branch `booklog/20261113-2141` pre-checkpoint head `7ae7dd0e96bfb8972a2679f35d7d32014fa47579` (orphan; report and notes only); code branch not created (D4)
 - PR: https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 - Drive run folder: https://drive.google.com/drive/folders/1_yhCeZtdCezfITDZUsSCw8gt1eUz1lQu
 - Drive subfolders: banks `1eQROvv1xg7Ln8b1h6Hc2qHK4ZWGissdX`; answer-keys `1luJ4NHvosuuvrYa3_n-9oaWRQ4j8x6ey`; reports `1YbPovzCK1ywiX0_SvC2V1UbavQIL0_GP`; source-extracts `1a1IlrL4I_knh966peK-NgL5_4YZJhoiQ`
+- Phase 1 artifacts: `CH1-FINDINGS.md` `1ZpZRol8Qdgf4-tivKFl4OZcZ_prS1Vrn`; `ch1-validator.json` `1qK2vz0mH80F__Z-GfmaZ1Fb1ryxX6K0W`; `LICENSE-GATE.md` `1lRBIS_-5Moy8N4WLk-DF3SeWZbbjZ3gF`; validator `13a_KYOcT3RJTy5nTPGdg85CqdyTWcGED`; launcher `1mPwhifugUgQlF3sZq4dZqZSMCseMgFm4`
 - Main source snapshot: `/workspace/scratch/e066df6a20b0/readonly-main-20261113-2141` at `7eeeef0bf7d524323f88e3520484dfd3a0f7a7bf`; local-only validator files are untracked under `scripts/book/`, with no code branch or app-code commit
 
 ## Environment and Source Checks
@@ -61,7 +62,7 @@
 | G12 conflicts and idempotency | `NOT_TESTED` | — |
 | G13 Chapter 1 progress preservation | `NOT_TESTED` | — |
 | G14 full suites, axe, visual, build | `NOT_TESTED` | — |
-| G15 secret scan and no book content in Git history | `NOT_TESTED` | No bank, book text, or answer key has been committed |
+| G15 secret scan and no book content in Git history | `NOT_TESTED` | Current 10-path orphan-branch tree has no bank/answer-key/source-extract files; gitleaks unavailable, full history secret scan not run |
 | G16 CI on PR head | `NOT_TESTED` | — |
 
 ## Verification and Blockers
@@ -70,4 +71,4 @@
 - Open `BLOCKED` items: written OpenStax permission is needed before ingesting book material into this LLM workflow; therefore G3 TOC/source extraction and all chapter content remain `NOT_TESTED`.
 - Official OpenStax Preface checked 2026-11-13: the page includes an AI-ingestion permission restriction; see `LICENSE-GATE.md`.
 - No learning session was started. Protected sync/session data was not read or modified.
-- Checkpoint timestamp: 2026-11-13 22:22 Asia/Tehran.
+- Checkpoint timestamp: 2026-11-13 22:28 Asia/Tehran.
