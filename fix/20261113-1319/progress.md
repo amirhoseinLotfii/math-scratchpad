@@ -5,11 +5,11 @@ Code branch: fix/audit-20261113-1319 (created from verified main 7eeeef0bf7d5243
 Notes branch: fixlog/20261113-1319 (created from audit branch checkpoint 402836207858bb85916803a06722adc5cd0a06e8)
 PR: none
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: Phase 1 — baseline on isolated main worktree, then import audit red tests.
-Last green suites: none in this run yet. Prior-run audit typecheck is not counted.
-Gate status: G1–G15 NOT_TESTED. No production writes, merge, or deployment.
+Current phase: Phase 2 — integrate PR #91, #93, #92 and import audit red tests.
+Last green suites on baseline main 7eeeef0: `npm run typecheck` exit 0; `npx vitest run` 75 files / 975 tests passed; `npm ci` exit 0.
+Gate status: baseline type/unit VERIFIED on main; all release gates G1–G15 NOT_TESTED on integration head. No production writes, merge, or deployment.
 Backup status: Drive folder created; initial progress/notes checkpoint pending upload and notes-branch commits.
-Timestamp Asia/Tehran: 2026-11-13 13:19
+Timestamp Asia/Tehran: 2026-11-13 13:29
 
 ## Finding status
 All AUD-001 through AUD-018: Pending; this run has not yet tested or fixed them.
