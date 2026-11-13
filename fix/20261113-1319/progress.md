@@ -5,10 +5,10 @@ Code branch: fix/audit-20261113-1319 (created from verified main 7eeeef0bf7d5243
 Notes branch: fixlog/20261113-1319 (created from audit branch checkpoint 402836207858bb85916803a06722adc5cd0a06e8)
 PR: none
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: Phase 2 checkpoint complete — next import all audit red tests, then run integration and audit suites.
+Current phase: Phase 3 checkpoint complete — next run the imported integration/audit suites and fix failures one by one.
 Last green suites: baseline main `npm run typecheck` exit 0 and `npx vitest run` 75 files / 975 tests; integration head `d048850` `npm run test:typecheck` exit 0.
 Gate status: baseline type/unit VERIFIED on main; integration test:typecheck VERIFIED; AUD-006 PARTIAL (browser blocked); other release gates G1–G15 NOT_TESTED. No production writes, merge, or deployment.
-Backup status: Phase 2 checkpoint prepared for Drive and notes branch update.
+Backup status: Phase 3 checkpoint prepared for Drive and notes branch update.
 Timestamp Asia/Tehran: 2026-11-13 13:34
 
 ## Finding status
@@ -29,3 +29,9 @@ AUD-006: PARTIAL (Enter restored, Space case added, browser acceptance BLOCKED).
 - Remote integration commits: PR #91 `811655fcd134cd4b46888564df7ab08469b4296c`; PR #93 `9c65f5f66a7991e8edd9fb40148e340220abbf2b`; PR #92 `486e59138a71228c72ea6caa8e96ecb93497cdf1`; AUD-006 repair `27a98aa8ece559baea07aad90ddd0df28ae6353c`.
 - Each remote tree SHA matched the corresponding local commit tree, preserving ordered merge contents and the intended merge parents. Full audit red tests are still not imported.
 - Checkpoint time: 2026-11-13 13:42 UTC / 17:12 Asia/Tehran.
+
+## Phase 3 — audit regression suite import
+- Imported all 21 audit files from local `audit/full-20261113-1015` into `tests/audit`, `worker/test/audit`, and `e2e/audit`; local commit `7c9c741fbfdf45246046d7ea1562480471624a92`.
+- Gitleaks scans on each imported directory returned zero findings; `git diff --cached --check` passed. An exploratory full-worktree scan reported one finding outside the three imported directories; the finding is not reproduced in the scoped changed-file scan and no secret value was disclosed.
+- GitHub code branch advanced to `a8bec16b19ce01f879b1788c8b466001c66f18fc`; remote tree `7b1ebfe6fb1bc98920a916e6e46d0aa313b810c7` matches the local import commit tree.
+- Phase 3 checkpoint time: 2026-11-13 13:47 UTC / 17:17 Asia/Tehran. Tests have not yet been run on the imported suites.
