@@ -114,7 +114,13 @@ export function ExerciseMenu({ open: menu, setOpen: setMenu, invokerRef: menuInv
     {compactMenu ? <>
      <DropdownMenuItem className="menu-disclosure" aria-expanded={inlineMenuSubmenu === 'practice'} aria-controls={inlineMenuSubmenu === 'practice' ? 'mobile-practice-actions' : undefined}
       onPointerMove={event => { if (event.pointerType === 'mouse') { inlineMenuHover.current = 'practice'; setInlineMenuSubmenu('practice'); } else inlineMenuHover.current = null; }}
-      onPointerLeave={event => { if (event.pointerType === 'mouse' && inlineMenuHover.current === 'practice') inlineMenuHover.current = null; }}
+      onPointerLeave={event => {
+       if (event.pointerType !== 'mouse') return;
+       if (inlineMenuHover.current === 'practice') inlineMenuHover.current = null;
+       // This inline disclosure is part of the same menu. Prevent Radix from
+       // dropping focus to the menu root while scrolling into its child items.
+       if (inlineMenuSubmenu === 'practice') event.preventDefault();
+      }}
       onKeyDown={event => { if (event.key === 'ArrowRight') { event.preventDefault(); setInlineMenuSubmenu('practice'); } else if (event.key === 'ArrowLeft' && inlineMenuSubmenu === 'practice') { event.preventDefault(); inlineMenuHover.current = null; setInlineMenuSubmenu(null); } }}
       onSelect={event => { event.preventDefault(); if (inlineMenuHover.current === 'practice') { inlineMenuHover.current = null; setInlineMenuSubmenu('practice'); } else { inlineMenuHover.current = null; setInlineMenuSubmenu(value => value === 'practice' ? null : 'practice'); } }}>
       <span>Practice</span><ChevronDown className={inlineMenuSubmenu === 'practice' ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" />
@@ -122,7 +128,12 @@ export function ExerciseMenu({ open: menu, setOpen: setMenu, invokerRef: menuInv
      {inlineMenuSubmenu === 'practice' && <div id="mobile-practice-actions" role="group" aria-label="Practice actions" className="dropdown-sub-content-inline">{practiceMenuActions}</div>}
      <DropdownMenuItem className="menu-disclosure" aria-expanded={inlineMenuSubmenu === 'data'} aria-controls={inlineMenuSubmenu === 'data' ? 'mobile-data-actions' : undefined}
       onPointerMove={event => { if (event.pointerType === 'mouse') { inlineMenuHover.current = 'data'; setInlineMenuSubmenu('data'); } else inlineMenuHover.current = null; }}
-      onPointerLeave={event => { if (event.pointerType === 'mouse' && inlineMenuHover.current === 'data') inlineMenuHover.current = null; }}
+      onPointerLeave={event => {
+       if (event.pointerType !== 'mouse') return;
+       if (inlineMenuHover.current === 'data') inlineMenuHover.current = null;
+       // Keep focus in an expanded inline group when the pointer leaves its trigger.
+       if (inlineMenuSubmenu === 'data') event.preventDefault();
+      }}
       onKeyDown={event => { if (event.key === 'ArrowRight') { event.preventDefault(); setInlineMenuSubmenu('data'); } else if (event.key === 'ArrowLeft' && inlineMenuSubmenu === 'data') { event.preventDefault(); inlineMenuHover.current = null; setInlineMenuSubmenu(null); } }}
       onSelect={event => { event.preventDefault(); if (inlineMenuHover.current === 'data') { inlineMenuHover.current = null; setInlineMenuSubmenu('data'); } else { inlineMenuHover.current = null; setInlineMenuSubmenu(value => value === 'data' ? null : 'data'); } }}>
       <span>Data</span><ChevronDown className={inlineMenuSubmenu === 'data' ? 'menu-chevron menu-chevron-open' : 'menu-chevron'} aria-hidden="true" />

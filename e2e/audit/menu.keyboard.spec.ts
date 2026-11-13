@@ -26,7 +26,9 @@ for(const key of ['Enter','Space'] as const){
         element.addEventListener('blur',()=>state.blur++,true);
       });
     }
+    await action.scrollIntoViewIfNeeded();
     await action.focus();
+    await expect(action).toBeFocused();
     const focusedBefore=await action.evaluate(element=>document.activeElement===element);
     await page.keyboard.press(key);
     if(key==='Enter'){
