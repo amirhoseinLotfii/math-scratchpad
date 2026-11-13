@@ -32,3 +32,10 @@
 - PR 93 keyboard test change occurred in b305a95; 776fd7fc changed only comment. Other auth test changes reviewed selectively; exhaustive quality review remains NOT_TESTED.
 - Pairwise merge-tree had no textual conflicts, but semantic compatibility and integrated suites remain NOT_TESTED. PR 92 is based on PR 91.
 - HEAD response inspection observed HSTS, no reported CSP/COOP on Pages; not a complete security review.
+
+## Phase 8–9 checkpoint
+- AUD-002 confirmed: three mock runtime tests observed ~4 ms until first POST. Test uses wall clock, so no claim about max-wait behavior.
+- Main mobile 320 UI audit 9/9, desktop storage/conflict 8/8; PR 93 Worker 114/114 and typecheck pass.
+- Production Pages browser navigation failed twice with ERR_EMPTY_RESPONSE; no writes were attempted, so S18 BLOCKED. HEAD requests succeeded earlier.
+- Notion count-only: Math Attempts 5, Mistakes 0, Concepts 0, Daily Reports 0. Shared Sessions not counted; ownership not inferred.
+- Combined audit tests 6 red assertions across 5 test files; these red tests are deliberate findings, not a passing suite.
