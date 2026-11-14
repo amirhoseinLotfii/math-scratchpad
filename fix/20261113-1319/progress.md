@@ -150,3 +150,11 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 
 ### Phase 2 release pipeline checkpoint (2026-11-14 Asia/Tehran)
 - Updated the existing main-only Cloudflare Workers Build trigger to run `npm run worker:deploy`. The script requires `WORKERS_CI_BRANCH=main` and a full `WORKERS_CI_COMMIT_SHA`, deploys the top-level production Worker, passes that exact SHA to `/health`, and does not enable `SCOPED_RESET_ENABLED`.
+
+
+### Phase 2 isolation and CI checkpoint — 2026-11-14 UTC
+- Owner authorization from this run explicitly supersedes the earlier hold gate: PR #94 was merged and deployed while AUD-004/AUD-005 were still open. Production application data remains read-only; the AUD-005 production flag stays OFF.
+- Read-only Cloudflare inventory: the account has one Worker script, `math-scratchpad-sync`, and no separate staging Worker. Its configured bindings include the production Google Drive/Notion secret names and Notion mirror data-source bindings (values were not read or logged).
+- The `p0-3-isolated-preview` Durable Object namespace contains an existing object. Because that object is not known to be disposable and the Worker script has production mirror bindings, no DO mutation/restart or external mirror operation was attempted against it. There is no verified empty isolated Worker + mirror target for this test.
+- AUD-005 remains PARTIAL: local synthetic retries cover idempotency but do not force Cloudflare DO eviction/restart; external mirror reconciliation is NOT_TESTED. Do not enable the production flag until an isolated environment can prove both.
+- Validate editor #679 on prior head `4e5d590e0a5225c63ed624c739c7a93eb4fc89b8` is completed/failure. Validate #680 on merged main, Validate #681 on PR #95, and Audit Verification #25 were still in progress at the latest poll. No tests were weakened or skipped; PR #95 remains draft and unmerged pending green CI.
