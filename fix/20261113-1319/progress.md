@@ -1,11 +1,11 @@
 # Progress
 RUN_ID: 20261113-1319
-Status: RUNNING — owner authorized Phase 2 release with red CI; deployments and post-release checks in progress
+Status: PARTIAL — Phase 2 deployed; AUD-005 and Validate #682 remain
 Code branch: fix/audit-20261113-1319
 Notes branch: fixlog/20261113-1319
 PR: #94 (draft) — https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: PR #95 merged at ba35c17; Pages deploy #83 and Validate #682 running; waiting for Worker Build; AUD-004/AUD-005 follow-up pending.
+Current phase: PR #95 deployed at ba35c17; Pages/Worker report matching production SHAs; AUD-004 FIXED, AUD-005 PARTIAL/OFF; Validate #682 pending at last poll.
 Latest local code commit: 4a141642db13521c8bc740673ac051f24c2e9596 (`fix(AUD-005): add guarded scoped reset saga`).
 Latest GitHub code commit: 94a47eb6b06502ecc45359839eb83c634aff2546 (`fix(AUD-005): add guarded scoped reset saga`).
 Latest code tree: ff3bc7a88efb18f371eb4bd5d3f1db028bf0eabf; local and remote tree match.
@@ -213,3 +213,15 @@ Overall status: BLOCKED on PR #95's red Validate check and the remaining AUD-004
 - GitHub Pages deploy #83 is running on the merge commit: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278186
 - Validate #682 is running on the merge commit: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278177
 - Cloudflare had not yet published a deployment for the new SHA at the first post-merge poll; waiting for Workers Build. Keep `SCOPED_RESET_ENABLED` absent/OFF. Do not perform production data writes.
+
+
+### Phase 2 deployment and AUD-004 verification — 2026-11-14 UTC
+- PR #95 merged under the owner's explicit instruction at `ba35c17b4ad271cac717fd450272036857e9dd1e`.
+- GitHub Pages deployment #83 succeeded on that exact SHA: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278186
+- Cloudflare Workers Build `0d5f9a3a-6a14-4ae4-a56c-707e4b575115` stopped successfully on that exact SHA. Worker deployment `f1468f63-902a-4116-8e48-480b8483e45c`, version `b405891a-fca9-4ccd-9f3e-b82544fce7cd`.
+- Live Pages `/version.json` returned `{"env":"production","sha":"ba35c17b4ad271cac717fd450272036857e9dd1e"}`. Worker `/health` returned `ok:true`, `env:"production"`, and the same SHA. The root app loaded in the live browser. AUD-004 is FIXED.
+- Cloudflare settings still have no `SCOPED_RESET_ENABLED` binding; AUD-005 remains PARTIAL and OFF. No production data writes were made.
+- Validate #682 on the merge commit was still in progress at the latest poll: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278177. The earlier red #681 was not weakened or skipped.
+
+### Current audit status
+AUD-001 FIXED; AUD-002 FIXED; AUD-003 FIXED; AUD-004 FIXED; AUD-005 PARTIAL; AUD-006 FIXED; AUD-007 FIXED; AUD-008 FIXED; AUD-009 FIXED; AUD-010 FIXED; AUD-011 FIXED; AUD-012 FIXED; AUD-013 FIXED; AUD-014 FIXED; AUD-015 FIXED; AUD-016 FIXED; AUD-017 FIXED; AUD-018 FIXED.
