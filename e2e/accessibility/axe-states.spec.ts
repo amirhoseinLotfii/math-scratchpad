@@ -16,7 +16,7 @@ for (const state of states) test(`AXE ${state}: no WCAG A/AA violations includin
   if (state === 'invalid-json' || state === 'invalid-json-space') {
    await page.getByRole('button', { name: 'Exercise menu' }).click();
    await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
-   await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+   await page.getByRole('menuitem', { name: 'Data', exact: true }).press('Enter');
    const importAction = page.getByRole('menuitem', { name: 'Import session JSON' });
    await importAction.scrollIntoViewIfNeeded();
    // Keep real keyboard activation in the AXE setup; pointer coverage remains in mobile-accessibility.spec.ts.
