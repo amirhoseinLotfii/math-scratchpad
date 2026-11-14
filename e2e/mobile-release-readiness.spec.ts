@@ -1,8 +1,16 @@
 import { expect, test } from './support/test';
+import { LEARNING_RESET_EPOCH } from '../src/sync/learning-reset-epoch';
 
 test.use({ autoDismissWellbeing: false });
 
 test('mobile offline status is compact, discoverable and does not block math actions', { tag: '@only-mobile-390' }, async ({ page }) => {
+  // The retry control is available only after the public reset guard has been
+  // verified. Keep the endpoint synthetic so this test never depends on a live Worker.
+  await page.route('**/reset/status', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+  }));
   for (const size of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 430, height: 932 }]) {
     await page.setViewportSize(size);
     await page.goto('/?serverMode');

@@ -7,9 +7,15 @@ for (const state of ['single-edit', 'batch-edit', 'confidence'] as const) {
   if (state === 'batch-edit') await startBatch(page);
   else if (state === 'confidence') await openConfidence(page);
   else await page.goto('/');
+  const elapsedTime = page.getByLabel('Question elapsed time');
+  // Let React effects register the focus listener before changing fixed time.
+  // A focus event sent immediately after page.goto can beat that effect on
+  // the single-edit route and leave the displayed timer at 00:00.
+  await expect(elapsedTime).toBeVisible();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.clock.setFixedTime('2026-01-01T00:00:03Z');
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.getByLabel('Question elapsed time')).toHaveText('00:03');
+  await expect(elapsedTime).toHaveText('00:03');
   // The legal policy links are part of the public shell, not the
   // editor's reviewed pixel baseline. Assert them separately.
   const policyFooter = page.locator('body > footer');

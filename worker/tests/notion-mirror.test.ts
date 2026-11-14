@@ -116,6 +116,12 @@ function makeFakeNotion() {
         operations.push({ kind: 'create', dataSourceId: String(parent.data_source_id), pageId: id, properties });
         return { id };
       },
+      retrieve: async args => {
+        const id = String(args.page_id);
+        const page = pages.get(id);
+        if (!page) throw Object.assign(new Error('not found'), { status: 404 });
+        return { id, parent: { type: 'data_source_id', data_source_id: page.dataSourceId }, properties: page.properties };
+      },
       update: async args => {
         const id = String(args.page_id);
         const page = pages.get(id);

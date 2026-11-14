@@ -55,11 +55,26 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
         id: {
           initialize: (config: { callback: typeof handlers.signIn }) => { handlers.signIn = config.callback; },
           prompt: () => handlers.signIn?.({ credential: fakeToken }),
+          renderButton: (element: HTMLElement) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = 'Sign in with Google';
+            button.setAttribute('aria-label', 'Sign in with Google');
+            button.addEventListener('click', () => handlers.signIn?.({ credential: fakeToken }));
+            element.replaceChildren(button);
+          },
         },
       },
       picker: { ViewId: { DOCS: 'docs' }, DocsViewMode: { LIST: 'list' }, Action: { PICKED: 'picked', CANCEL: 'cancel' }, DocsView, PickerBuilder },
     };
     Object.assign(window, { google, gapi: {} });
+  });
+  await page.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', route => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/session' && route.request().method() === 'POST') {
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) });
   });
   await page.route('https://www.googleapis.com/**', async route => {
     const url = route.request().url();
@@ -73,8 +88,10 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: /Google Drive/ }).click();
-  await page.getByRole('button', { name: 'Connect Google account + Drive' }).click();
   const drive = page.getByRole('dialog', { name: 'Google Drive question bank' });
+  await drive.getByRole('button', { name: 'Sign in with Google' }).click();
+  await expect(drive.getByText('نشست Google در سرور تأیید شد.')).toBeVisible();
+  await drive.getByRole('button', { name: 'Grant Google Drive access' }).click();
   const openBatch = drive.getByRole('button', { name: 'Open received batch' });
   await expect(openBatch).toBeVisible();
 

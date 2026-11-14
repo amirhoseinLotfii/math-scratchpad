@@ -1,25 +1,46 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
-import { LEARNING_RESET_EPOCH } from './learning-reset-epoch';
+import {
+  LEARNING_RESET_EPOCH,
+  LOCAL_RESET_PENDING_KEY,
+  LOCAL_SERVER_RESET_EPOCH_KEY,
+  isValidLearningResetEpoch,
+  isServerResetStatusVerified,
+  getLocalPendingResetCreationEpoch,
+  getLearningResetRequestEpoch,
+  LOCAL_PENDING_EPOCH_PREFIX,
+  LOCAL_PENDING_RESET_EPOCH_KEY,
+  LOCAL_PENDING_RESET_SCOPE_KEY,
+  clearLocalPendingResetMetadata,
+  markLocalLearningResetPending,
+  notifyServerWriteGuardReleased,
+  setLocalPendingResetEpoch,
+} from './learning-reset-epoch';
 import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
 
 export const LEARNING_DB_NAME = 'math-scratchpad-sync-v2';
-export const LEARNING_DB_VERSION = 1;
+export const LEARNING_DB_VERSION = 2;
 const LEGACY_LEARNING_DB_NAMES = ['math-scratchpad-sync-v1'] as const;
 export const LEARNING_CACHE_STORE = 'cache';
 export const LEARNING_OUTBOX_STORE = 'outbox';
 export const LEARNING_SERVER_EVENTS_STORE = 'serverEvents';
 export const LEARNING_META_STORE = 'meta';
+export const LEARNING_QUARANTINE_STORE = 'quarantine';
 export const LEGACY_MIGRATION_META_KEY = 'legacy-migration-v1';
 const LOCAL_RESET_EPOCH_KEY = 'math-scratchpad-local-learning-reset-epoch-v1';
-const LOCAL_RESET_PENDING_KEY = 'math-scratchpad-local-learning-reset-pending-v1';
 const LOCAL_RESET_EPOCH = LEARNING_RESET_EPOCH;
 const LEGACY_MIGRATION_LOCK_NAME = 'math-scratchpad-legacy-migration-v1';
 const LEGACY_MIGRATION_LOCK_KEY = 'legacy-migration-lock-v1';
 const LEGACY_MIGRATION_LOCK_LEASE_MS = 120_000;
 const LEGACY_MIGRATION_LOCK_TIMEOUT_MS = 15_000;
 
-export type OutboxRecord = { id: string; event: LearnEvent; queuedAt: string; migrationId?: string };
+export type OutboxRecord = { id: string; event: LearnEvent; queuedAt: string; creationEpoch?: string; migrationId?: string };
+export type QuarantinedOutboxRecord = OutboxRecord & {
+  quarantineId: string;
+  quarantinedAt: string;
+  requiredEpoch: string;
+  reason: 'stale_epoch';
+};
 export type ServerEventRecord = { seq: number; event: LearnEvent };
 export type LegacyLearningEntry = { key: string; value: string; sha256: string };
 export type LegacyMigration = {
@@ -48,6 +69,7 @@ interface LearningDb extends DBSchema {
     value: ServerEventRecord;
     indexes: { 'by-event-id': string; 'by-migration-id': string };
   };
+  quarantine: { key: string; value: QuarantinedOutboxRecord };
   meta: { key: string; value: MetaRecord };
 }
 
@@ -60,17 +82,7 @@ const SESSION_KEYS = new Set([
   'math-scratchpad-reading-position-v1',
 ]);
 const DEVICE_ID_KEY = 'math-scratchpad-device-id-v1';
-const DRIVE_CONFIG_KEY = 'math-scratchpad-drive-config-v1';
 const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1:';
-const LEGACY_LOCAL_LEARNING_KEYS = new Set(['lastReadingPosition', 'currentSession']);
-const AUTH_STORAGE_KEYS = new Set([
-  'math-scratchpad-google-id-token-v1',
-  'math-scratchpad-google-id-session-v1',
-  'math-scratchpad-drive-token-v1',
-  'math-scratchpad-drive-consent-v1',
-  LOCAL_RESET_EPOCH_KEY,
-  LOCAL_RESET_PENDING_KEY,
-]);
 
 export function isLearningStorageKey(key: string): boolean {
   return SESSION_KEYS.has(key)
@@ -82,123 +94,89 @@ function isIndexedDbCacheKey(key: string): boolean {
   return isLearningStorageKey(key) || key === DEVICE_ID_KEY || key.startsWith(BANK_CACHE_PREFIX);
 }
 
-function isProtectedLocalDataKey(key: string): boolean {
-  return key === DEVICE_ID_KEY || key === DRIVE_CONFIG_KEY || key.startsWith(BANK_CACHE_PREFIX) || AUTH_STORAGE_KEYS.has(key);
-}
-
-function isResettableLocalDataKey(key: string): boolean {
-  return (key.startsWith('math-scratchpad') || key.startsWith('math-scratchpad_position') || LEGACY_LOCAL_LEARNING_KEYS.has(key))
-    && !isProtectedLocalDataKey(key);
-}
-
 /** True after this browser has cleared learning data and is waiting for the cloud copy to be cleared. */
 export function isLocalLearningResetPending(): boolean {
   try { return localStorageIfAvailable()?.getItem(LOCAL_RESET_PENDING_KEY) === '1'; }
   catch { return true; }
 }
 
-/** Clear old learning data once per browser before any storage hydration or sync begins. */
+/** Record the current client build without removing any learning data or blocking local work. */
 export async function prepareLocalLearningReset(): Promise<boolean> {
   const storage = localStorageIfAvailable();
   if (!storage) throw new Error('Local browser storage is unavailable; old learning data was left untouched and sync is paused.');
   return withLegacyMigrationLock(async () => {
-    if (storage.getItem(LOCAL_RESET_EPOCH_KEY) === LOCAL_RESET_EPOCH) return isLocalLearningResetPending();
+    if (storage.getItem(LOCAL_RESET_EPOCH_KEY) !== LOCAL_RESET_EPOCH) storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
+    return isLocalLearningResetPending();
+  });
+}
 
-    // Write the guard first so a failed or interrupted deletion can never hydrate old work.
-    storage.setItem(LOCAL_RESET_PENDING_KEY, '1');
-    await clearLocalLearningData();
-    storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
+/** Reconcile browser learning data against a server-issued reset generation before sync. */
+export async function reconcileServerLearningResetEpoch(epoch: string): Promise<boolean> {
+  if (!isValidLearningResetEpoch(epoch)) throw new Error('The server reset epoch is invalid; sync remains paused.');
+  const storage = localStorageIfAvailable();
+  if (!storage) throw new Error('Local browser storage is unavailable; old learning data was left untouched and sync is paused.');
+  return withLegacyMigrationLock(async () => {
+    const current = storage.getItem(LOCAL_SERVER_RESET_EPOCH_KEY);
+    if (current === epoch && !isLocalLearningResetPending()) return false;
+    if (!current && epoch === LEARNING_RESET_EPOCH && !isLocalLearningResetPending()) {
+      storage.setItem(LOCAL_SERVER_RESET_EPOCH_KEY, epoch);
+      return false;
+    }
+
+    // Set the guard before touching data so concurrent sync paths cannot send old work.
+    markLocalLearningResetPending();
+    if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== '1') {
+      throw new Error('The local reset guard could not be set; sync remains paused.');
+    }
+    setLocalPendingResetEpoch(epoch);
+    await completeLocalLearningReset(epoch);
     return true;
   });
 }
 
-/** Re-clear local changes made while reset was pending, then release sync. */
-export async function completeLocalLearningReset(): Promise<void> {
+/** Quarantine stale outbox items, adopt a server-confirmed epoch, and release sync without clearing work. */
+export async function completeLocalLearningReset(epoch: string): Promise<void> {
+  if (!isValidLearningResetEpoch(epoch)) throw new Error('The server reset epoch is invalid; sync remains paused.');
   const storage = localStorageIfAvailable();
   if (!storage) throw new Error('Local browser storage is unavailable; sync remains paused.');
-  await clearLocalLearningData();
+  await reconcileOutboxEpoch(epoch);
+  storage.setItem(LOCAL_SERVER_RESET_EPOCH_KEY, epoch);
+  storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
+  clearLocalPendingResetMetadata();
   storage.removeItem(LOCAL_RESET_PENDING_KEY);
   if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== null) throw new Error('The local reset guard could not be cleared; sync remains paused.');
+  notifyServerWriteGuardReleased();
 }
 
-async function clearLocalLearningData(): Promise<void> {
-  if (serverStorage) throw new Error('Server storage is already active; local reset must run before cloud hydration.');
-  await flushLearningStorage();
-
-  const removeMatching = (storage: Storage) => {
-    for (let index = storage.length - 1; index >= 0; index--) {
-      const key = storage.key(index);
-      if (key && isResettableLocalDataKey(key)) storage.removeItem(key);
-    }
-  };
-  try { removeMatching(localStorage); }
-  catch { throw new Error('Local learning data could not be cleared from localStorage; sync is paused.'); }
-  try { removeMatching(sessionStorage); }
-  catch { throw new Error('Local learning data could not be cleared from sessionStorage; sync is paused.'); }
-
-  const protectedLegacyCache = await readProtectedLegacyCache();
+async function reconcileOutboxEpoch(epoch: string): Promise<void> {
   const db = await database();
-  if (protectedLegacyCache.length) {
-    const tx = db.transaction(LEARNING_CACHE_STORE, 'readwrite');
-    await Promise.all(protectedLegacyCache.map(async record => {
-      if (!(await tx.store.get(record.key))) await tx.store.put(record);
-    }));
-    await tx.done;
+  const storage = localStorageIfAvailable();
+  const previousEpoch = storage?.getItem(LOCAL_SERVER_RESET_EPOCH_KEY) || LEARNING_RESET_EPOCH;
+  const pendingCandidate = storage?.getItem(LOCAL_PENDING_RESET_EPOCH_KEY);
+  const pendingScope = storage?.getItem(LOCAL_PENDING_RESET_SCOPE_KEY);
+  const pendingMarker = pendingScope ? `${LOCAL_PENDING_EPOCH_PREFIX}${pendingScope}` : null;
+  const pendingCandidateIsForRelease = pendingCandidate === epoch;
+  const tx = db.transaction([LEARNING_OUTBOX_STORE, LEARNING_QUARANTINE_STORE], 'readwrite');
+  const rows = await tx.objectStore(LEARNING_OUTBOX_STORE).getAll();
+  const quarantinedAt = new Date().toISOString();
+  for (const row of rows) {
+    const creationEpoch = row.creationEpoch ?? previousEpoch;
+    if (creationEpoch === epoch) {
+      if (!row.creationEpoch) await tx.objectStore(LEARNING_OUTBOX_STORE).put({ ...row, creationEpoch: epoch });
+      continue;
+    }
+    if ((pendingCandidateIsForRelease && creationEpoch === pendingCandidate)
+      || (pendingMarker && creationEpoch === pendingMarker)) {
+      await tx.objectStore(LEARNING_OUTBOX_STORE).put({ ...row, creationEpoch: epoch });
+      continue;
+    }
+    const quarantineId = `${row.id}:${encodeURIComponent(creationEpoch)}`;
+    await tx.objectStore(LEARNING_QUARANTINE_STORE).put({
+      ...row, creationEpoch, quarantineId, quarantinedAt, requiredEpoch: epoch, reason: 'stale_epoch',
+    });
+    await tx.objectStore(LEARNING_OUTBOX_STORE).delete(row.id);
   }
-  const cacheRecords = await db.getAll(LEARNING_CACHE_STORE);
-  const metaRecords = await db.getAll(LEARNING_META_STORE);
-  const tx = db.transaction([LEARNING_CACHE_STORE, LEARNING_OUTBOX_STORE, LEARNING_SERVER_EVENTS_STORE, LEARNING_META_STORE], 'readwrite');
-  const cacheStore = tx.objectStore(LEARNING_CACHE_STORE);
-  await Promise.all([
-    ...cacheRecords.filter(record => isResettableLocalDataKey(record.key)).map(record => cacheStore.delete(record.key)),
-    tx.objectStore(LEARNING_OUTBOX_STORE).clear(),
-    tx.objectStore(LEARNING_SERVER_EVENTS_STORE).clear(),
-    ...metaRecords.filter(record => record.key !== LEGACY_MIGRATION_LOCK_KEY)
-      .map(record => tx.objectStore(LEARNING_META_STORE).delete(record.key)),
-  ]);
   await tx.done;
-
-  for (const key of values.keys()) if (isResettableLocalDataKey(key)) values.delete(key);
-  memoryOutbox.clear();
-  memoryServerEvents.clear();
-  memoryMeta.clear();
-
-  const [remainingCache, outboxCount, serverEventCount, metaCount] = await Promise.all([
-    db.getAll(LEARNING_CACHE_STORE),
-    db.count(LEARNING_OUTBOX_STORE),
-    db.count(LEARNING_SERVER_EVENTS_STORE),
-    db.count(LEARNING_META_STORE),
-  ]);
-  const remainingLocalData = [localStorage, sessionStorage].some(storage => {
-    for (let index = 0; index < storage.length; index++) {
-      const key = storage.key(index);
-      if (key && isResettableLocalDataKey(key)) return true;
-    }
-    return false;
-  });
-  const remainingMeta = await db.getAll(LEARNING_META_STORE);
-  if (remainingCache.some(record => isResettableLocalDataKey(record.key))
-    || outboxCount !== 0 || serverEventCount !== 0 || remainingMeta.some(record => record.key !== LEGACY_MIGRATION_LOCK_KEY) || metaCount > 1 || remainingLocalData) {
-    throw new Error('The browser could not verify removal of all old learning data; sync remains paused.');
-  }
-  for (const legacyName of LEGACY_LEARNING_DB_NAMES) await deleteIndexedDbDatabase(legacyName);
-}
-
-async function readProtectedLegacyCache(): Promise<CacheRecord[]> {
-  const preserved: CacheRecord[] = [];
-  for (const name of LEGACY_LEARNING_DB_NAMES) {
-    let legacy: IDBPDatabase<LearningDb> | undefined;
-    try {
-      legacy = await openDB<LearningDb>(name, LEARNING_DB_VERSION);
-      if (!legacy.objectStoreNames.contains(LEARNING_CACHE_STORE)) continue;
-      preserved.push(...(await legacy.getAll(LEARNING_CACHE_STORE)).filter(record => isProtectedLocalDataKey(record.key)));
-    } catch {
-      throw new Error('The previous browser database could not be read safely; sync is paused.');
-    } finally {
-      legacy?.close();
-    }
-  }
-  return [...new Map(preserved.map(record => [record.key, record])).values()];
 }
 
 function deleteIndexedDbDatabase(name: string): Promise<void> {
@@ -331,6 +309,9 @@ function database(): Promise<IDBPDatabase<LearningDb>> {
           const store = db.createObjectStore(LEARNING_SERVER_EVENTS_STORE, { keyPath: 'seq' });
           store.createIndex('by-event-id', 'event.id', { unique: true });
           store.createIndex('by-migration-id', 'event.migrationChunk.id');
+        }
+        if (!db.objectStoreNames.contains(LEARNING_QUARANTINE_STORE)) {
+          db.createObjectStore(LEARNING_QUARANTINE_STORE, { keyPath: 'quarantineId' });
         }
         if (!db.objectStoreNames.contains(LEARNING_META_STORE)) db.createObjectStore(LEARNING_META_STORE, { keyPath: 'key' });
       },
@@ -635,7 +616,12 @@ export async function queueLearnEvent(event: LearnEvent, migrationId?: string): 
   const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
   const serialized = JSON.stringify(event);
   if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
-  if (!existing) await db.put(LEARNING_OUTBOX_STORE, { id: event.id, event, queuedAt: event.ts, ...(migrationId ? { migrationId } : {}) });
+  if (!existing) {
+    const creationEpoch = isLocalLearningResetPending() || !isServerResetStatusVerified()
+      ? getLocalPendingResetCreationEpoch()
+      : getLearningResetRequestEpoch();
+    await db.put(LEARNING_OUTBOX_STORE, { id: event.id, event, queuedAt: event.ts, creationEpoch, ...(migrationId ? { migrationId } : {}) });
+  }
 }
 
 export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {
@@ -645,6 +631,10 @@ export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {
 
 export async function readOutboxCount(): Promise<number> {
   return (await database()).count(LEARNING_OUTBOX_STORE);
+}
+
+export async function readQuarantineCount(): Promise<number> {
+  return (await database()).count(LEARNING_QUARANTINE_STORE);
 }
 
 export async function acknowledgeOutbox(ids: string[]): Promise<void> {

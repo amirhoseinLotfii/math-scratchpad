@@ -4,6 +4,7 @@ const commands = [
  ['types', 'npm', ['run','test:typecheck']],
  ['worker-integration', 'npm', ['run','test:worker']],
  ['unit-dom-coverage', 'npm', ['run','test:coverage','--','--reporter=default','--reporter=json','--outputFile.json=test-results/vitest.json']],
+ ['audit-regressions', 'npm', ['run','test:audit']],
  ['browser', 'npx', ['playwright','test','--max-failures=1',`--workers=${process.env.CI ? 1 : 2}`,...(process.env.CI ? ['--retries=1'] : [])]],
  ['sync-cross-browser', 'npm', ['run','test:e2e:p0-3-cross-browser']],
 ];

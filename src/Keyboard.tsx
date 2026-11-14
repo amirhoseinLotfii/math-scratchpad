@@ -33,7 +33,12 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
  }, [s.topic]);
  const lookup = (key: string) => symbolList.find(x => x.key === key);
  const shortcuts = s.prefs.favorites.map(lookup).filter(x => !!x);
- return <section className="math-keyboard" aria-label="Math keyboard" dir="ltr">
+ return <section className="math-keyboard" aria-label="Math keyboard" dir="ltr" onMouseDown={event => {
+  // Keep pointer activation of the virtual keys from stealing focus from the
+  // active MathLive field. The click handler still runs, and keyboard users can
+  // Tab to and activate these buttons normally.
+  if ((event.target as HTMLElement).closest('button')) event.preventDefault();
+ }}>
   <div className="keyboard-toolbar">
    <Button aria-expanded={s.symbolsOpen} onClick={() => dispatch(actions.symbols())}><span aria-hidden="true">π</span> Symbols</Button>
    <Button aria-expanded={more} onClick={() => setMore(!more)}><span aria-hidden="true">⠿</span> More tools</Button>

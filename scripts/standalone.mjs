@@ -1,7 +1,22 @@
 import { build } from 'esbuild';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-const result = await build({ entryPoints: [process.argv[2] ?? 'src/main.tsx'], bundle: true, write: false, minify: true, format: 'iife', define: { 'process.env.NODE_ENV': '"production"', 'import.meta.hot': 'undefined', 'import.meta.env.DEV': 'false' }, loader: { '.css': 'empty' } });
+// IIFE output has no import.meta; replace every environment value read by the app.
+const result = await build({
+  entryPoints: [process.argv[2] ?? 'src/main.tsx'],
+  bundle: true,
+  write: false,
+  minify: true,
+  format: 'iife',
+  define: {
+    'process.env.NODE_ENV': '"production"',
+    'import.meta.hot': 'undefined',
+    'import.meta.env.DEV': 'false',
+    'import.meta.env.PROD': 'true',
+    'import.meta.env.VITE_SYNC_API_ORIGIN': 'undefined',
+  },
+  loader: { '.css': 'empty' },
+});
 const appCss = await readFile('src/styles/tokens.css', 'utf8') + '\n' + await readFile('src/fonts.css', 'utf8') + '\n' + await readFile('src/styles.css', 'utf8');
 let mathCss = await readFile('node_modules/mathlive/mathlive-fonts.css', 'utf8') + '\n' + await readFile('node_modules/mathlive/mathlive-static.css', 'utf8');
 for (const match of [...mathCss.matchAll(/url\((fonts\/[^)]+)\)/g)]) {

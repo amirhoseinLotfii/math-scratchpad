@@ -1,6 +1,7 @@
 import { expect, mathValue, test, type Page } from '../support/test';
 import { initialState } from '../../src/store';
 import { GOOGLE_AUTH_BUTTON_NAME, installFakeGoogleAuth } from '../support/sync-panel';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
 const SESSION_KEY = 'math-scratchpad-session-v3';
@@ -36,6 +37,18 @@ function initialSessionValue(): string {
 async function installConflictWorker(page: Page, records: Map<string, StateRecord>) {
   await page.route(`${API}/**`, async route => {
     const request = route.request(), url = new URL(request.url()), method = request.method();
+    if (url.pathname === '/reset/status' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+      });
+      return;
+    }
+    if (url.pathname === '/session' && method === 'POST') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      return;
+    }
     if (url.pathname === '/state' && method === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [...records].map(([key, record]) => ({ key, ...record })), revision: records.size }) });
       return;

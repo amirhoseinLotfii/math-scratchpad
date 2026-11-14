@@ -4,7 +4,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [cloudflareTest({
     wrangler: { configPath: 'worker/wrangler.jsonc' },
-    miniflare: { bindings: { EVENT_RATE_LIMIT: '5' } },
+    // Enabled only inside the isolated local Worker test environment. The
+    // production and staging Wrangler configurations deliberately omit it.
+    miniflare: { bindings: { EVENT_RATE_LIMIT: '5', SCOPED_RESET_ENABLED: 'true' } },
   })],
   test: {
     include: ['worker/tests/**/*.test.ts'],

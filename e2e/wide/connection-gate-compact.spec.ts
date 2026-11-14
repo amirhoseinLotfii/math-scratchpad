@@ -1,6 +1,14 @@
 import { expect, test } from '../support/test';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 test('desktop connection notice retains sign-in and never blocks backup controls', { tag: '@only-laptop-1440' }, async ({ page }) => {
+  // The retry control is available only after the public reset guard has been
+  // verified. Keep the endpoint synthetic so this test never depends on a live Worker.
+  await page.route('**/reset/status', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+  }));
   await page.goto('/?serverMode');
   const notice = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
   await expect(notice).toBeVisible();

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { getLearningStorage } from './browser-db';
 
 export const LEARN_EVENT_TYPES = [
@@ -18,66 +18,70 @@ export const LEARN_EVENT_TYPES = [
 
 export const LEARN_EVENT_ITEM_TYPES = ['typed', 'mcq', 'true_false_why', 'find_mistake', 'step_by_step', 'explain', 'reverse'] as const;
 
-const uuidV4 = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, 'Expected a UUID v4.');
-const isoDateTime = z.string().datetime({ offset: true });
-const boundedText = (max: number) => z.string().max(max);
-export const legacyMigrationChunkSchema = z.object({
+const uuidV4 = z.uuidv4({ error: 'Expected a UUID v4.' });
+const isoDateTime = z.iso.datetime({ offset: true });
+const boundedText = (max: number) => z.string().check(z.maxLength(max));
+const textBetween = (min: number, max: number) => z.string().check(z.minLength(min), z.maxLength(max));
+const integerBetween = (min: number, max: number) => z.int().check(z.minimum(min), z.maximum(max));
+const positiveIntegerAtMost = (max: number) => z.int().check(z.positive(), z.maximum(max));
+const nonnegativeNumberAtMost = (max: number) => z.number().check(z.nonnegative(), z.maximum(max));
+export const legacyMigrationChunkSchema = z.strictObject({
   id: uuidV4,
-  key: z.string().min(1).max(200),
-  index: z.number().int().min(0).max(100_000),
-  count: z.number().int().min(1).max(100_001),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
-  data: z.string().max(8_500),
-}).strict().superRefine((chunk, ctx) => {
+  key: textBetween(1, 200),
+  index: integerBetween(0, 100_000),
+  count: integerBetween(1, 100_001),
+  sha256: z.string().check(z.regex(/^[a-f0-9]{64}$/i)),
+  data: boundedText(8_500),
+}).check(z.superRefine((chunk, ctx) => {
   if (chunk.index >= chunk.count) ctx.addIssue({ code: 'custom', path: ['index'], message: 'Chunk index must be below count.' });
-});
+}));
 function availableStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
   try { return getLearningStorage(); } catch { return undefined; }
 }
 
-export const learnEventSchema = z.object({
+export const learnEventSchema = z.strictObject({
   id: uuidV4,
   schema: z.literal(1),
   ts: isoDateTime,
-  endTs: isoDateTime.optional(),
-  durationMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
+  endTs: z.optional(isoDateTime),
+  durationMs: z.optional(nonnegativeNumberAtMost(366 * 24 * 60 * 60 * 1000)),
   deviceId: uuidV4,
-  bankVersion: z.string().min(1).max(50),
-  session: z.string().min(1).max(100),
-  chapter: z.number().int().min(0).max(99),
-  lesson: z.string().min(1).max(100),
-  section: z.string().min(1).max(100),
-  concept: z.string().min(1).max(120),
-  skill: z.string().min(1).max(120).optional(),
-  pdfPage: z.number().int().positive().max(100_000).optional(),
-  bookPage: z.number().int().positive().max(100_000).optional(),
+  bankVersion: textBetween(1, 50),
+  session: textBetween(1, 100),
+  chapter: integerBetween(0, 99),
+  lesson: textBetween(1, 100),
+  section: textBetween(1, 100),
+  concept: textBetween(1, 120),
+  skill: z.optional(textBetween(1, 120)),
+  pdfPage: z.optional(positiveIntegerAtMost(100_000)),
+  bookPage: z.optional(positiveIntegerAtMost(100_000)),
   type: z.enum(LEARN_EVENT_TYPES),
-  isTest: z.boolean().optional(),
-  itemId: z.string().min(1).max(160).optional(),
-  itemType: z.enum(LEARN_EVENT_ITEM_TYPES).optional(),
-  questionText: boundedText(8_000).optional(),
-  userAnswer: boundedText(8_000).optional(),
-  steps: z.array(boundedText(4_000)).max(40).optional(),
-  verdict: z.enum(['correct', 'incorrect', 'submitted']).optional(),
-  verdictSource: z.enum(['checker', 'none']).optional(),
-  attemptNo: z.number().int().positive().max(100_000).optional(),
-  hintLevel: z.number().int().min(0).max(20).optional(),
-  note: boundedText(2_000).optional(),
-  confidence: z.union([z.number().int().min(1).max(5), z.enum(['low', 'medium', 'high'])]).optional(),
-  errorTag: z.enum(['calculation', 'sign', 'concept', 'question_reading', 'careless', 'other']).optional(),
-  masteryLevel: z.enum(['new', 'learning', 'know', 'master']).optional(),
-  activeMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
-  distractedMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
-  pausedMs: z.number().finite().min(0).max(366 * 24 * 60 * 60 * 1000).optional(),
-  mood: z.enum(['tired', 'neutral', 'energized']).optional(),
-  migrationChunk: legacyMigrationChunkSchema.optional(),
-  snapshotId: uuidV4.optional(),
-  snapshotBankId: z.string().min(1).max(100).optional(),
-  snapshotPart: z.number().int().min(0).max(100_000).optional(),
-  snapshotParts: z.number().int().min(1).max(100_001).optional(),
-  snapshotSha256: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
-  snapshotData: boundedText(8_000).optional(),
-}).strict().superRefine((event, ctx) => {
+  isTest: z.optional(z.boolean()),
+  itemId: z.optional(textBetween(1, 160)),
+  itemType: z.optional(z.enum(LEARN_EVENT_ITEM_TYPES)),
+  questionText: z.optional(boundedText(8_000)),
+  userAnswer: z.optional(boundedText(8_000)),
+  steps: z.optional(z.array(boundedText(4_000)).check(z.maxLength(40))),
+  verdict: z.optional(z.enum(['correct', 'incorrect', 'submitted'])),
+  verdictSource: z.optional(z.enum(['checker', 'none'])),
+  attemptNo: z.optional(positiveIntegerAtMost(100_000)),
+  hintLevel: z.optional(integerBetween(0, 20)),
+  note: z.optional(boundedText(2_000)),
+  confidence: z.optional(z.union([integerBetween(1, 5), z.enum(['low', 'medium', 'high'])])),
+  errorTag: z.optional(z.enum(['calculation', 'sign', 'concept', 'question_reading', 'careless', 'other'])),
+  masteryLevel: z.optional(z.enum(['new', 'learning', 'know', 'master'])),
+  activeMs: z.optional(nonnegativeNumberAtMost(366 * 24 * 60 * 60 * 1000)),
+  distractedMs: z.optional(nonnegativeNumberAtMost(366 * 24 * 60 * 60 * 1000)),
+  pausedMs: z.optional(nonnegativeNumberAtMost(366 * 24 * 60 * 60 * 1000)),
+  mood: z.optional(z.enum(['tired', 'neutral', 'energized'])),
+  migrationChunk: z.optional(legacyMigrationChunkSchema),
+  snapshotId: z.optional(uuidV4),
+  snapshotBankId: z.optional(textBetween(1, 100)),
+  snapshotPart: z.optional(integerBetween(0, 100_000)),
+  snapshotParts: z.optional(integerBetween(1, 100_001)),
+  snapshotSha256: z.optional(z.string().check(z.regex(/^[a-f0-9]{64}$/i))),
+  snapshotData: z.optional(boundedText(8_000)),
+}).check(z.superRefine((event, ctx) => {
   if (event.type === 'legacy_state_migration' && !event.migrationChunk) {
     ctx.addIssue({ code: 'custom', path: ['migrationChunk'], message: 'Legacy migration events require a chunk payload.' });
   }
@@ -108,7 +112,7 @@ export const learnEventSchema = z.object({
     && (event.activeMs ?? 0) + (event.distractedMs ?? 0) + (event.pausedMs ?? 0) > event.durationMs + 1) {
     ctx.addIssue({ code: 'custom', path: ['activeMs'], message: 'Active, distracted and paused time cannot exceed wall duration.' });
   }
-});
+}));
 
 export type LearnEvent = z.infer<typeof learnEventSchema>;
 export type LearnEventType = LearnEvent['type'];

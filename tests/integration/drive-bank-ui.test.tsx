@@ -4,10 +4,12 @@ import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { readArchive } from '../../src/features/drive-bank/drive-bank';
 import { clearDriveSessionToken } from '../../src/features/drive-bank/google';
+import { clearGoogleIdToken } from '../../src/sync/google-id-token';
+import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async () => true }));
 
 const bank = (source: string, version = 'v1') => ({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'practice', version, questions: [{ id: 'Q01', mode: 'math', source }, { id: 'Q02', mode: 'math', source: '2+2' }] });
-afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); clearDriveSessionToken(); requestAccessTokenSpy.mockClear(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
+afterEach(async () => { cleanup(); localStorage.clear(); sessionStorage.clear(); clearDriveSessionToken(); clearGoogleIdToken(); await resetWorkerSessionForTests(); requestAccessTokenSpy.mockClear(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
 
 const requestAccessTokenSpy = vi.fn();
 function mockGoogle() {
@@ -17,13 +19,23 @@ function mockGoogle() {
       setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb({ action: 'picked', docs: [{ id: 'private-file-123', name: 'MATH_QUESTION_BANK.json' }] }) }; } } };
   const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: 'student@example.com' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   let idCallback: ((response: { credential?: string }) => void) | undefined;
-  const identity = { initialize: (options: { callback: (response: { credential?: string }) => void }) => { idCallback = options.callback; }, prompt: () => idCallback?.({ credential: `header.${payload}.signature` }) };
+  const identity = {
+    initialize: (options: { callback: (response: { credential?: string }) => void }) => { idCallback = options.callback; },
+    prompt: () => idCallback?.({ credential: `header.${payload}.signature` }),
+    renderButton: (element: HTMLElement) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.textContent = 'Sign in with Google'; button.setAttribute('aria-label', 'Sign in with Google');
+      button.addEventListener('click', () => idCallback?.({ credential: `header.${payload}.signature` }));
+      element.replaceChildren(button);
+    },
+  };
   window.gapi = {};
   window.google = { picker, accounts: { id: identity, oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (cfg: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => { requestAccessTokenSpy(); cfg.callback({ access_token: 'token', expires_in: 3600 }); } }) } } };
 }
 function mockDrive(state: { content: string; rev: number }) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
     const url = String(input);
+    if (url.endsWith('/session')) return Response.json({ sessionToken: `mss1.${'T'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }, { status: 201 });
     if (url.includes('userinfo')) return new Response(JSON.stringify({ email: 'student@example.com', email_verified: true }), { status: 200 });
     if (url.includes('alt=media')) return new Response(state.content, { status: 200 });
     if (url.includes('fields=')) return new Response(JSON.stringify({ id: 'private-file-123', name: 'MATH_QUESTION_BANK.json', mimeType: 'application/json', md5Checksum: `m${state.rev}`, headRevisionId: `r${state.rev}`, version: String(state.rev) }), { status: 200 });
@@ -33,8 +45,9 @@ function mockDrive(state: { content: string; rev: number }) {
 async function connect(user: ReturnType<typeof renderMobileApp>['user']) {
   await user.click(screen.getByRole('button', { name: 'Exercise menu' }));
   await user.click(screen.getByRole('menuitem', { name: /Google Drive/ }));
-  await waitFor(() => expect((screen.getByRole('button', { name: 'Connect Google account + Drive' }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(screen.getByRole('button', { name: 'Connect Google account + Drive' }));
+  await user.click(await screen.findByRole('button', { name: 'Sign in with Google' }));
+  await screen.findByText('نشست Google در سرور تأیید شد.');
+  await user.click(await screen.findByRole('button', { name: 'Grant Google Drive access' }));
 }
 describe('private Drive bank flow', () => {
   it('uses built-in Google identifiers, shows no manual entry, and ignores old saved ones', async () => {

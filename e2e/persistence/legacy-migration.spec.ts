@@ -15,6 +15,10 @@ async function installWorker(page: Page) {
   const events: Array<{ seq: number; event: Record<string, any> }> = [];
   await page.route(`${API}/**`, async route => {
     const request = route.request(), url = new URL(request.url());
+    if (url.pathname === '/session' && request.method() === 'POST') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      return;
+    }
     if (url.pathname === '/events' && request.method() === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as { events?: Array<Record<string, any>> };
       const acknowledgements = (body.events ?? []).map(event => {

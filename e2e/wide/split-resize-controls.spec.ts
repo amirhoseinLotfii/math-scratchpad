@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 /** WCAG 2.2 (2.5.7): the split pane must resize without a drag gesture. */
 test.describe('split pane resize controls', () => {
-  test('widens and narrows the lesson pane with pointer-operable buttons', async ({ page }) => {
+  test('widens and narrows the lesson pane with pointer-operable buttons', { tag: '@only-laptop-1440' }, async ({ page }) => {
     await page.goto('/e2e/fixtures/lesson-connected-preview.html?sections=1&no-wellbeing=1');
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();

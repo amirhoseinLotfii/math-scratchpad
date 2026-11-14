@@ -1,0 +1,122 @@
+name: Audit verification
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: audit-verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:browser:prepare
+      - run: npx playwright install --with-deps chromium
+      - name: Audit unit, Worker, and browser regressions
+        id: audit
+        continue-on-error: true
+        run: npm run test:audit
+      - name: Keyboard acceptance matrix
+        id: keyboard
+        continue-on-error: true
+        run: npx playwright test --config=e2e/audit/playwright.keyboard.config.ts --repeat-each=10 --workers=1 --trace=off --reporter=list,html
+      - name: Layout acceptance matrix
+        id: layout
+        continue-on-error: true
+        run: npx playwright test --config=e2e/audit/playwright.layout.config.ts --workers=1 --trace=off --reporter=list,html
+      - name: Accessibility acceptance
+        id: accessibility
+        continue-on-error: true
+        run: npm run test:a11y:browser -- --project=mobile-320 --project=mobile-390 --project=laptop-1440 --workers=1 --trace=off --reporter=list,html
+      - name: Visual acceptance
+        id: visual
+        continue-on-error: true
+        run: npm run test:visual -- --project=mobile-320 --project=mobile-390 --project=laptop-1440 --workers=1 --trace=off --reporter=list,html
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: npm run build
+      - name: Standalone acceptance
+        id: standalone
+        if: always()
+        continue-on-error: true
+        run: npx playwright test --config=e2e/audit/playwright.standalone.config.ts --workers=1 --trace=off --reporter=list,html
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-browser-evidence-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Fail if any acceptance suite failed
+        if: always()
+        env:
+          AUDIT: ${{ steps.audit.outcome }}
+          KEYBOARD: ${{ steps.keyboard.outcome }}
+          LAYOUT: ${{ steps.layout.outcome }}
+          ACCESSIBILITY: ${{ steps.accessibility.outcome }}
+          VISUAL: ${{ steps.visual.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          STANDALONE: ${{ steps.standalone.outcome }}
+        run: |
+          for result in "$AUDIT" "$KEYBOARD" "$LAYOUT" "$ACCESSIBILITY" "$VISUAL" "$BUILD" "$STANDALONE"; do
+            if [ "$result" != "success" ]; then
+              echo "Acceptance outcome: $result"
+              exit 1
+            fi
+          done
+  deps-and-dryrun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Production dependency audit
+        id: deps
+        continue-on-error: true
+        run: |
+          set +e
+          npm audit --omit=dev --json > npm-audit.json
+          audit_status=$?
+          set -e
+          node -e 'const r=require("./npm-audit.json");const v=r.metadata?.vulnerabilities;if(!v){console.error("npm audit did not return vulnerability metadata");process.exit(2)}console.log(JSON.stringify(v));if((v.high||0)+(v.critical||0)>0)process.exit(1)'
+      - name: Wrangler Worker dry run
+        id: wrangler
+        continue-on-error: true
+        run: npx wrangler deploy --dry-run --outdir dist-worker --config worker/wrangler.jsonc
+      - name: Upload dependency and dry-run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-deps-evidence-${{ github.sha }}
+          path: |
+            npm-audit.json
+            dist-worker/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Fail if any check failed
+        if: always()
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          WRANGLER: ${{ steps.wrangler.outcome }}
+        run: |
+          if [ "$DEPS" != "success" ] || [ "$WRANGLER" != "success" ]; then
+            echo "Dependency audit: $DEPS; Wrangler dry run: $WRANGLER"
+            exit 1
+          fi

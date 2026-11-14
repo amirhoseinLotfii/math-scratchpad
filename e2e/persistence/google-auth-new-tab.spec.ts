@@ -1,5 +1,6 @@
 import type { BrowserContext } from '@playwright/test';
 import { expect, test, type Page } from '../support/test';
+import { LEARNING_RESET_EPOCH } from '../../src/sync/learning-reset-epoch';
 
 const AUTH_ID_TOKEN_KEY = 'math-scratchpad-google-id-token-v1';
 const AUTH_ID_HINT_KEY = 'math-scratchpad-google-id-session-v1';
@@ -37,6 +38,14 @@ async function installGoogleAuthFixture(context: BrowserContext) {
           id: {
             initialize: (args: { callback: typeof handlers.signIn }) => { handlers.signIn = args.callback; },
             prompt: () => handlers.signIn?.({ credential: fakeToken }),
+            renderButton: (element: HTMLElement) => {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.textContent = 'Sign in with Google';
+              button.setAttribute('aria-label', 'Sign in with Google');
+              button.addEventListener('click', () => handlers.signIn?.({ credential: fakeToken }));
+              element.replaceChildren(button);
+            },
           },
         },
       },
@@ -46,6 +55,20 @@ async function installGoogleAuthFixture(context: BrowserContext) {
   await context.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', async route => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
+    if (pathname === '/reset/status' && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+      });
+    }
+    if (pathname === '/session' && request.method() === 'POST') {
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }),
+      });
+    }
     if (pathname === '/state' && request.method() === 'GET') {
       return route.fulfill({
         status: 200,
@@ -98,9 +121,9 @@ async function installGoogleAuthFixture(context: BrowserContext) {
   }));
 }
 
-async function signInCombined(page: Page) {
+async function signInGoogleIdentity(page: Page) {
   const connectionCard = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');
-  await connectionCard.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' }).click();
+  await connectionCard.getByRole('button', { name: 'Sign in with Google' }).click();
   await expect(page.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
 }
 
@@ -112,29 +135,29 @@ async function readAuthKeys(page: Page) {
   }), { id: AUTH_ID_TOKEN_KEY, hint: AUTH_ID_HINT_KEY, drive: AUTH_DRIVE_TOKEN_KEY });
 }
 
-test('Google and Drive login persists in a new tab without signing in again', async ({ page, context }) => {
+test('Google identity session persists in a new tab without signing in again', async ({ page, context }) => {
   await installGoogleAuthFixture(context);
 
   await page.goto('/?serverMode=1');
   await expect(page.getByText('Math Scratchpad', { exact: true })).toBeVisible();
-  await signInCombined(page);
+  await signInGoogleIdentity(page);
 
   const firstTabAuth = await readAuthKeys(page);
   expect(firstTabAuth.idToken).toBeTruthy();
   expect(firstTabAuth.idHint).toBe('1');
-  expect(firstTabAuth.driveToken).toBeTruthy();
+  expect(firstTabAuth.driveToken).toBeNull();
 
   // A second tab on the same origin must restore shared localStorage auth without another click.
   const other = await context.newPage();
   await other.goto('/?serverMode=1');
   await expect(other.getByText('Math Scratchpad', { exact: true })).toBeVisible();
   await expect(other.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
-  await expect(other.getByRole('button', { name: 'ورود یکپارچهٔ Google و Drive' })).toHaveCount(0);
+  await expect(other.getByRole('button', { name: 'Sign in with Google' })).toHaveCount(0);
 
   const secondTabAuth = await readAuthKeys(other);
   expect(secondTabAuth.idToken).toBe(firstTabAuth.idToken);
   expect(secondTabAuth.idHint).toBe('1');
-  expect(secondTabAuth.driveToken).toBe(firstTabAuth.driveToken);
+  expect(secondTabAuth.driveToken).toBeNull();
 
   await other.close();
 });

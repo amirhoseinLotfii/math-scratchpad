@@ -105,6 +105,37 @@ describe('Google ID token verification', () => {
 });
 
 describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
+  it('keeps cron mirror syncs independent and returns only sanitized failures and request counts', async () => {
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    const stub = testEnv.EVENT_STORE.get(id);
+    const { runInDurableObject } = await import('cloudflare:test');
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        syncDrive: () => Promise<unknown>;
+        syncNotion: () => Promise<unknown>;
+        fetch: (request: Request) => Promise<Response>;
+        activeMirrorSubrequestBudget?: { used: number; limit: number };
+        budgetedFetch: typeof fetch;
+      };
+      target.activeMirrorSubrequestBudget = { used: 40, limit: 40 };
+      expect(() => target.budgetedFetch('https://example.test')).toThrow('subrequest_budget_exceeded');
+      target.activeMirrorSubrequestBudget = undefined;
+      const calls: string[] = [];
+      target.syncDrive = async () => { calls.push('drive'); throw new Error('synthetic secret detail'); };
+      target.syncNotion = async () => { calls.push('notion'); return { status: 'synced', pendingCount: 0 }; };
+
+      const response = await target.fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(calls.sort()).toEqual(['drive', 'notion']);
+      expect(body).toContain('"status":"error"');
+      expect(body).toContain('"status":"synced"');
+      expect(body).toContain('"subrequestsUsed":0');
+      expect(body).toContain('"subrequestLimit":40');
+      expect(body).not.toContain('synthetic secret detail');
+    });
+  });
+
   it('does not let a Drive timeout prevent Notion mirror work', async () => {
     const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
     const stub = testEnv.EVENT_STORE.get(id);
@@ -112,21 +143,37 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     await runInDurableObject(stub, async instance => {
       const target = instance as unknown as {
         env: WorkerEnv;
+        notionClient?: unknown;
         syncDrive: () => Promise<unknown>;
         syncNotion: () => Promise<unknown>;
         alarm: () => Promise<void>;
+      };
+      const originalBindings = {
+        GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET,
+        GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+        NOTION_API_KEY: target.env.NOTION_API_KEY,
+        notionClient: target.notionClient,
       };
       Object.assign(target.env, {
         GOOGLE_DRIVE_CLIENT_SECRET: 'test-not-secret',
         GOOGLE_DRIVE_REFRESH_TOKEN: 'test-not-token',
         NOTION_API_KEY: 'test-not-secret',
       });
-      const calls: string[] = [];
-      target.syncDrive = async () => { calls.push('drive'); throw new Error('timeout'); };
-      target.syncNotion = async () => { calls.push('notion'); return {}; };
-      await target.alarm();
-      expect(calls).toContain('notion');
-      expect(calls).toContain('drive');
+      try {
+        const calls: string[] = [];
+        target.syncDrive = async () => { calls.push('drive'); throw new Error('timeout'); };
+        target.syncNotion = async () => { calls.push('notion'); return {}; };
+        await target.alarm();
+        expect(calls).toContain('notion');
+        expect(calls).toContain('drive');
+      } finally {
+        Object.assign(target.env, {
+          GOOGLE_DRIVE_CLIENT_SECRET: originalBindings.GOOGLE_DRIVE_CLIENT_SECRET,
+          GOOGLE_DRIVE_REFRESH_TOKEN: originalBindings.GOOGLE_DRIVE_REFRESH_TOKEN,
+          NOTION_API_KEY: originalBindings.NOTION_API_KEY,
+        });
+        target.notionClient = originalBindings.notionClient;
+      }
     });
   });
 
@@ -145,12 +192,13 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
       method: 'OPTIONS', origin: ALLOWED_ORIGIN,
       extraHeaders: {
         'Access-Control-Request-Method': 'POST',
-        'Access-Control-Request-Headers': 'authorization,content-type,x-math-scratchpad-reset-epoch',
+        'Access-Control-Request-Headers': 'authorization,content-type,idempotency-key,x-math-scratchpad-reset-epoch',
       },
     });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe(ALLOWED_ORIGIN);
     expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain(LEARNING_RESET_EPOCH_HEADER);
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Idempotency-Key');
 
     const foreign = await call(app, '/health', { origin: 'https://example.com' });
     expect(foreign.status).toBe(403);
@@ -181,7 +229,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect((await call(app, '/reset/preview?scope=section&lesson=L1', { token: 'valid-test-token' })).status).toBe(400);
     expect((await call(app, '/reset/preview?scope=all&session=x', { token: 'valid-test-token' })).status).toBe(400);
     expect((await call(app, '/reset/preview?scope=session&session=x&lesson=ignored', { token: 'valid-test-token' })).status).toBe(400);
-    expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(404);
+    expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(400);
   });
 
   it('shows all-data reset impact but preserves the question bank config and server state', async () => {
@@ -205,11 +253,71 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     const app = createApp(validVerifier);
     const event = makeEvent();
     await call(app, '/events', { token: 'valid-test-token', body: { events: [event] } });
-    const lesson = new URLSearchParams({ scope: 'lesson', bankVersion: event.bankVersion, lesson: event.lesson });
+    const lesson = new URLSearchParams({ scope: 'lesson', bankVersion: event.bankVersion, chapter: String(event.chapter), lesson: event.lesson });
     expect(await (await call(app, `/reset/preview?${lesson}`, { token: 'valid-test-token' })).json()).toMatchObject({ scope: 'lesson', matchingEvents: 1, canExecute: false });
-    const otherSection = new URLSearchParams({ scope: 'section', bankVersion: event.bankVersion, lesson: event.lesson, section: 'other-section' });
+    const otherSection = new URLSearchParams({ scope: 'section', bankVersion: event.bankVersion, chapter: String(event.chapter), lesson: event.lesson, section: 'other-section' });
     expect(await (await call(app, `/reset/preview?${otherSection}`, { token: 'valid-test-token' })).json()).toMatchObject({ matchingEvents: 0 });
     expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events).toHaveLength(1);
+  });
+
+  it('isolates a lesson preview when the same lesson ID exists in another chapter', async () => {
+    const app = createApp(validVerifier);
+    const first = makeEvent();
+    const identicalIdOtherChapter = { ...makeEvent(), chapter: 2 };
+    const sent = await call(app, '/events', { token: 'valid-test-token', body: { events: [first, identicalIdOtherChapter] } });
+    expect(sent.status).toBe(200);
+    const forFirst = new URLSearchParams({ scope: 'lesson', bankVersion: first.bankVersion, chapter: '1', lesson: first.lesson });
+    expect(await (await call(app, `/reset/preview?${forFirst}`, { token: 'valid-test-token' })).json())
+      .toMatchObject({ scope: 'lesson', matchingEvents: 1, totalEvents: 2, canExecute: false });
+    const forOther = new URLSearchParams({ scope: 'lesson', bankVersion: first.bankVersion, chapter: '2', lesson: first.lesson });
+    expect(await (await call(app, `/reset/preview?${forOther}`, { token: 'valid-test-token' })).json())
+      .toMatchObject({ scope: 'lesson', matchingEvents: 1, totalEvents: 2, canExecute: false });
+    const missingChapter = new URLSearchParams({ scope: 'lesson', bankVersion: first.bankVersion, lesson: first.lesson });
+    expect((await call(app, `/reset/preview?${missingChapter}`, { token: 'valid-test-token' })).status).toBe(400);
+    expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events)
+      .toHaveLength(2);
+  });
+
+  it('previews a chapter by numeric ID and bank version without touching other chapters or sessions', async () => {
+    const app = createApp(validVerifier);
+    const first = makeEvent();
+    const otherChapter = { ...makeEvent(), id: crypto.randomUUID(), chapter: 2, lesson: '2.1', section: '2.1' };
+    const otherBank = { ...makeEvent(), id: crypto.randomUUID(), bankVersion: 'v22' };
+    const write = await call(app, '/events', {
+      token: 'valid-test-token',
+      body: { events: [first, otherChapter, otherBank] },
+    });
+    expect(write.status).toBe(200);
+    const scoped = new URLSearchParams({ scope: 'chapter', bankVersion: 'v21', chapter: '1' });
+    const preview = await call(app, `/reset/preview?${scoped}`, { token: 'valid-test-token' });
+    expect(preview.status).toBe(200);
+    expect(await preview.json()).toMatchObject({
+      readOnly: true, canExecute: false, scope: 'chapter',
+      filters: { bankVersion: 'v21', chapter: '1' },
+      matchingEvents: 1, totalEvents: 3,
+      requiresCloudReconciliation: true,
+    });
+    const other = new URLSearchParams({ scope: 'chapter', bankVersion: 'v21', chapter: '2' });
+    expect(await (await call(app, `/reset/preview?${other}`, { token: 'valid-test-token' })).json())
+      .toMatchObject({ matchingEvents: 1, totalEvents: 3 });
+    expect((await (await call(app, '/snapshot', { token: 'valid-test-token' })).json() as { events: unknown[] }).events)
+      .toHaveLength(3);
+  });
+
+  it('rejects incomplete or malformed chapter reset filters without a learning write', async () => {
+    const app = createApp(validVerifier);
+    const invalid = [
+      '/reset/preview?scope=chapter&chapter=1',
+      '/reset/preview?scope=chapter&bankVersion=v21&chapter=1.0',
+      '/reset/preview?scope=chapter&bankVersion=v21&chapter=0',
+      '/reset/preview?scope=chapter&bankVersion=v21&chapter=1&lesson=2.1',
+    ];
+    for (const path of invalid) {
+      const result = await call(app, path, { token: 'valid-test-token' });
+      expect(result.status).toBe(400);
+    }
+    const snapshot = await call(app, '/snapshot', { token: 'valid-test-token' });
+    expect((await snapshot.json() as { events: unknown[] }).events).toEqual([]);
   });
 
   it('persists the editor snapshot on the server with owner authentication and conflict protection', async () => {
@@ -316,6 +424,162 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     });
   });
 
+  it('lets the admin inspect and explicitly take over a learning reset lock orphaned by a lost reset id', async () => {
+    const app = createApp(validVerifier);
+    const adminEnv = { ...testEnv, LEARNING_RESET_TOKEN: 'admin-reset-test-token' } as WorkerEnv;
+    const admin = (path: string, body?: unknown, token = 'admin-reset-test-token') => app.fetch(new Request(`https://worker.test${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }), adminEnv);
+    const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
+    const { runInDurableObject } = await import('cloudflare:test');
+    const lostResetId = crypto.randomUUID();
+    const newResetId = crypto.randomUUID();
+    type Target = {
+      activeLearningResetId?: string;
+      executeLearningReset: (request: Request) => Promise<Response>;
+      ctx: { storage: { sql: { exec<T>(sql: string, ...bindings: Array<string | number | null>): { one(): T; toArray(): T[] } } } };
+    };
+    const row = () => runInDurableObject(stub, async instance => (instance as unknown as Target).ctx.storage.sql.exec<{ status: string; reset_id: string | null }>(
+      'SELECT status, reset_id FROM learning_reset_control WHERE singleton = 1',
+    ).one());
+
+    for (const stuckStatus of ['running', 'awaiting_release']) {
+      await runInDurableObject(stub, async instance => {
+        (instance as unknown as Target).ctx.storage.sql.exec(
+          'UPDATE learning_reset_control SET status = ?, reset_id = ?, completed_at = NULL WHERE singleton = 1', stuckStatus, lostResetId,
+        );
+      });
+      expect((await admin('/admin/learning-reset/status', undefined, 'wrong-token')).status).toBe(401);
+      const status = await admin('/admin/learning-reset/status');
+      expect(status.status).toBe(200);
+      const statusBody = await status.json() as Record<string, unknown>;
+      expect(statusBody).toEqual({ status: stuckStatus, hasResetId: true, completedAt: null, activeInThisInstance: false });
+      expect(JSON.stringify(statusBody)).not.toContain(lostResetId);
+
+      const blocked = await admin('/admin/learning-reset', { confirm: 'DELETE_ALL_LEARNING_DATA', resetId: newResetId });
+      expect(blocked.status).toBe(409);
+      expect(await blocked.json()).toMatchObject({ error: 'learning_reset_in_progress' });
+      expect((await admin('/admin/learning-reset', { confirm: 'DELETE_ALL_LEARNING_DATA', resetId: newResetId, takeover: true })).status).toBe(400);
+      expect(await row()).toEqual({ status: stuckStatus, reset_id: lostResetId });
+    }
+
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as Target;
+      target.activeLearningResetId = lostResetId;
+      const live = await target.executeLearningReset(new Request('https://event-store.internal/internal/learning-reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId: newResetId, takeover: true }),
+      }));
+      expect(live.status).toBe(409);
+      expect(await live.json()).toMatchObject({ error: 'learning_reset_active' });
+      target.activeLearningResetId = undefined;
+    });
+    expect(await row()).toEqual({ status: 'awaiting_release', reset_id: lostResetId });
+
+    // Earlier tests may leave Drive credentials on the shared instance; this test covers lock handling only.
+    const driveBindings = await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as { env: WorkerEnv; driveClient?: unknown };
+      const saved = { GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN };
+      Object.assign(target.env, { GOOGLE_DRIVE_CLIENT_SECRET: undefined, GOOGLE_DRIVE_REFRESH_TOKEN: undefined });
+      target.driveClient = undefined;
+      return saved;
+    });
+    const takeover = await Promise.resolve(admin('/admin/learning-reset', {
+      confirm: 'DELETE_ALL_LEARNING_DATA', resetId: newResetId, takeover: 'TAKEOVER_STUCK_LEARNING_RESET',
+    })).finally(() => runInDurableObject(stub, async instance => {
+      Object.assign((instance as unknown as { env: WorkerEnv }).env, driveBindings);
+    }));
+    const takeoverBody = await takeover.clone().text();
+    expect(takeover.status, takeoverBody).toBe(200);
+    expect(await takeover.json()).toMatchObject({ completed: true, releaseRequired: true });
+    expect(await row()).toEqual({ status: 'awaiting_release', reset_id: newResetId });
+    expect((await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } })).status).toBe(503);
+    expect(await (await admin('/admin/learning-reset/status')).json()).toMatchObject({ status: 'awaiting_release', hasResetId: true });
+
+    expect((await admin('/admin/learning-reset/release', { confirm: 'RELEASE_LEARNING_SYNC', resetId: lostResetId })).status).toBe(409);
+    const release = await admin('/admin/learning-reset/release', { confirm: 'RELEASE_LEARNING_SYNC', resetId: newResetId });
+    expect(release.status).toBe(200);
+    expect(await (await admin('/admin/learning-reset/status')).json()).toMatchObject({ status: 'released' });
+  });
+
+  it('trashes Drive learning mirrors in bounded batches and clears cloud records only after Drive is done', async () => {
+    const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
+    const { runInDurableObject } = await import('cloudflare:test');
+    const resetId = crypto.randomUUID();
+    await runInDurableObject(stub, async instance => {
+      const target = instance as unknown as {
+        env: WorkerEnv;
+        driveClient?: unknown;
+        executeLearningReset: (request: Request) => Promise<Response>;
+        ctx: { storage: { sql: { exec<T>(sql: string, ...bindings: Array<string | number | null>): { one(): T } }; put: (key: string, value: unknown) => Promise<void> } };
+      };
+      const originalBindings = {
+        GOOGLE_CLIENT_ID: target.env.GOOGLE_CLIENT_ID,
+        GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET,
+        GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+      };
+      Object.assign(target.env, {
+        GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
+        GOOGLE_DRIVE_CLIENT_SECRET: 'test-drive-secret',
+        GOOGLE_DRIVE_REFRESH_TOKEN: 'test-drive-refresh-token',
+      });
+      try {
+        const sql = target.ctx.storage.sql;
+        sql.exec("UPDATE learning_reset_control SET status = 'idle', reset_id = NULL WHERE singleton = 1");
+        sql.exec('DELETE FROM learning_events');
+        sql.exec('INSERT INTO learning_events (event_id, event_json, event_ts) VALUES (?, ?, ?)', 'batched-event', '{"id":"batched-event"}', new Date().toISOString());
+        await target.ctx.storage.put('drive-mirror-state-v1', {
+          status: 'synced', lastSeq: 1, pendingCount: 0,
+          folders: { rootId: 'root-folder', syncId: 'sync-folder', eventsId: 'events-folder', stateId: 'state-folder' },
+          files: {}, fileHashes: {}, snapshots: {},
+        });
+        const folder = (id: string, name: string, parent: string) => ({ id, name, mimeType: 'application/vnd.google-apps.folder', parents: [parent], trashed: false });
+        const metadata: Record<string, Record<string, unknown>> = {
+          'root-folder': folder('root-folder', 'Math_Project', 'root'),
+          'sync-folder': folder('sync-folder', '03_Sync', 'root-folder'),
+          'events-folder': folder('events-folder', 'events', 'sync-folder'),
+          'state-folder': folder('state-folder', 'state', 'sync-folder'),
+        };
+        let stateFiles: Array<{ id: string; name: string; mimeType: string; parents: string[]; appProperties?: Record<string, string> }> = Array.from({ length: 30 }, (_, index) => ({
+          id: `mirror-${index}`, name: `progress.sha256-${index.toString(16).padStart(64, '0')}.json`, mimeType: 'application/json', parents: ['state-folder'],
+          appProperties: { msOwner: 'math-scratchpad', msKind: 'state' },
+        }));
+        stateFiles.push({ id: 'keep-notes', name: 'notes.txt', mimeType: 'text/plain', parents: ['state-folder'] });
+        target.driveClient = {
+          diagnosticStage: 'idle',
+          findFolderId: async () => undefined,
+          readFileMetadata: async (id: string) => metadata[id] ?? {},
+          listFilesInFolder: async (parentId: string) => parentId === 'state-folder' ? [...stateFiles] : [],
+          trashFileInFolder: async (id: string) => { stateFiles = stateFiles.filter(file => file.id !== id); return true; },
+        };
+        const run = () => target.executeLearningReset(new Request('https://event-store.internal/internal/learning-reset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetId }),
+        }));
+        const eventCount = () => Number(sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM learning_events').one().count);
+        const status = () => sql.exec<{ status: string }>('SELECT status FROM learning_reset_control WHERE singleton = 1').one().status;
+
+        for (const expectedRemaining of [18, 6]) {
+          const partial = await run();
+          expect(partial.status, await partial.clone().text()).toBe(202);
+          expect(await partial.json()).toMatchObject({ completed: false, inProgress: true, retryWithSameResetId: true, drive: { movedToTrash: 12, remainingLearningMirrors: true } });
+          expect(stateFiles.length - 1).toBe(expectedRemaining);
+          expect(eventCount()).toBe(1);
+          expect(status()).toBe('running');
+        }
+        const final = await run();
+        expect(final.status).toBe(200);
+        expect(await final.json()).toMatchObject({ completed: true, releaseRequired: true, drive: { movedToTrash: 6, preservedFiles: 1 }, cloud: { deletedLearningEvents: 1 } });
+        expect(stateFiles.map(file => file.id)).toEqual(['keep-notes']);
+        expect(eventCount()).toBe(0);
+        expect(status()).toBe('awaiting_release');
+      } finally {
+        Object.assign(target.env, originalBindings);
+        target.driveClient = undefined;
+      }
+    });
+  });
+
   it('clears learning mirrors, preserves bank and identity data, and requires release before fresh writes', async () => {
     const app = createApp(validVerifier);
     const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
@@ -325,6 +589,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     await runInDurableObject(stub, async instance => {
       const target = instance as unknown as {
         env: WorkerEnv;
+        notionClient?: unknown;
         driveClient?: {
           diagnosticStage: string;
           readFileMetadata: (id: string, fields: string) => Promise<Record<string, unknown>>;
@@ -345,12 +610,16 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         GOOGLE_CLIENT_ID: target.env.GOOGLE_CLIENT_ID,
         GOOGLE_DRIVE_CLIENT_SECRET: target.env.GOOGLE_DRIVE_CLIENT_SECRET,
         GOOGLE_DRIVE_REFRESH_TOKEN: target.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+        NOTION_API_KEY: target.env.NOTION_API_KEY,
+        notionClient: target.notionClient,
       };
       Object.assign(target.env, {
         GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
         GOOGLE_DRIVE_CLIENT_SECRET: 'test-drive-secret',
         GOOGLE_DRIVE_REFRESH_TOKEN: 'test-drive-refresh-token',
+        NOTION_API_KEY: undefined,
       });
+      target.notionClient = undefined;
 
       try {
         const sql = target.ctx.storage.sql;
@@ -383,19 +652,22 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
           'state-folder': { id: 'state-folder', name: 'state', mimeType: 'application/vnd.google-apps.folder', parents: ['sync-folder'], trashed: false },
           'backup-folder': { id: 'backup-folder', name: '06_Backups', mimeType: 'application/vnd.google-apps.folder', parents: ['root-folder'], trashed: false },
         };
-        const child = (id: string, name: string, parentId: string, mimeType = 'application/json') => ({ id, name, mimeType, parents: [parentId] });
+        const child = (id: string, name: string, parentId: string, mimeType = 'application/json', kind?: 'events' | 'state' | 'backups') => ({
+          id, name, mimeType, parents: [parentId],
+          ...(kind ? { appProperties: { msOwner: 'math-scratchpad', msKind: kind } } : {}),
+        });
         const filesByFolder = new Map([
           ['events-folder', [
-            child('mirror-events', 'events_2026-11.jsonl', 'events-folder', 'application/x-ndjson'),
-            child('bank-protected', 'progress.json', 'events-folder'),
+            child('mirror-events', 'events_2026-11.jsonl', 'events-folder', 'application/x-ndjson', 'events'),
             child('course-source', 'lesson-source.pdf', 'events-folder', 'application/pdf'),
             child('nested-folder', 'nested', 'events-folder', 'application/vnd.google-apps.folder'),
           ]],
           ['state-folder', [
-            child('mirror-progress', 'progress.json', 'state-folder'),
+            child('bank-protected', 'progress.json', 'state-folder', 'application/json', 'state'),
+            child('mirror-progress', 'progress.json', 'state-folder', 'application/json', 'state'),
             child('unrelated-state', 'notes.txt', 'state-folder', 'text/plain'),
           ]],
-          ['backup-folder', [child('mirror-backup', 'sync_backup_2026-11-12.json', 'backup-folder')]],
+          ['backup-folder', [child('mirror-backup', 'sync_backup_2026-11-12.json', 'backup-folder', 'application/json', 'backups')]],
         ]);
         const trashed: Array<{ id: string; parentId: string }> = [];
         target.driveClient = {
@@ -417,7 +689,9 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
             deletedLearningEvents: 1,
             deletedAppStateRecords: 1,
             deletedNotionProjectionRecords: 1,
-            deletedNotionReferences: 1,
+            deletedNotionReferences: 0,
+            retainedNotionReferences: 1,
+            pendingNotionReconciliation: 1,
             deletedQueuedMirrorRecords: 3,
             bankSourceRecords: 1,
             activeAuthSessions: 1,
@@ -434,7 +708,7 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         const count = (table: string) => Number(sql.exec<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`).one().count);
         expect(count('learning_events')).toBe(0);
         expect(count('notion_projections')).toBe(0);
-        expect(count('notion_page_refs')).toBe(0);
+        expect(count('notion_page_refs')).toBe(1);
         expect(count('notion_state_queue')).toBe(0);
         expect(count('notion_mistake_reviews')).toBe(0);
         expect(count('notion_session_mistakes')).toBe(0);
@@ -464,13 +738,20 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
         expect(release.status).toBe(200);
         expect(await release.json()).toMatchObject({ released: true });
         expect((await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } })).status).toBe(426);
+        const currentEpoch = sql.exec<{ client_epoch: string }>('SELECT client_epoch FROM learning_reset_control WHERE singleton = 1').one().client_epoch;
         const freshWrite = await call(app, '/events', {
           token: 'valid-test-token', body: { events: [makeEvent()] },
-          extraHeaders: { [LEARNING_RESET_EPOCH_HEADER]: LEARNING_RESET_EPOCH },
+          extraHeaders: { [LEARNING_RESET_EPOCH_HEADER]: currentEpoch },
         });
         expect(freshWrite.status).toBe(200);
       } finally {
-        Object.assign(target.env, originalBindings);
+        Object.assign(target.env, {
+          GOOGLE_CLIENT_ID: originalBindings.GOOGLE_CLIENT_ID,
+          GOOGLE_DRIVE_CLIENT_SECRET: originalBindings.GOOGLE_DRIVE_CLIENT_SECRET,
+          GOOGLE_DRIVE_REFRESH_TOKEN: originalBindings.GOOGLE_DRIVE_REFRESH_TOKEN,
+          NOTION_API_KEY: originalBindings.NOTION_API_KEY,
+        });
+        target.notionClient = originalBindings.notionClient;
       }
     });
   });

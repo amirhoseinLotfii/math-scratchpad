@@ -4,9 +4,11 @@ import { verifyGoogleIdToken } from './auth';
 import { readBoundedBody } from './body';
 import type { GoogleIdentity, WorkerEnv } from './env';
 import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSessionToken } from './session';
-import { LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
+import { isValidLearningResetEpoch, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
 
 const MAX_BODY_BYTES = 250_000;
+const MAX_SCOPED_RESET_BODY_BYTES = 16_384;
+const MAX_STATE_BODY_BYTES = 2_100_000;
 const PAGES_ORIGIN = 'https://amirhoseinlotfii.github.io';
 
 export type IdTokenVerifier = (token: string, clientId: string) => Promise<GoogleIdentity>;
@@ -16,6 +18,20 @@ type AppContext = Context<AppEnv>;
 
 function jsonError(error: string, status: number): Response {
   return Response.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+function safeMirrorError(value: unknown): string {
+  const allowed = new Set([
+    'not_configured', 'reauthorization_required', 'account_mismatch', 'permission_denied',
+    'quota_exceeded', 'etag_conflict', 'invalid_response', 'duplicate_file',
+    'subrequest_budget_exceeded', 'network_error', 'token_invalid', 'database_not_shared',
+    'schema_mismatch', 'rate_limited', 'remote_error',
+  ]);
+  return typeof value === 'string' && allowed.has(value) ? value : 'unknown';
+}
+
+function safeMirrorStage(value: unknown): string {
+  return typeof value === 'string' && /^[a-z0-9_]{1,80}$/.test(value) ? value : 'unknown';
 }
 
 function constantTimeSecretEqual(candidate: string, expected: string): boolean {
@@ -43,7 +59,7 @@ function finalizeResponse(response: Response, c: AppContext): Response {
 
 function requestedHeadersAreAllowed(value: string | null): boolean {
   if (!value) return true;
-  const allowed = new Set(['authorization', 'content-type', LEARNING_RESET_EPOCH_HEADER.toLowerCase()]);
+  const allowed = new Set(['authorization', 'content-type', 'idempotency-key', LEARNING_RESET_EPOCH_HEADER.toLowerCase()]);
   return value.split(',').every(header => allowed.has(header.trim().toLowerCase()));
 }
 
@@ -68,7 +84,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
       }
       c.header('Access-Control-Allow-Origin', allowedOrigin);
       c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      c.header('Access-Control-Allow-Headers', `Authorization, Content-Type, ${LEARNING_RESET_EPOCH_HEADER}`);
+      c.header('Access-Control-Allow-Headers', `Authorization, Content-Type, Idempotency-Key, ${LEARNING_RESET_EPOCH_HEADER}`);
       c.header('Access-Control-Max-Age', '86400');
       c.header('Vary', 'Origin');
       return c.body(null, 204);
@@ -77,9 +93,18 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     await next();
   });
 
-  app.get('/health', c => finalizeResponse(c.json({ ok: true, service: 'math-scratchpad-sync' }), c));
+  app.get('/health', c => finalizeResponse(c.json({
+    ok: true,
+    service: 'math-scratchpad-sync',
+    env: c.env.RELEASE_ENV ?? 'production',
+    sha: c.env.RELEASE_SHA ?? null,
+  }), c));
 
   const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase()));
+
+  app.get('/reset/status', async c => finalizeResponse(
+    await ownerStub(c.env).fetch('https://event-store.internal/internal/learning-reset/client-status'), c,
+  ));
 
   const internalJson = (path: string, body: unknown, env: WorkerEnv) => ownerStub(env).fetch(new Request(
     `https://event-store.internal${path}`,
@@ -127,12 +152,18 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
   const authorize = authorizeWith(true);
   const authorizeGoogleOnly = authorizeWith(false);
 
-  const proxy = async (c: AppContext, path: string, method: 'GET' | 'POST', expectsBody = method === 'POST') => {
+  const proxy = async (
+    c: AppContext,
+    path: string,
+    method: 'GET' | 'POST',
+    expectsBody = method === 'POST',
+    maxBodyBytes = MAX_BODY_BYTES,
+  ) => {
     let body: ArrayBuffer | undefined;
     if (expectsBody) {
       const declaredLength = Number(c.req.header('Content-Length') ?? 0);
-      if (declaredLength > MAX_BODY_BYTES) return finalizeResponse(jsonError('payload_too_large', 413), c);
-      body = await readBoundedBody(c.req.raw, MAX_BODY_BYTES) ?? undefined;
+      if (declaredLength > maxBodyBytes) return finalizeResponse(jsonError('payload_too_large', 413), c);
+      body = await readBoundedBody(c.req.raw, maxBodyBytes) ?? undefined;
       if (!body) return finalizeResponse(jsonError('payload_too_large', 413), c);
     }
 
@@ -145,6 +176,8 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     if (body !== undefined) headers.set('Content-Type', 'application/json');
     const clientEpoch = c.req.header(LEARNING_RESET_EPOCH_HEADER);
     if (clientEpoch) headers.set(LEARNING_RESET_EPOCH_HEADER, clientEpoch);
+    const idempotencyKey = c.req.header('Idempotency-Key');
+    if (idempotencyKey) headers.set('Idempotency-Key', idempotencyKey);
     const response = await stub.fetch(new Request(target, { method, headers, ...(body !== undefined ? { body } : {}) }));
     return finalizeResponse(response, c);
   };
@@ -183,14 +216,26 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     if (declaredLength > 4_096) return finalizeResponse(jsonError('payload_too_large', 413), c);
     const body = await readBoundedBody(c.req.raw, 4_096);
     if (!body) return finalizeResponse(jsonError('invalid_reset_request', 400), c);
-    let input: { confirm?: unknown; resetId?: unknown };
+    let input: { confirm?: unknown; resetId?: unknown; takeover?: unknown };
     try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
     catch { return finalizeResponse(jsonError('invalid_reset_request', 400), c); }
     if (input.confirm !== 'DELETE_ALL_LEARNING_DATA'
-      || typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)) {
+      || typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)
+      || (input.takeover !== undefined && input.takeover !== 'TAKEOVER_STUCK_LEARNING_RESET')) {
       return finalizeResponse(jsonError('invalid_reset_request', 400), c);
     }
-    const response = await internalJson('/internal/learning-reset', { resetId: input.resetId }, c.env);
+    const takeover = input.takeover === 'TAKEOVER_STUCK_LEARNING_RESET';
+    const response = await internalJson('/internal/learning-reset', { resetId: input.resetId, takeover }, c.env);
+    return finalizeResponse(response, c);
+  });
+
+  app.get('/admin/learning-reset/status', async c => {
+    const token = bearer(c);
+    const expected = c.env.LEARNING_RESET_TOKEN;
+    if (!expected || !token || !constantTimeSecretEqual(token, expected)) {
+      return finalizeResponse(jsonError('unauthorized', 401), c);
+    }
+    const response = await ownerStub(c.env).fetch('https://event-store.internal/internal/learning-reset/status');
     return finalizeResponse(response, c);
   });
 
@@ -215,10 +260,61 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     return finalizeResponse(response, c);
   });
 
+  // pagehide uses sendBeacon with a safelisted text/plain body so a CORS preflight
+  // cannot prevent the browser from queueing the request during document teardown.
+  app.post('/events/beacon', async c => {
+    const allowedOrigin = c.env.ALLOWED_ORIGIN || PAGES_ORIGIN;
+    if (c.req.header('Origin') !== allowedOrigin) return finalizeResponse(jsonError('origin_not_allowed', 403), c);
+    if (c.req.header('Content-Type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'text/plain') {
+      return finalizeResponse(jsonError('invalid_content_type', 415), c);
+    }
+    const declaredLength = Number(c.req.header('Content-Length') ?? 0);
+    if (declaredLength > MAX_BODY_BYTES) return finalizeResponse(jsonError('payload_too_large', 413), c);
+    const raw = await readBoundedBody(c.req.raw, MAX_BODY_BYTES);
+    if (!raw) return finalizeResponse(jsonError('payload_too_large', 413), c);
+    let input: { sessionToken?: unknown; epoch?: unknown; events?: unknown };
+    try { input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)) ?? {}; }
+    catch { return finalizeResponse(jsonError('invalid_beacon_payload', 400), c); }
+    if (typeof input.sessionToken !== 'string' || input.sessionToken.length > 10_000
+      || !isSessionToken(input.sessionToken) || !isWellFormedSessionToken(input.sessionToken)) {
+      return finalizeResponse(jsonError('unauthorized', 401), c);
+    }
+    if (!isValidLearningResetEpoch(input.epoch) || !Array.isArray(input.events)
+      || input.events.length < 1 || input.events.length > 50) {
+      return finalizeResponse(jsonError('invalid_beacon_payload', 400), c);
+    }
+    const verified = await internalJson('/internal/session/verify', {
+      tokenHash: await hashSessionToken(input.sessionToken),
+    }, c.env);
+    if (!verified.ok) return finalizeResponse(jsonError(verified.status === 401 ? 'session_invalid' : 'unauthorized', 401), c);
+    const record = await verified.json() as { email?: unknown; sub?: unknown };
+    if (typeof record.email !== 'string' || typeof record.sub !== 'string') {
+      return finalizeResponse(jsonError('unauthorized', 401), c);
+    }
+    const identity: GoogleIdentity = { sub: record.sub, email: record.email, email_verified: true };
+    if (!isOwner(identity, c.env)) return finalizeResponse(jsonError('unauthorized', 401), c);
+
+    const id = c.env.EVENT_STORE.idFromName(identity.email.trim().toLowerCase());
+    const response = await c.env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', [LEARNING_RESET_EPOCH_HEADER]: input.epoch },
+      body: JSON.stringify({ events: input.events }),
+    }));
+    return finalizeResponse(response, c);
+  });
   app.post('/events', authorize, c => proxy(c, '/events', 'POST'));
+  app.get('/reset/epoch', authorize, c => proxy(c, '/internal/learning-reset/epoch', 'GET'));
   app.get('/reset/preview', authorize, c => proxy(c, '/reset/preview', 'GET'));
+  app.post('/reset/execute', authorize, c => {
+    // Deployed environments leave this flag unset. The storage layer checks it
+    // again so a public-route mistake cannot enable scoped deletion by itself.
+    if (c.env.SCOPED_RESET_ENABLED !== 'true') {
+      return finalizeResponse(jsonError('scoped_reset_disabled', 503), c);
+    }
+    return proxy(c, '/reset/execute', 'POST', true, MAX_SCOPED_RESET_BODY_BYTES);
+  });
   app.get('/state', authorize, c => proxy(c, '/state', 'GET'));
-  app.post('/state', authorize, c => proxy(c, '/state', 'POST'));
+  app.post('/state', authorize, c => proxy(c, '/state', 'POST', true, MAX_STATE_BODY_BYTES));
   app.get('/sync', authorize, c => proxy(c, '/sync', 'GET'));
   app.get('/snapshot', authorize, c => proxy(c, '/snapshot', 'GET'));
   app.get('/drive/status', authorize, c => proxy(c, '/drive/status', 'GET'));
@@ -239,9 +335,24 @@ const app = createApp();
 export async function requestMirrorSync(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>): Promise<void> {
   const id = env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase());
   const response = await env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
-  if (!response.ok) throw new Error('scheduled_mirror_sync_failed');
-  const state = await response.json() as { drive?: { status?: string }; notion?: { status?: string } };
-  if (state.drive?.status === 'error' || state.notion?.status === 'error') {
+  if (!response.ok) {
+    console.warn('scheduled_mirror_sync_failed', { stage: 'durable_object_request', status: response.status });
+    throw new Error('scheduled_mirror_sync_failed');
+  }
+  const state = await response.json() as {
+    drive?: { status?: string; lastError?: unknown; failureStage?: unknown };
+    notion?: { status?: string; lastError?: unknown };
+    subrequestsUsed?: unknown;
+    subrequestLimit?: unknown;
+  };
+  const failures = [
+    ...(state.drive?.status === 'error' ? [{ destination: 'drive', errorCode: safeMirrorError(state.drive.lastError), stage: safeMirrorStage(state.drive.failureStage) }] : []),
+    ...(state.notion?.status === 'error' ? [{ destination: 'notion', errorCode: safeMirrorError(state.notion.lastError), stage: 'notion_event_sync' }] : []),
+  ];
+  const used = Number.isSafeInteger(state.subrequestsUsed) ? Number(state.subrequestsUsed) : null;
+  const limit = Number.isSafeInteger(state.subrequestLimit) ? Number(state.subrequestLimit) : null;
+  if (failures.length) {
+    console.warn('scheduled_mirror_sync_incomplete', { failures, subrequestsUsed: used, subrequestLimit: limit });
     throw new Error('scheduled_mirror_retry_incomplete');
   }
 }

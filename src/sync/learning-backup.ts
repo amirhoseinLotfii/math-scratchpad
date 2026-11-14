@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod/mini';
 import { ARCHIVE_KEY, BANK_CACHE_PREFIX, snapshotVersion, validateBank } from '../features/drive-bank/drive-bank';
 import { LESSON_PROGRESS_PREFIX, readLessonProgress } from '../features/lessons/lesson-progress-store';
 import { validateSession } from '../persistence';
@@ -27,27 +27,33 @@ import {
 export const FULL_BACKUP_FORMAT = 'math-scratchpad-full-backup/v1';
 export const MAX_FULL_BACKUP_BYTES = 50 * 1024 * 1024;
 const deviceIdKey = 'math-scratchpad-device-id-v1';
-const isoDateTime = z.string().datetime({ offset: true });
-const cacheSchema = z.object({ key: z.string().min(1).max(512), value: z.string().max(10_000_000), updatedAt: isoDateTime }).strict();
-const outboxSchema = z.object({
-  id: z.string().uuid(), event: learnEventSchema, queuedAt: isoDateTime, migrationId: z.string().uuid().optional(),
-}).strict().refine(record => record.id === record.event.id, 'Outbox key must match its event ID.');
-const serverEventSchema = z.object({ seq: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), event: learnEventSchema }).strict();
+const isoDateTime = z.iso.datetime({ offset: true });
+const cacheSchema = z.strictObject({
+  key: z.string().check(z.minLength(1), z.maxLength(512)),
+  value: z.string().check(z.maxLength(10_000_000)),
+  updatedAt: isoDateTime,
+});
+const outboxSchema = z.strictObject({
+  id: z.uuid(), event: learnEventSchema, queuedAt: isoDateTime,
+  creationEpoch: z.optional(z.string().check(z.minLength(8), z.maxLength(128), z.regex(/^[a-zA-Z0-9._:-]+$/))),
+  migrationId: z.optional(z.uuid()),
+}).check(z.refine(record => record.id === record.event.id, { error: 'Outbox key must match its event ID.' }));
+const serverEventSchema = z.strictObject({ seq: z.int().check(z.positive(), z.maximum(Number.MAX_SAFE_INTEGER)), event: learnEventSchema });
 const metaSchema = z.custom<MetaRecord>(value => isRecord(value)
   && typeof value.key === 'string' && value.key.length > 0 && value.key.length <= 512 && Object.hasOwn(value, 'value'));
-const storesSchema = z.object({
-  cache: z.array(cacheSchema).max(100_000),
-  outbox: z.array(outboxSchema).max(100_000),
-  serverEvents: z.array(serverEventSchema).max(200_000),
-  meta: z.array(metaSchema).max(10_000),
-}).strict();
-const backupSchema = z.object({
+const storesSchema = z.strictObject({
+  cache: z.array(cacheSchema).check(z.maxLength(100_000)),
+  outbox: z.array(outboxSchema).check(z.maxLength(100_000)),
+  serverEvents: z.array(serverEventSchema).check(z.maxLength(200_000)),
+  meta: z.array(metaSchema).check(z.maxLength(10_000)),
+});
+const backupSchema = z.strictObject({
   format: z.literal(FULL_BACKUP_FORMAT),
   schemaVersion: z.literal(1),
   createdAt: isoDateTime,
   stores: storesSchema,
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-}).strict();
+  sha256: z.string().check(z.regex(/^[a-f0-9]{64}$/)),
+});
 
 export type FullLearningBackup = z.infer<typeof backupSchema>;
 type LearningStores = z.infer<typeof storesSchema>;

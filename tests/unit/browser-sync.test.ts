@@ -42,11 +42,41 @@ import {
   verifyLegacyMigrationOnServer,
 } from '../../src/sync/legacy-migration';
 import { BrowserSyncRuntime } from '../../src/sync/runtime';
+import { LEARNING_RESET_EPOCH, markLocalLearningResetPending } from '../../src/sync/learning-reset-epoch';
 
 const SESSION_KEY = 'math-scratchpad-session-v3';
 const LESSON_KEY = 'math-scratchpad-lesson-progress-v1:bank%2F1:v21';
 const OLD_SESSION = serialize(initialState());
 const OLD_LESSON = JSON.stringify({ schemaVersion: 1, bankId: 'bank/1', bankVersion: 'v21', lessons: { '1.1': { status: 'learning', checkAnswers: { q1: 'دامنه' } } }, lessonPanelEvents: [] });
+
+function withIdleResetStatus(fetcher: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    if (new URL(String(input)).pathname === '/reset/status') {
+      return Response.json({ status: 'idle', epoch: LEARNING_RESET_EPOCH });
+    }
+    return fetcher(input, init);
+  };
+}
+
+function stubSendBeacon(sendBeacon: Navigator['sendBeacon']): void {
+  const current = navigator;
+  vi.stubGlobal('navigator', new Proxy(current, {
+    get(target, property) {
+      if (property === 'sendBeacon') return sendBeacon;
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }));
+}
+
+function readBlobText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
 
 function fixtureEvent(index: number): LearnEvent {
   const suffix = index.toString(16).padStart(12, '0');
@@ -58,6 +88,31 @@ function fixtureEvent(index: number): LearnEvent {
     bankVersion: 'v21', session: 'property-test', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations',
     type: 'check_answer', itemId: `q-${index}`, userAnswer: String(index), verdict: 'submitted', verdictSource: 'none',
   };
+}
+
+function createManualScheduler() {
+  type Handle = ReturnType<typeof setTimeout>;
+  let now = 0;
+  let id = 0;
+  const timers = new Map<number, { at: number; callback: () => void }>();
+  const schedule = ((callback: TimerHandler, delay?: number) => {
+    const timerId = ++id;
+    timers.set(timerId, { at: now + Number(delay ?? 0), callback: () => typeof callback === 'function' ? callback() : undefined });
+    return timerId as unknown as Handle;
+  }) as unknown as typeof globalThis.setTimeout;
+  const cancel = ((handle: Handle) => { timers.delete(Number(handle)); }) as typeof globalThis.clearTimeout;
+  const advance = (milliseconds: number) => {
+    const target = now + milliseconds;
+    while (true) {
+      const due = [...timers.entries()].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      now = due[1].at;
+      timers.delete(due[0]);
+      due[1].callback();
+    }
+    now = target;
+  };
+  return { schedule, cancel, advance };
 }
 
 function seedLegacy() {
@@ -252,6 +307,27 @@ describe('IndexedDB learning cache and legacy migration', () => {
     const db = await getLearningDb();
     expect((await db.get('cache', SESSION_KEY))?.value).toBe('{"draft":"local copy"}');
     await expect(getAuthenticatedServerStorage()?.flush()).rejects.toThrow();
+  });
+
+  it('does not write server-backed state while the reset-pending guard is active', async () => {
+    const writes: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        writes.push(JSON.parse(String(init.body)));
+        return Response.json({ revision: 1 });
+      }
+      return Response.json({ records: [], revision: 0 });
+    }));
+    await initializeLearningStorage();
+    await initializeAuthenticatedServerStorage('owner-token');
+
+    localStorage.setItem('math-scratchpad-local-learning-reset-pending-v1', '1');
+    getLearningStorage().setItem(SESSION_KEY, '{"draft":"saved locally"}');
+    await flushLearningStorage();
+    await expect(getAuthenticatedServerStorage()?.flush()).rejects.toThrow('ارسال تا تأیید پایان پاک‌سازی متوقف است.');
+
+    expect(writes).toHaveLength(0);
+    expect(await (await getLearningDb()).get('cache', SESSION_KEY)).toMatchObject({ value: '{"draft":"saved locally"}' });
   });
 
   it('supports the Storage facade contract and awaits a durable write before returning', async () => {
@@ -535,6 +611,336 @@ describe('IndexedDB learning cache and legacy migration', () => {
   });
 
 describe('browser sync runtime', () => {
+  it('debounces event pushes and sends the queued events together with a stable idempotency key', async () => {
+    await initializeLearningStorage();
+    const posted: Array<{ body: { events: LearnEvent[] }; init?: RequestInit }> = [];
+    const clock = createManualScheduler();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted.push({ body, init });
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+
+    for (let index = 0; index < 10; index += 1) {
+      emitLearnEvent({ bankVersion: 'v21', session: `debounce-${index}`, chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    }
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(10));
+
+    expect(posted).toHaveLength(0);
+    clock.advance(4_999);
+    expect(posted).toHaveLength(0);
+    clock.advance(1);
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]?.body.events).toHaveLength(10);
+    expect(posted[0]?.init?.headers).toMatchObject({
+      'Idempotency-Key': `events-${posted[0]?.body.events.map(event => event.id).join('.')}`,
+    });
+    expect(await readOutboxCount()).toBe(0);
+    runtime.stop();
+  });
+
+  it('flushes continuing activity by the 30-second max wait', async () => {
+    await initializeLearningStorage();
+    const posted: LearnEvent[][] = [];
+    const clock = createManualScheduler();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted.push(body.events);
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+
+    for (let index = 0; index < 8; index += 1) {
+      if (index > 0) clock.advance(4_000);
+      emitLearnEvent({ bankVersion: 'v21', session: `max-wait-${index}`, chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+      await vi.waitFor(async () => expect(await readOutboxCount()).toBe(index + 1));
+    }
+    expect(posted).toHaveLength(0);
+    clock.advance(2_000);
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toHaveLength(8);
+    expect(await readOutboxCount()).toBe(0);
+    runtime.stop();
+  });
+
+  it('queues one small durable pagehide batch with sendBeacon and leaves it for retry', async () => {
+    await initializeLearningStorage();
+    const beacons: Array<{ url: string; data: BodyInit | null }> = [];
+    const sendBeacon = vi.fn((url: string | URL, data?: BodyInit | null) => {
+      beacons.push({ url: String(url), data: data ?? null });
+      return true;
+    });
+    stubSendBeacon(sendBeacon);
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (url.pathname === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'pagehide', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.waitFor(() => expect(sendBeacon).toHaveBeenCalledTimes(1));
+    expect(beacons).toHaveLength(1);
+    expect(beacons[0]?.url).toBe('https://sync.example/events/beacon');
+    expect(beacons[0]?.data).toBeInstanceOf(Blob);
+    const body = JSON.parse(await readBlobText(beacons[0]?.data as Blob)) as { sessionToken: string; epoch: string; events: LearnEvent[] };
+    expect(body).toMatchObject({ sessionToken: 'owner-id-token', epoch: LEARNING_RESET_EPOCH });
+    expect(body.events).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/events')).toHaveLength(0);
+    expect(await readOutboxCount()).toBe(1);
+    runtime.stop();
+  });
+
+  it('flushes a durable pagehide batch while a regular sync is still waiting on its snapshot', async () => {
+    await initializeLearningStorage();
+    let resolveSnapshot: ((response: Response) => void) | undefined;
+    let snapshotRequested = false;
+    let posted: { init?: RequestInit; body: { events: LearnEvent[] } } | undefined;
+    const beacons: Array<{ url: string; data: BodyInit | null }> = [];
+    const sendBeacon = vi.fn((url: string | URL, data?: BodyInit | null) => {
+      beacons.push({ url: String(url), data: data ?? null });
+      return true;
+    });
+    stubSendBeacon(sendBeacon);
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted = { init, body };
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') {
+        snapshotRequested = true;
+        return await new Promise<Response>(resolve => { resolveSnapshot = resolve; });
+      }
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(snapshotRequested).toBe(true));
+
+    emitLearnEvent({ bankVersion: 'v21', session: 'pagehide-during-sync', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.waitFor(() => expect(sendBeacon).toHaveBeenCalledTimes(1));
+    const beaconBody = JSON.parse(await readBlobText(beacons[0]?.data as Blob)) as { events: LearnEvent[] };
+    expect(beaconBody.events).toHaveLength(1);
+    expect(posted).toBeUndefined();
+    expect(await readOutboxCount()).toBe(1);
+
+    resolveSnapshot?.(Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false }));
+    await vi.waitFor(() => expect(posted).toBeDefined());
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(0));
+    runtime.stop();
+  });
+
+  it('queues one hidden-page beacon even when pagehide follows visibilitychange', async () => {
+    await initializeLearningStorage();
+    const beacons: Array<{ url: string; data: BodyInit | null }> = [];
+    const sendBeacon = vi.fn((url: string | URL, data?: BodyInit | null) => {
+      beacons.push({ url: String(url), data: data ?? null });
+      return true;
+    });
+    stubSendBeacon(sendBeacon);
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'hidden-page', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(sendBeacon).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('pagehide'));
+    expect(fetcher.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/events')).toHaveLength(0);
+    expect(beacons).toHaveLength(1);
+    expect(await readOutboxCount()).toBe(1);
+    visibility.mockRestore();
+    runtime.stop();
+  });
+
+  it('keeps an offline pagehide batch durable and sends it after a reload', async () => {
+    await initializeLearningStorage();
+    const posted: Array<{ body: { events: LearnEvent[] }; init?: RequestInit }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (url.pathname === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        posted.push({ body, init });
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (url.pathname === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'offline-pagehide', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(fetcher.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/events')).toHaveLength(0);
+    expect(await readOutboxCount()).toBe(1);
+    online.mockRestore();
+    runtime.stop();
+
+    const reloadedRuntime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await reloadedRuntime.start();
+    reloadedRuntime.setIdToken('owner-id-token');
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(0));
+    expect(posted).toHaveLength(1);
+    expect(posted[0]?.body.events).toHaveLength(1);
+    reloadedRuntime.stop();
+  });
+
+  it('queues local learning data without sending while the local reset guard is active', async () => {
+    localStorage.setItem('math-scratchpad-local-learning-reset-pending-v1', '1');
+    const fetcher = vi.fn(async () => Response.json({ events: [], cursor: 0 }));
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await runtime.start();
+    emitLearnEvent({ bankVersion: 'v21', session: 'reset-pending', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    runtime.setIdToken('owner-session-token');
+    await runtime.syncNow();
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    expect(await readOutboxCount()).toBe(1);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtime.getSnapshot().phase).toBe('needs-auth');
+    runtime.stop();
+  });
+
+  it('blocks debounce, max-wait, wake, visibility, and pagehide triggers after reset begins', async () => {
+    await initializeLearningStorage();
+    const clock = createManualScheduler();
+    const writes: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (init?.method === 'POST') writes.push(path);
+      if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (path === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        return Response.json({ events: body.events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: body.events.length });
+      }
+      if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      if (path === '/sync') return Response.json({ events: [], cursor: 0, through: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), scheduleTimeout: clock.schedule, cancelTimeout: clock.cancel });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
+    emitLearnEvent({ bankVersion: 'v21', session: 'guard-paths', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
+    await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
+
+    markLocalLearningResetPending();
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('pageshow'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pagehide'));
+    clock.advance(30_000);
+    await Promise.resolve();
+
+    expect(writes).toEqual([]);
+    expect(await readOutboxCount()).toBe(1);
+    runtime.stop();
+  });
+
+  it('cancels a scheduled retry when reset begins', async () => {
+    await initializeLearningStorage();
+    await queueLearnEvent(fixtureEvent(105));
+    const eventPosts: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (path === '/events') {
+        eventPosts.push(path);
+        return Response.json({ error: 'temporary' }, { status: 503 });
+      }
+      if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    expect(runtime.getSnapshot().phase).toBe('retrying');
+    expect(eventPosts).toHaveLength(1);
+
+    markLocalLearningResetPending();
+    await new Promise(resolve => setTimeout(resolve, 900));
+
+    expect(eventPosts).toHaveLength(1);
+    expect(await readOutboxCount()).toBe(1);
+    runtime.stop();
+  });
+
+  it('keeps an event queued when reset starts during its in-flight request', async () => {
+    await initializeLearningStorage();
+    const event = fixtureEvent(104);
+    await queueLearnEvent(event);
+    let resolvePost: ((response: Response) => void) | undefined;
+    let postSignal: AbortSignal | null | undefined;
+    const calls: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      calls.push(path);
+      if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
+      if (path === '/events') return new Promise<Response>(resolve => { resolvePost = resolve; postSignal = init?.signal; });
+      if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ error: 'not_found' }, { status: 404 });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await vi.waitFor(() => expect(resolvePost).toBeTypeOf('function'));
+
+    markLocalLearningResetPending();
+    resolvePost?.(Response.json({ events: [{ id: event.id, seq: 1, duplicate: false }], cursor: 1 }));
+    await runtime.syncNow();
+
+    expect(await readOutboxCount()).toBe(1);
+    expect(postSignal?.aborted).toBe(true);
+    expect(calls).not.toContain('/snapshot');
+    runtime.stop();
+  });
+
   it('is commutative under event order and idempotent under duplicate delivery', async () => {
     await fc.assert(fc.asyncProperty(fc.array(fc.integer({ min: 0, max: 25 }), { maxLength: 30 }), async input => {
       const expected = [...new Set(input)].map(fixtureEvent).sort((a, b) => a.id.localeCompare(b.id));
@@ -577,7 +983,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: server.length, through: server.length, hasMore: false });
       return Response.json({ error: 'not found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     emitLearnEvent({ bankVersion: 'v21', session: 's-1', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'check_answer', itemId: 'q-1', userAnswer: '{1,2}', verdict: 'submitted', verdictSource: 'none' });
     await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
@@ -612,7 +1018,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/sync') return Response.json({ events: [], cursor: server.length, through: server.length, hasMore: false });
       return Response.json({ error: 'not found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     emitLearnEvent({ bankVersion: 'v21', session: 's-1', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
     await vi.waitFor(async () => expect(await readOutboxCount()).toBe(1));
@@ -630,8 +1036,10 @@ describe('browser sync runtime', () => {
   it('retains every event when the server omits an acknowledgement ID', async () => {
     await initializeLearningStorage();
     await queueLearnEvent(fixtureEvent(101));
-    const fetcher = vi.fn(async () => Response.json({ events: [], cursor: 0 }));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0 });
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => new URL(String(input)).pathname === '/reset/epoch'
+      ? Response.json({ epoch: LEARNING_RESET_EPOCH })
+      : Response.json({ events: [], cursor: 0 }));
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0 });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -644,7 +1052,7 @@ describe('browser sync runtime', () => {
     await initializeLearningStorage();
     await queueLearnEvent(fixtureEvent(102));
     const fetcher = vi.fn(async () => Response.json({ error: 'unauthorized' }, { status: 401 }));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('expired-id-token');
     await runtime.syncNow();
@@ -658,14 +1066,16 @@ describe('browser sync runtime', () => {
     await initializeLearningStorage();
     const oversized = { ...fixtureEvent(103), questionText: 'x'.repeat(200_000) } as LearnEvent;
     await queueLearnEvent(oversized);
-    const fetcher = vi.fn();
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => new URL(String(input)).pathname === '/reset/epoch'
+      ? Response.json({ epoch: LEARNING_RESET_EPOCH })
+      : Response.json({ events: [], cursor: 0 }));
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
     expect(runtime.getSnapshot()).toMatchObject({ phase: 'error', pending: 1 });
     expect(runtime.getSnapshot().lastError).toMatch(/حد مجاز سرور/);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.some(([input, init]) => new URL(String(input)).pathname === '/events' && init?.method === 'POST')).toBe(false);
     expect(await readOutboxCount()).toBe(1);
     runtime.stop();
   });
@@ -697,7 +1107,7 @@ describe('browser sync runtime', () => {
       }
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -734,7 +1144,7 @@ describe('browser sync runtime', () => {
       if (path === '/notion/sync' && init?.method === 'POST') return Response.json({ notion: { status: 'synced' } });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -761,7 +1171,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/drive/sync' && method === 'POST') return Response.json({ drive: { status: 'synced', pendingCount: 0, lastSyncedAt: null, lastError: null } });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -786,7 +1196,7 @@ describe('browser sync runtime', () => {
       if (url.pathname === '/notion/status') return Response.json({ status: 'not_configured', pendingCount: 0, lastSyncedAt: null, lastError: null });
       return Response.json({ error: 'not_found' }, { status: 404 });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
@@ -804,15 +1214,14 @@ describe('owner-only read-only cloud reset preview', () => {
   };
   it('requires a Google identity token and never sends an anonymous deletion request', async () => {
     const fetcher = vi.fn(async () => Response.json(payload));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
     await expect(runtime.previewAllReset()).rejects.toThrow('Google sign-in is required');
     expect(fetcher).not.toHaveBeenCalled();
   });
   it('issues exactly one authenticated GET and displays a valid preflight', async () => {
     const fetcher = vi.fn(async () => Response.json(payload));
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
-    runtime.setIdToken('owner-test-token');
-    expect(await runtime.previewAllReset()).toMatchObject(payload);
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher) });
+    expect(await runtime.previewAllReset('owner-test-token')).toMatchObject(payload);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledWith('https://sync.example/reset/preview?scope=all',
       expect.objectContaining({ method: 'GET', headers: { Authorization: 'Bearer owner-test-token' } }));
@@ -820,7 +1229,6 @@ describe('owner-only read-only cloud reset preview', () => {
   it('rejects invalid preview payloads without claiming any deletion', async () => {
     const fetcher = vi.fn(async () => Response.json({ scope: 'all', canExecute: true }));
     const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher });
-    runtime.setIdToken('owner-test-token');
-    await expect(runtime.previewAllReset()).rejects.toThrow('پاسخ پیش‌نمایش ریست معتبر نبود');
+    await expect(runtime.previewAllReset('owner-test-token')).rejects.toThrow('پاسخ پیش‌نمایش ریست معتبر نبود');
   });
 });

@@ -1,12 +1,16 @@
 import { GOOGLE_CLIENT_ID } from '../features/drive-bank/drive-config';
 import { loadIdentity } from '../features/drive-bank/google';
 import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from './google-auth-state';
+import { recordGoogleAuthDiagnostic } from './google-auth-diagnostics';
 
 type GoogleCredential = { credential?: string };
 type PromptMomentNotification = {
   isNotDisplayed?: () => boolean;
   isSkippedMoment?: () => boolean;
   isDismissedMoment?: () => boolean;
+  getNotDisplayedReason?: () => string;
+  getSkippedReason?: () => string;
+  getDismissedReason?: () => string;
 };
 type GoogleIdApi = {
   initialize(options: { client_id: string; callback: (response: GoogleCredential) => void; auto_select?: boolean; cancel_on_tap_outside?: boolean }): void;
@@ -101,9 +105,10 @@ function initializeGoogleIdClient(): GoogleIdApi {
       cancel_on_tap_outside: true,
       callback: (response: GoogleCredential) => {
         const token = response.credential;
-        if (!token) return;
+        if (!token) { recordGoogleAuthDiagnostic('gis_credential_missing'); return; }
         const expiresAt = tokenExpiry(token);
-        if (!expiresAt || expiresAt <= Date.now()) return;
+        if (!expiresAt || expiresAt <= Date.now()) { recordGoogleAuthDiagnostic('gis_credential_invalid'); return; }
+        recordGoogleAuthDiagnostic('gis_credential_received');
         if (credentialWaiters.size) {
           for (const waiter of [...credentialWaiters]) waiter(token, expiresAt);
           return;
@@ -149,50 +154,22 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
   // Clear the target first so only one Google button remains in the connection card.
   element.replaceChildren();
   getGoogleIdApi()?.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
+  recordGoogleAuthDiagnostic('gis_button_rendered');
   standaloneButtonCount += 1;
   const unsubscribe = addTokenListener(listener);
   return () => { standaloneButtonCount -= 1; unsubscribe(); };
 }
 
-/** Call from a user gesture after prepareGoogleIdClient; GIS may show its One Tap account prompt. */
-export async function requestGoogleIdCredential(): Promise<{ token: string; expiresAt: number }> {
-  const saved = getGoogleIdTokenRecord();
-  if (saved) return saved;
-  if (silentRefreshFlight) {
-    const refreshed = await silentRefreshFlight;
-    if (refreshed) return refreshed;
+function recordPromptMoment(notification: PromptMomentNotification): void {
+  if (notification.isNotDisplayed?.()) {
+    recordGoogleAuthDiagnostic('gis_prompt_not_displayed', notification.getNotDisplayedReason?.() ?? 'unspecified');
+  } else if (notification.isSkippedMoment?.()) {
+    recordGoogleAuthDiagnostic('gis_prompt_skipped', notification.getSkippedReason?.() ?? 'unspecified');
+  } else if (notification.isDismissedMoment?.()) {
+    recordGoogleAuthDiagnostic('gis_prompt_dismissed', notification.getDismissedReason?.() ?? 'unspecified');
+  } else {
+    recordGoogleAuthDiagnostic('gis_prompt_moment');
   }
-  let api: GoogleIdApi;
-  try { api = initializeGoogleIdClient(); }
-  catch { throw new Error('ورود گوگل هنوز آماده نیست. چند لحظه صبر کن و دوباره تلاش کن.'); }
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let unsubscribe: () => void = () => undefined;
-    let timeout = 0;
-    const finish = (problem?: Error, value?: { token: string; expiresAt: number }) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      unsubscribe();
-      if (problem) reject(problem);
-      else if (value) resolve(value);
-      else reject(new Error('Google did not return an account credential.'));
-    };
-    const listener = (token: string, expiresAt: number) => finish(undefined, { token, expiresAt });
-    credentialWaiters.add(listener);
-    unsubscribe = () => { credentialWaiters.delete(listener); };
-    timeout = window.setTimeout(() => finish(new Error('Google account sign-in timed out. Try again and complete the Google prompt.')), 30_000);
-    try {
-      api.prompt(notification => {
-        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
-          finish(new Error('Google account sign-in was not completed. Allow the Google prompt, then try again.'));
-        }
-      });
-    } catch (problem) {
-      finish(problem instanceof Error ? problem : new Error('Google account sign-in could not be started.'));
-    }
-  });
 }
 
 /**
@@ -211,7 +188,7 @@ export function refreshGoogleIdTokenSilently(): Promise<{ token: string; expires
       await loadIdentity();
       let api: GoogleIdApi;
       try { api = initializeGoogleIdClient(); }
-      catch { return undefined; }
+      catch { recordGoogleAuthDiagnostic('gis_silent_refresh_unavailable'); return undefined; }
 
       return await new Promise<{ token: string; expiresAt: number } | undefined>(resolve => {
         let settled = false;
@@ -229,11 +206,11 @@ export function refreshGoogleIdTokenSilently(): Promise<{ token: string; expires
         timeout = window.setTimeout(() => finish(undefined), SILENT_REFRESH_TIMEOUT_MS);
         try {
           api.prompt(notification => {
-            if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
-              finish(undefined);
-            }
+            recordPromptMoment(notification);
+            if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) finish(undefined);
           });
         } catch {
+          recordGoogleAuthDiagnostic('gis_silent_refresh_error');
           finish(undefined);
         }
       });

@@ -53,6 +53,7 @@ describe('Google Identity Services ID-token session', () => {
 
     const token = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
     credentialCallback?.({ credential: token });
+    expect(identityApi.prompt).not.toHaveBeenCalled();
     expect(firstListener).toHaveBeenCalledWith(token, expect.any(Number));
     expect(googleIdTokenReady()).toBe(true);
     expect(getGoogleIdToken()).toBe(token);
@@ -124,20 +125,6 @@ describe('Google Identity Services ID-token session', () => {
     expect(localStorage.getItem('math-scratchpad-google-id-token-v1')).toBeTruthy();
     expect(sessionStorage.getItem('math-scratchpad-google-id-token-v1')).toBeNull();
     migrated.clearGoogleIdToken();
-  });
-
-  it('requests a Google ID credential through One Tap after client preparation', async () => {
-    vi.resetModules();
-    const identity = await import('../../src/sync/google-id-token');
-    installGoogleApi(google);
-    await identity.prepareGoogleIdClient();
-    promptCredential = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
-
-    await expect(identity.requestGoogleIdCredential()).resolves.toMatchObject({ token: promptCredential });
-    expect(identityApi.prompt).toHaveBeenCalledTimes(1);
-    expect(identity.getGoogleIdToken()).toBeUndefined();
-    identity.commitGoogleIdToken(promptCredential);
-    expect(identity.getGoogleIdToken()).toBe(promptCredential);
   });
 
   it('silently refreshes an expired ID token when a prior session hint remains', async () => {
