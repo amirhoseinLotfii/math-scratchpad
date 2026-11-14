@@ -137,3 +137,9 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 ### Phase 2 step 5 — follow-up branch created (2026-11-14 Asia/Tehran)
 - Created `fix/audit-20261114-release-validation` locally from merged `main` at `e8a4fab1e010531647289152b7768ccf69367252`.
 - Validate editor #679 remains failed on the prior head; Validate editor #680 is still running on merged `main`. The #679 failure path remains under scoped review; no tests have been weakened or skipped.
+
+
+### Phase 2 step 5 — release identity changes pushed (2026-11-14 Asia/Tehran)
+- Follow-up branch `fix/audit-20261114-release-validation` is based on main merge commit `e8a4fab1e010531647289152b7768ccf69367252` and now contains commit `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f`.
+- Added guarded Pages `version.json` generation and a guarded production Wrangler deploy wrapper that injects the exact Workers Builds commit SHA. Added non-weakening identity/deploy argument tests to `test:gate`.
+- Local checks: release metadata/deploy-argument tests 5/5, typecheck passed, `git diff --check` passed, production build/Wrangler dry-run passed.
