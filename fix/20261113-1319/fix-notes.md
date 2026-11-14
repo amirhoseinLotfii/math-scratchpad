@@ -513,3 +513,12 @@ Overall status: BLOCKED on PR #95's red Validate check and the remaining AUD-004
 
 ### Current audit status
 AUD-001 FIXED; AUD-002 FIXED; AUD-003 FIXED; AUD-004 FIXED; AUD-005 PARTIAL; AUD-006 FIXED; AUD-007 FIXED; AUD-008 FIXED; AUD-009 FIXED; AUD-010 FIXED; AUD-011 FIXED; AUD-012 FIXED; AUD-013 FIXED; AUD-014 FIXED; AUD-015 FIXED; AUD-016 FIXED; AUD-017 FIXED; AUD-018 FIXED.
+
+
+## Google Picker API-key restriction fix — 2026-11-14 UTC
+- In Google Cloud project `math-scratchpad` (project number `644646241119`), the owner authorized updating the existing browser API key `math-scratchpad browser key`.
+- Preserved existing HTTP referrers `http://localhost:5173/*` and `https://amirhoseinlotfii.github.io/*`; added `https://docs.google.com/*`.
+- Preserved the Google Picker API restriction and added Google Drive API. The final allowed API list is exactly Google Picker API and Google Drive API.
+- Reopened the key details after saving and independently verified the exact three referrers and two allowed APIs. Both APIs are enabled; OAuth JavaScript origins remain configured for the app and localhost.
+- The first save report did not match a subsequent read, so the change was repeated only after confirming the original values and then verified again from saved details.
+- Live app root loads. An unauthenticated isolated browser smoke check did not open the Picker dialog and showed no invalid-developer-key error. End-to-end Picker opening remains NEEDS TEST; no Google account consent was granted and no Drive file was selected or read. No app code or deployment changed.
