@@ -458,3 +458,38 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 - Run #680 completed with failure on main commit `e8a4fab1e010531647289152b7768ccf69367252`: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43562661439
 - Job metadata identifies the failed step as the aggregate `npm run test:gate`; detailed failure output was not opened. No test was skipped, weakened, or modified based on that run.
 - Validate #681 on PR #95 is still running. PR #95 remains draft/unmerged pending its own full green CI; the successful Audit Verification #25 does not clear this Validate failure.
+
+
+## Final checkpoint — 2026-11-14 UTC
+
+### Release / CI outcome
+- PR #94 merged into `main` at `e8a4fab1e010531647289152b7768ccf69367252` under the owner's explicit approval.
+- GitHub Pages deploy #82 succeeded on that SHA: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43562661451
+- Cloudflare Workers Build `62faa040-d2ed-4aef-ae44-7c656c4c6c53` succeeded; Worker deployment `c9aa5084-e01e-4030-ba3d-807333b07952`, version `7f110368-e648-4d75-9f43-8adb634713df`.
+- Live app root loads. Post-release Pages `/version.json` served the application HTML instead of JSON. Worker `/health` returned `env:"production", sha:null`. AUD-004 is therefore BLOCKED pending green CI and a new release with matching full SHAs.
+- PR #95 (`fix/audit-20261114-release-validation`, head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f`) remains draft. Audit Verification #25 passed: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43564546964. Validate #681 failed at aggregate `npm run test:gate`: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43564547114. Post-merge Validate #680 also failed at `npm run test:gate`: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43562661439. Historical Validate #679 remains failed on its original head; its failed-job retry also failed. No tests were weakened or skipped. The exact underlying failure cause is `نیاز به تست`; detailed failure output was not opened under this run's scope.
+- PR #95 was not marked ready, merged, or deployed because its Validate check is red. Production remains read-only after the already-authorized PR #94 release. Cloudflare settings show no `SCOPED_RESET_ENABLED` binding; AUD-005 stays OFF.
+
+### Final AUD status
+| Item | Status | Evidence |
+|---|---|---|
+| AUD-001 | FIXED | Recovery/outbox preservation, reset-status/epoch gating, stuck-client matrix 4/4. |
+| AUD-002 | FIXED | Debounce and max-wait regression coverage. |
+| AUD-003 | FIXED | Pagehide beacon plus Worker retry/offline matrix 4/4. |
+| AUD-004 | BLOCKED | Live app loads, but Pages `/version.json` is HTML and Worker `/health` has `sha:null`; follow-up code awaits green Validate and release. |
+| AUD-005 | PARTIAL | Synthetic idempotency/retry coverage exists; actual Cloudflare DO restart/eviction and isolated external-mirror reconciliation are NOT_TESTED. No isolated Worker/mirror target was available; production flag OFF. |
+| AUD-006 | FIXED | Keyboard acceptance 120/120; browser accessibility checks 76/76. |
+| AUD-007 | FIXED | Compact-menu keyboard acceptance 120/120. |
+| AUD-008 | FIXED | Visual acceptance 6/6; layout 6/6; wide visual matrix 8/8. |
+| AUD-009 | FIXED | Epoch/status and stale-write fencing coverage. |
+| AUD-010 | FIXED | Ownership-marker Worker coverage. |
+| AUD-011 | FIXED | Journal/reference coverage. |
+| AUD-012 | FIXED | Production dependency audit and Wrangler dry-run passed in Audit #25. |
+| AUD-013 | FIXED | Payload-size boundary coverage. |
+| AUD-014 | FIXED | Shared write guard/outbox preservation and reset-lock takeover coverage. |
+| AUD-015 | FIXED | Decorative import-icon layout coverage. |
+| AUD-016 | FIXED | Standalone IIFE flags and offline-reload coverage. |
+| AUD-017 | FIXED | Confirmation/cancel/undo across both import flows; 10/10. |
+| AUD-018 | FIXED | Mirror-failure isolation and Cron coverage. |
+
+Overall status: BLOCKED on PR #95's red Validate check and the remaining AUD-004/AUD-005 live verification. Resume from PR #95 head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f` after the scoped test-gate cause can be addressed without weakening or skipping checks.
