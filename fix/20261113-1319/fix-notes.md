@@ -528,3 +528,9 @@ AUD-001 FIXED; AUD-002 FIXED; AUD-003 FIXED; AUD-004 FIXED; AUD-005 PARTIAL; AUD
 - The owner supplied screenshots from Brave showing the Google Picker dialog opening; the previous invalid developer-key error is absent.
 - A separate Google sign-in prompt remains visible. The owner has not reported completing that sign-in or confirming the Picker selection, so the authenticated end-to-end flow remains NEEDS TEST.
 - No file was selected, read, or changed by the agent. No application code or deployment changed.
+
+
+### Owner-reported Chrome verification — 2026-11-14 UTC
+- The owner manually tested the live Math Scratchpad app in Chrome after the Google Cloud API key restriction change and reports that the Google Picker opened and loaded successfully.
+- This confirms the Picker path is working in Chrome and the invalid developer-key failure is no longer reproduced there.
+- No additional Cloud setting, application code, or deployment changes were made during this verification.
