@@ -73,3 +73,45 @@ G11 prior evidence is on an older SHA only; current-head dependency audit and Wr
 
 Production read-only snapshot was last recorded in the previous checkpoint: Worker version `d376eafb-f0ab-42b9-8409-aab8f9bbaead`; `/health` has no SHA and Pages `/version.json` was 404. An attempted production-targeted page-exit probe was blocked by automatic review before any request was sent; follow-up browser requests target local Workers/servers only. No production write, reset, deploy, merge, or protected-data change occurred.
 Timestamp Asia/Tehran: 2026-11-13 (AUD-005 phase).
+
+
+---
+
+## Final checkpoint — RUN 20261113-1319 (2026-11-14 UTC)
+
+Code branch: `fix/audit-20261113-1319`
+Head: `4e5d590e0a5225c63ed624c739c7a93eb4fc89b8`
+Tree: `a4e41ff95e7e30533d9511489d794cd3878597d3`
+Draft PR: #94, open; no merge or deployment performed.
+
+### CI and local verification
+- Audit Verification #24: green (run 43533421818), including browser acceptance, dependency audit, and Wrangler dry-run.
+- Validate editor #679: failed on attempt 1; the failed-job retry also failed. The remaining failure is in an explicitly excluded test path. Its fixture and data were not inspected or changed in this run.
+- Local focused MathLive check: 1/1 passed.
+- Local split-resize check at 1440px: 1/1 passed; the 1024px project correctly excludes the split-only case.
+- Local wide visual matrix: 8/8 passed after reviewing and refreshing only the 1024px batch and multi-step baselines. The pixel-difference threshold was not changed.
+- `npm run test:typecheck` and `git diff --check`: passed.
+
+### AUD findings
+| ID | Status | Evidence |
+|---|---|---|
+| AUD-001 | FIXED | Recovery/outbox preservation and reset-status/epoch gates; stuck-client matrix 4/4. |
+| AUD-002 | FIXED | Debounce and max-wait regression coverage. |
+| AUD-003 | FIXED | Pagehide beacon plus local Worker retry/offline matrix 4/4. |
+| AUD-004 | BLOCKED | Coordinated release verification and post-release identity check remain outside the read-only boundary. |
+| AUD-005 | PARTIAL | Synthetic local execution is covered; actual restart and external mirror reconciliation remain unverified; production gate remains off. |
+| AUD-006 | FIXED | Keyboard acceptance 120/120; browser accessibility checks 76/76. |
+| AUD-007 | FIXED | Compact-menu keyboard acceptance 120/120. |
+| AUD-008 | FIXED | Visual acceptance 6/6 and layout 6/6; final local wide visual matrix 8/8. |
+| AUD-009 | FIXED | Epoch/status and stale-write fencing coverage. |
+| AUD-010 | FIXED | Ownership-marker Worker coverage. |
+| AUD-011 | FIXED | Journal/reference coverage. |
+| AUD-012 | FIXED | Production dependency audit and Wrangler dry-run passed in Audit #24. |
+| AUD-013 | FIXED | Payload-size boundary coverage. |
+| AUD-014 | FIXED | Shared write guard/outbox preservation and reset-lock takeover coverage. |
+| AUD-015 | FIXED | Decorative import-icon layout coverage. |
+| AUD-016 | FIXED | Standalone IIFE flags and offline-reload coverage. |
+| AUD-017 | FIXED | Confirmation/cancel/undo across both import flows; 10/10. |
+| AUD-018 | FIXED | Mirror-failure isolation and Cron coverage. |
+
+Overall release status: BLOCKED because Validate #679 is not green. Production remained read-only. No merge or deployment is authorized by this checkpoint.
