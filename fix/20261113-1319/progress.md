@@ -119,3 +119,6 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 
 ### Release checkpoint — PR #94 ready (2026-11-14 Asia/Tehran)
 - PR #94 was marked ready for review on head `4e5d590e0a5225c63ed624c739c7a93eb4fc89b8`; it remains open and mergeable. Owner authorized merging despite red Validate and open AUD-004/AUD-005.
+
+### Release checkpoint — PR #94 merged (2026-11-14 Asia/Tehran)
+- PR #94 merged into `main` with merge commit `e8a4fab1e010531647289152b7768ccf69367252` after the owner’s explicit authorization, despite the known red Validate run and open AUD-004/AUD-005.
