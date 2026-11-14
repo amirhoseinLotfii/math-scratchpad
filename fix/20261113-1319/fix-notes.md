@@ -493,3 +493,11 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 | AUD-018 | FIXED | Mirror-failure isolation and Cron coverage. |
 
 Overall status: BLOCKED on PR #95's red Validate check and the remaining AUD-004/AUD-005 live verification. Resume from PR #95 head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f` after the scoped test-gate cause can be addressed without weakening or skipping checks.
+
+
+### Owner-directed Phase 2 release — 2026-11-14 UTC
+- The owner explicitly authorized proceeding with commit/push/merge/deploy while checks are red, and deferred the two remaining AUD items for later correction. No new code commit was needed: PR #95 already contained head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f`.
+- Marked PR #95 ready and merged it into `main` despite Validate #681 failure. Merge commit: `ba35c17b4ad271cac717fd450272036857e9dd1e`.
+- GitHub Pages deploy #83 is running on the merge commit: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278186
+- Validate #682 is running on the merge commit: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278177
+- Cloudflare had not yet published a deployment for the new SHA at the first post-merge poll; waiting for Workers Build. Keep `SCOPED_RESET_ENABLED` absent/OFF. Do not perform production data writes.
