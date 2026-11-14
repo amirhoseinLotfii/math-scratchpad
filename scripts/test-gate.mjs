@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 const commands = [
  ['types', 'npm', ['run','test:typecheck']],
+ ['release-metadata', 'npm', ['run','test:release-metadata']],
  ['worker-integration', 'npm', ['run','test:worker']],
  ['unit-dom-coverage', 'npm', ['run','test:coverage','--','--reporter=default','--reporter=json','--outputFile.json=test-results/vitest.json']],
  ['audit-regressions', 'npm', ['run','test:audit']],
