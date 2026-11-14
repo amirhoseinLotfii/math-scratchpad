@@ -417,3 +417,6 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 
 ### Phase 1 step 3 — AUD-005 flag (2026-11-14 Asia/Tehran)
 - Re-read production Worker settings after the deployment. `SCOPED_RESET_ENABLED` is absent/unset, so the production flag remains OFF.
+
+### Phase 1 step 4 — live site check (2026-11-14 Asia/Tehran)
+- Opened https://amirhoseinlotfii.github.io/math-scratchpad/. The page title is “Math Scratchpad”, the app root rendered, the DOM reached `complete`, and the sync status became “Synced ✓”. No error page was shown.
