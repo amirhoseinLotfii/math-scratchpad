@@ -403,3 +403,7 @@ Draft PR: #94, open; no merge or deployment performed.
 | AUD-018 | FIXED | Mirror-failure isolation and Cron coverage. |
 
 Overall release status: BLOCKED because Validate #679 is not green. Production remained read-only. No merge or deployment is authorized by this checkpoint.
+
+
+### Release checkpoint — PR #94 ready (2026-11-14 Asia/Tehran)
+- PR #94 was marked ready for review on head `4e5d590e0a5225c63ed624c739c7a93eb4fc89b8`; it remains open and mergeable. Owner authorized merging despite red Validate and open AUD-004/AUD-005.
