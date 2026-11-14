@@ -435,3 +435,6 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 ### Phase 2 step 5 — draft PR opened (2026-11-14 Asia/Tehran)
 - Draft PR #95 is open against `main`: https://github.com/amirhoseinLotfii/math-scratchpad/pull/95
 - Head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f`, based on merge commit `e8a4fab1e010531647289152b7768ccf69367252`. Awaiting its Validate editor run; no tests are skipped or weakened.
+
+### Phase 2 release pipeline checkpoint (2026-11-14 Asia/Tehran)
+- Updated the existing main-only Cloudflare Workers Build trigger to run `npm run worker:deploy`. The script requires `WORKERS_CI_BRANCH=main` and a full `WORKERS_CI_COMMIT_SHA`, deploys the top-level production Worker, passes that exact SHA to `/health`, and does not enable `SCOPED_RESET_ENABLED`.
