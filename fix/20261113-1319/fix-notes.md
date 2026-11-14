@@ -522,3 +522,9 @@ AUD-001 FIXED; AUD-002 FIXED; AUD-003 FIXED; AUD-004 FIXED; AUD-005 PARTIAL; AUD
 - Reopened the key details after saving and independently verified the exact three referrers and two allowed APIs. Both APIs are enabled; OAuth JavaScript origins remain configured for the app and localhost.
 - The first save report did not match a subsequent read, so the change was repeated only after confirming the original values and then verified again from saved details.
 - Live app root loads. An unauthenticated isolated browser smoke check did not open the Picker dialog and showed no invalid-developer-key error. End-to-end Picker opening remains NEEDS TEST; no Google account consent was granted and no Drive file was selected or read. No app code or deployment changed.
+
+
+### Brave screenshot follow-up — 2026-11-14 UTC
+- The owner supplied screenshots from Brave showing the Google Picker dialog opening; the previous invalid developer-key error is absent.
+- A separate Google sign-in prompt remains visible. The owner has not reported completing that sign-in or confirming the Picker selection, so the authenticated end-to-end flow remains NEEDS TEST.
+- No file was selected, read, or changed by the agent. No application code or deployment changed.
