@@ -126,3 +126,6 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 ### Phase 1 step 2 — production deployments completed (2026-11-14 Asia/Tehran)
 - GitHub Pages deployment run #82 (`43562661451`) succeeded on merge commit `e8a4fab1e010531647289152b7768ccf69367252`: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43562661451
 - Worker files changed. Cloudflare Workers Build `62faa040-d2ed-4aef-ae44-7c656c4c6c53` completed successfully for `main` at the same merge SHA; configured deploy command was `npx wrangler deploy --config worker/wrangler.jsonc`. Worker deployment `c9aa5084-e01e-4030-ba3d-807333b07952`, version `7f110368-e648-4d75-9f43-8adb634713df`.
+
+### Phase 1 step 3 — AUD-005 flag (2026-11-14 Asia/Tehran)
+- Re-read production Worker settings after the deployment. `SCOPED_RESET_ENABLED` is absent/unset, so the production flag remains OFF.
