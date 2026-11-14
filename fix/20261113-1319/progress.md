@@ -1,11 +1,11 @@
 # Progress
 RUN_ID: 20261113-1319
-Status: BLOCKED — PR #95 Validate red; follow-up release not merged/deployed
+Status: RUNNING — owner authorized Phase 2 release with red CI; deployments and post-release checks in progress
 Code branch: fix/audit-20261113-1319
 Notes branch: fixlog/20261113-1319
 PR: #94 (draft) — https://github.com/amirhoseinLotfii/math-scratchpad/pull/94
 Drive folder: Math Scratchpad Fix 20261113-1319 — https://drive.google.com/drive/folders/1ornUWIeDl3eBx1e-froJ087hloAtQDM1
-Current phase: PR #95 release identity changes are ready for review but Validate #681 failed; AUD-004 is BLOCKED and AUD-005 PARTIAL with production flag OFF.
+Current phase: PR #95 merged at ba35c17; Pages deploy #83 and Validate #682 running; waiting for Worker Build; AUD-004/AUD-005 follow-up pending.
 Latest local code commit: 4a141642db13521c8bc740673ac051f24c2e9596 (`fix(AUD-005): add guarded scoped reset saga`).
 Latest GitHub code commit: 94a47eb6b06502ecc45359839eb83c634aff2546 (`fix(AUD-005): add guarded scoped reset saga`).
 Latest code tree: ff3bc7a88efb18f371eb4bd5d3f1db028bf0eabf; local and remote tree match.
@@ -205,3 +205,11 @@ Overall release status: BLOCKED because Validate #679 is not green. Production r
 | AUD-018 | FIXED | Mirror-failure isolation and Cron coverage. |
 
 Overall status: BLOCKED on PR #95's red Validate check and the remaining AUD-004/AUD-005 live verification. Resume from PR #95 head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f` after the scoped test-gate cause can be addressed without weakening or skipping checks.
+
+
+### Owner-directed Phase 2 release — 2026-11-14 UTC
+- The owner explicitly authorized proceeding with commit/push/merge/deploy while checks are red, and deferred the two remaining AUD items for later correction. No new code commit was needed: PR #95 already contained head `d5cf92e9c2923d17c7beeb2b43f29a9393261e1f`.
+- Marked PR #95 ready and merged it into `main` despite Validate #681 failure. Merge commit: `ba35c17b4ad271cac717fd450272036857e9dd1e`.
+- GitHub Pages deploy #83 is running on the merge commit: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278186
+- Validate #682 is running on the merge commit: https://github.com/amirhoseinLotfii/math-scratchpad/actions/runs/43566278177
+- Cloudflare had not yet published a deployment for the new SHA at the first post-merge poll; waiting for Workers Build. Keep `SCOPED_RESET_ENABLED` absent/OFF. Do not perform production data writes.
