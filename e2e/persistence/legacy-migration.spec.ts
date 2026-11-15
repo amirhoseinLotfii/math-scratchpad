@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { LEARNING_RESET_EPOCH } from '../../shared/contracts/reset-epoch';
 import { readLegacyMigration, readOutboxCount } from '../support/indexeddb';
 import { GOOGLE_AUTH_BUTTON_NAME, installFakeGoogleAuth, openSyncPanel } from '../support/sync-panel';
 
@@ -16,6 +17,15 @@ async function installWorker(page: Page) {
   await page.route(`${API}/**`, async (route) => {
     const request = route.request(),
       url = new URL(request.url());
+    if (url.pathname === '/reset/status') {
+      return route.fulfill({ json: { status: 'idle', epoch: LEARNING_RESET_EPOCH } });
+    }
+    if (url.pathname === '/reset/epoch') {
+      return route.fulfill({ json: { epoch: LEARNING_RESET_EPOCH } });
+    }
+    if (url.pathname === '/state' && request.method() === 'GET') {
+      return route.fulfill({ json: { records: [], revision: 0 } });
+    }
     if (url.pathname === '/session' && request.method() === 'POST') {
       await route.fulfill({
         status: 201,

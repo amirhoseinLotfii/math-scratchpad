@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 // IIFE output has no import.meta; replace every environment value read by the app.
 const result = await build({
@@ -45,6 +45,7 @@ const css = `${appCss}\n${mathCss}`;
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const fragment = `<div id="math-scratchpad-redux"></div>\n<style>\n${css}\n</style>\n<script>\n(()=>{${js}})();\n</script>\n`;
 if (Buffer.byteLength(fragment) >= 3000000) throw Error('Inline bundle is too large.');
+await mkdir('dist', { recursive: true });
 await writeFile('dist/inline-fragment.html', fragment);
 await writeFile(
   'dist/standalone.html',

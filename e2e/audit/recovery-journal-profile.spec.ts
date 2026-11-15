@@ -41,6 +41,8 @@ test('records mobile-390 recovery journal time under 4× CPU throttling', { tag:
   await expect(page.locator('.exercise-bar select').first()).toBeAttached();
   await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   await field.click();
+  await field.focus();
+  await expect(field).toBeFocused();
   await page.evaluate(() => {
     const profile = (window as Window & { journalProfile?: { writes: number[]; tasks: number[]; serialization: number[] } })
       .journalProfile!;
