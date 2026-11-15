@@ -1,3 +1,4 @@
+import { trackInstallPrompt } from './pwa/install-app';
 import { registerOfflineWorker } from './pwa/register-sw';
 import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
@@ -23,6 +24,8 @@ import './fonts.css';
 import './styles/globals.css';
 import './styles.css';
 import './styles/task-refinements.css';
+
+trackInstallPrompt();
 
 const root = document.getElementById('math-scratchpad-redux');
 if (!root) throw Error('Math Scratchpad root is missing.');

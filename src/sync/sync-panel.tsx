@@ -1,3 +1,4 @@
+import { InstallApp } from '../pwa/install-app';
 import { SyncStatusDetails } from './sync-status-details';
 import { LegacyMigrationStatus } from './legacy-migration-status';
 import { OversizedStateWarning } from './state-sync-budget-ui';
@@ -45,6 +46,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
             </button>
           )}
         </div>
+        <InstallApp />
         <OversizedStateWarning onBackup={() => void downloadFullBackup('local')} />
         <SyncStatusDetails status={status} />
         <div className="mt-3 flex flex-wrap items-center gap-3">
