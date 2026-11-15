@@ -1,3 +1,4 @@
+import { registerOfflineWorker } from './pwa/register-sw';
 import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
 import { App } from './app/app';
@@ -134,6 +135,9 @@ void (async () => {
   // Render from local data immediately. Sign-in is only needed to sync the
   // local outbox and learner records; a failed server connection never blocks editing.
   launchApp(!isLocalTestOrDevelopment);
+  requestAnimationFrame(() => {
+    void registerOfflineWorker().catch(() => undefined);
+  });
 })().catch((error) => {
   root!.setAttribute('role', 'alert');
   root!.textContent = error instanceof Error ? error.message : 'Math Scratchpad could not restore its browser data.';

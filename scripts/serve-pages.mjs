@@ -1,0 +1,60 @@
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
+
+const prefix = '/math-scratchpad/';
+const mime = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+let directory = process.env.PAGES_TEST_DIST ?? 'dist';
+
+createServer(async (request, response) => {
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+  if (request.method === 'POST' && url.pathname === '/__switch') {
+    const target = url.searchParams.get('to');
+    if (target === 'a' || target === 'b') {
+      directory = 'dist-' + target;
+      response.writeHead(204).end();
+    } else response.writeHead(400).end();
+    return;
+  }
+  if (!url.pathname.startsWith(prefix) || !['GET', 'HEAD'].includes(request.method ?? '')) {
+    response.writeHead(404).end();
+    return;
+  }
+  try {
+    const file = decodeURIComponent(url.pathname.slice(prefix.length)) || 'index.html';
+    const root = resolve(directory);
+    const path = resolve(root, file);
+    if (!path.startsWith(root + sep)) {
+      response.writeHead(403).end();
+      return;
+    }
+    let body;
+    let status = 200;
+    let extension = path.slice(path.lastIndexOf('.'));
+    try {
+      body = await readFile(path);
+    } catch {
+      status = 404;
+      extension = '.html';
+      body = await readFile(resolve(root, '404.html')).catch(() => readFile(resolve(root, 'index.html')));
+    }
+    response.writeHead(status, {
+      'Content-Type': mime[extension] ?? 'application/octet-stream',
+      'Content-Length': body.length,
+      'Cache-Control': file === 'sw.js' ? 'no-cache' : 'max-age=600',
+    });
+    response.end(request.method === 'HEAD' ? undefined : body);
+  } catch {
+    response.writeHead(400).end();
+  }
+}).listen(Number(process.env.PAGES_TEST_PORT ?? 4173), '127.0.0.1');
