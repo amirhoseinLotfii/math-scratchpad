@@ -12,7 +12,17 @@ export function mathfieldForStep(stepId: string) {
 }
 
 const operators: Record<string, string> = {
-  '+': '+', '=': '=', '-': '-', '×': '\\times ', '÷': '\\div ', '−': '-', '±': '\\pm ', '∓': '\\mp ', '≤': '\\le ', '≥': '\\ge ', '≠': '\\ne ',
+  '+': '+',
+  '=': '=',
+  '-': '-',
+  '×': '\\times ',
+  '÷': '\\div ',
+  '−': '-',
+  '±': '\\pm ',
+  '∓': '\\mp ',
+  '≤': '\\le ',
+  '≥': '\\ge ',
+  '≠': '\\ne ',
 };
 
 const structures: Record<string, string> = {
@@ -39,7 +49,10 @@ const structures: Record<string, string> = {
   mean: String.raw`\overline{\placeholder{}}`,
   det: String.raw`\det\left(\placeholder{}\right)`,
   matrix2: String.raw`\begin{bmatrix}\placeholder{}&\placeholder{}\\\placeholder{}&\placeholder{}\end{bmatrix}`,
-  matrix3: String.raw`\begin{bmatrix}\placeholder{}&\placeholder{}&\placeholder{}\\\placeholder{}&\placeholder{}&\placeholder{}\\\placeholder{}&\placeholder{}&\placeholder{}\end{bmatrix}`,
+  matrix3:
+    String.raw`\begin{bmatrix}\placeholder{}&\placeholder{}&\placeholder{}` +
+    String.raw`\\\placeholder{}&\placeholder{}&\placeholder{}` +
+    String.raw`\\\placeholder{}&\placeholder{}&\placeholder{}\end{bmatrix}`,
   sigma: String.raw`\sigma `,
   infinity: String.raw`\infty `,
   theta: String.raw`\theta `,
@@ -54,7 +67,8 @@ export function mathLatexForSymbol(key: string): string | undefined {
 }
 
 export function insertMathSymbol(stepId: string, key: string) {
-  const field = fields.get(stepId), latex = mathLatexForSymbol(key);
+  const field = fields.get(stepId),
+    latex = mathLatexForSymbol(key);
   if (!field || latex === undefined) return false;
   const hasPlaceholder = latex.includes('\\placeholder');
   const isEmptyField = /^\s*\\placeholder(?:\[[^\]]*\])?\{\}\s*$/.test(field.value);

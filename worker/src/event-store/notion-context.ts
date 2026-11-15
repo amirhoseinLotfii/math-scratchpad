@@ -26,7 +26,8 @@ export function createNotionContext(
     },
     setPageRef: async (kind, key, pageId) => {
       storage.sql.exec(
-        'INSERT INTO notion_page_refs (kind, external_key, page_id) VALUES (?, ?, ?) ON CONFLICT(kind, external_key) DO UPDATE SET page_id = excluded.page_id',
+        'INSERT INTO notion_page_refs (kind, external_key, page_id) VALUES (?, ?, ?) ON ' +
+          'CONFLICT(kind, external_key) DO UPDATE SET page_id = excluded.page_id',
         kind,
         key,
         pageId,
@@ -63,7 +64,10 @@ export function createNotionContext(
     },
     setMistakeState: async (key, value: MistakeReviewState) => {
       storage.sql.exec(
-        'INSERT INTO notion_mistake_reviews (item_key, event_id, review_successes, last_review_event_id) VALUES (?, ?, ?, ?) ON CONFLICT(item_key) DO UPDATE SET event_id = excluded.event_id, review_successes = excluded.review_successes, last_review_event_id = excluded.last_review_event_id',
+        'INSERT INTO notion_mistake_reviews (item_key, event_id, review_successes, ' +
+          'last_review_event_id) VALUES (?, ?, ?, ?) ON CONFLICT(item_key) DO UPDATE SET event_id = ' +
+          'excluded.event_id, review_successes = excluded.review_successes, last_review_event_id = ' +
+          'excluded.last_review_event_id',
         key,
         value.eventId,
         value.reviewSuccesses,

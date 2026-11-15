@@ -21,7 +21,7 @@ const FORBIDDEN_SEGMENTS = new Set([
   'rubric',
   'verification',
 ]);
-/** Splits a field name into words (answer_key, answerKey, ANSWER-KEY, answer.key -> answer, key), so "keyboard" or "monkey" are not flagged. */
+/** Split field names like answer_key and answerKey into words, preserving unrelated keys such as keyboard and monkey. */
 export function forbiddenKey(name: string): boolean {
   if (name.toLowerCase() === 'answertype') return false;
   const words = name
@@ -234,7 +234,8 @@ export function validateBank(input: unknown): DriveBank {
           const previous = assignedSectionByQuestion.get(questionId);
           if (previous && previous.sectionId !== section.id) {
             warnings.push(
-              `lessons.${lesson.id}.sections.${section.id}: ${questionId} is already assigned to ${previous.sectionId}; duplicate reference was dropped`,
+              `lessons.${lesson.id}.sections.${section.id}: ${questionId} is already assigned to ${previous.sectionId}; ` +
+                'duplicate reference was dropped',
             );
             return false;
           }

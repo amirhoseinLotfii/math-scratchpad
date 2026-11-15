@@ -5,10 +5,13 @@ export function initializeStoreSchema(ctx: DurableObjectState, env: WorkerEnv): 
   // Queryable operational mirror status: unlike internal Durable Object KV,
   // this can be inspected through the authenticated Cloudflare SQL console.
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS sync_health (destination TEXT PRIMARY KEY, status TEXT NOT NULL, pending_count INTEGER NOT NULL, last_error TEXT, last_synced_at TEXT, updated_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sync_health (destination TEXT PRIMARY KEY, status TEXT NOT NULL, ' +
+      'pending_count INTEGER NOT NULL, last_error TEXT, last_synced_at TEXT, updated_at TEXT NOT ' +
+      'NULL)',
   );
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS mirror_diagnostics (destination TEXT PRIMARY KEY, failure_stage TEXT NOT NULL, error_code TEXT NOT NULL, updated_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS mirror_diagnostics (destination TEXT PRIMARY KEY, failure_stage ' +
+      'TEXT NOT NULL, error_code TEXT NOT NULL, updated_at TEXT NOT NULL)',
   );
   ctx.storage.sql.exec(
     'CREATE TABLE IF NOT EXISTS mirror_configuration (destination TEXT PRIMARY KEY, configured INTEGER NOT NULL, updated_at TEXT NOT NULL)',
@@ -19,7 +22,9 @@ export function initializeStoreSchema(ctx: DurableObjectState, env: WorkerEnv): 
   ] as const;
   for (const [destination, configured] of configuration) {
     ctx.storage.sql.exec(
-      'INSERT INTO mirror_configuration(destination,configured,updated_at) VALUES(?,?,?) ON CONFLICT(destination) DO UPDATE SET configured=excluded.configured,updated_at=excluded.updated_at',
+      'INSERT INTO mirror_configuration(destination,configured,updated_at) VALUES(?,?,?) ON ' +
+        'CONFLICT(destination) DO UPDATE SET ' +
+        'configured=excluded.configured,updated_at=excluded.updated_at',
       destination,
       configured ? 1 : 0,
       new Date().toISOString(),
@@ -34,14 +39,16 @@ export function initializeStoreSchema(ctx: DurableObjectState, env: WorkerEnv): 
   );
   ctx.storage.sql.exec('INSERT OR IGNORE INTO app_state_meta (singleton, revision) VALUES (1, 0)');
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS notion_projections (projection_type TEXT NOT NULL, projection_key TEXT NOT NULL, projection_json TEXT NOT NULL, PRIMARY KEY (projection_type, projection_key))',
+    'CREATE TABLE IF NOT EXISTS notion_projections (projection_type TEXT NOT NULL, projection_key ' +
+      'TEXT NOT NULL, projection_json TEXT NOT NULL, PRIMARY KEY (projection_type, projection_key))',
   );
   ctx.storage.sql.exec(
     'CREATE TABLE IF NOT EXISTS notion_projection_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), last_seq INTEGER NOT NULL)',
   );
   ctx.storage.sql.exec('INSERT OR IGNORE INTO notion_projection_meta (singleton, last_seq) VALUES (1, 0)');
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS notion_page_refs (kind TEXT NOT NULL, external_key TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (kind, external_key))',
+    'CREATE TABLE IF NOT EXISTS notion_page_refs (kind TEXT NOT NULL, external_key TEXT NOT NULL, ' +
+      'page_id TEXT NOT NULL, PRIMARY KEY (kind, external_key))',
   );
   ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS notion_reset_reconciliation (
       reset_id TEXT NOT NULL,
@@ -59,10 +66,12 @@ export function initializeStoreSchema(ctx: DurableObjectState, env: WorkerEnv): 
     )`);
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_state_queue (key TEXT PRIMARY KEY, revision INTEGER NOT NULL)');
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS notion_mistake_reviews (item_key TEXT PRIMARY KEY, event_id TEXT NOT NULL, review_successes INTEGER NOT NULL, last_review_event_id TEXT)',
+    'CREATE TABLE IF NOT EXISTS notion_mistake_reviews (item_key TEXT PRIMARY KEY, event_id TEXT ' +
+      'NOT NULL, review_successes INTEGER NOT NULL, last_review_event_id TEXT)',
   );
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS notion_session_mistakes (session_id TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (session_id, page_id))',
+    'CREATE TABLE IF NOT EXISTS notion_session_mistakes (session_id TEXT NOT NULL, page_id TEXT ' +
+      'NOT NULL, PRIMARY KEY (session_id, page_id))',
   );
   ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS learning_events (
@@ -74,11 +83,14 @@ export function initializeStoreSchema(ctx: DurableObjectState, env: WorkerEnv): 
     `);
   // Worker sessions: only SHA-256 digests of the bearer values are stored.
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, sub TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)',
+    'CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, ' +
+      'sub TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at ' +
+      'INTEGER)',
   );
   // The question-bank file the owner picked once with Google Picker (drive.file grant for this OAuth app).
   ctx.storage.sql.exec(
-    'CREATE TABLE IF NOT EXISTS bank_source (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), file_id TEXT NOT NULL, file_name TEXT NOT NULL, registered_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS bank_source (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), ' +
+      'file_id TEXT NOT NULL, file_name TEXT NOT NULL, registered_at TEXT NOT NULL)',
   );
   ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS rate_windows (

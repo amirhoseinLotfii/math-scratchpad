@@ -163,7 +163,8 @@ export async function executeScopedReset(deps: ScopedResetDependencies, request:
     };
     const resultJson = JSON.stringify(result);
     deps.storage.sql.exec(
-      `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'completed', result_json = ?, updated_at = ? WHERE operation_id = ? AND state = 'approved'`,
+      `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'completed', result_json = ?, updated_at = ? ` +
+        "WHERE operation_id = ? AND state = 'approved'",
       resultJson,
       new Date(now).toISOString(),
       operationId,

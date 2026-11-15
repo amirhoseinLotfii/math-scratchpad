@@ -38,6 +38,7 @@ export function LessonSectionExercises({
   renderCheck: (q: BankQuestion, inline?: boolean) => ReactNode;
 }) {
   const sectionQuestionWord = fa ? 'سؤال' : sectionPracticeQuestions.length === 1 ? 'question' : 'questions';
+  const sectionQuestionCount = localizeLessonDigits(sectionPracticeQuestions.length, uiLang);
   return (
     <>
       {' '}
@@ -48,8 +49,8 @@ export function LessonSectionExercises({
             <p>
               {fa ? (
                 <>
-                  {localizeLessonDigits(sectionPracticeQuestions.length, uiLang)} سؤال: {localizeLessonDigits(sectionBookQuestions, uiLang)}{' '}
-                  تمرین کتاب و {localizeLessonDigits(sectionGeneratedQuestions, uiLang)} تمرین تکمیلی. ابتدا تمرین‌های کتاب آمده‌اند.
+                  {sectionQuestionCount} سؤال: {localizeLessonDigits(sectionBookQuestions, uiLang)} تمرین کتاب و{' '}
+                  {localizeLessonDigits(sectionGeneratedQuestions, uiLang)} تمرین تکمیلی. ابتدا تمرین‌های کتاب آمده‌اند.
                 </>
               ) : (
                 <>
@@ -64,8 +65,7 @@ export function LessonSectionExercises({
               </p>
             )}
             <Button className="lesson-section-practice-button" onClick={startSectionPractice}>
-              {fa ? 'شروع تمرین این بخش' : 'Practice this section'} · {localizeLessonDigits(sectionPracticeQuestions.length, uiLang)}{' '}
-              {sectionQuestionWord}
+              {fa ? 'شروع تمرین این بخش' : 'Practice this section'} · {sectionQuestionCount} {sectionQuestionWord}
             </Button>
           </>
         ) : (

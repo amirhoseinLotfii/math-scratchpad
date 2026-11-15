@@ -30,7 +30,9 @@ export function readNotionProjection<T>(storage: DurableObjectStorage, kind: str
 
 export function saveNotionProjection(storage: DurableObjectStorage, kind: string, key: string, value: unknown): void {
   storage.sql.exec(
-    'INSERT INTO notion_projections (projection_type, projection_key, projection_json) VALUES (?, ?, ?) ON CONFLICT(projection_type, projection_key) DO UPDATE SET projection_json = excluded.projection_json',
+    'INSERT INTO notion_projections (projection_type, projection_key, projection_json) VALUES (?, ' +
+      '?, ?) ON CONFLICT(projection_type, projection_key) DO UPDATE SET projection_json = ' +
+      'excluded.projection_json',
     kind,
     key,
     JSON.stringify(value),
@@ -62,7 +64,12 @@ export async function repairNotionProjections(storage: DurableObjectStorage, thr
     .exec<{
       seq: number;
       event_json: string;
-    }>('SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?', projectedThrough, through, NOTION_PROJECTION_PAGE_SIZE)
+    }>(
+      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+      projectedThrough,
+      through,
+      NOTION_PROJECTION_PAGE_SIZE,
+    )
     .toArray();
   if (rows.length === 0) return projectionSequence(storage) >= through;
   storage.transactionSync(() => {

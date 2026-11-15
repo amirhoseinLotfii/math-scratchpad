@@ -57,7 +57,9 @@ export async function writeAppState(
     const revision = current + 1;
     const updatedAt = new Date().toISOString();
     storage.sql.exec(
-      'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, updated_at=excluded.updated_at',
+      'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON ' +
+        'CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, ' +
+        'updated_at=excluded.updated_at',
       item.key!,
       item.value as string | null,
       revision,

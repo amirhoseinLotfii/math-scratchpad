@@ -109,9 +109,8 @@ export function useLessonActivity({
     };
     if (activityTracker) activityTracker.startScope({ id: scopeId, openType: 'section_open', closeType: 'section_close', context, fields });
     else emitLearnEvent(context, { ...fields, type: 'section_open' });
-    const pageNote = currentSection.startPage
-      ? `${currentSection.startPage}${currentSection.endPage && currentSection.endPage !== currentSection.startPage ? `-${currentSection.endPage}` : ''}`
-      : undefined;
+    const { startPage, endPage } = currentSection;
+    const pageNote = currentSection.startPage ? `${startPage}${endPage && endPage !== startPage ? `-${endPage}` : ''}` : undefined;
     const chunkScopeIds = currentSection.concepts.map(({ concept }) => {
       const chunkContext = makeEventContext(undefined, currentSection, concept.id);
       const chunkScopeId = `lesson-chunk:${lesson.id}:${currentSection.id}:${concept.id}`;

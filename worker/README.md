@@ -15,19 +15,22 @@ The Worker integration suite also runs in `npm run test:gate`. The normal projec
 
 ## Deploy
 
-The deploy target is configured in `wrangler.jsonc`; it contains only public application configuration (Pages origin, owner email, Google OAuth client ID, and rate limit). It contains no credentials or secrets.
+The deploy target is configured in `wrangler.jsonc`; it contains only public application configuration (Pages origin, Google OAuth client ID, and rate limit). It contains no credentials or secrets.
 
-After Cloudflare CLI authentication is available, deploy with:
+Set `OWNER_EMAIL` for production and staging during the approved release window, before deploying the new code. Enter the same owner identity already configured for each environment so the existing Durable Object remains addressable.
 
 ```sh
-npx wrangler deploy --config worker/wrangler.jsonc
+npx wrangler secret put OWNER_EMAIL --config worker/wrangler.jsonc
+npx wrangler secret put OWNER_EMAIL --config worker/wrangler.jsonc --env staging
 ```
 
-Cloudflare account authentication is required for that command. Do not put Cloudflare tokens, Google tokens, or passwords in this repository. Future private integration credentials must be added using Cloudflare Worker Secrets.
+`wrangler secret put` creates and deploys a Worker version. If Cloudflare rejects the change because the current version has a plaintext binding with the same name, coordinate the binding transition in the release window and verify the owner session immediately afterward. The release script checks that production reports an `OWNER_EMAIL` secret before it deploys. Data routes return `503 owner_not_configured` when the binding is absent or blank. The public health endpoint remains available.
+
+Use Cloudflare Worker Secrets for private values. The previous owner literal may remain in Git history.
 
 ## API
 
-The browser sends a Google **ID token** as `Authorization: Bearer <id-token>`, or a Worker session minted from one (see below). The Worker verifies the signature against Google's rotating JWKS, the RS256 algorithm, issuer, audience, expiry, authorized party, and verified email. Only `amirhoseinlotfalizadeprogramer@gmail.com` is accepted. Tokens and event payloads are never logged. Requests with an `Origin` header are accepted only from `https://amirhoseinlotfii.github.io`; CORS does not allow credentials.
+The browser sends a Google **ID token** as `Authorization: Bearer <id-token>`, or a Worker session minted from one (see below). The Worker verifies the signature against Google's rotating JWKS, the RS256 algorithm, issuer, audience, expiry, authorized party, and verified email. Only the verified account matching `OWNER_EMAIL` is accepted. Tokens and event payloads are never logged. Requests with an `Origin` header are accepted only from `https://amirhoseinlotfii.github.io`; CORS does not allow credentials.
 
 All data routes require that bearer token:
 

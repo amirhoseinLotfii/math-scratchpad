@@ -1,3 +1,4 @@
+const persianStatus = { not_started: 'شروع‌نشده', learning: 'در حال یادگیری', practising: 'در حال تمرین', done: 'تمام‌شده' };
 import { BookOpen } from 'lucide-react';
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
@@ -11,7 +12,16 @@ const statusLabel: Record<LessonStatus | 'not_started', string> = {
   done: 'Done',
 };
 
-export function LessonPicker({ open, lessons, progressByLesson, hasBank = true, onLoadBank, onOpenChange, onChoose, onCloseAutoFocus }: {
+export function LessonPicker({
+  open,
+  lessons,
+  progressByLesson,
+  hasBank = true,
+  onLoadBank,
+  onOpenChange,
+  onChoose,
+  onCloseAutoFocus,
+}: {
   open: boolean;
   lessons: Lesson[];
   progressByLesson: Record<string, LessonProgress | undefined>;
@@ -21,51 +31,97 @@ export function LessonPicker({ open, lessons, progressByLesson, hasBank = true, 
   onChoose: (lesson: Lesson) => void;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
-  const resumable = lessons.filter(lesson => {
-    const state = progressByLesson[lesson.id];
-    return state && state.status !== 'done';
-  }).sort((a, b) => {
-    const time = (lesson: Lesson) => {
+  const resumable = lessons
+    .filter((lesson) => {
       const state = progressByLesson[lesson.id];
-      return state?.practiceStartedAt ?? state?.learnDoneAt ?? state?.learnStartedAt ?? '';
-    };
-    return time(b).localeCompare(time(a));
-  })[0];
+      return state && state.status !== 'done';
+    })
+    .sort((a, b) => {
+      const time = (lesson: Lesson) => {
+        const state = progressByLesson[lesson.id];
+        return state?.practiceStartedAt ?? state?.learnDoneAt ?? state?.learnStartedAt ?? '';
+      };
+      return time(b).localeCompare(time(a));
+    })[0];
   const uiLang = lessons[0] ? lessonUiLanguage(lessons[0]) : 'en';
   const fa = uiLang === 'fa';
   const groups = new Map<string, Lesson[]>();
-  lessons.forEach(lesson => {
+  lessons.forEach((lesson) => {
     const key = `${lesson.book}\u0000${lesson.section}`;
     groups.set(key, [...(groups.get(key) ?? []), lesson]);
   });
 
-  return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="lesson-picker-dialog" onCloseAutoFocus={onCloseAutoFocus}>
-      <DialogTitle>{fa ? 'درس‌ها' : 'Lessons'}</DialogTitle>
-      <DialogDescription>{fa ? 'برای یادگیری یا مرور پیش از تمرین، یک درس انتخاب کنید.' : 'Choose a lesson to learn or review before practice.'}</DialogDescription>
-      {resumable && <Button className="lesson-picker-resume" onClick={() => onChoose(resumable)}>{fa ? 'ادامهٔ درس ناتمام: ' : 'Resume unfinished lesson: '}<LessonText text={displayEducationalHeading(resumable.title)} /></Button>}
-      {lessons.length === 0 ? <div className="lesson-picker-empty-state">
-        <p className="lesson-picker-empty" role="status">{hasBank ? (fa ? 'هنوز درسی در این مجموعه ثبت نشده است.' : 'This bank has no lessons yet.') : (fa ? 'مجموعهٔ سؤال‌ها بارگذاری نشده است. برای دیدن درس‌ها، یک مجموعه را از Google Drive بارگذاری کنید.' : 'No question bank is loaded. Load a bank from Google Drive to browse lessons.')}</p>
-        {onLoadBank && <Button onClick={onLoadBank}>{fa ? 'بارگذاری مجموعه' : 'Load bank'}</Button>}
-      </div> : <div className="lesson-picker-groups">
-        {Array.from(groups, ([key, entries], groupIndex) => {
-          const [book, section] = key.split('\u0000');
-          return <section className="lesson-picker-group" key={key} aria-labelledby={`lesson-group-${groupIndex}`}>
-            <h3 id={`lesson-group-${groupIndex}`}><span dir="ltr">{book} · {section}</span></h3>
-            <ul>{entries.map(lesson => {
-              const status = progressByLesson[lesson.id]?.status ?? 'not_started';
-              return <li key={lesson.id}>
-                <Button className="lesson-picker-item" onClick={() => onChoose(lesson)}>
-                  <BookOpen aria-hidden="true" />
-                  <span className="lesson-picker-title" lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}><LessonText text={displayEducationalHeading(lesson.title)} /></span>
-                  <span className={`lesson-status lesson-status-${status}`} aria-label={fa ? `وضعیت: ${{ not_started: 'شروع‌نشده', learning: 'در حال یادگیری', practising: 'در حال تمرین', done: 'تمام‌شده' }[status]}` : `Status: ${statusLabel[status]}`}>{fa ? ({ not_started: 'شروع‌نشده', learning: 'در حال یادگیری', practising: 'در حال تمرین', done: 'تمام‌شده' }[status]) : statusLabel[status]}</span>
-                </Button>
-              </li>;
-            })}</ul>
-          </section>;
-        })}
-      </div>}
-      <div className="dialog-actions"><Button onClick={() => onOpenChange(false)}>{fa ? 'بستن' : 'Close'}</Button></div>
-    </DialogContent>
-  </Dialog>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="lesson-picker-dialog" onCloseAutoFocus={onCloseAutoFocus}>
+        <DialogTitle>{fa ? 'درس‌ها' : 'Lessons'}</DialogTitle>
+        <DialogDescription>
+          {fa ? 'برای یادگیری یا مرور پیش از تمرین، یک درس انتخاب کنید.' : 'Choose a lesson to learn or review before practice.'}
+        </DialogDescription>
+        {resumable && (
+          <Button className="lesson-picker-resume" onClick={() => onChoose(resumable)}>
+            {fa ? 'ادامهٔ درس ناتمام: ' : 'Resume unfinished lesson: '}
+            <LessonText text={displayEducationalHeading(resumable.title)} />
+          </Button>
+        )}
+        {lessons.length === 0 ? (
+          <div className="lesson-picker-empty-state">
+            <p className="lesson-picker-empty" role="status">
+              {hasBank
+                ? fa
+                  ? 'هنوز درسی در این مجموعه ثبت نشده است.'
+                  : 'This bank has no lessons yet.'
+                : fa
+                  ? 'مجموعهٔ سؤال‌ها بارگذاری نشده است. برای دیدن درس‌ها، یک مجموعه را از Google Drive بارگذاری کنید.'
+                  : 'No question bank is loaded. Load a bank from Google Drive to browse lessons.'}
+            </p>
+            {onLoadBank && <Button onClick={onLoadBank}>{fa ? 'بارگذاری مجموعه' : 'Load bank'}</Button>}
+          </div>
+        ) : (
+          <div className="lesson-picker-groups">
+            {Array.from(groups, ([key, entries], groupIndex) => {
+              const [book, section] = key.split('\u0000');
+              return (
+                <section className="lesson-picker-group" key={key} aria-labelledby={`lesson-group-${groupIndex}`}>
+                  <h3 id={`lesson-group-${groupIndex}`}>
+                    <span dir="ltr">
+                      {book} · {section}
+                    </span>
+                  </h3>
+                  <ul>
+                    {entries.map((lesson) => {
+                      const status = progressByLesson[lesson.id]?.status ?? 'not_started';
+                      return (
+                        <li key={lesson.id}>
+                          <Button className="lesson-picker-item" onClick={() => onChoose(lesson)}>
+                            <BookOpen aria-hidden="true" />
+                            <span className="lesson-picker-title" lang={languageForText(lesson.title)} dir={contentDirection(lesson.title)}>
+                              <LessonText text={displayEducationalHeading(lesson.title)} />
+                            </span>
+                            <span
+                              className={`lesson-status lesson-status-${status}`}
+                              aria-label={fa ? `وضعیت: ${persianStatus[status]}` : `Status: ${statusLabel[status]}`}
+                            >
+                              {fa
+                                ? { not_started: 'شروع‌نشده', learning: 'در حال یادگیری', practising: 'در حال تمرین', done: 'تمام‌شده' }[
+                                    status
+                                  ]
+                                : statusLabel[status]}
+                            </span>
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
+        )}
+        <div className="dialog-actions">
+          <Button onClick={() => onOpenChange(false)}>{fa ? 'بستن' : 'Close'}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

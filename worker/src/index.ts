@@ -1,3 +1,4 @@
+import { configuredOwner } from './owner';
 import { finalizeResponse, jsonError, PAGES_ORIGIN } from './http-response';
 import type { AppContext, AppEnv } from './http-types';
 import { registerAdminResetRoutes } from './routes/admin-reset';
@@ -48,6 +49,9 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
       return c.body(null, 204);
     }
 
+    if (c.req.path !== '/health' && !configuredOwner(c.env)) {
+      return finalizeResponse(jsonError('owner_not_configured', 503), c);
+    }
     await next();
   });
 
@@ -63,7 +67,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     ),
   );
 
-  const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase()));
+  const ownerStub = (env: WorkerEnv) => env.EVENT_STORE.get(env.EVENT_STORE.idFromName(configuredOwner(env)));
 
   app.get('/reset/status', async (c) =>
     finalizeResponse(await ownerStub(c.env).fetch('https://event-store.internal/internal/learning-reset/client-status'), c),
@@ -79,9 +83,7 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     );
 
   const isOwner = (identity: GoogleIdentity, env: WorkerEnv) =>
-    identity.email_verified === true &&
-    !!env.OWNER_EMAIL.trim() &&
-    identity.email.trim().toLowerCase() === env.OWNER_EMAIL.trim().toLowerCase();
+    identity.email_verified === true && !!configuredOwner(env) && identity.email.trim().toLowerCase() === configuredOwner(env);
 
   const bearer = (c: AppContext): string | undefined => {
     const match = c.req.header('Authorization')?.match(/^Bearer ([^\s]+)$/i);

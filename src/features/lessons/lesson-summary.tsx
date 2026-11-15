@@ -60,6 +60,7 @@ export function LessonSummary({
   startWholeLessonPractice: () => void;
   reviewLesson: () => void;
 }) {
+  const bookQuestionCount = localizeLessonDigits(wholeBookQuestions, uiLang);
   return (
     <section className="lesson-summary" aria-labelledby="lesson-summary-title">
       <div className="lesson-summary-heading">
@@ -128,9 +129,8 @@ export function LessonSummary({
           <p>
             {fa ? (
               <>
-                {localizeLessonDigits(practiceQuestions.length, uiLang)} سؤال در دسترس است؛ ابتدا{' '}
-                {localizeLessonDigits(wholeBookQuestions, uiLang)} سؤال کتاب و سپس {localizeLessonDigits(wholeGeneratedQuestions, uiLang)}{' '}
-                تمرین تکمیلی نمایش داده می‌شود.
+                {localizeLessonDigits(practiceQuestions.length, uiLang)} سؤال در دسترس است؛ ابتدا {bookQuestionCount} سؤال کتاب و سپس{' '}
+                {localizeLessonDigits(wholeGeneratedQuestions, uiLang)} تمرین تکمیلی نمایش داده می‌شود.
                 {practiceBatchCount > 1 && (
                   <> هر جلسه حداکثر {localizeLessonDigits(MAX_SESSION_EXERCISES, uiLang)} سؤال دارد؛ پس از هر جلسه می‌توانی ادامه بدهی.</>
                 )}

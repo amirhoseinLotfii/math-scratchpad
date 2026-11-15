@@ -25,7 +25,11 @@ export async function readNotionState(storage: DurableObjectStorage): Promise<St
 export async function saveNotionState(storage: DurableObjectStorage, state: StoredNotionMirrorState): Promise<void> {
   await storage.put(NOTION_MIRROR_STATE_KEY, state);
   storage.sql.exec(
-    'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
+    'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, ' +
+      'updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET ' +
+      'status=excluded.status, pending_count=excluded.pending_count, ' +
+      'last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, ' +
+      'updated_at=excluded.updated_at',
     'notion',
     state.status,
     state.pendingCount,

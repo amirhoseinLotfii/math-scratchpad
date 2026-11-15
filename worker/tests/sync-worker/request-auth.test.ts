@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { reset } from 'cloudflare:test';
 import { createApp } from '../../src/index';
 import { LEARNING_RESET_EPOCH_HEADER } from '../../../shared/contracts/reset-epoch';
-import { ALLOWED_ORIGIN, OWNER, validVerifier, makeEvent, call } from '../helpers/sync-worker';
+import { ALLOWED_ORIGIN, OWNER, testEnv, validVerifier, makeEvent, call } from '../helpers/sync-worker';
 describe('request auth', () => {
   afterEach(async () => reset());
   it('serves health and exact-origin CORS preflight; rejects other origins', async () => {
@@ -187,4 +187,15 @@ describe('request auth', () => {
     const snapshot = await call(app, '/snapshot', { token: 'valid-test-token' });
     expect(((await snapshot.json()) as { events: unknown[] }).events).toEqual([]);
   });
+});
+
+it.each([undefined, '', '  '])('fails closed when the owner secret is empty (%s)', async (OWNER_EMAIL) => {
+  const app = createApp(validVerifier);
+  const worker = { ...testEnv, OWNER_EMAIL };
+  for (const path of ['/reset/status', '/state', '/sync']) {
+    const response = await app.fetch(new Request(`https://worker.test${path}`), worker);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: 'owner_not_configured' });
+  }
+  expect((await app.fetch(new Request('https://worker.test/health'), worker)).status).toBe(200);
 });

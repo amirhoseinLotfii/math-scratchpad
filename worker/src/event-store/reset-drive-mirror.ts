@@ -9,10 +9,14 @@ import {
 import type { DriveMirrorState } from './drive-mirror-state';
 import { LEARNING_RESET_TRASH_PER_CALL } from './limits';
 
+const mirrorFilePattern = new RegExp(
+  String.raw`^(?:events_\d{4}-\d{2}|progress|editor_state|sync_manifest|sync_backup_\d{4}-\d{2}-\d{2})` +
+    String.raw`(?:\.sha256-[a-f0-9]{64})?\.(?:jsonl|json)$`,
+  'i',
+);
+
 function isLearningMirrorFileName(name: string): boolean {
-  return /^(?:events_\d{4}-\d{2}|progress|editor_state|sync_manifest|sync_backup_\d{4}-\d{2}-\d{2})(?:\.sha256-[a-f0-9]{64})?\.(?:jsonl|json)$/i.test(
-    name,
-  );
+  return mirrorFilePattern.test(name);
 }
 
 export async function trashLearningMirrorFiles(

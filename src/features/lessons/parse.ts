@@ -3,7 +3,8 @@ import type { Concept, Difficulty, Lesson, LessonBlock, LessonSectionDefinition,
 export type LessonParseResult = { lessons: Lesson[]; warnings: string[] };
 const safeId = /^[\w.-]{1,80}$/;
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-const boundedText = (value: unknown, max = 20000): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+const boundedText = (value: unknown, max = 20000): value is string =>
+  typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 const warning = (warnings: string[], path: string, reason: string) => warnings.push(`${path}: ${reason}`);
 
 function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlock {
@@ -12,13 +13,18 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
   const unsupported = (reason: string): LessonBlock => {
     warning(warnings, path, reason);
     let source: string | undefined;
-    try { source = JSON.stringify(value, null, 2); } catch { source = String(value); }
+    try {
+      source = JSON.stringify(value, null, 2);
+    } catch {
+      source = String(value);
+    }
     return { type: 'unsupported', originalType: rawType, ...(source ? { source } : {}) };
   };
   if (!isRecord(value)) return unsupported('block must be a JSON object');
-  const lang = block.lang === 'fa' || block.lang === 'en' ? block.lang as Lang : undefined;
+  const lang = block.lang === 'fa' || block.lang === 'en' ? (block.lang as Lang) : undefined;
   if (block.lang !== undefined && lang === undefined) warning(warnings, `${path}.lang`, 'unsupported language was ignored');
-  const page = typeof block.page === 'number' && Number.isInteger(block.page) && block.page >= 1 && block.page <= 10000 ? block.page : undefined;
+  const page =
+    typeof block.page === 'number' && Number.isInteger(block.page) && block.page >= 1 && block.page <= 10000 ? block.page : undefined;
   if (block.page !== undefined && page === undefined) warning(warnings, `${path}.page`, 'invalid source page was ignored');
   const withMetadata = <T extends object>(result: T): T & { lang?: Lang; page?: number } => ({
     ...result,
@@ -39,14 +45,28 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
   }
   if (rawType === 'definition') {
     if (!boundedText(block.text)) return unsupported('definition block requires non-empty text (maximum 20000 characters)');
-    if (block.latex !== undefined && (typeof block.latex !== 'string' || block.latex.length > 20000)) return unsupported('definition latex must be text of at most 20000 characters');
+    if (block.latex !== undefined && (typeof block.latex !== 'string' || block.latex.length > 20000))
+      return unsupported('definition latex must be text of at most 20000 characters');
     return withMetadata({ type: 'definition', text: block.text, ...(typeof block.latex === 'string' ? { latex: block.latex } : {}) });
   }
   if (rawType === 'example') {
-    const optionalTextValid = (key: 'title' | 'text' | 'latex', max: number) => block[key] === undefined || (typeof block[key] === 'string' && block[key].length <= max);
-    if ((block.steps !== undefined && (!Array.isArray(block.steps) || block.steps.length > 100 || !block.steps.every(step => typeof step === 'string' && step.length <= 20000)))
-      || !optionalTextValid('title', 500) || !optionalTextValid('text', 20000) || !optionalTextValid('latex', 20000)) return unsupported('example fields are invalid; steps must be an array of at most 100 text items and optional title/text/latex fields must fit their limits');
-    if (block.steps === undefined && ![block.title, block.text, block.latex].some(item => boundedText(item))) return unsupported('example block requires steps or non-empty title, text, or latex');
+    const optionalTextValid = (key: 'title' | 'text' | 'latex', max: number) =>
+      block[key] === undefined || (typeof block[key] === 'string' && block[key].length <= max);
+    if (
+      (block.steps !== undefined &&
+        (!Array.isArray(block.steps) ||
+          block.steps.length > 100 ||
+          !block.steps.every((step) => typeof step === 'string' && step.length <= 20000))) ||
+      !optionalTextValid('title', 500) ||
+      !optionalTextValid('text', 20000) ||
+      !optionalTextValid('latex', 20000)
+    )
+      return unsupported(
+        'example fields are invalid; steps must be an array of at most 100 text items and optional ' +
+          'title/text/latex fields must fit their limits',
+      );
+    if (block.steps === undefined && ![block.title, block.text, block.latex].some((item) => boundedText(item)))
+      return unsupported('example block requires steps or non-empty title, text, or latex');
     return withMetadata({
       type: 'example',
       ...(typeof block.title === 'string' ? { title: block.title } : {}),
@@ -57,7 +77,8 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
   }
   if (rawType === 'math') {
     if (!boundedText(block.latex)) return unsupported('math block requires non-empty latex (maximum 20000 characters)');
-    if (block.text !== undefined && (typeof block.text !== 'string' || block.text.length > 20000)) warning(warnings, `${path}.text`, 'invalid caption was ignored');
+    if (block.text !== undefined && (typeof block.text !== 'string' || block.text.length > 20000))
+      warning(warnings, `${path}.text`, 'invalid caption was ignored');
     return withMetadata({ type: 'math', latex: block.latex, ...(boundedText(block.text) ? { text: block.text } : {}) });
   }
   if (rawType === 'image') {
@@ -67,8 +88,14 @@ function parseBlock(value: unknown, path: string, warnings: string[]): LessonBlo
     }
     if (!boundedText(block.src, 2000)) return unsupported('image block requires a source URL or a text description');
     if (!boundedText(block.alt, 500)) return unsupported('image block requires non-empty alt text (maximum 500 characters)');
-    if (block.caption !== undefined && !boundedText(block.caption, 2000)) return unsupported('image caption must be non-empty text of at most 2000 characters');
-    return withMetadata({ type: 'image', src: block.src, alt: block.alt, ...(typeof block.caption === 'string' ? { caption: block.caption } : {}) });
+    if (block.caption !== undefined && !boundedText(block.caption, 2000))
+      return unsupported('image caption must be non-empty text of at most 2000 characters');
+    return withMetadata({
+      type: 'image',
+      src: block.src,
+      alt: block.alt,
+      ...(typeof block.caption === 'string' ? { caption: block.caption } : {}),
+    });
   }
   return unsupported(`unsupported block type: ${rawType}`);
 }
@@ -131,22 +158,34 @@ function parseConcepts(value: unknown, lessonId: string, knownQuestions: Set<str
 
 function parseSectionPages(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > 40) return false;
-  const parts = value.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).match(/^\s*(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?\s*$/);
+  const parts = value.replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).match(/^\s*(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?\s*$/);
   return !!parts && Number(parts[1]) >= 1 && (!parts[2] || Number(parts[2]) >= Number(parts[1]));
 }
 
-function parseSections(value: unknown, lessonId: string, concepts: Concept[], knownQuestions: Set<string>, warnings: string[]): LessonSectionDefinition[] | undefined {
+function parseSections(
+  value: unknown,
+  lessonId: string,
+  concepts: Concept[],
+  knownQuestions: Set<string>,
+  warnings: string[],
+): LessonSectionDefinition[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
     warning(warnings, `lessons.${lessonId}.sections`, 'sections must be an array');
     return [];
   }
-  const knownConcepts = new Set(concepts.map(concept => concept.id));
+  const knownConcepts = new Set(concepts.map((concept) => concept.id));
   const usedSectionIds = new Set<string>();
   const sections: LessonSectionDefinition[] = [];
   for (const [index, raw] of value.entries()) {
     const path = `lessons.${lessonId}.sections[${index}]`;
-    if (!isRecord(raw) || typeof raw.id !== 'string' || !safeId.test(raw.id) || !boundedText(raw.title, 500) || !parseSectionPages(raw.pages)) {
+    if (
+      !isRecord(raw) ||
+      typeof raw.id !== 'string' ||
+      !safeId.test(raw.id) ||
+      !boundedText(raw.title, 500) ||
+      !parseSectionPages(raw.pages)
+    ) {
       warning(warnings, path, 'invalid section was ignored');
       continue;
     }
@@ -161,7 +200,7 @@ function parseSections(value: unknown, lessonId: string, concepts: Concept[], kn
         return [];
       }
       const seen = new Set<string>();
-      return (raw[field] as unknown[]).flatMap(id => {
+      return (raw[field] as unknown[]).flatMap((id) => {
         if (typeof id !== 'string' || !allowed.has(id)) {
           warning(warnings, `${path}.${field}`, `missing or invalid reference ${String(id)} was dropped`);
           return [];
@@ -177,7 +216,7 @@ function parseSections(value: unknown, lessonId: string, concepts: Concept[], kn
     sections.push({
       id: raw.id,
       title: raw.title,
-      pages: raw.pages.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/\s*[–-]\s*/g, '–'),
+      pages: raw.pages.replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/\s*[–-]\s*/g, '–'),
       conceptIds: readIds('conceptIds', knownConcepts),
       learnQuestionIds: readIds('learnQuestionIds', knownQuestions),
       practiceQuestionIds: readIds('practiceQuestionIds', knownQuestions),
@@ -193,11 +232,20 @@ export function parseLessons(value: unknown, questionIds: Iterable<string>): Les
     warning(warnings, 'lessons', 'lessons must be an array');
     return { lessons: [], warnings };
   }
-  const knownQuestions = new Set(questionIds), usedLessonIds = new Set<string>(), usedConceptIds = new Set<string>(), lessons: Lesson[] = [];
+  const knownQuestions = new Set(questionIds),
+    usedLessonIds = new Set<string>(),
+    usedConceptIds = new Set<string>(),
+    lessons: Lesson[] = [];
   for (const [index, raw] of value.entries()) {
     const path = `lessons[${index}]`;
-    if (!isRecord(raw) || typeof raw.id !== 'string' || !safeId.test(raw.id)
-      || !boundedText(raw.book, 500) || !boundedText(raw.section, 100) || !boundedText(raw.title, 1000)) {
+    if (
+      !isRecord(raw) ||
+      typeof raw.id !== 'string' ||
+      !safeId.test(raw.id) ||
+      !boundedText(raw.book, 500) ||
+      !boundedText(raw.section, 100) ||
+      !boundedText(raw.title, 1000)
+    ) {
       warning(warnings, path, 'invalid lesson was ignored');
       continue;
     }

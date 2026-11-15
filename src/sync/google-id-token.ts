@@ -1,6 +1,13 @@
+import { tokenExpiry } from './google-token-expiry';
 import { GOOGLE_CLIENT_ID } from '../features/drive-bank/drive-config';
 import { loadIdentity } from '../features/drive-bank/google';
-import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from './google-auth-state';
+import {
+  announceGoogleAuthStateChanged,
+  clearAuthRecord,
+  GOOGLE_AUTH_STATE_EVENT,
+  readAuthRecord,
+  writeAuthRecord,
+} from './google-auth-state';
 import { recordGoogleAuthDiagnostic } from './google-auth-diagnostics';
 
 type GoogleCredential = { credential?: string };
@@ -13,7 +20,12 @@ type PromptMomentNotification = {
   getDismissedReason?: () => string;
 };
 type GoogleIdApi = {
-  initialize(options: { client_id: string; callback: (response: GoogleCredential) => void; auto_select?: boolean; cancel_on_tap_outside?: boolean }): void;
+  initialize(options: {
+    client_id: string;
+    callback: (response: GoogleCredential) => void;
+    auto_select?: boolean;
+    cancel_on_tap_outside?: boolean;
+  }): void;
   renderButton(element: HTMLElement, options: Record<string, string | boolean>): void;
   prompt(callback?: (notification: PromptMomentNotification) => void): void;
 };
@@ -73,15 +85,6 @@ function persistSessionToken(value: { token: string; expiresAt: number }): void 
   markGoogleIdSessionHint();
 }
 
-function tokenExpiry(token: string): number {
-  try {
-    const payload = token.split('.')[1];
-    if (!payload) return 0;
-    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: unknown };
-    return typeof decoded.exp === 'number' && Number.isFinite(decoded.exp) ? decoded.exp * 1_000 : 0;
-  } catch { return 0; }
-}
-
 function getGoogleIdApi(): GoogleIdApi | undefined {
   return (window as Window & { google?: { accounts?: { id?: GoogleIdApi } } }).google?.accounts?.id;
 }
@@ -105,9 +108,15 @@ function initializeGoogleIdClient(): GoogleIdApi {
       cancel_on_tap_outside: true,
       callback: (response: GoogleCredential) => {
         const token = response.credential;
-        if (!token) { recordGoogleAuthDiagnostic('gis_credential_missing'); return; }
+        if (!token) {
+          recordGoogleAuthDiagnostic('gis_credential_missing');
+          return;
+        }
         const expiresAt = tokenExpiry(token);
-        if (!expiresAt || expiresAt <= Date.now()) { recordGoogleAuthDiagnostic('gis_credential_invalid'); return; }
+        if (!expiresAt || expiresAt <= Date.now()) {
+          recordGoogleAuthDiagnostic('gis_credential_invalid');
+          return;
+        }
         recordGoogleAuthDiagnostic('gis_credential_received');
         if (credentialWaiters.size) {
           for (const waiter of [...credentialWaiters]) waiter(token, expiresAt);
@@ -127,7 +136,9 @@ function addTokenListener(listener: (token: string, expiresAt: number) => void):
   tokenListeners.add(listener);
   const saved = getGoogleIdTokenRecord();
   if (saved) listener(saved.token, saved.expiresAt);
-  return () => { tokenListeners.delete(listener); };
+  return () => {
+    tokenListeners.delete(listener);
+  };
 }
 
 function maybeStartSilentRefresh(): void {
@@ -153,11 +164,22 @@ export async function mountGoogleIdButton(element: HTMLElement, listener: (token
   // StrictMode and fast state changes can start overlapping mounts while GIS loads.
   // Clear the target first so only one Google button remains in the connection card.
   element.replaceChildren();
-  getGoogleIdApi()?.renderButton(element, { type: 'standard', theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', locale: 'fa', logo_alignment: 'left' });
+  getGoogleIdApi()?.renderButton(element, {
+    type: 'standard',
+    theme: 'outline',
+    size: 'large',
+    text: 'signin_with',
+    shape: 'rectangular',
+    locale: 'fa',
+    logo_alignment: 'left',
+  });
   recordGoogleAuthDiagnostic('gis_button_rendered');
   standaloneButtonCount += 1;
   const unsubscribe = addTokenListener(listener);
-  return () => { standaloneButtonCount -= 1; unsubscribe(); };
+  return () => {
+    standaloneButtonCount -= 1;
+    unsubscribe();
+  };
 }
 
 function recordPromptMoment(notification: PromptMomentNotification): void {
@@ -187,10 +209,14 @@ export function refreshGoogleIdTokenSilently(): Promise<{ token: string; expires
     try {
       await loadIdentity();
       let api: GoogleIdApi;
-      try { api = initializeGoogleIdClient(); }
-      catch { recordGoogleAuthDiagnostic('gis_silent_refresh_unavailable'); return undefined; }
+      try {
+        api = initializeGoogleIdClient();
+      } catch {
+        recordGoogleAuthDiagnostic('gis_silent_refresh_unavailable');
+        return undefined;
+      }
 
-      return await new Promise<{ token: string; expiresAt: number } | undefined>(resolve => {
+      return await new Promise<{ token: string; expiresAt: number } | undefined>((resolve) => {
         let settled = false;
         let timeout = 0;
         const finish = (value?: { token: string; expiresAt: number }) => {
@@ -205,9 +231,10 @@ export function refreshGoogleIdTokenSilently(): Promise<{ token: string; expires
         credentialWaiters.add(listener);
         timeout = window.setTimeout(() => finish(undefined), SILENT_REFRESH_TIMEOUT_MS);
         try {
-          api.prompt(notification => {
+          api.prompt((notification) => {
             recordPromptMoment(notification);
-            if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) finish(undefined);
+            if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.())
+              finish(undefined);
           });
         } catch {
           recordGoogleAuthDiagnostic('gis_silent_refresh_error');
@@ -256,7 +283,9 @@ export function clearGoogleIdToken(): void {
   announceGoogleAuthStateChanged();
 }
 
-export function googleIdTokenReady(): boolean { return !!getGoogleIdTokenRecord(); }
+export function googleIdTokenReady(): boolean {
+  return !!getGoogleIdTokenRecord();
+}
 
 if (typeof window !== 'undefined') {
   window.addEventListener(GOOGLE_AUTH_STATE_EVENT, () => {

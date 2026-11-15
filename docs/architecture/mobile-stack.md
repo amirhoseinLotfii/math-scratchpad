@@ -23,10 +23,10 @@ shadcn is copied component source, not an automatic accessibility certification.
 
 ## Production folders and migration boundaries
 
-- `src/app/`: App, providers, startup/hydration, application boundary.
+- `src/main.tsx`: startup and hydration. `src/app/app.tsx`: application composition, providers and practice, transfer, lesson and editor controllers.
 - `src/features/math-editor/`: `components/`, `model/`, `store/`, `schemas/`, public `index.ts`.
 - `src/features/session/`: question navigation, confidence/completion, import/export, `persistence/`, sync handling.
-- `src/features/assessment/`: existing pure assessment logic and question banks; expected answers never enter student exports.
+- `src/assessment.ts`, `src/diagnostic.ts` and `src/fraction-round-one.ts`: assessment logic and diagnostic prompts.
 - `src/shared/ui/`: shadcn primitives; no math/session domain state.
 - `src/shared/lib/`: clipboard/typed result helpers; no feature-to-feature dependency cycles.
 - `src/styles/`: `tokens.css`, `globals.css`, motion/forced-colors and typography.
@@ -35,7 +35,9 @@ shadcn is copied component source, not an automatic accessibility certification.
 
 Use kebab-case files/folders, PascalCase React exports, `use-*.ts` hooks and explicit public exports. Keep domain logic independent from React, form and component libraries. No duplicate session truth in RHF and Zustand: RHF holds the pending decision, Zustand holds committed session state. Do not use RHF to represent every math token or every cursor movement.
 
-New React behavior tests go through `tests/support/render-mobile-app.tsx`. It mounts the actual Zustand provider. Low-level store tests use the typed Zustand/engine adapter with the established behavioral assertions. Redux runtime dependencies have been removed. Legacy root model/store/parser paths remain compatibility exports; App and the existing assessment bank are still at the root, so the feature-folder migration is intentionally partial.
+New React behavior tests go through `tests/support/render-mobile-app.tsx`. It mounts the actual Zustand provider. Low-level store tests use the typed Zustand/engine adapter with the established behavioral assertions. Redux runtime dependencies have been removed. Legacy root model/store/parser paths remain compatibility exports; App lives at `src/app/app.tsx`. Assessment logic keeps its current root entry points.
+
+Generate an up-to-date project tree with `node scripts/print-tree.mjs`. Run it with directory arguments for a focused view, such as `node scripts/print-tree.mjs src/app src/sync`.
 
 ## Persistence and sync contract
 
@@ -45,7 +47,7 @@ Migrate legacy `math-scratchpad-redux-v2` and `math-scratchpad-flow-v1` without 
 
 Same-origin clean tabs can hydrate newer valid drafts. Dirty local work must not be overwritten silently; show an English Draft conflict dialog with Keep this tab / Use saved draft and explicit focus handling. Invalid/stale/replayed remote envelopes are ignored/reported, not installed. Listeners detach on disposal. Do not broadcast an unchanged incoming state back to storage. Manual export remains usable on quota/security failure.
 
-localStorage sync works only within the same browser profile and origin. Cross-device/cloud sync requires an additional authenticated service and is outside the present scope.
+Browser storage and recovery work locally. Authenticated cross-device writes and learning-event delivery use the Worker, with limits and timings in `shared/contracts/`.
 
 ## Design-system rules under test
 

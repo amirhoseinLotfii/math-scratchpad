@@ -147,11 +147,13 @@ export function useSyncPanelRuntime({ setBusy, setError, setMessage }: SyncPanel
         latest.notionMirror.pendingCount === 0
       ) {
         setMessage(
-          `رویداد آزمایشی ${event.id} با isTest=true ارسال شد؛ در Notion باید Data Mode = Test باشد. این رویداد در پیشرفت واقعی محاسبه نمی‌شود.`,
+          `رویداد آزمایشی ${event.id} با isTest=true ارسال شد؛ در Notion باید Data Mode = Test باشد. ` +
+            'این رویداد در پیشرفت واقعی محاسبه نمی‌شود.',
         );
       } else {
         setMessage(
-          `رویداد آزمایشی ${event.id} با isTest=true در صف قرار گرفت؛ آینه‌ها هنوز کامل نشده‌اند. از وضعیت بالا پیگیری کن و فعلاً رویداد دیگری نساز.`,
+          `رویداد آزمایشی ${event.id} با isTest=true در صف قرار گرفت؛ آینه‌ها هنوز کامل نشده‌اند. ` +
+            'از وضعیت بالا پیگیری کن و فعلاً رویداد دیگری نساز.',
         );
       }
     } catch (problem) {

@@ -62,7 +62,8 @@ export function journalNotionResetReferences(storage: DurableObjectStorage, rese
         ? 'pending'
         : 'protected';
       storage.sql.exec(
-        'INSERT OR IGNORE INTO notion_reset_reconciliation (reset_id, kind, external_key, page_id, owner_marker, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR IGNORE INTO notion_reset_reconciliation (reset_id, kind, external_key, page_id, ' +
+          'owner_marker, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         resetId,
         ref.kind,
         ref.external_key,
@@ -87,7 +88,11 @@ export function notionResetReconciliationPendingCount(storage: DurableObjectStor
       : storage.sql
           .exec<{
             count: number;
-          }>(`SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE reset_id = ? AND status IN ('pending', 'retry', 'ownership_unverified')`, resetId)
+          }>(
+            `SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE reset_id = ? ` +
+              "AND status IN ('pending', 'retry', 'ownership_unverified')",
+            resetId,
+          )
           .one();
   return Number(row.count);
 }

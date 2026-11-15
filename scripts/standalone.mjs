@@ -48,6 +48,9 @@ if (Buffer.byteLength(fragment) >= 3000000) throw Error('Inline bundle is too la
 await writeFile('dist/inline-fragment.html', fragment);
 await writeFile(
   'dist/standalone.html',
-  `<!doctype html>\n<html lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>Math Scratchpad</title></head><body>${fragment}</body></html>`,
+  '<!doctype html>\n<html lang="en" dir="ltr"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+    '<meta name="color-scheme" content="light dark"><title>Math Scratchpad</title></head>' +
+    `<body>${fragment}</body></html>`,
 );
 console.log(`Self-contained bundle: ${Buffer.byteLength(fragment)} bytes (all editor fonts embedded for offline use).`);

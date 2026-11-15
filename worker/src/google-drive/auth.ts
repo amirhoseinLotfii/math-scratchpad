@@ -1,3 +1,4 @@
+import { configuredOwner } from '../owner';
 import type { WorkerEnv } from '../env';
 import { GOOGLE_TOKEN_API, GOOGLE_DRIVE_ABOUT_API } from './config';
 import { readJson, errorForStatus } from './http';
@@ -70,7 +71,7 @@ export async function refreshDriveAccessToken(
   const identity = await readJson<{ user?: { emailAddress?: unknown; me?: unknown } }>(identityResponse);
   if (
     typeof identity.user?.emailAddress !== 'string' ||
-    identity.user.emailAddress.trim().toLowerCase() !== env.OWNER_EMAIL.trim().toLowerCase() ||
+    identity.user.emailAddress.trim().toLowerCase() !== configuredOwner(env) ||
     identity.user.me !== true
   ) {
     throw new DriveMirrorError('account_mismatch');

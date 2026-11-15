@@ -31,7 +31,11 @@ export async function readDriveState(storage: DurableObjectStorage): Promise<Dri
 export async function saveDriveState(storage: DurableObjectStorage, state: DriveMirrorState): Promise<void> {
   await storage.put(DRIVE_STATE_KEY, state);
   storage.sql.exec(
-    'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET status=excluded.status, pending_count=excluded.pending_count, last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, updated_at=excluded.updated_at',
+    'INSERT INTO sync_health (destination, status, pending_count, last_error, last_synced_at, ' +
+      'updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(destination) DO UPDATE SET ' +
+      'status=excluded.status, pending_count=excluded.pending_count, ' +
+      'last_error=excluded.last_error, last_synced_at=excluded.last_synced_at, ' +
+      'updated_at=excluded.updated_at',
     'drive',
     state.status,
     state.pendingCount,

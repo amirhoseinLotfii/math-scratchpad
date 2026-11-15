@@ -1,3 +1,4 @@
+import { configuredOwner } from './owner';
 import type { WorkerEnv } from './env';
 
 function safeMirrorError(value: unknown): string {
@@ -26,7 +27,9 @@ function safeMirrorStage(value: unknown): string {
 }
 
 export async function requestMirrorSync(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>): Promise<void> {
-  const id = env.EVENT_STORE.idFromName(env.OWNER_EMAIL.trim().toLowerCase());
+  const owner = configuredOwner(env);
+  if (!owner) throw new Error('owner_not_configured');
+  const id = env.EVENT_STORE.idFromName(owner);
   const response = await env.EVENT_STORE.get(id).fetch(new Request('https://event-store.internal/internal/sync-all', { method: 'POST' }));
   if (!response.ok) {
     console.warn('scheduled_mirror_sync_failed', { stage: 'durable_object_request', status: response.status });
@@ -55,7 +58,7 @@ export async function requestMirrorSync(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OW
 }
 
 export async function requestWeeklyDriveBackup(env: Pick<WorkerEnv, 'EVENT_STORE' | 'OWNER_EMAIL'>, scheduledTime: number): Promise<void> {
-  const owner = env.OWNER_EMAIL.trim().toLowerCase();
+  const owner = configuredOwner(env);
   if (!owner || !Number.isSafeInteger(scheduledTime) || scheduledTime <= 0) throw new Error('weekly_backup_request_invalid');
   const id = env.EVENT_STORE.idFromName(owner);
   const stub = env.EVENT_STORE.get(id);

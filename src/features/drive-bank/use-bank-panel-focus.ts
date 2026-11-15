@@ -48,7 +48,8 @@ export function useBankPanelFocus({ open, ready, panel, connectButton, close, co
       if (event.key !== 'Tab' || !panel.current) return;
       const candidates = Array.from(
         panel.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), ' +
+            'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
       ).filter((node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden');
       if (!candidates.length) {

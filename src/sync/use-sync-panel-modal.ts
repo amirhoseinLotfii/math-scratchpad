@@ -26,7 +26,8 @@ export function useSyncPanelModal(onClose?: () => void) {
       if (event.key !== 'Tab' || !modal.current) return;
       const focusables = Array.from(
         modal.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], iframe, [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+            'textarea:not([disabled]), a[href], iframe, [tabindex]:not([tabindex="-1"])',
         ),
       ).filter(
         (element) =>

@@ -18,7 +18,9 @@ export class DriveFolders {
   ) {}
   async ensureFolder(name: string, parentId: string): Promise<string> {
     const query = new URLSearchParams({
-      q: `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME_TYPE}' and '${escapeQuery(parentId)}' in parents and trashed = false`,
+      q:
+        `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME_TYPE}' ` +
+        `and '${escapeQuery(parentId)}' in parents and trashed = false`,
       spaces: 'drive',
       pageSize: '1000',
       fields: 'nextPageToken,files(id,name,mimeType,parents)',
@@ -53,7 +55,9 @@ export class DriveFolders {
   /** Find an existing direct child folder without creating or modifying anything. */
   async findFolderId(name: string, parentId: string): Promise<string | undefined> {
     const query = new URLSearchParams({
-      q: `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME_TYPE}' and '${escapeQuery(parentId)}' in parents and trashed = false`,
+      q:
+        `name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME_TYPE}' ` +
+        `and '${escapeQuery(parentId)}' in parents and trashed = false`,
       spaces: 'drive',
       pageSize: '1000',
       fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed)',
@@ -160,7 +164,9 @@ export class DriveFolders {
 
   async findFile(name: string, parentId: string, mimeType: string): Promise<string | undefined> {
     const query = new URLSearchParams({
-      q: `name = '${escapeQuery(name)}' and mimeType = '${escapeQuery(mimeType)}' and '${escapeQuery(parentId)}' in parents and trashed = false`,
+      q:
+        `name = '${escapeQuery(name)}' and mimeType = '${escapeQuery(mimeType)}' ` +
+        `and '${escapeQuery(parentId)}' in parents and trashed = false`,
       spaces: 'drive',
       pageSize: '1000',
       fields: 'nextPageToken,files(id,name,mimeType,parents)',
@@ -174,7 +180,9 @@ export class DriveFolders {
 
   async findFileIds(name: string, parentId: string, mimeType: string): Promise<string[]> {
     const query = new URLSearchParams({
-      q: `name = '${escapeQuery(name)}' and mimeType = '${escapeQuery(mimeType)}' and '${escapeQuery(parentId)}' in parents and trashed = false`,
+      q:
+        `name = '${escapeQuery(name)}' and mimeType = '${escapeQuery(mimeType)}' ` +
+        `and '${escapeQuery(parentId)}' in parents and trashed = false`,
       spaces: 'drive',
       pageSize: '1000',
       fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,parents)',

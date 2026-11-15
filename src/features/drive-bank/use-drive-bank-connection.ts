@@ -73,7 +73,8 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       );
       onBankReadyRef.current?.(cached.bank, cached.version);
       setMessage(
-        `Restored the verified local bank ${cached.bank.bank_id} (${cached.bank.version}); it will be checked against Drive after reconnecting.`,
+        `Restored the verified local bank ${cached.bank.bank_id} (${cached.bank.version}); ` +
+          'it will be checked against Drive after reconnecting.',
       );
     } catch {
       // A corrupt cache is left untouched; a fresh verified Drive download can replace it.
@@ -170,7 +171,8 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       } catch (e) {
         if (active.current)
           setMessage(
-            `${e instanceof Error ? e.message : 'The bank could not be loaded.'} The previously loaded bank and current session were preserved.`,
+            `${e instanceof Error ? e.message : 'The bank could not be loaded.'} ` +
+              'The previously loaded bank and current session were preserved.',
           );
         return;
       } finally {
@@ -202,7 +204,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       if (!active.current) return;
       const text = e instanceof Error ? e.message : 'The bank could not be loaded.';
       if (text.includes('expired')) expire(text);
-      else setMessage(`${text} The previously loaded bank and current session were preserved.`);
+      else setMessage(`${text} ` + 'The previously loaded bank and current session were preserved.');
     } finally {
       syncing.current = false;
     }

@@ -41,9 +41,8 @@ export function useLearningBackupActions({ setBusy, setError, setMessage }: Sync
       const preview = await previewFullLearningBackup(parsed);
       setImportBackup(parsed);
       setImportPreview(preview);
-      setMessage(
-        `پشتیبان ${new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium' }).format(new Date(parsed.createdAt))} بررسی شد؛ پیش‌نمایش را بازبینی کن.`,
-      );
+      const date = new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium' }).format(new Date(parsed.createdAt));
+      setMessage(`پشتیبان ${date} بررسی شد؛ پیش‌نمایش را بازبینی کن.`);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'پشتیبان معتبر نیست و وارد نشد.');
     } finally {
@@ -60,8 +59,9 @@ export function useLearningBackupActions({ setBusy, setError, setMessage }: Sync
       const result = await importFullLearningBackup(importBackup);
       setImportPreview(result);
       setReloadAfterImport(true);
+      const count = Object.values(result.additions).reduce((total, added) => total + added, 0);
       setMessage(
-        `${result.additions.cache + result.additions.outbox + result.additions.serverEvents + result.additions.meta} رکورد افزوده شد؛ داده‌های دارای تعارض محلی حفظ شدند. برای بارگیری پیشرفت واردشده، برنامه را دوباره باز کن.`,
+        `${count} رکورد افزوده شد؛ داده‌های دارای تعارض محلی حفظ شدند. ` + 'برای بارگیری پیشرفت واردشده، برنامه را دوباره باز کن.',
       );
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'ادغام پشتیبان انجام نشد؛ داده‌های فعلی دست‌نخورده ماندند.');

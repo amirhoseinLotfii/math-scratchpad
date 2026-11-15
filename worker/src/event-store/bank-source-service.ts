@@ -45,7 +45,9 @@ export async function registerBankSource(
   }
   const fileName = typeof input.fileName === 'string' && input.fileName ? input.fileName : meta.name;
   storage.sql.exec(
-    'INSERT INTO bank_source (singleton, file_id, file_name, registered_at) VALUES (1, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET file_id=excluded.file_id, file_name=excluded.file_name, registered_at=excluded.registered_at',
+    'INSERT INTO bank_source (singleton, file_id, file_name, registered_at) VALUES (1, ?, ?, ?) ' +
+      'ON CONFLICT(singleton) DO UPDATE SET file_id=excluded.file_id, file_name=excluded.file_name, ' +
+      'registered_at=excluded.registered_at',
     input.fileId,
     fileName,
     new Date().toISOString(),

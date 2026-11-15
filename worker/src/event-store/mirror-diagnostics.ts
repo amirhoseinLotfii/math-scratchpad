@@ -1,6 +1,8 @@
 export function recordDiagnostic(storage: DurableObjectStorage, destination: 'drive' | 'notion', stage: string, code: string): void {
   storage.sql.exec(
-    'INSERT INTO mirror_diagnostics(destination,failure_stage,error_code,updated_at) VALUES(?,?,?,?) ON CONFLICT(destination) DO UPDATE SET failure_stage=excluded.failure_stage,error_code=excluded.error_code,updated_at=excluded.updated_at',
+    'INSERT INTO mirror_diagnostics(destination,failure_stage,error_code,updated_at) ' +
+      'VALUES(?,?,?,?) ON CONFLICT(destination) DO UPDATE SET ' +
+      'failure_stage=excluded.failure_stage,error_code=excluded.error_code,updated_at=excluded.updated_at',
     destination,
     stage.slice(0, 64),
     code.slice(0, 64),
