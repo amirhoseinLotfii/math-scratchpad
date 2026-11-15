@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 test('standalone.loads-editor.with-external-network-blocked', async ({ page }) => {
@@ -7,7 +8,13 @@ test('standalone.loads-editor.with-external-network-blocked', async ({ page }) =
     if (new URL(response.url()).hostname !== '127.0.0.1') externalResponses.push(response.url());
   });
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await page.route('**/*', (route) => (new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort()));
+  const artifact = await readFile(new URL('../../dist/standalone.html', import.meta.url), 'utf8');
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname !== '127.0.0.1') return route.abort();
+    if (url.pathname === '/standalone.html') return route.fulfill({ body: artifact, contentType: 'text/html' });
+    return route.continue();
+  });
   await page.goto('/standalone.html');
   await expect(page.getByRole('button', { name: 'Exercise menu' })).toBeVisible();
   const field = page.locator('math-field[aria-label="Step 1 expression"]');

@@ -1,4 +1,4 @@
-import { expect, test, type Page, mathField, mathValue, clickMathKeys } from '../support/test';
+import { expect, test, type Page, mathField, mathValue, clickMathKeys, enterMath } from '../support/test';
 import { openCompletion, startBatch } from '../support/mobile-journey';
 const box = async (page: Page, selector: string) => (await page.locator(selector).boundingBox())!;
 async function inView(page: Page, name: string) {
@@ -234,3 +234,37 @@ test('WIDE-17: menu JSON export includes all questions and ordered steps', async
   expect(saved.doc.exercises).toHaveLength(20);
   expect(saved.doc.exercises[0].steps).toHaveLength(2);
 });
+
+for (const state of ['single', 'batch', 'multi-step', 'shortcuts'] as const)
+  test(`WIDE-VISUAL ${state}: reviewed layout baseline`, async ({ page }) => {
+    await page.clock.install();
+    await page.clock.setFixedTime('2026-01-01T00:00:00Z');
+    if (state === 'single') await page.goto('/');
+    else await startBatch(page);
+    const elapsedTime = page.getByLabel('Question elapsed time');
+    await expect(elapsedTime).toBeVisible();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await page.clock.setFixedTime('2026-01-01T00:00:03Z');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(elapsedTime).toHaveText('00:03');
+    if (state === 'multi-step') {
+      const first = await enterMath(page, 1, '12');
+      await expect.poll(() => mathValue(first)).toContain('12');
+      await page.getByRole('button', { name: 'Add step', exact: true }).click();
+      const second = mathField(page, 2);
+      await expect(second).toBeFocused();
+      await page.keyboard.type('42');
+      await expect.poll(() => mathValue(second)).toContain('42');
+    }
+    if (state === 'shortcuts') {
+      await page.getByRole('button', { name: 'Exercise menu' }).click();
+      await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+      await page.getByRole('menuitem', { name: 'Keyboard shortcuts' }).click();
+    }
+    // Keep the public policy footer outside reviewed editor pixels.
+    await page.addStyleTag({ content: 'body > footer { display: none !important; }' });
+    const viewport = page.viewportSize();
+    // CI reports a repeatable 1% raster difference for the 1024px batch image.
+    const maxDiffPixelRatio = state === 'batch' && viewport?.width === 1024 ? 0.015 : 0.005;
+    await expect(page).toHaveScreenshot(`${state}.png`, { fullPage: true, animations: 'disabled', caret: 'hide', maxDiffPixelRatio });
+  });
