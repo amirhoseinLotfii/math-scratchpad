@@ -1,11 +1,17 @@
+import { isScopedResetSharedStateKey } from '../../shared/contracts/storage-keys';
+import { performDriveSync, type DriveSnapshotWrite } from './event-store/drive-mirror-service';
+import type { DriveMirrorState, DriveMirrorStatus } from './event-store/drive-mirror-state';
+export type { DriveMirrorStatus } from './event-store/drive-mirror-state';
+import { buildScopedResetSnapshot, type ScopedResetSnapshot } from './event-store/scoped-reset-snapshot';
+import { appendEvents } from './event-store/event-append';
+import { canonicalJson } from './event-store/canonical-json';
 import { maxSequence, readEventsAfter, readEventsThrough, readPage } from './event-store/event-repository';
 import { initializeStoreSchema } from './event-store/schema';
 import { json } from './event-store/response';
 import { handleSession } from './event-store/session-service';
 import { readBank, registerBankSource } from './event-store/bank-source-service';
 import { appStateRevision as readAppStateRevision, readAppState, writeAppState } from './event-store/state-repository';
-import { MAX_BODY_BYTES, MAX_BATCH_SIZE, NOTION_RESET_RECONCILIATION_PER_CALL, RATE_WINDOW_MS, DRIVE_STATE_KEY, DRIVE_DEBOUNCE_MS, DRIVE_RETRY_MS, WEEKLY_BACKUP_RETRY_MS, NOTION_PROJECTION_PAGE_SIZE, NOTION_EVENTS_PER_RUN, NOTION_STATE_KEYS_PER_RUN, NOTION_DEBOUNCE_MS, NOTION_RETRY_MS, MAX_MIRROR_SUBREQUESTS, NOTION_MIRROR_STATE_KEY, LEARNING_RESET_TABLE, SCOPED_RESET_OPERATIONS_TABLE, MAX_SCOPED_RESET_BODY_BYTES, MAX_SCOPED_RESET_REBUILD_EVENTS, SCOPED_RESET_REVIEW_CONFIRMATION, SCOPED_RESET_DELETE_CONFIRMATION, LEARNING_RESET_TRASH_PER_CALL } from './event-store/limits';
-import { isScopedResetSharedStateKey } from '../../shared/contracts/storage-keys';
+import { NOTION_RESET_RECONCILIATION_PER_CALL, RATE_WINDOW_MS, DRIVE_STATE_KEY, DRIVE_DEBOUNCE_MS, DRIVE_RETRY_MS, WEEKLY_BACKUP_RETRY_MS, NOTION_PROJECTION_PAGE_SIZE, NOTION_EVENTS_PER_RUN, NOTION_STATE_KEYS_PER_RUN, NOTION_DEBOUNCE_MS, NOTION_RETRY_MS, MAX_MIRROR_SUBREQUESTS, NOTION_MIRROR_STATE_KEY, LEARNING_RESET_TABLE, SCOPED_RESET_OPERATIONS_TABLE, MAX_SCOPED_RESET_BODY_BYTES, MAX_SCOPED_RESET_REBUILD_EVENTS, SCOPED_RESET_REVIEW_CONFIRMATION, SCOPED_RESET_DELETE_CONFIRMATION, LEARNING_RESET_TRASH_PER_CALL } from './event-store/limits';
 import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../shared/contracts/learn-event';
 import { readBoundedBody } from './body';
@@ -14,7 +20,6 @@ import { DriveMirrorError, GoogleDriveClient, hasLearningMirrorOwnership, type D
 import { snapshotName } from './immutable-snapshot';
 import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../shared/contracts/reset-epoch';
 import {
-  classifyScopedLearningEvent,
   parseScopedLearningResetScope,
   type ScopedLearningResetScope,
 } from './scoped-reset-plan';
@@ -52,43 +57,6 @@ import {
   type SequencedLearnEvent,
 } from './drive-projection';
 
-type AppendResult = { id: string; seq: number; duplicate: boolean };
-type DriveMirrorState = {
-  status: 'pending' | 'syncing' | 'synced' | 'error';
-  lastSeq: number;
-  appStateRevision?: number;
-  pendingCount: number;
-  quarantinedCount?: number;
-  lastSyncedAt?: string;
-  lastError?: DriveMirrorErrorCode;
-  folders?: { rootId: string; syncId: string; eventsId: string; stateId: string; backupsId?: string };
-  weeklyBackup?: {
-    status: 'scheduled' | 'created' | 'error';
-    date?: string;
-    snapshotCreatedAtUtc?: string;
-    lastCreatedAt?: string;
-    lastSeq?: number;
-    lastError?: DriveMirrorErrorCode;
-  };
-  files: Record<string, DriveFileRef>;
-  fileHashes: Record<string, string>;
-  snapshots?: Record<string, DriveSnapshotRef>;
-};
-export type DriveMirrorStatus = {
-  status: 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
-  lastSyncedAt: string | null;
-  pendingCount: number;
-  quarantinedCount: number | null;
-  lastError: DriveMirrorErrorCode | null;
-  /** Sanitized Drive client stage, only reported while the mirror is in error. */
-  failureStage?: string | null;
-  weeklyBackup: {
-    status: 'not_configured' | 'scheduled' | 'created' | 'error';
-    lastCreatedAt: string | null;
-    lastError: DriveMirrorErrorCode | null;
-  };
-};
-
 type StoredNotionMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
   lastSeq: number;
@@ -107,40 +75,9 @@ type ScopedResetOperationRow = {
   expires_at: number;
   result_json: string | null;
 };
-type ScopedResetEventRow = { seq: number; event_id: string; event_json: string };
-type ScopedResetSnapshot = {
-  scope: ScopedLearningResetScope;
-  snapshotToken: string;
-  matchingEvents: number;
-  totalEvents: number;
-  lastSeq: number;
-  appStateRevision: number;
-  removableEventIds: string[];
-  blockers: string[];
-};
-
 class MirrorSubrequestBudgetExceeded extends Error {
   readonly code = 'subrequest_budget_exceeded';
   constructor() { super('subrequest_budget_exceeded'); }
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-/** A compact optimistic-concurrency fingerprint; authorization is enforced separately. */
-function scopedResetFingerprint(value: string): string {
-  let hash = 14_695_981_039_346_656_037n;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= BigInt(value.charCodeAt(index));
-    hash = BigInt.asUintN(64, hash * 1_099_511_628_211n);
-  }
-  return `scoped-v1-${hash.toString(16).padStart(16, '0')}`;
 }
 
 function isLearningMirrorFileName(name: string): boolean {
@@ -262,7 +199,20 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (request.method === 'POST' && url.pathname === '/reset/execute') return this.executeScopedReset(request);
     if (url.pathname === '/state') return request.method === 'GET' ? readAppState(this.ctx.storage)
       : this.trackLearningMutation(() => writeAppState(this.ctx.storage, request, () => this.isLearningResetLocked(), (key, revision) => this.mirrorStateChange(key, revision)));
-    if (url.pathname === '/events') return this.trackLearningMutation(() => this.append(request));
+    if (url.pathname === '/events') return this.trackLearningMutation(() => appendEvents(
+      this.ctx.storage, request, () => this.isLearningResetLocked(),
+      (seq, event) => {
+        const projectedThrough = this.projectionSequence();
+        if (projectedThrough === seq - 1) {
+          this.applyNotionProjection(event);
+          this.setProjectionSequence(seq);
+        }
+      },
+      async cursor => {
+        await this.queueDriveMirror(cursor);
+        await this.queueNotionMirror(cursor);
+      },
+    ));
     if (url.pathname === '/drive/status') return json(await this.getDriveStatus());
     if (url.pathname === '/notion/status') return json(await this.getNotionStatus());
     if (url.pathname === '/drive/sync') {
@@ -815,114 +765,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     });
   }
 
-  /** Builds a stable, owner-local snapshot. The token changes if any relevant data changes. */
-  private buildScopedResetSnapshot(scope: ScopedLearningResetScope): ScopedResetSnapshot {
-    const fields = scope.type === 'chapter'
-      ? ['bankVersion', 'chapter'] as const
-      : ['bankVersion', 'chapter', 'lesson'] as const;
-    const values: Record<string, string | number> = scope.type === 'chapter'
-      ? { bankVersion: scope.bankVersion, chapter: Number(scope.id) }
-      : { bankVersion: scope.bankVersion, chapter: scope.chapter, lesson: scope.id };
-    const where = fields.map(name => name === 'chapter'
-      ? `json_extract(event_json, '$.chapter') = CAST(? AS INTEGER)`
-      : `json_extract(event_json, '$.${name}') = ?`).join(' AND ');
-    const matchingCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM learning_events WHERE ${where}`,
-      ...fields.map(name => values[name]),
-    ).one().count);
-    const matchingRows = this.ctx.storage.sql.exec<ScopedResetEventRow>(
-      `SELECT seq, event_id, event_json FROM learning_events WHERE ${where} ORDER BY seq ASC LIMIT ?`,
-      ...fields.map(name => values[name]), MAX_SCOPED_RESET_REBUILD_EVENTS + 1,
-    ).toArray();
-    const stats = this.ctx.storage.sql.exec<{ count: number; lastSeq: number | null }>(
-      'SELECT COUNT(*) AS count, MAX(seq) AS lastSeq FROM learning_events',
-    ).one();
-    const appStateRows = this.ctx.storage.sql.exec<{
-      key: string; value: string | null; revision: number; updated_at: string;
-    }>('SELECT key, value, revision, updated_at FROM app_state ORDER BY key').toArray();
-    const appStateRevision = readAppStateRevision(this.ctx.storage);
-    const sharedStateKeyCount = appStateRows.filter(row => isScopedResetSharedStateKey(row.key)).length;
-    const notionPageCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      'SELECT COUNT(*) AS count FROM notion_page_refs',
-    ).one().count);
-    const notionQueueCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      'SELECT COUNT(*) AS count FROM notion_state_queue',
-    ).one().count);
-    const notionMistakeIndexCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      'SELECT (SELECT COUNT(*) FROM notion_mistake_reviews) + (SELECT COUNT(*) FROM notion_session_mistakes) AS count',
-    ).one().count);
-    const notionResetPendingCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE status IN ('pending', 'retry', 'ownership_unverified')",
-    ).one().count);
-    const mirrorHealth = this.ctx.storage.sql.exec<{
-      destination: string; status: string; pending_count: number;
-    }>("SELECT destination, status, pending_count FROM sync_health WHERE destination IN ('drive','notion') ORDER BY destination").toArray();
-    const configuredMirrors = {
+  private buildScopedResetSnapshot(scope: ScopedLearningResetScope) {
+    return buildScopedResetSnapshot(this.ctx.storage, {
       drive: this.driveConfigured(),
       notion: Boolean(notionDataSourcesFromEnv(this.env) && this.env.NOTION_API_KEY),
-    };
-    const resetStatus = this.ctx.storage.sql.exec<{ status: string }>(
-      `SELECT status FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
-    ).one().status;
-    const blockers = new Set<string>();
-    const removableEventIds: string[] = [];
-    if (sharedStateKeyCount > 0) blockers.add('learning_state_requires_selective_merge');
-    if (notionPageCount > 0) blockers.add('notion_pages_require_reconciliation');
-    if (notionQueueCount > 0 || notionMistakeIndexCount > 0 || notionResetPendingCount > 0) {
-      blockers.add('notion_sync_state_requires_reconciliation');
-    }
-    if (configuredMirrors.drive || configuredMirrors.notion
-      || mirrorHealth.some(item => item.status !== 'not_configured')) blockers.add('cloud_mirror_requires_reconciliation');
-    if (resetStatus === 'running' || resetStatus === 'awaiting_release') blockers.add('full_reset_in_progress');
-    if (Number(stats.count) > MAX_SCOPED_RESET_REBUILD_EVENTS || matchingCount > MAX_SCOPED_RESET_REBUILD_EVENTS) {
-      blockers.add('projection_rebuild_too_large');
-    }
-
-    for (const row of matchingRows) {
-      let value: unknown;
-      try { value = JSON.parse(row.event_json); }
-      catch {
-        blockers.add('matching_event_invalid');
-        continue;
-      }
-      const parsed = learnEventSchema.safeParse(value);
-      if (!parsed.success) {
-        blockers.add('matching_event_invalid');
-        continue;
-      }
-      const disposition = classifyScopedLearningEvent(parsed.data, scope);
-      if (disposition === 'remove') removableEventIds.push(row.event_id);
-      else if (disposition === 'rebuild') blockers.add('aggregate_event_requires_rebuild');
-      else blockers.add('event_outside_scope');
-    }
-
-    const lastSeq = Number(stats.lastSeq ?? 0);
-    const totalEvents = Number(stats.count);
-    const snapshotPayload = canonicalJson({
-      scope,
-      matchingRows,
-      totalEvents,
-      lastSeq,
-      appStateRevision,
-      appStateRows,
-      notionPageCount,
-      notionQueueCount,
-      notionMistakeIndexCount,
-      notionResetPendingCount,
-      mirrorHealth,
-      configuredMirrors,
-      resetStatus,
-    });
-    return {
-      scope,
-      snapshotToken: scopedResetFingerprint(snapshotPayload),
-      matchingEvents: matchingCount,
-      totalEvents,
-      lastSeq,
-      appStateRevision,
-      removableEventIds,
-      blockers: [...blockers].sort(),
-    };
+    }, scope);
   }
 
   /** Rebuild derived Notion projections after deleting scoped source events. */
@@ -1158,90 +1005,6 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return json({ error: 'rate_limited', retryAfterSeconds: retryAfter }, 429, { 'Retry-After': String(retryAfter) });
   }
 
-  private async append(request: Request): Promise<Response> {
-    const declaredLength = Number(request.headers.get('Content-Length') ?? 0);
-    if (declaredLength > MAX_BODY_BYTES) return json({ error: 'payload_too_large' }, 413);
-    const body = await readBoundedBody(request, MAX_BODY_BYTES);
-    if (!body) return json({ error: 'payload_too_large' }, 413);
-    let raw: string;
-    try { raw = new TextDecoder('utf-8', { fatal: true }).decode(body); }
-    catch { return json({ error: 'invalid_json' }, 400); }
-
-    let input: unknown;
-    try { input = JSON.parse(raw); } catch { return json({ error: 'invalid_json' }, 400); }
-    if (!input || typeof input !== 'object' || !Array.isArray((input as { events?: unknown }).events)) {
-      return json({ error: 'invalid_payload' }, 400);
-    }
-
-    const supplied = (input as { events: unknown[] }).events;
-    if (supplied.length < 1 || supplied.length > MAX_BATCH_SIZE) return json({ error: 'invalid_batch_size' }, 400);
-    const events: LearnEvent[] = [];
-    for (const item of supplied) {
-      const parsed = learnEventSchema.safeParse(item);
-      if (!parsed.success) return json({ error: 'invalid_event', issues: parsed.error.issues.map(issue => ({ path: issue.path, code: issue.code })) }, 400);
-      events.push(parsed.data);
-    }
-
-    const byId = new Map<string, string>();
-    for (const event of events) {
-      const payload = canonicalJson(event);
-      const previous = byId.get(event.id);
-      if (previous !== undefined && previous !== payload) return json({ error: 'event_id_conflict' }, 409);
-      byId.set(event.id, payload);
-    }
-
-    let results: Map<string, AppendResult>;
-    let resetInProgress = false;
-    try {
-      results = this.ctx.storage.transactionSync(() => {
-        if (this.isLearningResetLocked()) {
-          resetInProgress = true;
-          return new Map<string, AppendResult>();
-        }
-        const rows = new Map<string, AppendResult>();
-        for (const [id, payload] of byId) {
-          const existing = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-            'SELECT seq, event_json FROM learning_events WHERE event_id = ?', id,
-          ).toArray()[0];
-          if (existing) {
-            if (existing.event_json !== payload) throw new EventConflictError();
-            rows.set(id, { id, seq: Number(existing.seq), duplicate: true });
-            continue;
-          }
-          const event = events.find(candidate => candidate.id === id)!;
-          this.ctx.storage.sql.exec(
-            'INSERT INTO learning_events (event_id, event_json, event_ts) VALUES (?, ?, ?)',
-            id, payload, event.ts,
-          );
-          const seq = Number(this.ctx.storage.sql.exec<{ seq: number }>('SELECT last_insert_rowid() AS seq').one().seq);
-          rows.set(id, { id, seq, duplicate: false });
-          const projectedThrough = this.projectionSequence();
-          if (projectedThrough === seq - 1) {
-            this.applyNotionProjection(event);
-            this.setProjectionSequence(seq);
-          }
-        }
-        return rows;
-      });
-    } catch (error) {
-      if (error instanceof EventConflictError) return json({ error: 'event_id_conflict' }, 409);
-      throw error;
-    }
-    if (resetInProgress) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
-
-    const seen = new Set<string>();
-    const ordered = events.map(event => {
-      const result = results.get(event.id)!;
-      if (seen.has(event.id)) return { ...result, duplicate: true };
-      seen.add(event.id);
-      return result;
-    });
-    const cursor = Math.max(0, ...ordered.map(item => item.seq));
-    await this.queueDriveMirror(cursor);
-    await this.queueNotionMirror(cursor);
-    return json({ events: ordered, cursor }, 200);
-  }
-
   private driveConfigured(): boolean {
     return Boolean(this.env.GOOGLE_CLIENT_ID && this.env.GOOGLE_DRIVE_CLIENT_SECRET && this.env.GOOGLE_DRIVE_REFRESH_TOKEN);
   }
@@ -1312,17 +1075,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return content;
   }
 
-  private async writeDriveSnapshot(input: {
-    client: GoogleDriveClient;
-    state: DriveMirrorState;
-    path: string;
-    logicalName: string;
-    parentId: string;
-    mimeType: string;
-    desiredContent: string;
-    mergeContent: (previous: string, desired: string) => string;
-    trackHash?: boolean;
-  }): Promise<DriveSnapshotRef> {
+  private async writeDriveSnapshot(input: DriveSnapshotWrite): Promise<DriveSnapshotRef> {
     const previous = await this.readPriorDriveContent(input);
     const content = previous === undefined ? input.desiredContent : input.mergeContent(previous, input.desiredContent);
     const saved = await input.client.writeImmutableTextFile({
@@ -1837,199 +1590,24 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return this.driveSyncPromise;
   }
 
-  private async performDriveSync(): Promise<DriveMirrorStatus> {
-    const state = await this.readDriveState();
-    const through = await maxSequence(this.ctx.storage);
-    if (!state.folders && through === 0 && readAppStateRevision(this.ctx.storage) === 0) {
-      return {
-        status: 'synced', lastSyncedAt: null, pendingCount: 0, quarantinedCount: 0,
-        lastError: null, failureStage: null,
-        weeklyBackup: { status: 'scheduled', lastCreatedAt: null, lastError: null },
-      };
-    }
-    if (through === state.lastSeq && state.appStateRevision === readAppStateRevision(this.ctx.storage) && state.status === 'synced') return this.getDriveStatus();
-    await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq), lastError: undefined });
-
-    try {
-      this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
-      const client = this.driveClient;
-      const events = readEventsThrough(this.ctx.storage, through);
-      const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
-      const quarantinedCount = events.length - mirrorableEvents.length;
-      const newEvents = mirrorableEvents.filter(item => item.seq > state.lastSeq);
-      let folders = state.folders;
-      if (!folders) {
-        const rootId = await this.getConfiguredDriveRootId(client);
-        const syncId = await client.ensureFolder('03_Sync', rootId);
-        const eventsId = await client.ensureFolder('events', syncId);
-        const stateId = await client.ensureFolder('state', syncId);
-        folders = { rootId, syncId, eventsId, stateId };
-        state.folders = folders;
-        await this.saveDriveState({ ...state, status: 'syncing', folders, pendingCount: Math.max(0, through - state.lastSeq) });
-      }
-
-      const months = groupEventsByUtcMonth(newEvents);
-      for (const [month, monthEvents] of months) {
-        const name = `events_${month}.jsonl`;
-        const path = `events/${name}`;
-        const content = mergeJsonlEventContent('', serializeJsonlEvents(mirrorableEvents.filter(item => {
-          const date = new Date(item.event.ts);
-          return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}` === month;
-        })));
-        await this.writeDriveSnapshot({
-          client, state, path, logicalName: name,
-          parentId: folders.eventsId,
-          mimeType: 'application/x-ndjson',
-          desiredContent: content,
-          mergeContent: mergeJsonlEventContent,
-        });
-        await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq) });
-      }
-
-      const progress = buildProgressProjection(events);
-      const desiredProgress = `${JSON.stringify(progress, null, 2)}\n`;
-      await this.writeDriveSnapshot({
-        client, state, path: 'state/progress.json', logicalName: 'progress.json',
-        parentId: folders.stateId,
-        mimeType: 'application/json',
-        desiredContent: desiredProgress,
-        mergeContent: mergeProgressContent,
-      });
-      const stateRevision = readAppStateRevision(this.ctx.storage);
-      const persistedState = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
-        'SELECT key, value, revision FROM app_state ORDER BY key',
-      ).toArray();
-      const stateContent = JSON.stringify({
-        format: 'math-scratchpad-server-state/v1',
-        revision: stateRevision,
-        records: persistedState,
-      }, null, 2) + '\n';
-      await this.writeDriveSnapshot({
-        client, state, path: 'state/editor_state.json', logicalName: 'editor_state.json',
-        parentId: folders.stateId,
-        mimeType: 'application/json',
-        desiredContent: stateContent,
-        mergeContent: mergeEditorStateContent,
-      });
-
-
-      const latest = events.at(-1);
-      const now = new Date();
-      const tehranTime = formatTehran(now);
-      const manifest = {
-        schemaVersion: 1,
-        lastSeq: latest?.seq ?? 0,
-        lastEventId: latest?.event.id ?? null,
-        lastSuccessAtUtc: now.toISOString(),
-        lastSuccessAtTehran: tehranTime,
-        quarantinedEventCount: quarantinedCount,
-        files: Object.entries(state.snapshots ?? {})
-          .filter(([path]) => path !== 'sync_manifest.json' && !path.startsWith('backups/'))
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([path, snapshot]) => ({ path, sha256: snapshot.sha256, name: snapshot.name, id: snapshot.id })),
-      };
-      await this.writeDriveSnapshot({
-        client, state, path: 'sync_manifest.json', logicalName: 'sync_manifest.json',
-        parentId: folders.syncId,
-        mimeType: 'application/json',
-        desiredContent: `${JSON.stringify(manifest, null, 2)}\n`,
-        mergeContent: mergeManifestContent,
-      });
-
-      const currentMax = await maxSequence(this.ctx.storage);
-      const pendingCount = Math.max(0, currentMax - through)
-        + (readAppStateRevision(this.ctx.storage) === stateRevision ? 0 : 1);
-      const finalState: DriveMirrorState = {
-        ...state,
-        status: pendingCount === 0 ? 'synced' : 'pending',
-        lastSeq: through,
-        appStateRevision: stateRevision,
-        pendingCount,
-        quarantinedCount,
-        lastSyncedAt: now.toISOString(),
-        lastError: undefined,
-      };
-      await this.saveDriveState(finalState);
-      if (pendingCount > 0) await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
-      return {
-        status: finalState.status,
-        lastSyncedAt: finalState.lastSyncedAt ?? null,
-        pendingCount: finalState.pendingCount,
-        quarantinedCount: finalState.quarantinedCount ?? 0,
-        lastError: null,
-        failureStage: null,
-        weeklyBackup: {
-          status: finalState.weeklyBackup?.status ?? 'scheduled',
-          lastCreatedAt: finalState.weeklyBackup?.lastCreatedAt ?? null,
-          lastError: finalState.weeklyBackup?.lastError ?? null,
-        },
-      };
-    } catch (error) {
-      const code = error instanceof DriveMirrorError ? error.code : (error as { code?: unknown } | null)?.code === 'subrequest_budget_exceeded'
-        ? 'subrequest_budget_exceeded' : error instanceof Error && error.message === 'event_id_conflict'
-        ? 'etag_conflict' : 'network_error';
-      const currentMax = await maxSequence(this.ctx.storage);
-      const failed: DriveMirrorState = {
-        ...state,
-        status: 'error',
-        pendingCount: Math.max(0, currentMax - state.lastSeq),
-        lastError: code,
-      };
-      await this.saveDriveState(failed);
-      this.recordDiagnostic('drive', this.driveClient?.diagnosticStage ?? 'worker_internal', code);
-      await this.scheduleAlarmIn(DRIVE_RETRY_MS);
-      return {
-        status: failed.status,
-        lastSyncedAt: failed.lastSyncedAt ?? null,
-        pendingCount: failed.pendingCount,
-        quarantinedCount: failed.quarantinedCount ?? null,
-        lastError: failed.lastError ?? null,
-        failureStage: this.readDiagnosticStage('drive'),
-        weeklyBackup: {
-          status: failed.weeklyBackup?.status ?? 'scheduled',
-          lastCreatedAt: failed.weeklyBackup?.lastCreatedAt ?? null,
-          lastError: failed.weeklyBackup?.lastError ?? null,
-        },
-      };
-    }
+  private performDriveSync(): Promise<DriveMirrorStatus> {
+    return performDriveSync({
+      env: this.env,
+      storage: this.ctx.storage,
+      getClient: () => this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch),
+      currentClient: () => this.driveClient,
+      getConfiguredDriveRootId: client => this.getConfiguredDriveRootId(client),
+      getDriveStatus: () => this.getDriveStatus(),
+      readDiagnosticStage: destination => this.readDiagnosticStage(destination),
+      readDriveState: () => this.readDriveState(),
+      recordDiagnostic: (destination, stage, code) => this.recordDiagnostic(destination, stage, code),
+      saveDriveState: state => this.saveDriveState(state),
+      scheduleAlarmIn: delay => this.scheduleAlarmIn(delay),
+      writeDriveSnapshot: input => this.writeDriveSnapshot(input),
+    });
   }
 
 
-}
 
-class EventConflictError extends Error {}
-function mergeProgressContent(remote: string, desired: string): string {
-  const previous = parseJsonContent(remote);
-  const current = parseJsonContent(desired);
-  if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
-  return desired;
-}
 
-function mergeManifestContent(remote: string, desired: string): string {
-  const previous = parseJsonContent(remote);
-  const current = parseJsonContent(desired);
-  if (Number(previous.lastSeq ?? 0) > Number(current.lastSeq ?? 0)) throw new DriveMirrorError('etag_conflict');
-  return desired;
-}
-
-function mergeEditorStateContent(remote: string, desired: string): string {
-  const previous = parseJsonContent(remote);
-  const current = parseJsonContent(desired);
-  if (previous.format !== 'math-scratchpad-server-state/v1' || current.format !== 'math-scratchpad-server-state/v1'
-    || !Number.isSafeInteger(previous.revision) || !Number.isSafeInteger(current.revision)
-    || !Array.isArray(previous.records) || !Array.isArray(current.records)) {
-    throw new DriveMirrorError('invalid_response');
-  }
-  if (Number(previous.revision) > Number(current.revision)) throw new DriveMirrorError('etag_conflict');
-  return desired;
-}
-
-function parseJsonContent(content: string): Record<string, unknown> {
-  try {
-    const value: unknown = JSON.parse(content);
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
-    return value as Record<string, unknown>;
-  } catch {
-    throw new DriveMirrorError('invalid_response');
-  }
 }
