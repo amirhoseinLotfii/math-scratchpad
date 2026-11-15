@@ -1,0 +1,245 @@
+/* Backdrop blocks pointer access to notebook controls behind the fixed bank dialog. */
+#math-scratchpad-redux .drive-bank-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  background: rgb(0 0 0 / 0.55);
+}
+/* Drive bank selection is another inspector: it must not reflow the notebook. */
+#math-scratchpad-redux .setup-panel[aria-label='Google Drive question bank'] {
+  position: fixed;
+  z-index: 43;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline: 12px;
+  margin: 0 auto;
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  box-shadow: 0 20px 55px rgb(0 0 0 / 0.5);
+}
+.modal-content {
+  border-radius: 12px;
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: 0 18px 56px rgba(var(--color-neutral-1000-rgb), 0.04);
+}
+.modal-overlay {
+  background: rgb(7 9 10 / 72%);
+}
+.dropdown-content {
+  border-radius: 12px;
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: 0 16px 44px rgba(var(--color-neutral-1000-rgb), 0.04);
+}
+.dropdown-item[data-highlighted] {
+  background: var(--color-surface);
+  outline-color: var(--ring);
+}
+.dropdown-content.notebook-menu {
+  width: min(330px, calc(100vw - 16px));
+  max-height: min(var(--radix-dropdown-menu-content-available-height), calc(100dvh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 8px;
+}
+.dropdown-item.menu-primary-action {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 650;
+}
+.dropdown-item.menu-primary-action[data-highlighted] {
+  background: var(--color-primary);
+  color: var(--primary-foreground);
+}
+.dropdown-label.menu-section-heading {
+  display: block;
+  padding: 12px 10px 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dropdown-label.menu-section-heading:not(:first-child) {
+  margin-top: 5px;
+  border-top: 1px solid var(--border);
+}
+.dropdown-label.menu-section-heading.danger-heading {
+  color: var(--destructive);
+}
+.session-details-panel {
+  margin: 0 8px 6px 30px;
+  padding: 4px 0 8px 10px;
+  border-left: 1px solid var(--border);
+}
+.session-details-panel .menu-info-value {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 5px 2px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.session-details-panel .menu-info-value span:last-child {
+  color: var(--foreground);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.dropdown-item.menu-disclosure {
+  justify-content: space-between;
+  color: var(--muted-foreground);
+  text-align: start;
+}
+.menu-disclosure .menu-chevron {
+  width: 16px;
+  height: 16px;
+  transition: transform 140ms ease;
+}
+.menu-disclosure .menu-chevron-open {
+  transform: rotate(180deg);
+}
+.dropdown-sub-content-inline {
+  margin-block: 2px 8px;
+  margin-inline-start: 12px;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--border);
+}
+.dropdown-sub-content-inline > .dropdown-item {
+  width: 100%;
+  min-width: 0;
+}
+.dropdown-item.menu-danger {
+  color: var(--destructive);
+}
+.dropdown-item.menu-danger[data-highlighted] {
+  background: var(--color-surface);
+  outline-color: var(--destructive);
+}
+.dropdown-item.menu-danger svg {
+  color: var(--destructive);
+}
+#math-scratchpad-redux .setup-panel :is(textarea, select) {
+  border-color: var(--color-border-form);
+}
+#math-scratchpad-redux .math-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: 10px 0 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+#math-scratchpad-redux .quick-math-tools {
+  min-width: 0;
+}
+#math-scratchpad-redux .number-tool {
+  font: 600 13px/1 var(--font-sans);
+}
+#math-scratchpad-redux .wide-more-tools {
+  min-width: 44px;
+}
+#math-scratchpad-redux .wide-more-tools svg {
+  width: 19px;
+  height: 19px;
+}
+#math-scratchpad-redux .wide-history-tools {
+  display: flex;
+  gap: 4px;
+}
+#math-scratchpad-redux .final-status.missing {
+  color: var(--warning);
+}
+.wellbeing-dialog .scale-pills {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(44px, 1fr));
+  gap: 4px;
+}
+.wellbeing-dialog .scale-row {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.wellbeing-dialog .scale-row legend {
+  margin: 0 0 9px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.wellbeing-dialog .scale-pill {
+  min-width: 44px;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--secondary);
+  color: var(--foreground);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.wellbeing-dialog .scale-pill[aria-checked='true'] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.wellbeing-dialog .scale-bounds {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.wellbeing-dialog .scale-bounds span:first-child {
+  grid-column: 1;
+  text-align: left;
+}
+.wellbeing-dialog .scale-bounds span:last-child {
+  grid-column: 5;
+  text-align: right;
+}
+.wellbeing-dialog .session-scales {
+  display: grid;
+  gap: 18px;
+  margin: 20px 0;
+}
+.wellbeing-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+.wellbeing-dialog .dialog-actions {
+  justify-content: flex-end;
+}
+@container (min-width: 900px) {
+  #math-scratchpad-redux .workspace:has(.question-navigator) {
+    grid-template-columns: minmax(176px, 208px) minmax(320px, 380px) minmax(0, 1fr);
+    gap: 16px;
+  }
+  #math-scratchpad-redux .question-navigator {
+    top: 16px;
+    max-height: calc(100dvh - 108px);
+  }
+  #math-scratchpad-redux .question-context {
+    top: 16px;
+    max-height: calc(100dvh - 108px);
+  }
+  #math-scratchpad-redux .notebook-main {
+    padding: 16px;
+  }
+  #math-scratchpad-redux .question-timer {
+    padding: 10px;
+  }
+  #math-scratchpad-redux .header-progress {
+    flex-basis: 180px;
+  }
+}

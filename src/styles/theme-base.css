@@ -1,0 +1,276 @@
+/* Phone-first semantic theme and source-owned UI primitives. */
+html {
+  background: var(--background);
+}
+body {
+  margin: 0;
+}
+body:has(#math-scratchpad-redux) {
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+#math-scratchpad-redux {
+  --ms-bg: var(--color-background);
+  --ms-surface: var(--color-surface);
+  --ms-key: var(--color-surface-elevated);
+  --ms-fg: var(--color-text-primary);
+  --ms-muted: var(--color-text-muted);
+  --ms-border: var(--color-border);
+  --ms-primary: var(--color-primary);
+  --ms-on-primary: var(--color-primary-foreground);
+  --ms-highlight: var(--color-highlight);
+  max-width: var(--breakpoint-desktop);
+}
+.ui-button,
+#math-scratchpad-redux button.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--secondary);
+  color: var(--foreground);
+  font: 500 14px/1.35 var(--font-sans);
+  cursor: pointer;
+  touch-action: manipulation;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.ui-button svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+.ui-button.button-primary,
+#math-scratchpad-redux button.ui-button.button-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+  font-weight: 650;
+}
+.ui-button.button-danger,
+#math-scratchpad-redux button.ui-button.button-danger {
+  background: var(--ms-danger);
+  color: var(--ms-on-danger);
+  border-color: var(--ms-danger);
+  font-weight: 650;
+}
+.ui-button.button-danger:hover,
+#math-scratchpad-redux button.ui-button.button-danger:hover {
+  background: var(--color-error);
+  border-color: var(--color-error);
+}
+.ui-button.button-danger:active,
+#math-scratchpad-redux button.ui-button.button-danger:active {
+  background: var(--color-error-hover);
+  border-color: var(--color-error-hover);
+}
+.ui-button.button-ghost,
+#math-scratchpad-redux button.ui-button.button-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.ui-button.button-icon,
+#math-scratchpad-redux button.ui-button.button-icon {
+  width: 44px;
+  min-height: 44px;
+  padding: 10px;
+  flex: 0 0 44px;
+}
+.ui-button:disabled,
+#math-scratchpad-redux button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+:is(button, select, textarea, input, [role='menuitem']):focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+#math-scratchpad-redux .scratchpad:focus {
+  outline: none;
+}
+#math-scratchpad-redux .scratchpad {
+  min-height: 100dvh;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  border-radius: 0;
+  border: none;
+}
+#math-scratchpad-redux .app-content {
+  min-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+  display: flex;
+  flex-direction: column;
+}
+#math-scratchpad-redux .app-header {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+#math-scratchpad-redux h1 {
+  font-size: clamp(20px, 5cqi, 28px);
+  letter-spacing: -0.6px;
+}
+#math-scratchpad-redux .header-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+#math-scratchpad-redux .eyebrow,
+#math-scratchpad-redux .subtitle,
+#math-scratchpad-redux .desktop-action {
+  display: none;
+}
+#math-scratchpad-redux .exercise-bar {
+  display: grid;
+  grid-template-columns: minmax(135px, 1fr) minmax(64px, 1fr);
+  align-items: center;
+  padding-bottom: 12px;
+}
+#math-scratchpad-redux .exercise-bar label {
+  font-size: 0;
+  order: initial;
+}
+#math-scratchpad-redux .exercise-bar select {
+  margin: 0;
+  width: 100%;
+  font-size: 13px;
+  padding: 10px 8px;
+  min-height: 44px;
+}
+#math-scratchpad-redux .progress-text {
+  display: none;
+}
+#math-scratchpad-redux .editor-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+#math-scratchpad-redux .notebook-main {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+#math-scratchpad-redux .problem {
+  padding: 12px;
+  margin: 0 0 8px;
+  border-color: var(--border);
+  background: var(--card);
+}
+#math-scratchpad-redux .question-statement {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+}
+#math-scratchpad-redux .problem-formula {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 0;
+}
+#math-scratchpad-redux .question-timer {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  margin: 0 0 10px;
+  gap: 8px;
+  font-size: 13px;
+  text-align: left;
+}
+#math-scratchpad-redux .question-timer .small {
+  display: none;
+}
+#math-scratchpad-redux .question-timer output {
+  font-weight: 650;
+  color: var(--primary);
+}
+#math-scratchpad-redux .question-timer button {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+#math-scratchpad-redux .step {
+  padding: 10px;
+  background: var(--card);
+}
+#math-scratchpad-redux .step-header {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+#math-scratchpad-redux .step-title {
+  margin-right: auto;
+  padding-left: 0;
+}
+#math-scratchpad-redux .step-state {
+  font-size: 12px;
+  padding: 0;
+}
+#math-scratchpad-redux .step-header .final-marker {
+  display: none;
+}
+#math-scratchpad-redux .expression {
+  min-height: 74px;
+  padding: 8px 0;
+}
+#math-scratchpad-redux .selection {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+#math-scratchpad-redux button.add-step {
+  min-height: 48px;
+  width: 100%;
+  margin: 10px 0;
+  background: transparent;
+  border-color: var(--primary);
+}
+#math-scratchpad-redux .quick-math-tools {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  margin-bottom: 10px;
+}
+#math-scratchpad-redux .quick-math-tools button {
+  min-width: 0;
+  min-height: 58px;
+  padding: 4px;
+  font-family: Georgia, serif;
+  font-size: 30px;
+}
+.fraction-glyph {
+  display: inline-flex;
+  flex-direction: column;
+  font-style: italic;
+  font-size: 23px;
+  line-height: 1.05;
+  min-width: 20px;
+}
+.fraction-glyph > span:first-child {
+  border-bottom: 1.5px solid;
+}
+#math-scratchpad-redux .math-keyboard {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+#math-scratchpad-redux .keyboard-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}

@@ -1,0 +1,9 @@
+/* Layout wrappers are transparent on phones; shared state never depends on CSS order. */
+#math-scratchpad-redux .workspace,
+#math-scratchpad-redux .question-context,
+#math-scratchpad-redux .math-tools-row {
+  display: contents;
+}
+#math-scratchpad-redux .exercise-bar[hidden] {
+  display: none;
+}

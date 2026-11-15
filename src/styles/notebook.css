@@ -1,0 +1,233 @@
+/* Graphite notebook refresh */
+#math-scratchpad-redux {
+  color-scheme: dark;
+  --ms-bg: var(--color-background);
+  --ms-surface: var(--color-surface);
+  --ms-key: var(--color-surface-elevated);
+  --ms-fg: var(--color-text-primary);
+  --ms-muted: var(--color-text-muted);
+  --ms-border: var(--color-border);
+  --ms-primary: var(--color-primary);
+  --ms-on-primary: var(--color-primary-foreground);
+  --ms-danger: var(--color-error);
+  --ms-on-danger: var(--color-text-primary);
+  --ms-highlight: var(--color-surface);
+  --ms-warning: var(--color-warning);
+  --ms-success: var(--color-success);
+  --ms-radius: 10px;
+}
+#math-scratchpad-redux .scratchpad {
+  background: var(--background);
+  border-color: var(--border);
+}
+#math-scratchpad-redux h1 {
+  font-size: clamp(16px, 2.1cqi, 24px);
+  letter-spacing: -0.35px;
+}
+#math-scratchpad-redux .app-header {
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+#math-scratchpad-redux .brand {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+#math-scratchpad-redux .header-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+#math-scratchpad-redux .header-actions .ui-button {
+  min-height: 44px;
+}
+#math-scratchpad-redux .header-progress {
+  display: flex;
+  flex: 0 1 190px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.2;
+}
+#math-scratchpad-redux .header-progress-copy {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+#math-scratchpad-redux .header-progress-track {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--secondary);
+}
+#math-scratchpad-redux .header-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+  transition: width 160ms ease;
+}
+#math-scratchpad-redux .keyboard-toggle {
+  display: inline-flex;
+}
+#math-scratchpad-redux .keyboard-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+#math-scratchpad-redux .problem {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 12px;
+}
+#math-scratchpad-redux .question-timer {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+#math-scratchpad-redux .question-timer output {
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+#math-scratchpad-redux .question-timer button {
+  background: var(--secondary);
+  border-color: var(--border);
+}
+#math-scratchpad-redux .step {
+  background: var(--card);
+  border-color: var(--color-border-form);
+  border-radius: 10px;
+}
+#math-scratchpad-redux .step.current-step {
+  border-color: var(--primary);
+}
+#math-scratchpad-redux .current-step {
+  scroll-margin-block: 10px;
+}
+#math-scratchpad-redux .math-token.token-active {
+  color: var(--foreground);
+  background: transparent;
+  box-shadow: none;
+}
+#math-scratchpad-redux .math-gap.at-gap {
+  color: var(--primary);
+  background: transparent;
+}
+#math-scratchpad-redux .step-state.needs-review {
+  color: var(--color-warning);
+  background: var(--color-surface);
+  border-color: var(--color-warning);
+}
+#math-scratchpad-redux .step-state.edited {
+  color: var(--success);
+  background: var(--color-surface-sunken);
+  border-color: var(--color-success);
+}
+#math-scratchpad-redux .key-grid .operator-key,
+#math-scratchpad-redux .quick-math-tools button {
+  background: var(--secondary);
+  border-color: var(--border);
+}
+#math-scratchpad-redux .key-grid .number-key {
+  background: var(--secondary);
+  border-color: var(--border);
+}
+#math-scratchpad-redux .template-preview {
+  background: var(--raised);
+  border-color: var(--border);
+  border-radius: 10px;
+}
+#math-scratchpad-redux .insert-dialog {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 44px rgba(var(--color-neutral-1000-rgb), 0.03);
+}
+#math-scratchpad-redux .insert-options button[aria-pressed='true'] {
+  background: var(--color-surface);
+  border-color: var(--primary);
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+#math-scratchpad-redux .structure-selection {
+  background: var(--color-surface-sunken);
+  border-color: var(--primary);
+  color: var(--foreground);
+  border-radius: 10px;
+}
+#math-scratchpad-redux button.primary,
+#math-scratchpad-redux button.ui-button.button-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+#math-scratchpad-redux button.primary:hover,
+#math-scratchpad-redux button.ui-button.button-primary:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+#math-scratchpad-redux button.primary:active,
+#math-scratchpad-redux button.ui-button.button-primary:active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+#math-scratchpad-redux button[aria-pressed='true'] {
+  background: var(--color-surface);
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+#math-scratchpad-redux .copy-state,
+#math-scratchpad-redux .final-status:not(.missing) {
+  color: var(--success);
+}
+#math-scratchpad-redux .final-status {
+  margin: 5px 2px 0;
+}
+#math-scratchpad-redux button:not(:disabled):hover {
+  border-color: var(--color-primary);
+}
+#math-scratchpad-redux button:not(:disabled):active {
+  transform: translateY(1px);
+}
+#math-scratchpad-redux button:disabled {
+  opacity: 0.45;
+}
+#math-scratchpad-redux :is(button, select, textarea, input, [role='menuitem'], summary):focus-visible {
+  outline: 3px solid var(--color-ring);
+  outline-offset: 2px;
+}
+#math-scratchpad-redux .add-step {
+  color: var(--foreground);
+  border-color: var(--border);
+  background: var(--secondary);
+}
+#math-scratchpad-redux .diagnostic-track > div {
+  background: var(--success);
+}
+#math-scratchpad-redux .question-navigator {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 10px;
+}
+#math-scratchpad-redux .question-destination[aria-current='page'] {
+  background: var(--color-surface);
+  outline-color: var(--primary);
+}
+#math-scratchpad-redux .state-answered {
+  background: var(--success);
+  color: var(--primary-foreground);
+}
+#math-scratchpad-redux .diagnostic-report {
+  background: var(--card);
+  border-color: var(--border);
+}
+#math-scratchpad-redux .setup-panel,
+#math-scratchpad-redux .manual-copy,
+#math-scratchpad-redux .symbols-panel {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 10px;
+}

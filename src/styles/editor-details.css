@@ -1,0 +1,20 @@
+#math-scratchpad-redux .question-timer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+  text-align: right;
+}
+#math-scratchpad-redux .question-timer output {
+  display: inline-block;
+  font-family: 'Inter', sans-serif;
+  font-variant-numeric: tabular-nums;
+  margin-inline-start: 8px;
+}
+#math-scratchpad-redux .question-timer .small {
+  flex-basis: 100%;
+}
+#math-scratchpad-redux .confidence-field [role='alert'] {
+  color: var(--ms-warning);
+}
