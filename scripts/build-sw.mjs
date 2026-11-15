@@ -14,6 +14,7 @@ function localSha() {
 
 const directory = process.argv[2] ?? 'dist';
 const release = process.env.BUILD_SHA || process.env.GITHUB_SHA || localSha();
+const killSwitch = process.env.KILL === '1';
 if (!/^[a-z0-9-]{1,80}$/i.test(release)) throw new Error('Invalid service-worker build identifier.');
 const paths = await buildPrecacheList(directory);
 if (!paths.includes('index.html')) throw new Error('Cannot build an offline shell without index.html.');
@@ -22,6 +23,11 @@ await build({
   outfile: join(directory, 'sw.js'),
   bundle: true,
   minify: true,
-  define: { BUILD_SHA: JSON.stringify(release), PRECACHE_PATHS: JSON.stringify(paths) },
+  define: {
+    BUILD_SHA: JSON.stringify(release),
+    MIN_DATA_SCHEMA: '1',
+    PWA_KILL_SWITCH: JSON.stringify(killSwitch),
+    PRECACHE_PATHS: JSON.stringify(paths),
+  },
 });
 await writeFile(join(directory, 'precache-manifest.json'), JSON.stringify({ sha: release, paths }, null, 2));

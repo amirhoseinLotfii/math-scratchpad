@@ -50,6 +50,17 @@
   max-height: min(84dvh, 720px);
   overflow: auto;
 }
+.pwa-update-prompt {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 42%, transparent);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--warning) 8%, var(--background));
+}
+.pwa-update-prompt p {
+  margin: 0;
+}
 .pwa-status-details {
   display: grid;
   gap: 8px;

@@ -1,5 +1,7 @@
 import { trackInstallPrompt } from './pwa/install-app';
 import { registerOfflineWorker } from './pwa/register-sw';
+import { stopUpdateDetection } from './pwa/update-controller';
+import { APP_BUILD_SHA } from './pwa/build-identity';
 import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
 import { App } from './app/app';
@@ -29,6 +31,7 @@ trackInstallPrompt();
 
 const root = document.getElementById('math-scratchpad-redux');
 if (!root) throw Error('Math Scratchpad root is missing.');
+root.dataset.appBuildSha = APP_BUILD_SHA;
 root.setAttribute('role', 'status');
 root.textContent = 'Math Scratchpad is restoring your work from this browser…';
 
@@ -150,4 +153,5 @@ if (import.meta.hot)
   import.meta.hot.dispose(() => {
     appRuntime?.dispose();
     syncRuntime?.stop();
+    stopUpdateDetection();
   });

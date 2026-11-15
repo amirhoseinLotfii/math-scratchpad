@@ -12,24 +12,35 @@ import {
   type MetaRecord,
 } from './schema';
 
-export async function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
-  const db = await database();
-  const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
-  const serialized = JSON.stringify(event);
-  if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
-  if (!existing) {
-    const creationEpoch =
-      isLocalLearningResetPending() || !isServerResetStatusVerified()
-        ? getLocalPendingResetCreationEpoch()
-        : getLearningResetRequestEpoch();
-    await db.put(LEARNING_OUTBOX_STORE, {
-      id: event.id,
-      event,
-      queuedAt: event.ts,
-      creationEpoch,
-      ...(migrationId ? { migrationId } : {}),
-    });
-  }
+const pendingOutboxWrites = new Set<Promise<void>>();
+
+export function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
+  const write = (async () => {
+    const db = await database();
+    const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
+    const serialized = JSON.stringify(event);
+    if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
+    if (!existing) {
+      const creationEpoch =
+        isLocalLearningResetPending() || !isServerResetStatusVerified()
+          ? getLocalPendingResetCreationEpoch()
+          : getLearningResetRequestEpoch();
+      await db.put(LEARNING_OUTBOX_STORE, {
+        id: event.id,
+        event,
+        queuedAt: event.ts,
+        creationEpoch,
+        ...(migrationId ? { migrationId } : {}),
+      });
+    }
+  })();
+  pendingOutboxWrites.add(write);
+  void write.finally(() => pendingOutboxWrites.delete(write)).catch(() => undefined);
+  return write;
+}
+
+export async function flushOutboxWrites(): Promise<void> {
+  while (pendingOutboxWrites.size) await Promise.all([...pendingOutboxWrites]);
 }
 
 export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {

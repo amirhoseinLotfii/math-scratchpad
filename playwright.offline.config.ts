@@ -19,7 +19,10 @@ export default defineConfig({
     { name: 'laptop-1440', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
   ],
   webServer: {
-    command: process.env.PW_PREBUILT === '1' ? 'node scripts/serve-pages.mjs' : 'npm run build && node scripts/serve-pages.mjs',
+    command:
+      process.env.PW_PREBUILT === '1'
+        ? 'node scripts/serve-pages.mjs'
+        : 'node scripts/build-offline-test-versions.mjs && node scripts/serve-pages.mjs',
     url: 'http://127.0.0.1:4173/math-scratchpad/',
     timeout: 120_000,
   },

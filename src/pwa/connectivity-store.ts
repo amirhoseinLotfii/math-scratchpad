@@ -1,6 +1,8 @@
 import { getAuthenticatedServerStorage } from '../sync/browser-db';
 import { getDefaultSyncRuntime, type SyncStatus } from '../sync/runtime';
 import { SERVER_STORAGE_BUDGET_EVENT } from '../sync/server-storage';
+import { CONTROL_RELOAD_KEY, isLocalPwaEscapeHatch } from './kill-switch';
+import { UPDATE_STATE_EVENT } from './update-contract';
 
 export const GATE_STATUS_EVENT = 'math-scratchpad:gate-status';
 export type GateReason = 'checking' | 'online' | 'offline' | 'needs_login' | 'error' | 'local_only';
@@ -96,6 +98,12 @@ function handleGateStatus(event: Event): void {
   publish();
 }
 
+function handleUpdateState(event: Event): void {
+  const detail = (event as CustomEvent<{ available?: unknown }>).detail;
+  if (typeof detail?.available !== 'boolean') return;
+  commit({ ...snapshot, updateReady: detail.available });
+}
+
 function handleWorkerMessage(event: MessageEvent): void {
   const data = event.data as {
     type?: string;
@@ -118,13 +126,17 @@ function handleWorkerMessage(event: MessageEvent): void {
 
 function refreshWorkerStatus(): void {
   if (!('serviceWorker' in navigator)) return;
+  if (isLocalPwaEscapeHatch(location.search)) return;
+  try {
+    if (sessionStorage.getItem(CONTROL_RELOAD_KEY) === '1') return;
+  } catch {
+    /* Storage restrictions should not block normal status reporting. */
+  }
   void navigator.serviceWorker
     .getRegistration()
     .then((next) => {
       if (registration && registrationUpdateListener) registration.removeEventListener('updatefound', registrationUpdateListener);
       registration = next;
-      const updateReady = !!next?.waiting;
-      commit({ ...snapshot, updateReady });
       const worker = next?.active ?? navigator.serviceWorker.controller;
       worker?.postMessage({ type: 'GET_VERSION' });
       worker?.postMessage({ type: 'CACHE_STATUS' });
@@ -149,6 +161,7 @@ function start(): void {
   window.addEventListener('online', onNetworkChange);
   window.addEventListener('offline', onNetworkChange);
   window.addEventListener(GATE_STATUS_EVENT, handleGateStatus);
+  window.addEventListener(UPDATE_STATE_EVENT, handleUpdateState);
   window.addEventListener(SERVER_STORAGE_BUDGET_EVENT, onNetworkChange);
   runtimeUnsubscribe = getDefaultSyncRuntime()?.subscribe(publish);
   if ('serviceWorker' in navigator) {
@@ -162,6 +175,7 @@ function start(): void {
     window.removeEventListener('online', onNetworkChange);
     window.removeEventListener('offline', onNetworkChange);
     window.removeEventListener(GATE_STATUS_EVENT, handleGateStatus);
+    window.removeEventListener(UPDATE_STATE_EVENT, handleUpdateState);
     window.removeEventListener(SERVER_STORAGE_BUDGET_EVENT, onNetworkChange);
     runtimeUnsubscribe?.();
     runtimeUnsubscribe = undefined;

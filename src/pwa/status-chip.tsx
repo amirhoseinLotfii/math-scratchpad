@@ -2,6 +2,8 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Button } from '../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../shared/ui/dialog';
 import { getDefaultSyncRuntime } from '../sync/runtime';
+import { APP_BUILD_SHA } from './build-identity';
+import { UPDATE_STATE_EVENT } from './update-contract';
 import {
   derivePwaStatus,
   getConnectivitySnapshot,
@@ -37,6 +39,19 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
     usage: number | null;
     quota: number | null;
   }>({ banks: 0, bankSizeChars: 0, persisted: null, usage: null, quota: null });
+  const [updateError, setUpdateError] = useState('');
+
+  useEffect(() => {
+    const handleUpdateReady = (event: Event) => {
+      const detail = (event as CustomEvent<{ available?: unknown }>).detail;
+      if (!detail?.available) return;
+      const active = document.activeElement as HTMLElement | null;
+      const editing = !!active && (active.isContentEditable || active.matches('input, textarea, math-field, [contenteditable="true"]'));
+      if (!editing) setOpen(true);
+    };
+    window.addEventListener(UPDATE_STATE_EVENT, handleUpdateReady);
+    return () => window.removeEventListener(UPDATE_STATE_EVENT, handleUpdateReady);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +86,12 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
   };
   const downloadEverything = () => window.dispatchEvent(new CustomEvent('math-scratchpad:download-everything'));
   const checkUpdate = () => void requestServiceWorkerUpdateCheck().catch(() => undefined);
+  const reloadForUpdate = () => {
+    setUpdateError('');
+    void import('./update-controller')
+      .then(({ activateWaitingUpdate }) => activateWaitingUpdate())
+      .catch((error: unknown) => setUpdateError(error instanceof Error ? error.message : 'بارگذاری نسخهٔ جدید ممکن نشد.'));
+  };
   const explanation =
     snapshot.gate.reason === 'local_only' ? 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند.' : explanations[status.state];
   const openSyncPanel = () => {
@@ -98,6 +119,19 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
         <DialogContent className="pwa-status-dialog" lang="fa" dir="rtl">
           <DialogTitle>وضعیت آفلاین و همگام‌سازی</DialogTitle>
           <DialogDescription>{explanation}</DialogDescription>
+          {snapshot.updateReady && (
+            <section className="pwa-update-prompt" aria-label="نسخهٔ جدید آماده است">
+              <strong>نسخهٔ جدید آماده است</strong>
+              <p>پیش از بارگذاری دوباره، تغییرات درحال‌نوشتن ذخیره می‌شوند.</p>
+              {updateError && <p role="alert">{updateError}</p>}
+              <div className="pwa-status-actions">
+                <Button onClick={reloadForUpdate}>بارگذاری دوباره</Button>
+                <Button variant="outline" onClick={() => setOpen(false)}>
+                  بعداً
+                </Button>
+              </div>
+            </section>
+          )}
           <dl className="pwa-status-details">
             <div>
               <dt>در صف همگام‌سازی</dt>
@@ -125,7 +159,13 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
               <dd>{details.usage === null ? 'نامشخص' : `${formatBytes(details.usage)} / ${formatBytes(details.quota ?? 0)}`}</dd>
             </div>
             <div>
-              <dt>نسخهٔ برنامه</dt>
+              <dt>نسخهٔ بستهٔ برنامه</dt>
+              <dd dir="ltr">
+                <code>{APP_BUILD_SHA || '—'}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>نسخهٔ سرویس‌ورکر فعال</dt>
               <dd dir="ltr">
                 <code>{snapshot.sha || '—'}</code>
               </dd>

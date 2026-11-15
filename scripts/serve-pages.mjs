@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
@@ -14,16 +15,23 @@ const mime = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
 };
-let directory = process.env.PAGES_TEST_DIST ?? 'dist';
+let directory = process.env.PAGES_TEST_DIST ?? (process.env.PW_PREBUILT === '1' && existsSync('dist-a') ? 'dist-a' : 'dist');
+let controlOverride;
 
 createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1');
   if (request.method === 'POST' && url.pathname === '/__switch') {
     const target = url.searchParams.get('to');
-    if (target === 'a' || target === 'b') {
-      directory = 'dist-' + target;
+    if (target === 'a' || target === 'b' || target === 'kill') {
+      directory = target === 'kill' ? 'dist-kill' : 'dist-' + target;
       response.writeHead(204).end();
     } else response.writeHead(400).end();
+    return;
+  }
+  if (request.method === 'POST' && url.pathname === '/__control') {
+    const enabled = url.searchParams.get('enabled');
+    controlOverride = enabled === 'true' ? true : enabled === 'false' ? false : undefined;
+    response.writeHead(204).end();
     return;
   }
   if (!url.pathname.startsWith(prefix) || !['GET', 'HEAD'].includes(request.method ?? '')) {
@@ -32,6 +40,12 @@ createServer(async (request, response) => {
   }
   try {
     const file = decodeURIComponent(url.pathname.slice(prefix.length)) || 'index.html';
+    if (file === 'pwa-control.json' && controlOverride !== undefined) {
+      const body = Buffer.from(JSON.stringify({ swEnabled: controlOverride }));
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': body.length, 'Cache-Control': 'no-store' });
+      response.end(request.method === 'HEAD' ? undefined : body);
+      return;
+    }
     const root = resolve(directory);
     const path = resolve(root, file);
     if (!path.startsWith(root + sep)) {
