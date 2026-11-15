@@ -1,3 +1,4 @@
+import { OversizedStateWarning, useHasOversizedState } from './state-sync-budget-ui';
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage, isLocalLearningResetPending, readQuarantineCount } from './browser-db';
 import { ensureWorkerSession } from './worker-session';
@@ -27,6 +28,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
   onAuthenticated: (token: string) => Promise<void>;
   flushPendingDraft: () => Promise<void>;
 }) {
+  const hasOversizedState = useHasOversizedState();
   const [state, setState] = useState<GateState>(INITIAL);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [resetPending, setResetPending] = useState(isLocalOnlyMode());
@@ -150,7 +152,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       <div data-server-editor data-connection-state={resetPending ? 'local' : state.kind}>
         {children}
       </div>
-      {(state.kind !== 'online' || resetPending) && (!overlayOpen || resetPending) && (
+      {(state.kind !== 'online' || resetPending || hasOversizedState) && (!overlayOpen || resetPending) && (
         <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl">
           <div className="server-connection-gate-header">
             <strong>{resetPending ? 'حالت محلی فعال است' : state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
@@ -159,8 +161,9 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
           <p className="server-connection-gate-message">{resetPending
             ? 'پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.'
             : state.message}</p>
+          {hasOversizedState && <OversizedStateWarning />}
           {quarantinedCount > 0 && <p className="server-connection-gate-message">{quarantinedCount} رویداد قدیمی در قرنطینه نگه داشته شده‌اند و حذف نشده‌اند.</p>}
-          {!resetPending && <div className="server-connection-gate-google">
+          {!resetPending && state.kind !== 'online' && <div className="server-connection-gate-google">
             <GoogleLoginButton onComplete={() => check()} />
           </div>}
         </aside>

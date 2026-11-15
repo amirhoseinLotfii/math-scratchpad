@@ -4,6 +4,7 @@
  * IndexedDB remains the durable local source. This adapter mirrors allowlisted
  * learning records through the authenticated Worker endpoint.
  */
+import { SYNC_STATE_BUDGET_BYTES, utf8Bytes } from '../../shared/contracts/limits';
 import { SYNC_API_ORIGIN } from './sync-config';
 import { reportApiUnauthorized } from './api-unauthorized';
 import { keepLocalServerConflictValue, mergeServerStateValues } from './server-conflict-merge';
@@ -20,6 +21,9 @@ import {
 
 export type ServerStateRecord = { key: string; value: string | null; revision: number; updatedAt?: string };
 type ServerSnapshot = { records: ServerStateRecord[]; revision: number };
+
+export const SERVER_STORAGE_BUDGET_EVENT = 'math-scratchpad:server-storage-budget';
+export type OversizedState = { status: 'too_large'; bytes: number };
 
 export const SERVER_STORAGE_CONFLICT_EVENT = 'math-scratchpad:server-conflict';
 export const SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT = 'math-scratchpad:server-snapshot-request';
@@ -77,6 +81,7 @@ export class ServerBackedStorage implements Storage {
   private tail: Promise<void> = Promise.resolve();
   private error: Error | null = null;
   private readonly failedWrites = new Map<string, string | null>();
+  private oversizedState = new Map<string, OversizedState>();
   private readonly conflicts = new Map<string, ServerStorageConflict>();
   private queued = 0;
   private readonly onChange?: (key: string, value: string | null, source?: ServerStorageChangeSource) => void;
@@ -120,10 +125,31 @@ export class ServerBackedStorage implements Storage {
     for (const key of [...this.values.keys()]) this.removeItem(key);
   }
 
+  getOversizedState(): ReadonlyMap<string, OversizedState> { return this.oversizedState; }
+
+  private setOversizedState(key: string, bytes?: number) {
+    const current = this.oversizedState.get(key);
+    if (current?.bytes === bytes) return;
+    this.oversizedState = new Map(this.oversizedState);
+    if (bytes === undefined) this.oversizedState.delete(key);
+    else {
+      this.oversizedState.set(key, { status: 'too_large', bytes });
+      this.failedWrites.delete(key);
+      if (this.failedWrites.size === 0) this.error = null;
+    }
+    if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new Event(SERVER_STORAGE_BUDGET_EVENT));
+  }
+
   private enqueue(key: string, value: string | null) {
+    const bytes = value === null ? 0 : utf8Bytes(value);
+    if (bytes > SYNC_STATE_BUDGET_BYTES) {
+      this.setOversizedState(key, bytes);
+      return;
+    }
+    this.setOversizedState(key);
     this.queued += 1;
     const operation = this.tail.then(async () => {
-      if (this.conflicts.has(key)) return;
+      if (this.conflicts.has(key) || this.oversizedState.has(key)) return;
       let response: Response | undefined;
       let lastNetworkError: Error | undefined;
       let desiredValue = value;
@@ -151,6 +177,7 @@ export class ServerBackedStorage implements Storage {
           }
           if (response.status === 409) {
             const snapshot = await readServerSnapshot(this.token);
+            if (this.oversizedState.has(key)) return;
             const remote = snapshot.records.find(record => record.key === key);
             const remoteValue = remote?.value ?? null;
             const remoteRevision = remote?.revision ?? 0;
@@ -178,6 +205,11 @@ export class ServerBackedStorage implements Storage {
               if (this.failedWrites.size === 0) this.error = null;
               return;
             }
+            const mergedBytes = desiredValue === null ? 0 : utf8Bytes(desiredValue);
+            if (mergedBytes > SYNC_STATE_BUDGET_BYTES) {
+              this.setOversizedState(key, mergedBytes);
+              return;
+            }
             if (attempt < 3) continue;
             throw new Error('Server state kept changing while merging this saved item. Try again.');
           }
@@ -190,6 +222,16 @@ export class ServerBackedStorage implements Storage {
       }
       if (!response) throw lastNetworkError ?? new Error('دسترسی به سرور ذخیره‌سازی برقرار نشد.');
       if (response.status === 401) reportApiUnauthorized(this.token);
+      if (response.status === 413) {
+        const limit = await response.json().catch(() => null);
+        if (limit && typeof limit === 'object' && 'error' in limit && limit.error === 'state_value_too_large') {
+          if ((this.values.get(key) ?? null) === desiredValue) {
+            const rejectedBytes = 'bytes' in limit && typeof limit.bytes === 'number' ? limit.bytes : bytes;
+            this.setOversizedState(key, rejectedBytes);
+          }
+          return;
+        }
+      }
       if (!response.ok) throw new Error(response.status === 409
         ? 'این داده در دستگاه دیگری تغییر کرده است؛ پیش از ادامه صفحه را دوباره بارگذاری کن.'
         : response.status === 401
@@ -202,10 +244,11 @@ export class ServerBackedStorage implements Storage {
       this.revisions.set(key, Number((result as { revision: number }).revision));
       this.baseValues.set(key, desiredValue);
       const latestValue = this.values.has(key) ? this.values.get(key)! : null;
-      if (latestValue === desiredValue) this.failedWrites.delete(key);
+      if (latestValue === desiredValue || this.oversizedState.has(key)) this.failedWrites.delete(key);
       else this.failedWrites.set(key, latestValue);
       if (this.failedWrites.size === 0) this.error = null;
     }).catch(error => {
+      if (this.oversizedState.has(key)) return;
       // A later edit may already be queued; keep only the latest desired value.
       const latestValue = this.values.has(key) ? this.values.get(key)! : null;
       this.failedWrites.set(key, latestValue);
@@ -240,6 +283,7 @@ export class ServerBackedStorage implements Storage {
     if (this.failedWrites.size === 0) this.error = null;
 
     if (choice === 'remote') {
+      this.setOversizedState(key);
       this.setValue(key, conflict.remoteValue);
       this.onChange?.(key, conflict.remoteValue, 'server-resolution-remote');
       return;
@@ -265,6 +309,7 @@ export class ServerBackedStorage implements Storage {
     if (this.hasPendingWrites || this.error || this.conflicts.size) return;
     const incoming = new Map(records.map(record => [record.key, record]));
     for (const key of new Set([...this.values.keys(), ...incoming.keys()])) {
+      if (this.oversizedState.has(key)) continue;
       const remote = incoming.get(key);
       const old = this.values.get(key) ?? null;
       const next = remote?.value ?? null;

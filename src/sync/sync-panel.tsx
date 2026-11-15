@@ -1,3 +1,5 @@
+import { downloadFullLearningBackup } from './learning-backup-download';
+import { OversizedStateWarning } from './state-sync-budget-ui';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { X } from 'lucide-react';
 import { getConfig, loadPicker, pickBackupFolder } from '../features/drive-bank/google';
@@ -9,7 +11,7 @@ import { backupAndFinishLegacyMigration, finishLegacyMigration, queueLegacyMigra
 import { getDefaultSyncRuntime, type MirrorSyncStatus } from './runtime';
 import { queueLearnEvent, readLegacyMigration, type LegacyMigration } from './browser-db';
 import { emitTestLearnEvent } from './events';
-import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, type FullLearningBackup, type LearningBackupPreview } from './learning-backup';
+import { importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, type FullLearningBackup, type LearningBackupPreview } from './learning-backup';
 
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
 
@@ -298,17 +300,10 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
     finally { setBusy(false); }
   }, []);
 
-  const downloadFullBackup = useCallback(async () => {
+  const downloadFullBackup = useCallback(async (source: 'auto' | 'local' = 'auto') => {
     setError(''); setMessage(''); setBusy(true);
     try {
-      const contents = await createFullLearningBackup();
-      const blob = new Blob([contents], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `math-scratchpad-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      await downloadFullLearningBackup(source);
       setMessage('پشتیبان کامل JSON دانلود شد. فایل را در جای امن نگه دار.');
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'ساخت پشتیبان کامل انجام نشد.'); }
     finally { setBusy(false); }
@@ -341,6 +336,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const needsMigrationBackup = migration && migration.status !== 'complete';
   return <>{isClosable && <div className="sync-panel-backdrop" aria-hidden="true" onClick={() => closeRef.current?.()} />}<section ref={modal} role={isClosable ? "dialog" : "region"} aria-modal={isClosable ? true : undefined} tabIndex={-1} aria-labelledby="sync-panel-title" lang="fa" className="sync-panel-floating mx-auto mt-4 w-full max-w-3xl rounded-xl border border-white/15 bg-white/5 p-4 text-start" dir="rtl">
     <div className="flex items-center justify-between gap-3"><h2 id="sync-panel-title" className="text-base font-semibold">همگام‌سازی و حفظ داده‌ها</h2>{onClose && <button type="button" aria-label="بستن تنظیم همگام‌سازی" onClick={onClose} className="rounded-md p-2"><X aria-hidden="true" /></button>}</div>
+    <OversizedStateWarning onBackup={() => void downloadFullBackup('local')} />
     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
       <div role="group" aria-label="وضعیت سرور" className="rounded-lg border border-white/15 p-3">
         <p className="text-sm font-semibold">سرور</p>

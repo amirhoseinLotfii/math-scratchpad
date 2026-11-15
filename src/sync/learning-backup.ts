@@ -226,9 +226,9 @@ async function validatedBackup(value: unknown): Promise<FullLearningBackup> {
   return backup;
 }
 
-async function readStores(): Promise<LearningStores> {
+async function readStores(source: 'auto' | 'local' = 'auto'): Promise<LearningStores> {
   await flushLearningStorage();
-  if (isServerStorageActive()) {
+  if (source === 'auto' && isServerStorageActive()) {
     const runtime = getDefaultSyncRuntime();
     if (!runtime) throw new Error('نسخهٔ امن سرور در دسترس نیست.');
     const serverEvents = await runtime.readAllServerEvents();
@@ -256,8 +256,8 @@ async function readStores(): Promise<LearningStores> {
   };
 }
 
-export async function createFullLearningBackup(now = new Date()): Promise<string> {
-  const stores = readStores();
+export async function createFullLearningBackup(now = new Date(), source: 'auto' | 'local' = 'auto'): Promise<string> {
+  const stores = readStores(source);
   let validatedStores: LearningStores;
   try { validatedStores = storesSchema.parse(await stores); }
   catch { throw new Error('داده‌های ذخیره‌شده برای ساخت پشتیبان کامل ساختار معتبری ندارند.'); }

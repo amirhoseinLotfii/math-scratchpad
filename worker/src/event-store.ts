@@ -1,3 +1,4 @@
+import { MAX_SYNC_STATE_VALUE_BYTES, utf8Bytes } from '../../shared/contracts/limits';
 import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
 import { readBoundedBody } from './body';
@@ -47,7 +48,6 @@ import {
 
 const MAX_BODY_BYTES = 250_000;
 const MAX_STATE_BODY_BYTES = 2_100_000;
-const MAX_STATE_VALUE_BYTES = 1_000_000;
 const MAX_BATCH_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 const NOTION_RESET_RECONCILIATION_PER_CALL = 10;
@@ -1388,9 +1388,12 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const item = value as { key?: unknown; value?: unknown; revision?: unknown };
     if (typeof item.key !== 'string' || !item.key.startsWith('math-scratchpad') || item.key.length > 200
       || !(typeof item.value === 'string' || item.value === null)
-      || (typeof item.value === 'string' && new TextEncoder().encode(item.value).byteLength > MAX_STATE_VALUE_BYTES)
       || !Number.isSafeInteger(item.revision) || Number(item.revision) < 0) {
       return json({ error: 'invalid_state' }, 400);
+    }
+    const bytes = item.value === null ? 0 : utf8Bytes(item.value);
+    if (bytes > MAX_SYNC_STATE_VALUE_BYTES) {
+      return json({ error: 'state_value_too_large', key: item.key, bytes, limit: MAX_SYNC_STATE_VALUE_BYTES }, 413);
     }
     const result = this.ctx.storage.transactionSync(() => {
       if (this.isLearningResetLocked()) return { conflict: false, resetting: true, revision: 0, updatedAt: '' };

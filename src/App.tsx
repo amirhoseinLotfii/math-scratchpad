@@ -22,7 +22,7 @@ import { MathLiveStepInput } from './features/math-editor/components/mathlive-st
 export { INSERT_VISIBLE } from './features/math-editor/components/math-insert-dialog';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
-import { clearAppStorage } from './features/session/persistence/persistent-store';
+import { clearAppStorage, getSessionSyncBytes } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { archiveSession, bankDocument, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
@@ -42,6 +42,7 @@ import { SERVER_STORAGE_CONFLICT_EVENT, type ServerStorageConflict, type ServerS
 import { getDefaultSyncRuntime } from './sync/runtime';
 import { CloudResetPreviewDialog } from './features/session/components/cloud-reset-preview';
 import { ContinueLearningButton, useOptionalReadingPositionContext } from './features/progress/reading-position-context';
+import { StateBudgetMeter } from './sync/state-sync-budget-ui';
 import { AppHeader } from './app/app-header';
 import { ExerciseMenu } from './app/exercise-menu';
 import { DialogsHost, type ResetKind } from './app/dialogs-host';
@@ -80,6 +81,12 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
  const fileInput = useRef<HTMLInputElement>(null);
  const menuInvoker = useRef<HTMLButtonElement>(null);
  const state = useAppSelector(s => s), store = useAppStore(), dispatch = useAppDispatch();
+ const { doc, prefs, keyboardOpen } = state;
+ const [sessionSyncBytes, setSessionSyncBytes] = useState(() => getSessionSyncBytes({ doc, prefs, keyboardOpen }));
+ useEffect(() => {
+  const timeout = window.setTimeout(() => setSessionSyncBytes(getSessionSyncBytes({ doc, prefs, keyboardOpen })), 300);
+  return () => window.clearTimeout(timeout);
+ }, [doc, prefs, keyboardOpen]);
  const [pendingSessionImport, setPendingSessionImport] = useState<{ payload: SessionImportPayload; source: string } | null>(null);
  const [sessionImportUndo, setSessionImportUndo] = useState<{ previous: SessionImportPayload; importedSnapshot: string } | null>(null);
  const sessionSnapshot = importUndoFingerprint(state);
@@ -738,6 +745,7 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
      onOpenSync: () => setActiveInspector('sync'),
    }} />
   </AppHeader>
+  <StateBudgetMeter bytes={sessionSyncBytes} />
 
    {driveBankInitialized && <Suspense fallback={<div role="status" aria-live="polite">Loading question bank…</div>}><DriveBankPanel open={driveBankOpen} close={() => { setActiveInspector(current => current === 'drive' ? null : current); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} onAvailable={setDriveBankAvailable} onBankReady={bankReady} onBeforeBankLoad={prepareBankTransition} onResumeBank={resumeBankLesson} /></Suspense>}
    {syncPanelOpen && <Suspense fallback={<div role="status" aria-live="polite">Loading sync settings…</div>}><SyncPanel onClose={() => { setActiveInspector(current => current === 'sync' ? null : current); requestAnimationFrame(() => menuInvoker.current?.focus({ preventScroll: true })); }} /></Suspense>}

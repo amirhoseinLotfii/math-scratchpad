@@ -1,3 +1,4 @@
+import { utf8Bytes } from '../../../../shared/contracts/limits';
 import { initialKeyboardOpen } from '../../../shared/lib/ui-prefs';
 import * as z from 'zod/mini';
 import { example, isoLocal, stepLatex, uid } from '../../../model';
@@ -20,6 +21,11 @@ function decode(raw: string): Envelope {
  const parsed = envelopeSchema.parse(JSON.parse(raw));
  const saved = validateSession({ version: 2, doc: parsed.state.session.doc, prefs: parsed.state.session.prefs });
  return { version: 3, state: { session: { doc: saved.doc, prefs: saved.prefs ?? initialState().prefs, keyboardOpen: parsed.state.session.keyboardOpen }, sync: parsed.state.sync } };
+}
+export function getSessionSyncBytes(session: PersistedSession['session']): number {
+ return utf8Bytes(JSON.stringify({ version: 3, state: {
+  session, sync: { revision: Number.MAX_SAFE_INTEGER, writerId: '0'.repeat(36) },
+ } }));
 }
 const fullSignature = (session: PersistedSession['session']) => JSON.stringify(session);
 const workSignature = (session: PersistedSession['session']) => JSON.stringify({
@@ -126,12 +132,16 @@ export function createPersistentStore() {
  let author = !saved || lastWriter === writerId, suppress = false, failedSignature = '';
  let pending: PersistedSession['session'] | null = null, remote: Envelope | null = null;
  let timeout: ReturnType<typeof setTimeout> | undefined, store: ScratchStore;
+ function cancelScheduledFlush() {
+  if (timeout !== undefined) clearTimeout(timeout);
+  timeout = undefined;
+ }
  const quietState = (storageState: ScratchState['storageState']) => {
   suppress = true; store.setState({ storageState }); suppress = false;
  };
  async function flush() {
   if (!pending || protectedDraft || remote) { await flushLearningStorage().catch(() => undefined); return; }
-  if (timeout !== undefined) { clearTimeout(timeout); timeout = undefined; }
+  cancelScheduledFlush();
   const session = pending; pending = null;
   const next: Envelope = { version: 3, state: { session, sync: { revision: revision + 1, writerId } } };
   try {
@@ -193,7 +203,7 @@ export function createPersistentStore() {
  };
  store = makeStore(initial, options);
  function applyRemote(value: Envelope) {
-  clearTimeout(timeout); pending = null; remote = null;
+  cancelScheduledFlush(); pending = null; remote = null;
   // An explicit 'Use saved draft' choice (or a clean remote update) abandons
   // this tab's pending work. Its emergency copy must not resurrect on reload.
   if (journalKey) {
@@ -206,7 +216,7 @@ export function createPersistentStore() {
   suppress = false;
  }
  function applyRemoteRemoval() {
-  clearTimeout(timeout); pending = null; remote = null;
+  cancelScheduledFlush(); pending = null; remote = null;
   if (journalKey) {
    try { localStorage.removeItem(journalKey); } catch { /* The selected server state has no saved session. */ }
   }
@@ -231,7 +241,7 @@ export function createPersistentStore() {
     return;
    }
    if (event.source === 'server-resolution-local') {
-    clearTimeout(timeout); pending = null; remote = null;
+    cancelScheduledFlush(); pending = null; remote = null;
     revision = value.state.sync.revision; lastWriter = value.state.sync.writerId;
     lastSignature = fullSignature(value.state.session); lastWork = workSignature(value.state.session); author = true;
     return;
@@ -239,7 +249,7 @@ export function createPersistentStore() {
    if (value.state.sync.writerId === writerId || value.state.sync.revision < revision) return;
    if (value.state.sync.revision === revision && value.state.sync.writerId === lastWriter) return;
    if (pending && workSignature(pending) !== lastWork) {
-    clearTimeout(timeout); remote = value;
+    cancelScheduledFlush(); remote = value;
     quietState({ kind: 'conflict', message: 'Another tab saved a newer draft while you were editing.' });
    } else applyRemote(value);
   } catch { /* A malformed remote event must never replace validated local work. */ }
@@ -269,7 +279,7 @@ export function createPersistentStore() {
    return;
   }
   // Stop all writes first so a pending autosave cannot resurrect cleared data.
-  protectedDraft = true; pending = null; clearTimeout(timeout);
+  protectedDraft = true; pending = null; cancelScheduledFlush();
   clearAppStorage();
  };
  activeSessionFlush = flush;
@@ -293,5 +303,5 @@ export function createPersistentStore() {
   // Do not save the placeholder exercise before a saved server snapshot can hydrate a new browser.
   if (!pristineDefault || hasLegacyState) queue({ doc: initial.doc, prefs: initial.prefs, keyboardOpen: initial.keyboardOpen }, true);
  }
- return { store, flush, dispose: () => { void flush(); clearTimeout(timeout); if (activeSessionFlush === flush) activeSessionFlush = undefined; unsubscribeLearningStorage(); window.removeEventListener(SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, serverSnapshotRequest); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
+ return { store, flush, dispose: () => { void flush(); cancelScheduledFlush(); if (activeSessionFlush === flush) activeSessionFlush = undefined; unsubscribeLearningStorage(); window.removeEventListener(SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, serverSnapshotRequest); window.removeEventListener('storage', nativeStorageEvent); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibilitychange); } };
 }

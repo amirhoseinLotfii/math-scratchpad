@@ -1,3 +1,4 @@
+import { SYNC_STATE_BUDGET_BYTES, utf8Bytes } from '../../shared/contracts/limits';
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
 import {
@@ -16,7 +17,7 @@ import {
   notifyServerWriteGuardReleased,
   setLocalPendingResetEpoch,
 } from './learning-reset-epoch';
-import { ServerBackedStorage, readServerSnapshot, type ServerStorageChangeSource } from './server-storage';
+import { ServerBackedStorage, readServerSnapshot, SERVER_STORAGE_BUDGET_EVENT, type ServerStorageChangeSource } from './server-storage';
 
 export const LEARNING_DB_NAME = 'math-scratchpad-sync-v2';
 export const LEARNING_DB_VERSION = 2;
@@ -245,6 +246,10 @@ export async function initializeAuthenticatedServerStorage(token: string): Promi
       continue;
     }
     if (local.value === remote.value) continue;
+    if (utf8Bytes(local.value) > SYNC_STATE_BUDGET_BYTES) {
+      mirror.setItem(key, local.value);
+      continue;
+    }
     const localTime = Date.parse(local.updatedAt) || 0;
     const remoteTime = typeof remote.updatedAt === 'string' ? Date.parse(remote.updatedAt) || 0 : 0;
     if (remoteTime > localTime) {
@@ -255,6 +260,7 @@ export async function initializeAuthenticatedServerStorage(token: string): Promi
       mirror.setItem(key, local.value);
     }
   }
+  if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new Event(SERVER_STORAGE_BUDGET_EVENT));
   await flushLearningStorage();
 }
 

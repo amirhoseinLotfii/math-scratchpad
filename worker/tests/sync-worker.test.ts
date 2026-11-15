@@ -344,6 +344,23 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect(updated.status).toBe(200);
   });
 
+  it('reports the UTF-8 state value limit without changing accepted data', async () => {
+    const app = createApp(validVerifier);
+    const key = 'math-scratchpad-session-v3';
+    const value = 'م'.repeat(500_000);
+    const atLimit = await call(app, '/state', { token: 'valid-test-token', body: { key, value, revision: 0 } });
+    expect(atLimit.status).toBe(200);
+    const rejected = await call(app, '/state', {
+      token: 'valid-test-token', body: { key, value: value + 'a', revision: 1 },
+    });
+    expect(rejected.status).toBe(413);
+    expect(await rejected.json()).toEqual({ error: 'state_value_too_large', key, bytes: 1_000_001, limit: 1_000_000 });
+    const result = await call(app, '/state', { token: 'valid-test-token' });
+    const state = await result.json() as { records: Array<{ revision: number; value: string }> };
+    expect(state.records[0].revision).toBe(1);
+    expect(state.records[0].value === value).toBe(true);
+  });
+
   it('rejects writes from stale clients after reset and accepts the current reset epoch', async () => {
     const app = createApp(validVerifier);
     const stub = testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase()));
