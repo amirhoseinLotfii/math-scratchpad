@@ -29,7 +29,7 @@ type EditorControlsOptions = {
   confirmExam: boolean;
   confirmFractions: boolean;
   wide: boolean;
-  state: ScratchState;
+  state: Pick<ScratchState, 'doc' | 'past' | 'future'>;
 };
 
 export function useEditorControls({

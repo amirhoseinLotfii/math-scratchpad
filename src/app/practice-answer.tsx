@@ -13,7 +13,7 @@ import type { BankQuestion } from '../features/drive-bank/drive-bank';
 type Props = {
   isMathAnswer: boolean;
   ex: Exercise;
-  state: ScratchState;
+  state: Pick<ScratchState, 'doc'>;
   dispatch: AppDispatch;
   focusEditor: () => void;
   focusCurrentMathControl: () => void;

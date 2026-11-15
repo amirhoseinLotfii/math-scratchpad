@@ -18,7 +18,7 @@ type Props = {
   batch: boolean;
   layout: ReturnType<typeof useWorkspaceLayout>;
   ex: Exercise;
-  state: ScratchState;
+  state: Pick<ScratchState, 'doc'>;
   switchQuestion: (id: string) => void;
   linkedLesson?: Lesson;
   fractions: boolean;

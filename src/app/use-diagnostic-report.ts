@@ -16,7 +16,7 @@ type DiagnosticReportOptions = {
   showResults: boolean;
   exam: boolean;
   questionBank: typeof diagnosticQuestions | typeof fractionRoundOne;
-  state: ScratchState;
+  state: Pick<ScratchState, 'doc'>;
   sessionId: string;
   practiceAttemptCounts: RefObject<Map<string, number>>;
   dispatch: AppDispatch;

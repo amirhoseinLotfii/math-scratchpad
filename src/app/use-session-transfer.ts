@@ -20,7 +20,7 @@ type BankSession = ReturnType<typeof useBankSession>;
 type Set<T> = Dispatch<SetStateAction<T>>;
 
 type SessionTransferOptions = {
-  state: ScratchState;
+  state: Pick<ScratchState, 'doc' | 'prefs'>;
   store: ScratchStore;
   dispatch: AppDispatch;
   jsonForm: Launcher['jsonForm'];
@@ -31,7 +31,7 @@ type SessionTransferOptions = {
   sessionId: string;
   setShowResults: Set<boolean>;
 };
-function importUndoFingerprint(state: ScratchState) {
+function importUndoFingerprint(state: Pick<ScratchState, 'doc' | 'prefs'>) {
   // QuestionTimer starts a new timing segment after load; that automatic metadata must not consume Undo.
   const exercises = state.doc.exercises.map(({ elapsedMs, timerRunningSince, timerPaused, ...exercise }) => exercise);
   return JSON.stringify({ doc: { ...state.doc, exercises }, prefs: state.prefs });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GoogleDriveClient } from '../src/google-drive';
 import type { WorkerEnv } from '../src/env';
 
-const OWNER_EMAIL = 'amirhoseinlotfalizadeprogramer@gmail.com';
+const OWNER_EMAIL = 'owner@example.test';
 const FILE_ID = 'learning-event-1';
 const PARENT_ID = 'events-folder';
 
@@ -48,7 +48,10 @@ function makeClient(fetchDrive: (url: URL, init: RequestInit) => Response | Prom
   return { client: new GoogleDriveClient(env, fetcher, () => Date.UTC(2026, 10, 12)), calls };
 }
 
-function fileMetadataResponse(trashed = false, appProperties: Record<string, string> = { msOwner: 'math-scratchpad', msKind: 'events' }): Response {
+function fileMetadataResponse(
+  trashed = false,
+  appProperties: Record<string, string> = { msOwner: 'math-scratchpad', msKind: 'events' },
+): Response {
   return jsonResponse({ id: FILE_ID, mimeType: 'application/x-ndjson', parents: [PARENT_ID], trashed, appProperties });
 }
 
@@ -93,10 +96,18 @@ describe('Google Drive learning mirror trash', () => {
   });
 
   it('reads application ownership markers across every Drive result page', async () => {
-    const { client, calls } = makeClient(async url => {
+    const { client, calls } = makeClient(async (url) => {
       if (!url.searchParams.has('pageToken')) {
         return jsonResponse({
-          files: [{ id: 'owned-first', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: [PARENT_ID], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } }],
+          files: [
+            {
+              id: 'owned-first',
+              name: 'events_2026-11.jsonl',
+              mimeType: 'application/x-ndjson',
+              parents: [PARENT_ID],
+              appProperties: { msOwner: 'math-scratchpad', msKind: 'events' },
+            },
+          ],
           nextPageToken: 'page-two',
         });
       }
@@ -106,7 +117,13 @@ describe('Google Drive learning mirror trash', () => {
     });
 
     await expect(client.listFilesInFolder(PARENT_ID)).resolves.toEqual([
-      { id: 'owned-first', name: 'events_2026-11.jsonl', mimeType: 'application/x-ndjson', parents: [PARENT_ID], appProperties: { msOwner: 'math-scratchpad', msKind: 'events' } },
+      {
+        id: 'owned-first',
+        name: 'events_2026-11.jsonl',
+        mimeType: 'application/x-ndjson',
+        parents: [PARENT_ID],
+        appProperties: { msOwner: 'math-scratchpad', msKind: 'events' },
+      },
       { id: 'unmarked-second', name: 'progress.json', mimeType: 'application/json', parents: [PARENT_ID] },
     ]);
     expect(calls).toHaveLength(2);
@@ -147,7 +164,9 @@ describe('Google Drive learning mirror trash', () => {
     Object.defineProperty(failure, 'cause', {
       value: { code: 'UND_ERR_CONNECT_TIMEOUT', message: 'private nested transport detail' },
     });
-    const { client } = makeClient(async () => { throw failure; });
+    const { client } = makeClient(async () => {
+      throw failure;
+    });
 
     await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
     expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_connect_timeout');
@@ -208,7 +227,9 @@ describe('Google Drive learning mirror trash', () => {
   it('finds an allowlisted code through nested fetch causes before using the wrapper name', async () => {
     const failure = { name: 'TypeError', message: 'private outer detail' };
     Object.assign(failure, { cause: { cause: { code: 'EHOSTUNREACH', message: 'private inner detail' } } });
-    const { client } = makeClient(async () => { throw failure; });
+    const { client } = makeClient(async () => {
+      throw failure;
+    });
 
     await expect(client.listFilesInFolder(PARENT_ID)).rejects.toMatchObject({ code: 'network_error' });
     expect(client.diagnosticStage).toBe('drive_file_lookup_fetch_rejected_host_unreachable');

@@ -5,13 +5,13 @@ import { createApp, type IdTokenVerifier } from '../src/index';
 import { SESSION_TTL_MS } from '../src/session';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
 
-const OWNER_EMAIL = 'amirhoseinlotfalizadeprogramer@gmail.com';
+const OWNER_EMAIL = 'owner@example.test';
 const OWNER: GoogleIdentity = { sub: 'google-subject-for-test', email: OWNER_EMAIL, email_verified: true };
 const STRANGER: GoogleIdentity = { sub: 'someone-else', email: 'someone@example.com', email_verified: true };
 const BANK_FILE_ID = 'bankFile_0123456789';
 const testEnv = env as unknown as WorkerEnv;
 
-const verifier: IdTokenVerifier = async token => {
+const verifier: IdTokenVerifier = async (token) => {
   if (token === 'owner-id-token') return OWNER;
   if (token === 'stranger-id-token') return STRANGER;
   throw new Error('Invalid test token.');
@@ -27,11 +27,14 @@ function call(path: string, options: { method?: string; token?: string; body?: u
   const headers = new Headers();
   if (options.token) headers.set('Authorization', `Bearer ${options.token}`);
   if (options.body !== undefined) headers.set('Content-Type', 'application/json');
-  return app.fetch(new Request(`https://worker.test${path}`, {
-    method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
-    headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-  }), options.workerEnv ?? testEnv);
+  return app.fetch(
+    new Request(`https://worker.test${path}`, {
+      method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+      headers,
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    }),
+    options.workerEnv ?? testEnv,
+  );
 }
 
 async function issueSession(token = 'owner-id-token'): Promise<{ sessionToken: string; expiresAt: number }> {
@@ -49,7 +52,16 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 const BANK_TEXT = JSON.stringify({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'b', version: 'v1', questions: [] });
-const BANK_META = { id: BANK_FILE_ID, name: 'MATH_QUESTION_BANK.json', mimeType: 'application/json', size: String(BANK_TEXT.length), md5Checksum: 'abc', headRevisionId: 'r1', version: '7', trashed: false };
+const BANK_META = {
+  id: BANK_FILE_ID,
+  name: 'MATH_QUESTION_BANK.json',
+  mimeType: 'application/json',
+  size: String(BANK_TEXT.length),
+  md5Checksum: 'abc',
+  headRevisionId: 'r1',
+  version: '7',
+  trashed: false,
+};
 
 /** Fake Google endpoints for the Worker's own refresh-token credential. */
 function fakeDrive(options: { status?: number } = {}) {
@@ -69,17 +81,20 @@ function fakeDrive(options: { status?: number } = {}) {
     if (url.pathname === `/drive/v3/files/${BANK_FILE_ID}`) return jsonResponse(BANK_META);
     return jsonResponse({ error: 'not found' }, 404);
   }) as typeof fetch;
-  const client = new GoogleDriveClient({
-    OWNER_EMAIL,
-    GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
-    GOOGLE_DRIVE_CLIENT_SECRET: 'not-a-real-secret',
-    GOOGLE_DRIVE_REFRESH_TOKEN: 'not-a-real-token',
-  } as WorkerEnv, fetcher);
+  const client = new GoogleDriveClient(
+    {
+      OWNER_EMAIL,
+      GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
+      GOOGLE_DRIVE_CLIENT_SECRET: 'not-a-real-secret',
+      GOOGLE_DRIVE_REFRESH_TOKEN: 'not-a-real-token',
+    } as WorkerEnv,
+    fetcher,
+  );
   return { client, driveRequests };
 }
 
 async function injectBankClient(client: GoogleDriveClient) {
-  await runInDurableObject(ownerStub(), instance => {
+  await runInDurableObject(ownerStub(), (instance) => {
     (instance as unknown as { bankClient?: GoogleDriveClient }).bankClient = client;
   });
 }
@@ -153,7 +168,7 @@ describe('Worker sessions', () => {
 });
 
 describe('Question bank through the Worker', () => {
-  it.each(['/bank/meta', '/bank/content'])('requires owner authorization for %s', async path => {
+  it.each(['/bank/meta', '/bank/content'])('requires owner authorization for %s', async (path) => {
     expect((await call(path)).status).toBe(401);
     expect((await call(path, { token: 'stranger-id-token' })).status).toBe(401);
     const { sessionToken } = await issueSession();
@@ -181,7 +196,10 @@ describe('Question bank through the Worker', () => {
     const { sessionToken } = await issueSession();
     const drive = fakeDrive();
     await injectBankClient(drive.client);
-    const registered = await call('/bank/source', { token: sessionToken, body: { fileId: BANK_FILE_ID, fileName: 'MATH_QUESTION_BANK.json' } });
+    const registered = await call('/bank/source', {
+      token: sessionToken,
+      body: { fileId: BANK_FILE_ID, fileName: 'MATH_QUESTION_BANK.json' },
+    });
     expect(registered.status).toBe(200);
     const meta = await call('/bank/meta', { token: sessionToken });
     expect(meta.status).toBe(200);
@@ -189,7 +207,7 @@ describe('Question bank through the Worker', () => {
     const content = await call('/bank/content', { token: sessionToken });
     expect(content.status).toBe(200);
     expect(await content.json()).toMatchObject({ fileId: BANK_FILE_ID, meta: { md5Checksum: 'abc' }, text: BANK_TEXT });
-    expect(drive.driveRequests.some(path => path === `/drive/v3/files/${BANK_FILE_ID}?alt=media`)).toBe(true);
+    expect(drive.driveRequests.some((path) => path === `/drive/v3/files/${BANK_FILE_ID}?alt=media`)).toBe(true);
   });
 
   it('does not register a file the server credential cannot read, and validates file IDs', async () => {

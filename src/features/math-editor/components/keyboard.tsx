@@ -14,9 +14,17 @@ import {
   undoMathfield,
 } from '../mathlive-adapter';
 export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {}) {
-  const s = useAppSelector((s) => s),
-    dispatch = useAppDispatch();
   const [more, setMore] = useState(false);
+  const keyboard = useAppSelector((s) => ({
+    stepId: s.doc.cursor.stepId,
+    selected: s.doc.cursor.selected,
+    symbolsOpen: s.symbolsOpen,
+    compact: s.prefs.compact,
+    canUndo: more && (Boolean(mathfieldForStep(s.doc.cursor.stepId)?.canUndo()) || s.past.some((d) => d.exerciseId === s.doc.exerciseId)),
+    canRedo: more && (Boolean(mathfieldForStep(s.doc.cursor.stepId)?.canRedo()) || s.future.some((d) => d.exerciseId === s.doc.exerciseId)),
+  }));
+  const { stepId, selected, symbolsOpen, compact, canUndo, canRedo } = keyboard;
+  const dispatch = useAppDispatch();
   function focusEditor() {
     if (onFocusEditor) {
       onFocusEditor();
@@ -29,7 +37,6 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
     }
     document.querySelector<HTMLElement>('main.scratchpad')?.focus({ preventScroll: true });
   }
-  const stepId = s.doc.cursor.stepId;
   function runUndo() {
     if (!undoMathfield(stepId)) dispatch(actions.undo());
   }
@@ -60,7 +67,7 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
       }}
     >
       <div className="keyboard-toolbar">
-        <Button aria-expanded={s.symbolsOpen} onClick={() => dispatch(actions.symbols())}>
+        <Button aria-expanded={symbolsOpen} onClick={() => dispatch(actions.symbols())}>
           <span aria-hidden="true">π</span> Symbols
         </Button>
         <Button aria-expanded={more} onClick={() => setMore(!more)}>
@@ -76,8 +83,8 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
           <span aria-hidden="true">⌫</span> Backspace
         </Button>
       </div>
-      {s.symbolsOpen && <KeyboardSymbols s={s} symbol={symbol} dispatch={dispatch} />}
-      {!s.symbolsOpen && (
+      {symbolsOpen && <KeyboardSymbols symbol={symbol} dispatch={dispatch} />}
+      {!symbolsOpen && (
         <div className="key-grid" role="group" aria-label="Numeric keys">
           {['1', '2', '3', '÷', '4', '5', '6', '×', '7', '8', '9', '−', '0', '.', 'Fraction', '+'].map((key) => (
             <Button
@@ -129,7 +136,7 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
           </div>
           <div className="editing-tools">
             <Button
-              disabled={!mathfieldForStep(stepId)?.canUndo() && !s.past.some((d) => d.exerciseId === s.doc.exerciseId)}
+              disabled={!canUndo}
               onClick={() => {
                 runUndo();
                 focusEditor();
@@ -138,7 +145,7 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
               Undo
             </Button>
             <Button
-              disabled={!mathfieldForStep(stepId)?.canRedo() && !s.future.some((d) => d.exerciseId === s.doc.exerciseId)}
+              disabled={!canRedo}
               onClick={() => {
                 runRedo();
                 focusEditor();
@@ -203,12 +210,12 @@ export function Keyboard({ onFocusEditor }: { onFocusEditor?: () => void } = {})
               Hide keys
             </Button>
           </div>
-          <Button aria-pressed={s.prefs.compact} onClick={() => dispatch(actions.compact())}>
-            {s.prefs.compact ? 'Compact' : 'Full keys'}
+          <Button aria-pressed={compact} onClick={() => dispatch(actions.compact())}>
+            {compact ? 'Compact' : 'Full keys'}
           </Button>
         </div>
       )}
-      {s.doc.cursor.selected && (
+      {selected && (
         <div className="structure-selection">
           <p className="structure-label">Whole structure selected</p>
           <div className="toolbar" aria-label="Selected structure actions">

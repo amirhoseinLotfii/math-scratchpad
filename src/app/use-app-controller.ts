@@ -1,3 +1,4 @@
+import { selectWorkspaceState } from './workspace-state';
 import { useMemo, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector, useAppStore } from '../hooks';
 import { actions, exerciseOf } from '../store';
@@ -34,7 +35,7 @@ export function useAppController(initialBank?: LoadedBank) {
   const [resetKind, setResetKind] = useState<ResetKind | null>(null);
   const [cloudPreviewOpen, setCloudPreviewOpen] = useState(false);
   const menuInvoker = useRef<HTMLButtonElement>(null);
-  const state = useAppSelector((s) => s),
+  const state = useAppSelector(selectWorkspaceState),
     store = useAppStore(),
     dispatch = useAppDispatch();
   const sync = useAppSync(state);

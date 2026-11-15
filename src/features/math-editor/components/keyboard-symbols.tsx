@@ -2,8 +2,10 @@ import { useMemo } from 'react';
 import { Formula } from './formula';
 import { makeStructure, seq, symbolList, topics } from '../../../model';
 import { actions } from '../../../store';
-import type { AppDispatch, ScratchState } from '../../../store';
-export function KeyboardSymbols({ s, symbol, dispatch }: { s: ScratchState; symbol: (key: string) => void; dispatch: AppDispatch }) {
+import type { AppDispatch } from '../../../store';
+import { useAppSelector } from '../../../hooks';
+export function KeyboardSymbols({ symbol, dispatch }: { symbol: (key: string) => void; dispatch: AppDispatch }) {
+  const { topic, prefs } = useAppSelector(({ topic, prefs }) => ({ topic, prefs }));
   const preview = useMemo(() => {
     const key =
       (
@@ -15,11 +17,11 @@ export function KeyboardSymbols({ s, symbol, dispatch }: { s: ScratchState; symb
           Matrices: 'matrix2',
           'Probability & stats': 'choose',
         } as Record<string, string>
-      )[s.topic] ?? 'fraction';
+      )[topic] ?? 'fraction';
     return { key, expression: seq([makeStructure(key)]), title: symbolList.find((x) => x.key === key)!.title };
-  }, [s.topic]);
+  }, [topic]);
   const lookup = (key: string) => symbolList.find((x) => x.key === key);
-  const shortcuts = s.prefs.favorites.map(lookup).filter((x) => !!x);
+  const shortcuts = prefs.favorites.map(lookup).filter((x) => !!x);
   return (
     <div className="symbols-panel">
       <div className="panel-heading">
@@ -40,16 +42,16 @@ export function KeyboardSymbols({ s, symbol, dispatch }: { s: ScratchState; symb
       )}
       <div className="topic-list" aria-label="Symbol topics">
         {Object.keys(topics).map((t) => (
-          <button type="button" key={t} aria-pressed={s.topic === t} onClick={() => dispatch(actions.topic(t))}>
+          <button type="button" key={t} aria-pressed={topic === t} onClick={() => dispatch(actions.topic(t))}>
             {t}
           </button>
         ))}
       </div>
-      {s.prefs.recent.length > 0 && (
+      {prefs.recent.length > 0 && (
         <>
           <p className="small">Recent</p>
           <div className="shortcut-list">
-            {s.prefs.recent
+            {prefs.recent
               .map(lookup)
               .filter((x) => !!x)
               .map((x) => (
@@ -60,10 +62,10 @@ export function KeyboardSymbols({ s, symbol, dispatch }: { s: ScratchState; symb
           </div>
         </>
       )}
-      <p className="small">{s.topic} · tap ☆ to save a favorite</p>
+      <p className="small">{topic} · tap ☆ to save a favorite</p>
       <div className="symbols-layout">
         <div className="symbol-list">
-          {(topics[s.topic] ?? topics.Numbers).map((x) => (
+          {(topics[topic] ?? topics.Numbers).map((x) => (
             <div className="symbol-item" key={x.key}>
               <button type="button" aria-label={`Insert ${x.title}`} onClick={() => symbol(x.key)}>
                 <span>{x.label}</span>
@@ -72,10 +74,10 @@ export function KeyboardSymbols({ s, symbol, dispatch }: { s: ScratchState; symb
               <button
                 type="button"
                 aria-label={`Favorite ${x.title}`}
-                aria-pressed={s.prefs.favorites.includes(x.key)}
+                aria-pressed={prefs.favorites.includes(x.key)}
                 onClick={() => dispatch(actions.favorite(x.key))}
               >
-                {s.prefs.favorites.includes(x.key) ? '★' : '☆'}
+                {prefs.favorites.includes(x.key) ? '★' : '☆'}
               </button>
             </div>
           ))}

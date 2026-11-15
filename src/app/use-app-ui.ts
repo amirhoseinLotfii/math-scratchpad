@@ -11,7 +11,7 @@ import type { RefObject } from 'react';
 const EMPTY_SYNC_STATUS = { phase: 'idle' as const, pending: 0, quarantined: 0, driveMirror: null, notionMirror: null };
 const NO_SYNC_SUBSCRIBE = () => () => undefined;
 
-export function useAppSync(state: ScratchState) {
+export function useAppSync(state: Pick<ScratchState, 'doc' | 'prefs' | 'keyboardOpen'>) {
   const syncRuntime = getDefaultSyncRuntime();
   const syncStatus = useSyncExternalStore(
     syncRuntime?.subscribe ?? NO_SYNC_SUBSCRIBE,
