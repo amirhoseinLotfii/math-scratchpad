@@ -5,6 +5,7 @@ export function LegacyMigrationStatus({
   migration,
   busy,
   phase,
+  online = true,
   syncLegacy,
   backUpAndClear,
   clearAfterVerifiedBackup,
@@ -12,6 +13,7 @@ export function LegacyMigrationStatus({
   migration: LegacyMigration | null;
   busy: boolean;
   phase: SyncStatus['phase'];
+  online?: boolean;
   syncLegacy: () => Promise<void>;
   backUpAndClear: () => Promise<void>;
   clearAfterVerifiedBackup: () => Promise<void>;
@@ -29,7 +31,7 @@ export function LegacyMigrationStatus({
         <button
           type="button"
           className="mt-3 rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50"
-          disabled={busy || phase === 'needs-auth' || phase === 'syncing'}
+          disabled={!online || busy || phase === 'needs-auth' || phase === 'syncing'}
           onClick={() => void syncLegacy()}
         >
           ارسال و راستی‌آزمایی داده‌های قدیمی
@@ -39,7 +41,7 @@ export function LegacyMigrationStatus({
         <button
           type="button"
           className="mt-3 rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50"
-          disabled={busy}
+          disabled={!online || busy}
           onClick={() => void backUpAndClear()}
         >
           پشتیبان‌گیری در Drive و پایان مهاجرت

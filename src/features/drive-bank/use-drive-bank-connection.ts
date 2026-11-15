@@ -30,6 +30,7 @@ import { permittedAccount } from './identity';
 import { readBankViaWorker } from './worker-bank';
 import { findRestorableBank } from './offline-bank-restore';
 import { saveVerifiedBank } from './save-verified-bank';
+import { requestPersistentStorageOnce } from '../../pwa/storage-persistence';
 
 import type { ScratchStore } from '../../store';
 type Options = {
@@ -46,7 +47,8 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Connect Google Drive to begin.'),
     [busy, setBusy] = useState(false),
-    [ready, setReady] = useState(false);
+    [ready, setReady] = useState(false),
+    [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [available, setAvailable] = useState<{ bank: DriveBank; version: string } | null>(null);
   const [checkedAt, setCheckedAt] = useState('');
   const token = useRef<Token | null>(null),
@@ -66,6 +68,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     try {
       const cached = await findRestorableBank(fileId, store.getState().doc.session);
       if (!active.current || cfg.current.fileId !== fileId || !cached) return;
+      void requestPersistentStorageOnce();
       fingerprint.current = cached.fingerprint;
       setAvailable({ bank: cached.bank, version: cached.version });
       onAvailableRef.current(
@@ -87,6 +90,19 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     return () => {
       active.current = false;
       token.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => {
+      setOnline(false);
+      setMessage('برای ورود Google، دریافت بانک از Drive و بررسی به‌روزرسانی بانک به اینترنت نیاز است.');
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
     };
   }, []);
   useEffect(() => {
@@ -129,7 +145,11 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
   }, [open]);
   useEffect(() => {
     if (!open || ready) return;
-    void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)])
+    if (!online) {
+      setMessage('برای ورود Google، دریافت بانک از Drive و بررسی به‌روزرسانی بانک به اینترنت نیاز است.');
+      return;
+    }
+    void Promise.all([loadIdentity(), loadPicker()])
       .then(() => {
         if (!active.current) return;
         setReady(true);
@@ -144,7 +164,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       .catch((e) => {
         if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.');
       });
-  }, [open, ready]);
+  }, [open, ready, online]);
   function expire(text: string) {
     token.current = null;
     clearDriveSessionToken();
@@ -230,6 +250,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     }
     const version = await snapshotVersion(parsed);
     const { legacyCache, offlineWarning } = await saveVerifiedBank(fileId, parsed, version, fp);
+    void requestPersistentStorageOnce();
     setAvailable({ bank: parsed, version });
     announce(parsed, version);
     onBankReady?.(parsed, version);
@@ -295,5 +316,21 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     });
   }
 
-  return { config, connected, message, busy, ready, available, checkedAt, token, setBusy, setMessage, announce, afterToken, choose, sync };
+  return {
+    config,
+    connected,
+    message,
+    busy,
+    ready,
+    online,
+    available,
+    checkedAt,
+    token,
+    setBusy,
+    setMessage,
+    announce,
+    afterToken,
+    choose,
+    sync,
+  };
 }

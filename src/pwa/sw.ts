@@ -128,18 +128,57 @@ worker.addEventListener('fetch', (event) => {
   );
 });
 
-async function cacheImageList(source: Client, urls: string[]) {
+async function cacheImageList(source: Client, urls: string[], port?: MessagePort) {
   const failed: Array<{ url: string; reason: string }> = [];
   for (const [index, url] of urls.entries()) {
     try {
       const request = new Request(url, { mode: 'cors', credentials: 'omit' });
-      const result = await cacheImageWithResult(request);
-      if (!result.cached) failed.push({ url, reason: result.reason });
+      const cache = await caches.open('ms-images-v1');
+      if (!(await cache.match(request))) {
+        const result = await cacheImageWithResult(request, { cacheOnly: true });
+        if (!result.cached) failed.push({ url, reason: result.reason });
+      }
     } catch {
       failed.push({ url, reason: 'network_error' });
     }
-    source.postMessage({ type: 'CACHE_PROGRESS', done: index + 1, total: urls.length, failed });
+    const progress = { type: 'CACHE_PROGRESS', done: index + 1, total: urls.length, failed };
+    source.postMessage(progress);
+    port?.postMessage(progress);
   }
+  const result = { type: 'CACHE_DONE', failed };
+  source.postMessage(result);
+  port?.postMessage(result);
+}
+
+async function cacheMissingShell(source: Client, port?: MessagePort) {
+  const cache = await caches.open(shell);
+  const missing: string[] = [];
+  const failures: Array<{ path: string; reason: string }> = [];
+  for (const [index, path] of PRECACHE_PATHS.entries()) {
+    const url = new URL(path, scope).href;
+    const request = new Request(url);
+    if (await cache.match(request)) {
+      const progress = { type: 'SHELL_PROGRESS', done: index + 1, total: PRECACHE_PATHS.length };
+      source.postMessage(progress);
+      port?.postMessage(progress);
+      continue;
+    }
+    missing.push(path);
+    try {
+      const response = await fetch(new Request(url, { cache: 'reload' }));
+      if (!response.ok || !['basic', 'cors'].includes(response.type)) throw new Error(`http_${response.status}`);
+      await cache.put(request, response);
+    } catch (error) {
+      failures.push({ path, reason: error instanceof Error ? error.message : 'network_error' });
+    }
+    const progress = { type: 'SHELL_PROGRESS', done: index + 1, total: PRECACHE_PATHS.length };
+    source.postMessage(progress);
+    port?.postMessage(progress);
+  }
+  const complete = (await Promise.all(PRECACHE_PATHS.map((path) => cache.match(new Request(new URL(path, scope)))))).every(Boolean);
+  const result = { type: 'SHELL_DONE', complete, missing, failures };
+  source.postMessage(result);
+  port?.postMessage(result);
 }
 
 worker.addEventListener('message', (event) => {
@@ -174,14 +213,18 @@ worker.addEventListener('message', (event) => {
     event.waitUntil(
       (async () => {
         const cache = await caches.open(shell);
-        const keys = await cache.keys();
         source.postMessage({
           type: 'CACHE_STATUS',
-          shell: { sha: BUILD_SHA, complete: keys.length >= PRECACHE_PATHS.length },
+          shell: {
+            sha: BUILD_SHA,
+            complete: (await Promise.all(PRECACHE_PATHS.map((path) => cache.match(new Request(new URL(path, scope)))))).every(Boolean),
+          },
           images: await imageCacheStatus(),
         });
       })(),
     );
+  } else if (data.type === 'CACHE_SHELL') {
+    event.waitUntil(cacheMissingShell(source, event.ports[0]));
   } else if (data.type === 'CACHE_IMAGES' && Array.isArray(data.urls) && data.urls.length <= 300) {
     const urls = data.urls.filter((value): value is string => {
       if (typeof value !== 'string' || value.length > 2000) return false;
@@ -192,6 +235,6 @@ worker.addEventListener('message', (event) => {
         return false;
       }
     });
-    event.waitUntil(cacheImageList(source, [...new Set(urls)]));
+    event.waitUntil(cacheImageList(source, [...new Set(urls)], event.ports[0]));
   }
 });

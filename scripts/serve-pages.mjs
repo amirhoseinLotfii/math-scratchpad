@@ -4,6 +4,10 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 const prefix = '/math-scratchpad/';
+const offlineTestPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/5qUAAAAASUVORK5CYII=',
+  'base64',
+);
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript',
@@ -32,6 +36,15 @@ createServer(async (request, response) => {
     const enabled = url.searchParams.get('enabled');
     controlOverride = enabled === 'true' ? true : enabled === 'false' ? false : undefined;
     response.writeHead(204).end();
+    return;
+  }
+  if (request.method === 'GET' && url.pathname === `${prefix}offline-fixtures/same-origin.png`) {
+    response.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': offlineTestPng.length,
+      'Cache-Control': 'max-age=600',
+    });
+    response.end(offlineTestPng);
     return;
   }
   if (!url.pathname.startsWith(prefix) || !['GET', 'HEAD'].includes(request.method ?? '')) {

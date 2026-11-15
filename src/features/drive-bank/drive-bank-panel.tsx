@@ -7,6 +7,7 @@ import { Button } from '../../shared/ui/button';
 import { GoogleDriveAccessButton, GoogleLoginButton } from '../../sync/google-login-button';
 import { archiveSession, bankDocument, readArchive, type ArchivedSession, type DriveBank } from './drive-bank';
 import { listOfflineBanks, type CachedOfflineBank, type OfflineBankList } from '../../pwa/offline-bank-cache';
+import { OfflineDownloadControl } from '../../pwa/offline-download-control';
 
 import { BankSessionConfirmation, type BankConfirmation } from './bank-session-confirmation';
 import { useDriveBankConnection } from './use-drive-bank-connection';
@@ -29,8 +30,23 @@ export function DriveBankPanel({
 }) {
   const store = useAppStore(),
     dispatch = useAppDispatch();
-  const { config, connected, message, busy, ready, available, checkedAt, token, setBusy, setMessage, announce, afterToken, choose, sync } =
-    useDriveBankConnection({ open, store, onAvailable, onBankReady, onResumeBank });
+  const {
+    config,
+    connected,
+    message,
+    busy,
+    ready,
+    online,
+    available,
+    checkedAt,
+    token,
+    setBusy,
+    setMessage,
+    announce,
+    afterToken,
+    choose,
+    sync,
+  } = useDriveBankConnection({ open, store, onAvailable, onBankReady, onResumeBank });
   const [archives, setArchives] = useState<ArchivedSession[]>([]);
   const [offlineBankList, setOfflineBankList] = useState<OfflineBankList>({ banks: [], corruptCount: 0 });
   const offlineBanks = offlineBankList.banks;
@@ -163,6 +179,10 @@ export function DriveBankPanel({
         ) : null}
         <section aria-label="Cached offline banks">
           <h3>Cached offline banks ({offlineBanks.length})</h3>
+          <p lang="fa" dir="rtl">
+            پوستهٔ برنامه، نسخه‌های ذخیره‌شدهٔ بانک و تصاویر درس‌های موجود را برای استفادهٔ آفلاین آماده کن.
+          </p>
+          <OfflineDownloadControl />
           {offlineBankList.corruptCount > 0 && (
             <p role="alert" lang="fa" dir="rtl">
               برخی کپی‌های آفلاین تأیید نشدند؛ داده‌ها دست‌نخورده باقی ماندند.
@@ -198,11 +218,11 @@ export function DriveBankPanel({
         <div className="toolbar">
           <GoogleLoginButton
             buttonRef={connectButton}
-            disabled={busy || !ready}
+            disabled={busy || !ready || !online}
             label={connected || (token.current === null && config.fileId) ? 'Sign in to Google identity' : 'Sign in to Google identity'}
           />
           <GoogleDriveAccessButton
-            disabled={busy || !ready}
+            disabled={busy || !ready || !online}
             label={connected ? 'Reconnect Google Drive access' : 'Grant Google Drive access'}
             onComplete={async (driveToken) => {
               setBusy(true);
@@ -213,12 +233,17 @@ export function DriveBankPanel({
               }
             }}
           />
-          {connected && <Button onClick={choose}>Choose bank file</Button>}
+          {connected && (
+            <Button disabled={!online} onClick={choose}>
+              Choose bank file
+            </Button>
+          )}
           {connected && config.fileId && (
             <Button
               onClick={() => {
                 void sync(true);
               }}
+              disabled={!online}
             >
               Check now
             </Button>

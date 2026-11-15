@@ -75,6 +75,7 @@ test('verified offline banks reopen and switch offline while answer and steps su
   await page.goto('./');
   await expect(page.getByRole('button', { name: 'Step 1', exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  await expect(page.getByRole('dialog', { name: 'وضعیت آفلاین و همگام‌سازی' })).toBeHidden();
 
   const legacyKeys = legacyCacheRecords.map(({ key }) => key);
   await expect

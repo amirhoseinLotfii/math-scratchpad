@@ -10,6 +10,8 @@ test('status chip stays compact at 320px, tracks offline state, and preserves ed
   await expect(field).toBeVisible();
   await expect(chip).toBeVisible();
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  const dialog = page.getByRole('dialog', { name: 'وضعیت آفلاین و همگام‌سازی' });
+  await expect(dialog).toBeHidden();
   await page.setViewportSize({ width: 320, height: 844 });
   const compactGeometry = await page.evaluate(() => ({
     viewport: window.innerWidth,
@@ -33,7 +35,6 @@ test('status chip stays compact at 320px, tracks offline state, and preserves ed
 
   await page.setViewportSize({ width: 320, height: 844 });
   await chip.click();
-  const dialog = page.getByRole('dialog', { name: 'وضعیت آفلاین و همگام‌سازی' });
   await expect(dialog).toBeVisible();
   const dialogWidth = await dialog.evaluate((element) => element.getBoundingClientRect().width);
   expect(dialogWidth).toBeLessThanOrEqual(288);

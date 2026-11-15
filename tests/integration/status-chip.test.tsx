@@ -49,7 +49,7 @@ describe('status chip', () => {
     expect(dialog).toHaveTextContent('بانک‌های ذخیره‌شده');
     expect(dialog).toHaveTextContent('تصاویر ذخیره‌شده');
     expect(dialog).toHaveTextContent('ذخیره‌سازی پایدار');
-    expect(dialog).toHaveTextContent('نسخهٔ برنامه');
+    expect(dialog).toHaveTextContent('نسخهٔ بستهٔ برنامه');
     expect(openSyncPanel).not.toHaveBeenCalled();
   });
 

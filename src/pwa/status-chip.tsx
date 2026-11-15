@@ -3,7 +3,7 @@ import { Button } from '../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../shared/ui/dialog';
 import { getDefaultSyncRuntime } from '../sync/runtime';
 import { APP_BUILD_SHA } from './build-identity';
-import { UPDATE_STATE_EVENT } from './update-contract';
+import { OfflineDownloadControl } from './offline-download-control';
 import {
   derivePwaStatus,
   getConnectivitySnapshot,
@@ -42,18 +42,6 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
   const [updateError, setUpdateError] = useState('');
 
   useEffect(() => {
-    const handleUpdateReady = (event: Event) => {
-      const detail = (event as CustomEvent<{ available?: unknown }>).detail;
-      if (!detail?.available) return;
-      const active = document.activeElement as HTMLElement | null;
-      const editing = !!active && (active.isContentEditable || active.matches('input, textarea, math-field, [contenteditable="true"]'));
-      if (!editing) setOpen(true);
-    };
-    window.addEventListener(UPDATE_STATE_EVENT, handleUpdateReady);
-    return () => window.removeEventListener(UPDATE_STATE_EVENT, handleUpdateReady);
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
     let active = true;
     void Promise.all([
@@ -84,7 +72,6 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
       ?.syncAllNow()
       .catch(() => undefined);
   };
-  const downloadEverything = () => window.dispatchEvent(new CustomEvent('math-scratchpad:download-everything'));
   const checkUpdate = () => void requestServiceWorkerUpdateCheck().catch(() => undefined);
   const reloadForUpdate = () => {
     setUpdateError('');
@@ -188,11 +175,16 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
             {(status.state === 'needs_login' || status.state === 'error') && onOpenSyncPanel && (
               <Button onClick={openSyncPanel}>{status.state === 'needs_login' ? 'ورود به همگام‌سازی' : 'باز کردن تنظیم همگام‌سازی'}</Button>
             )}
-            <Button onClick={syncNow}>همگام‌سازی الان</Button>
-            <Button onClick={downloadEverything}>دانلود همه برای آفلاین</Button>
-            <Button onClick={checkUpdate}>بررسی نسخهٔ جدید</Button>
+            <Button disabled={!snapshot.online} onClick={syncNow}>
+              همگام‌سازی الان
+            </Button>
+            <OfflineDownloadControl />
+            <Button disabled={!snapshot.online} onClick={checkUpdate}>
+              بررسی نسخهٔ جدید
+            </Button>
             <Button onClick={() => setOpen(false)}>بستن</Button>
           </div>
+          {!snapshot.online && <p role="status">برای ورود، دریافت بانک از Drive و همگام‌سازی، به اینترنت نیاز است.</p>}
         </DialogContent>
       </Dialog>
     </>
