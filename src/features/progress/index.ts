@@ -40,11 +40,6 @@ export {
 } from './reading-position-anchors';
 
 export {
-  useReadingPosition,
-  useLessonPosition,
-} from './use-reading-position';
-
-export {
   ReadingPositionProvider,
   useReadingPositionContext,
   useOptionalReadingPositionContext,

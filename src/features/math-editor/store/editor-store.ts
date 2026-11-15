@@ -462,10 +462,23 @@ const handlers = {
 };
 type HandlerName = keyof typeof handlers;
 type PayloadOf<F> = F extends (state: ScratchState, action: infer A) => void ? A extends { payload: infer P } ? P : never : never;
-type Creators = { [K in HandlerName]: [PayloadOf<(typeof handlers)[K]>] extends [never] ? () => { type: K } : (payload: PayloadOf<(typeof handlers)[K]>) => { type: K; payload: PayloadOf<(typeof handlers)[K]> } };
-export type EditorAction = { type: HandlerName; payload?: unknown };
-export const actions = Object.fromEntries(Object.keys(handlers).map(type => [type, (payload?: unknown) => ({ type, payload })])) as unknown as Creators;
+type ActionFor<K extends HandlerName> =
+  [PayloadOf<(typeof handlers)[K]>] extends [never]
+    ? { type: K; payload?: undefined }
+    : { type: K; payload: PayloadOf<(typeof handlers)[K]> };
+type Creators = {
+  [K in HandlerName]: [PayloadOf<(typeof handlers)[K]>] extends [never]
+    ? () => ActionFor<K>
+    : (payload: PayloadOf<(typeof handlers)[K]>) => ActionFor<K>;
+};
+export type EditorAction = { [K in HandlerName]: ActionFor<K> }[HandlerName];
+
+// The runtime object is generated from the same handler keys as the typed action map.
+export const actions = Object.fromEntries(
+  Object.keys(handlers).map(type => [type, (payload?: unknown) => ({ type, payload })]),
+) as Creators;
 export function reducer(state: ScratchState = initialState(), action: EditorAction): ScratchState {
+  // Indexed access loses TypeScript's correlation between an action key and its payload.
   const handler = handlers[action.type] as ((draft: ScratchState, action: EditorAction) => void) | undefined;
   return handler ? produce(state, draft => handler(draft, action)) : state;
 }
