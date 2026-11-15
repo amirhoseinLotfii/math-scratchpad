@@ -20,15 +20,21 @@ async function writeIndex(cache: Cache, entries: ImageEntry[]) {
   await cache.put(metadataKey, Response.json(entries));
 }
 
-export async function cacheImage(request: Request) {
+export type ImageCacheFailure =
+  'not_found' | 'http_status' | 'not_cors_readable' | 'not_an_image' | 'too_large' | 'quota' | 'cache_write_failed';
+export type ImageCacheResult = { response: Response; cached: true } | { response: Response; cached: false; reason: ImageCacheFailure };
+
+export async function cacheImageWithResult(request: Request): Promise<ImageCacheResult> {
   const response = await fetch(request);
-  if (response.status !== 200 || !['basic', 'cors'].includes(response.type)) return response;
-  if (!(response.headers.get('content-type') ?? '').toLowerCase().startsWith('image/')) return response;
+  if (response.status !== 200) return { response, cached: false, reason: response.status === 404 ? 'not_found' : 'http_status' };
+  if (!['basic', 'cors'].includes(response.type)) return { response, cached: false, reason: 'not_cors_readable' };
+  if (!(response.headers.get('content-type') ?? '').toLowerCase().startsWith('image/'))
+    return { response, cached: false, reason: 'not_an_image' };
   const copy = response.clone();
   const requestedBytes = Number(copy.headers.get('content-length'));
-  if (requestedBytes > MAX_BYTES) return response;
+  if (requestedBytes > MAX_BYTES) return { response, cached: false, reason: 'too_large' };
   const bytes = requestedBytes > 0 ? requestedBytes : (await copy.clone().blob()).size;
-  if (bytes > MAX_BYTES) return response;
+  if (bytes > MAX_BYTES) return { response, cached: false, reason: 'too_large' };
 
   const write = writes
     .catch(() => undefined)
@@ -47,8 +53,17 @@ export async function cacheImage(request: Request) {
       await writeIndex(cache, entries);
     });
   writes = write;
-  await write.catch(() => undefined);
-  return response;
+  try {
+    await write;
+    return { response, cached: true };
+  } catch (error) {
+    const reason = error instanceof DOMException && error.name === 'QuotaExceededError' ? 'quota' : 'cache_write_failed';
+    return { response, cached: false, reason };
+  }
+}
+
+export async function cacheImage(request: Request) {
+  return (await cacheImageWithResult(request)).response;
 }
 
 export async function readCachedImage(request: Request) {

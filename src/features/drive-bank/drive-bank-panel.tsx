@@ -6,6 +6,7 @@ import { validateSession } from '../../persistence';
 import { Button } from '../../shared/ui/button';
 import { GoogleDriveAccessButton, GoogleLoginButton } from '../../sync/google-login-button';
 import { archiveSession, bankDocument, readArchive, type ArchivedSession, type DriveBank } from './drive-bank';
+import { listOfflineBanks, type CachedOfflineBank, type OfflineBankList } from '../../pwa/offline-bank-cache';
 
 import { BankSessionConfirmation, type BankConfirmation } from './bank-session-confirmation';
 import { useDriveBankConnection } from './use-drive-bank-connection';
@@ -31,6 +32,8 @@ export function DriveBankPanel({
   const { config, connected, message, busy, ready, available, checkedAt, token, setBusy, setMessage, announce, afterToken, choose, sync } =
     useDriveBankConnection({ open, store, onAvailable, onBankReady, onResumeBank });
   const [archives, setArchives] = useState<ArchivedSession[]>([]);
+  const [offlineBankList, setOfflineBankList] = useState<OfflineBankList>({ banks: [], corruptCount: 0 });
+  const offlineBanks = offlineBankList.banks;
   const [confirmation, setConfirmation] = useState<BankConfirmation | null>(null);
   const panel = useRef<HTMLElement>(null),
     connectButton = useRef<HTMLDivElement>(null);
@@ -43,26 +46,50 @@ export function DriveBankPanel({
       setMessage('Saved sessions could not be read. No data was changed.');
     }
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    let mounted = true;
+    void listOfflineBanks()
+      .then((banks) => {
+        if (mounted) setOfflineBankList(banks);
+      })
+      .catch(() => {
+        if (mounted) setOfflineBankList({ banks: [], corruptCount: 0 });
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [open, available?.version]);
   const closePanelRef = useBankPanelFocus({ open, ready, panel, connectButton, close, confirmation });
-  async function startBank() {
-    if (!available || !available.bank.questions.length) return;
+  async function openBank(bank: DriveBank, version: string, checkCloudTransition: boolean) {
     setBusy(true);
     try {
-      const doc = bankDocument(available.bank, available.version);
+      const doc = bankDocument(bank, version);
       await archiveSession(store.getState());
-      await onBeforeBankLoad?.(available.bank, available.version);
+      if (checkCloudTransition) await onBeforeBankLoad?.(bank, version);
       dispatch(actions.load({ doc }));
       dispatch(actions.keyboard(initialKeyboardOpen(false)));
-      onBankReady?.(available.bank, available.version);
-      onResumeBank?.(available.bank, available.version);
+      onBankReady?.(bank, version);
+      onResumeBank?.(bank, version);
       setArchives(readArchive());
       onAvailable(false);
-      setMessage('The new batch is ready. The previous work was safely archived first.');
+      setMessage(
+        checkCloudTransition
+          ? 'The new batch is ready. The previous work was safely archived first.'
+          : `Offline bank ${bank.bank_id} is ready. The previous session was saved locally.`,
+      );
     } catch (e) {
       setMessage(`${e instanceof Error ? e.message : 'The previous session could not be saved.'} The new batch was not opened.`);
     } finally {
       setBusy(false);
     }
+  }
+  async function startBank() {
+    if (!available || !available.bank.questions.length) return;
+    await openBank(available.bank, available.version, true);
+  }
+  async function openOfflineBank(cached: CachedOfflineBank) {
+    await openBank(cached.bank, cached.contentVersion, false);
   }
   async function restore(saved: ArchivedSession) {
     setBusy(true);
@@ -82,11 +109,16 @@ export function DriveBankPanel({
     confirmationTrigger.current = trigger;
     setConfirmation(kind === 'batch' ? { kind } : saved ? { kind, saved } : null);
   }
+  function requestOfflineBankConfirmation(trigger: HTMLElement, bank: CachedOfflineBank) {
+    confirmationTrigger.current = trigger;
+    setConfirmation({ kind: 'offline-bank', bank });
+  }
   async function confirmRequestedAction() {
     const action = confirmation;
     setConfirmation(null);
     if (action?.kind === 'batch') await startBank();
     else if (action?.kind === 'restore') await restore(action.saved);
+    else if (action?.kind === 'offline-bank') await openOfflineBank(action.bank);
     close();
   }
   const current = store.getState().doc.session;
@@ -129,6 +161,40 @@ export function DriveBankPanel({
             </ul>
           </details>
         ) : null}
+        <section aria-label="Cached offline banks">
+          <h3>Cached offline banks ({offlineBanks.length})</h3>
+          {offlineBankList.corruptCount > 0 && (
+            <p role="alert" lang="fa" dir="rtl">
+              برخی کپی‌های آفلاین تأیید نشدند؛ داده‌ها دست‌نخورده باقی ماندند.
+            </p>
+          )}
+          {offlineBanks.length ? (
+            <ul>
+              {offlineBanks.map((cached) => {
+                const currentSession = store.getState().doc.session;
+                const isCurrent = currentSession?.bankId === cached.bank.bank_id && currentSession.bankVersion === cached.contentVersion;
+                return (
+                  <li key={`${cached.fileId}:${cached.contentVersion}`}>
+                    <span>
+                      <span>
+                        {cached.bank.bank_id} · {cached.declaredVersion}
+                      </span>
+                      <small lang="fa" dir="rtl">
+                        نسخهٔ ذخیره‌شده — {new Date(cached.savedAt).toLocaleDateString('fa-IR')} ·{' '}
+                        {new Intl.NumberFormat('fa-IR').format(cached.sizeChars)} نویسه
+                      </small>
+                    </span>{' '}
+                    <Button disabled={busy || isCurrent} onClick={(event) => requestOfflineBankConfirmation(event.currentTarget, cached)}>
+                      Open offline bank {cached.bank.bank_id}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p>No verified offline banks are cached on this device yet.</p>
+          )}
+        </section>
         <div className="toolbar">
           <GoogleLoginButton
             buttonRef={connectButton}

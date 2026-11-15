@@ -6,10 +6,8 @@ import {
   bankCacheStorageKey,
   metaFingerprint,
   parseBankText,
-  readBankCache,
   readDriveMeta,
   readPrivateBankText,
-  saveBankCache,
   snapshotVersion,
   type DriveBank,
   type DriveMeta,
@@ -30,6 +28,8 @@ import {
 } from './google';
 import { permittedAccount } from './identity';
 import { readBankViaWorker } from './worker-bank';
+import { findRestorableBank } from './offline-bank-restore';
+import { saveVerifiedBank } from './save-verified-bank';
 
 import type { ScratchStore } from '../../store';
 type Options = {
@@ -55,26 +55,28 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     syncing = useRef(false),
     selectedFileByUser = useRef(false);
   const onBankReadyRef = useRef(onBankReady),
-    onAvailableRef = useRef(onAvailable);
+    onAvailableRef = useRef(onAvailable),
+    onResumeBankRef = useRef(onResumeBank);
   onBankReadyRef.current = onBankReady;
   onAvailableRef.current = onAvailable;
+  onResumeBankRef.current = onResumeBank;
   const cfg = useRef(config);
   cfg.current = config;
   async function restoreCachedBank(fileId: string) {
-    if (!fileId) return;
     try {
-      const cached = await readBankCache(fileId);
+      const cached = await findRestorableBank(fileId, store.getState().doc.session);
       if (!active.current || cfg.current.fileId !== fileId || !cached) return;
       fingerprint.current = cached.fingerprint;
       setAvailable({ bank: cached.bank, version: cached.version });
-      const session = store.getState().doc.session;
       onAvailableRef.current(
-        cached.bank.questions.length > 0 && !(session?.bankId === cached.bank.bank_id && session.bankVersion === cached.version),
+        cached.bank.questions.length > 0 &&
+          !(store.getState().doc.session?.bankId === cached.bank.bank_id && store.getState().doc.session?.bankVersion === cached.version),
       );
       onBankReadyRef.current?.(cached.bank, cached.version);
+      if (cached.resume) onResumeBankRef.current?.(cached.bank, cached.version);
       setMessage(
         `Restored the verified local bank ${cached.bank.bank_id} (${cached.bank.version}); ` +
-          'it will be checked against Drive after reconnecting.',
+          (navigator.onLine ? 'it will be checked against Drive.' : 'it is ready to use offline.'),
       );
     } catch {
       // A corrupt cache is left untouched; a fresh verified Drive download can replace it.
@@ -227,7 +229,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       return;
     }
     const version = await snapshotVersion(parsed);
-    const cache = await saveBankCache(fileId, parsed, version, fp);
+    const { legacyCache, offlineWarning } = await saveVerifiedBank(fileId, parsed, version, fp);
     setAvailable({ bank: parsed, version });
     announce(parsed, version);
     onBankReady?.(parsed, version);
@@ -238,7 +240,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       onResumeBank?.(parsed, version);
     }
     const current = store.getState().doc.session;
-    setMessage(bankReadyMessage(parsed, version, cache, current));
+    setMessage([bankReadyMessage(parsed, version, legacyCache, current), offlineWarning].filter(Boolean).join(' '));
   }
   useBankPolling(connected && open, sync);
   function afterToken(t: Token, accountVerified = false) {

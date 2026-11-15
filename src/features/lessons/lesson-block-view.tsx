@@ -1,4 +1,4 @@
-import { Fragment, useId, useState } from 'react';
+import { Fragment, useEffect, useId, useState } from 'react';
 import { Button } from '../../shared/ui/button';
 import type { Concept, ExampleBlock, LessonBlock, Lang } from './types';
 
@@ -111,8 +111,20 @@ function LessonExample({
 
 function LessonImage({ src, alt, caption, lang, uiLang }: { src: string; alt: string; caption?: string; lang?: Lang; uiLang: Lang }) {
   const [failed, setFailed] = useState(false);
+  const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const unavailable = uiLang === 'fa' ? 'تصویر در دسترس نیست.' : 'Image unavailable.';
+  const notCachedOffline = uiLang === 'fa' ? 'تصویر آفلاین ذخیره نشده.' : 'Image not saved offline.';
   const description = uiLang === 'fa' ? 'نمایش توضیح تصویر' : 'Show image description';
+  useEffect(() => {
+    const online = () => setOffline(false);
+    const offline = () => setOffline(true);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+    };
+  }, []);
   const captionView = caption && (
     <figcaption className="lesson-image-caption" lang={languageForText(caption, lang)} dir={contentDirection(caption, lang)}>
       <LessonText text={caption} lang={lang} />
@@ -122,6 +134,7 @@ function LessonImage({ src, alt, caption, lang, uiLang }: { src: string; alt: st
     <figure className="lesson-image-fallback">
       <span className="lesson-image-fallback-label" role="status" lang={uiLang}>
         {unavailable}
+        {offline && ` ${notCachedOffline}`}
       </span>
       {captionView}
       <figcaption>

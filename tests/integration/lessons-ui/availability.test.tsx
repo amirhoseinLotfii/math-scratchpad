@@ -84,6 +84,22 @@ describe('lesson learning screen', () => {
     expect(screen.getByText('Diagram showing a triangle')).toBeVisible();
   });
 
+  it('labels a missing offline image without hiding its text description', () => {
+    render(
+      <LessonBlockView
+        block={{ type: 'image', src: '/missing-offline-image.png', alt: 'نمودار آفلاین' }}
+        blockKey="offline-image"
+        revealed={0}
+        onReveal={() => undefined}
+        uiLang="fa"
+      />,
+    );
+    window.dispatchEvent(new Event('offline'));
+    fireEvent.error(screen.getByRole('img', { name: 'نمودار آفلاین' }));
+    expect(screen.getByRole('status')).toHaveTextContent('تصویر آفلاین ذخیره نشده.');
+    expect(screen.getByText('نمودار آفلاین')).not.toBeVisible();
+  });
+
   it('renders a translated figure caption and links the OpenStax source and license', () => {
     render(
       <>

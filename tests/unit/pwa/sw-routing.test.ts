@@ -7,7 +7,15 @@ const files = new Set(['index.html', 'assets/main.js']);
 it('routes only eligible app shell and image requests through cache', () => {
   const classify = (path: string, options: Partial<Request> = {}) =>
     serviceWorkerRoute(
-      { url: new URL(path, scope).href, mode: 'cors', headers: new Headers(), method: 'GET', destination: '', ...options },
+      {
+        url: new URL(path, scope).href,
+        mode: 'cors',
+        headers: new Headers(),
+        method: 'GET',
+        destination: '',
+        credentials: 'same-origin',
+        ...options,
+      },
       scope,
       files,
     );
@@ -21,5 +29,8 @@ it('routes only eligible app shell and image requests through cache', () => {
   expect(classify('/other-app/main.js', { mode: 'navigate' })).toBe('network');
   expect(classify('https://other.test/api')).toBe('network');
   expect(classify('https://other.test/lesson.png', { destination: 'image' })).toBe('image');
+  expect(classify('https://other.test/lesson.png?token=synthetic', { destination: 'image' })).toBe('network');
+  expect(classify('https://other.test/lesson.png?state=synthetic', { destination: 'image' })).toBe('network');
+  expect(classify('https://other.test/lesson.png', { destination: 'image', credentials: 'include' })).toBe('network');
   expect(classify('./math.png', { destination: 'image' })).toBe('image');
 });

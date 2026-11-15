@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
-import { cacheImage, imageCacheStatus, readCachedImage } from './sw-image-cache';
+import { cacheImage, cacheImageWithResult, imageCacheStatus, readCachedImage } from './sw-image-cache';
 import { serviceWorkerRoute } from './sw-routing';
+import { hasCredentialQuery } from './image-safety';
 
 declare const BUILD_SHA: string;
 declare const PRECACHE_PATHS: string[];
@@ -74,13 +75,10 @@ async function cacheImageList(source: Client, urls: string[]) {
   for (const [index, url] of urls.entries()) {
     try {
       const request = new Request(url, { mode: 'cors', credentials: 'omit' });
-      const response = await cacheImage(request);
-      const readable = response.ok && response.type !== 'opaque';
-      if (!readable || !response.headers.get('content-type')?.startsWith('image/')) {
-        throw new Error('Image response unavailable');
-      }
+      const result = await cacheImageWithResult(request);
+      if (!result.cached) failed.push({ url, reason: result.reason });
     } catch {
-      failed.push({ url, reason: 'image_unavailable' });
+      failed.push({ url, reason: 'network_error' });
     }
     source.postMessage({ type: 'CACHE_PROGRESS', done: index + 1, total: urls.length, failed });
   }
@@ -110,7 +108,7 @@ worker.addEventListener('message', (event) => {
       if (typeof value !== 'string' || value.length > 2000) return false;
       try {
         const url = new URL(value);
-        return !url.username && !url.password && (url.origin === scope.origin || url.protocol === 'https:');
+        return !url.username && !url.password && !hasCredentialQuery(url) && (url.origin === scope.origin || url.protocol === 'https:');
       } catch {
         return false;
       }
