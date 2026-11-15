@@ -1,3 +1,10 @@
+import { projectionSequence, setProjectionSequence, readNotionProjection, applyNotionProjection, repairNotionProjections, rebuildNotionProjectionsFromEventLog } from './event-store/notion-projection-repository';
+import { resetPreview } from './event-store/scoped-reset-preview';
+import { executeScopedReset } from './event-store/scoped-reset-service';
+import type { ScopedResetDependencies } from './event-store/scoped-reset-preview';
+import { executeLearningReset, learningResetStatus, learningResetClientStatus, releaseLearningReset } from './event-store/reset-service';
+import { trashLearningMirrorFiles } from './event-store/reset-drive-mirror';
+import { notionResetReconciliationPendingCount } from './event-store/reset-repository';
 import { performNotionSync, type StoredNotionMirrorState } from './event-store/notion-mirror-service';
 import { isScopedResetSharedStateKey } from '../../shared/contracts/storage-keys';
 import { performDriveSync, type DriveSnapshotWrite } from './event-store/drive-mirror-service';
@@ -57,21 +64,9 @@ import {
 } from './drive-projection';
 
 type MirrorSubrequestBudget = { used: number; limit: number };
-type ScopedResetOperationRow = {
-  operation_id: string;
-  scope_json: string;
-  snapshot_token: string;
-  state: 'prepared' | 'approved' | 'completed' | 'expired';
-  expires_at: number;
-  result_json: string | null;
-};
 class MirrorSubrequestBudgetExceeded extends Error {
   readonly code = 'subrequest_budget_exceeded';
   constructor() { super('subrequest_budget_exceeded'); }
-}
-
-function isLearningMirrorFileName(name: string): boolean {
-  return /^(?:events_\d{4}-\d{2}|progress|editor_state|sync_manifest|sync_backup_\d{4}-\d{2}-\d{2})(?:\.sha256-[a-f0-9]{64})?\.(?:jsonl|json)$/i.test(name);
 }
 
 export function mergeWeeklyBackupContent(remote: string, desired: string): string {
@@ -132,8 +127,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const url = new URL(request.url);
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset') return this.executeLearningReset(request);
     if (request.method === 'POST' && url.pathname === '/internal/learning-reset/release') return this.releaseLearningReset(request);
-    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/status') return this.learningResetStatus();
-    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/client-status') return this.learningResetClientStatus();
+    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/status') return learningResetStatus(this.ctx.storage, this.activeLearningResetId !== undefined);
+    if (request.method === 'GET' && url.pathname === '/internal/learning-reset/client-status') return learningResetClientStatus(this.ctx.storage, () => this.consumeRateLimit());
     if (request.method === 'GET' && url.pathname === '/internal/learning-reset/epoch') return this.learningResetEpoch();
     if (this.isLearningResetLocked() && this.isLearningOrMirrorRoute(url.pathname, request.method)) {
       return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
@@ -185,17 +180,17 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const rate = this.consumeRateLimit();
     if (rate) return rate;
 
-    if (url.pathname === '/reset/preview') return this.resetPreview(url);
-    if (request.method === 'POST' && url.pathname === '/reset/execute') return this.executeScopedReset(request);
+    if (url.pathname === '/reset/preview') return resetPreview(this.scopedResetDependencies(), url);
+    if (request.method === 'POST' && url.pathname === '/reset/execute') return executeScopedReset(this.scopedResetDependencies(), request);
     if (url.pathname === '/state') return request.method === 'GET' ? readAppState(this.ctx.storage)
       : this.trackLearningMutation(() => writeAppState(this.ctx.storage, request, () => this.isLearningResetLocked(), (key, revision) => this.mirrorStateChange(key, revision)));
     if (url.pathname === '/events') return this.trackLearningMutation(() => appendEvents(
       this.ctx.storage, request, () => this.isLearningResetLocked(),
       (seq, event) => {
-        const projectedThrough = this.projectionSequence();
+        const projectedThrough = projectionSequence(this.ctx.storage);
         if (projectedThrough === seq - 1) {
-          this.applyNotionProjection(event);
-          this.setProjectionSequence(seq);
+          applyNotionProjection(this.ctx.storage, event);
+          setProjectionSequence(this.ctx.storage, seq);
         }
       },
       async cursor => {
@@ -215,6 +210,28 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       return json({ notion: status }, status.status === 'synced' ? 200 : status.status === 'not_configured' ? 503 : status.status === 'pending' ? 202 : 502);
     }
     return readPage(this.ctx.storage, url, url.pathname === '/snapshot');
+  }
+
+  private executeLearningReset(request: Request): Promise<Response> {
+    return executeLearningReset({
+      env: this.env,
+      storage: this.ctx.storage,
+      activeReset: () => this.activeLearningResetId,
+      setActiveReset: id => { this.activeLearningResetId = id; },
+      waitForLearningMutations: () => this.waitForLearningMutations(),
+      waitForMirrors: () => Promise.allSettled([this.driveSyncPromise, this.weeklyBackupPromise, this.notionSyncPromise, this.driveOperationQueue]),
+      trashLearningMirrorFiles: bankFileId => trashLearningMirrorFiles(
+        this.env, this.driveConfigured(), () => this.readDriveState(),
+        () => this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch), bankFileId,
+      ),
+      reconcileNotionResetReferences: resetId => this.reconcileNotionResetReferences(resetId),
+      driveFailureStage: () => this.driveClient?.diagnosticStage,
+      recordDiagnostic: (destination, stage, code) => this.recordDiagnostic(destination, stage, code),
+    }, request);
+  }
+
+  private releaseLearningReset(request: Request): Promise<Response> {
+    return releaseLearningReset(this.ctx.storage, request);
   }
 
   private isLearningResetLocked(): boolean {
@@ -258,328 +275,6 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     await new Promise<void>(resolve => this.learningMutationWaiters.add(resolve));
   }
 
-  /** Retryable coordinated reset. The public entry point requires a temporary Worker secret. */
-  private async executeLearningReset(request: Request): Promise<Response> {
-    const body = await readBoundedBody(request, 4_096);
-    if (!body) return json({ error: 'payload_too_large' }, 413);
-    let input: { resetId?: unknown; takeover?: unknown };
-    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
-    catch { return json({ error: 'invalid_reset_request' }, 400); }
-    if (typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)) {
-      return json({ error: 'invalid_reset_request' }, 400);
-    }
-    const resetId = input.resetId;
-    const takeover = input.takeover === true;
-    if (takeover && this.activeLearningResetId && this.activeLearningResetId !== resetId) {
-      return json({ error: 'learning_reset_active' }, 409);
-    }
-    const claim = this.ctx.storage.transactionSync(() => {
-      const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null }>(
-        `SELECT status, reset_id FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
-      ).one();
-      // An explicit admin takeover lets a new reset id claim a lock orphaned by a lost reset id.
-      const orphanTakeover = takeover && current.reset_id !== resetId;
-      if (current.status === 'running' && current.reset_id !== resetId && !orphanTakeover) return 'in_progress';
-      if (current.status === 'running' && current.reset_id === resetId) return 'claimed';
-      if (current.status === 'awaiting_release' && !orphanTakeover) return current.reset_id === resetId ? 'awaiting_release' : 'in_progress';
-      if (current.status === 'released' && current.reset_id === resetId) return 'complete';
-      this.ctx.storage.sql.exec(
-        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'running', reset_id = ?, completed_at = NULL, client_epoch = ? WHERE singleton = 1`,
-        resetId, crypto.randomUUID(),
-      );
-      return 'claimed';
-    });
-    if (claim === 'in_progress') return json({ error: 'learning_reset_in_progress' }, 409);
-    if (claim === 'awaiting_release' || claim === 'complete') {
-      const dataSources = notionDataSourcesFromEnv(this.env);
-      if (dataSources && this.env.NOTION_API_KEY && this.notionResetReconciliationPendingCount(resetId) > 0) {
-        this.activeLearningResetId = resetId;
-        try {
-          const notion = await this.reconcileNotionResetReferences(resetId);
-          if (claim === 'awaiting_release') return json({ completed: true, releaseRequired: true, notion });
-          return json({ completed: true, releaseRequired: false, notion });
-        } finally {
-          if (this.activeLearningResetId === resetId) this.activeLearningResetId = undefined;
-        }
-      }
-      if (claim === 'complete') return json({ error: 'learning_reset_already_complete' }, 409);
-      return json({ completed: true, releaseRequired: true, notion: { pending: this.notionResetReconciliationPendingCount(resetId) } });
-    }
-
-    this.activeLearningResetId = resetId;
-    try {
-      await this.waitForLearningMutations();
-      await Promise.allSettled([
-        this.driveSyncPromise,
-        this.weeklyBackupPromise,
-        this.notionSyncPromise,
-        this.driveOperationQueue,
-      ]);
-      await this.ctx.storage.deleteAlarm();
-
-      const bankFileId = this.ctx.storage.sql.exec<{ file_id: string }>(
-        'SELECT file_id FROM bank_source WHERE singleton = 1',
-      ).toArray()[0]?.file_id;
-      const driveResult = await this.trashLearningMirrorFiles(bankFileId);
-      if (driveResult.remainingLearningMirrors) {
-        // Partial Drive progress: keep the lock and every cloud record until a later retry finishes Drive.
-        return json({ completed: false, inProgress: true, drive: driveResult, retryWithSameResetId: true }, 202);
-      }
-      this.journalNotionResetReferences(resetId);
-      const dataSources = notionDataSourcesFromEnv(this.env);
-      const notion = dataSources && this.env.NOTION_API_KEY
-        ? await this.reconcileNotionResetReferences(resetId)
-        : { archived: 0, protected: 0, unverified: 0, retryable: 0, pending: this.notionResetReconciliationPendingCount(resetId) };
-      if (notion.pending > 0 && dataSources && this.env.NOTION_API_KEY) {
-        return json({ completed: false, inProgress: true, notion, retryWithSameResetId: true }, 202);
-      }
-      const cloudResult = this.clearLearningRecords();
-      await this.ctx.storage.delete(DRIVE_STATE_KEY);
-      await this.ctx.storage.delete(NOTION_MIRROR_STATE_KEY);
-      await this.ctx.storage.deleteAlarm();
-      this.ctx.storage.transactionSync(() => {
-        this.ctx.storage.sql.exec(
-          `UPDATE ${LEARNING_RESET_TABLE} SET status = 'awaiting_release', completed_at = ? WHERE singleton = 1 AND reset_id = ?`,
-          new Date().toISOString(), resetId,
-        );
-      });
-      return json({
-        completed: true,
-        releaseRequired: true,
-        drive: driveResult,
-        cloud: cloudResult,
-        notion,
-        preserved: { bankSourceRecords: cloudResult.bankSourceRecords, activeAuthSessions: cloudResult.activeAuthSessions },
-      });
-    } catch (error) {
-      const code = error instanceof DriveMirrorError ? error.code : 'reset_failed';
-      const failureStage = this.driveClient?.diagnosticStage ?? 'worker_internal';
-      const safeStage = `drive_reset:${failureStage}`.slice(0, 64);
-      this.recordDiagnostic('drive', safeStage, code);
-      return json({ error: 'learning_reset_incomplete', code, failureStage: safeStage, retryWithSameResetId: true }, 502);
-    } finally {
-      if (this.activeLearningResetId === resetId) this.activeLearningResetId = undefined;
-    }
-  }
-
-  /** Read-only lock state for the admin; never returns the reset id itself. */
-  private learningResetStatus(): Response {
-    const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null; completed_at: string | null }>(
-      `SELECT status, reset_id, completed_at FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
-    ).one();
-    return json({
-      status: current.status,
-      hasResetId: current.reset_id !== null,
-      completedAt: current.completed_at,
-      activeInThisInstance: this.activeLearningResetId !== undefined,
-    });
-  }
-
-  /** Public clients need only the lock state and current/candidate epoch to recover safely. */
-  private learningResetClientStatus(): Response {
-    const rate = this.consumeRateLimit();
-    if (rate) return rate;
-    const current = this.ctx.storage.sql.exec<{ status: string; client_epoch: string | null }>(
-      `SELECT status, client_epoch FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
-    ).one();
-    const status = ['idle', 'running', 'awaiting_release', 'released'].includes(current.status)
-      ? current.status
-      : 'running';
-    return json({ status, epoch: current.client_epoch ?? LEARNING_RESET_EPOCH });
-  }
-
-  private async releaseLearningReset(request: Request): Promise<Response> {
-    const body = await readBoundedBody(request, 4_096);
-    if (!body) return json({ error: 'payload_too_large' }, 413);
-    let input: { resetId?: unknown };
-    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
-    catch { return json({ error: 'invalid_reset_request' }, 400); }
-    if (typeof input.resetId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.resetId)) {
-      return json({ error: 'invalid_reset_request' }, 400);
-    }
-    const status = this.ctx.storage.transactionSync(() => {
-      const current = this.ctx.storage.sql.exec<{ status: string; reset_id: string | null; client_epoch: string | null }>(
-        `SELECT status, reset_id, client_epoch FROM ${LEARNING_RESET_TABLE} WHERE singleton = 1`,
-      ).one();
-      if (current.status === 'released' && current.reset_id === input.resetId) {
-        if (!current.client_epoch) {
-          this.ctx.storage.sql.exec(
-            `UPDATE ${LEARNING_RESET_TABLE} SET client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
-            crypto.randomUUID(), input.resetId,
-          );
-        }
-        return 'released';
-      }
-      if (current.status !== 'awaiting_release' || current.reset_id !== input.resetId) return 'not_ready';
-      const clientEpoch = current.client_epoch ?? crypto.randomUUID();
-      this.ctx.storage.sql.exec(
-        `UPDATE ${LEARNING_RESET_TABLE} SET status = 'released', client_epoch = ? WHERE singleton = 1 AND reset_id = ?`,
-        clientEpoch, input.resetId,
-      );
-      return 'released';
-    });
-    if (status !== 'released') return json({ error: 'learning_reset_not_ready' }, 409);
-    return json({ released: true });
-  }
-
-  private async trashLearningMirrorFiles(bankFileId?: string): Promise<{
-    movedToTrash: number;
-    inspectedFiles: number;
-    preservedFiles: number;
-    protectedBankFileSkipped: boolean;
-    foldersFound: number;
-    remainingLearningMirrors?: boolean;
-  }> {
-    const state = await this.readDriveState();
-    const stored = state.folders;
-    if (!this.driveConfigured()) {
-      if (stored) throw new DriveMirrorError('not_configured');
-      return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 0 };
-    }
-
-    this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
-    const client = this.driveClient;
-    const rootName = this.env.GOOGLE_DRIVE_ROOT_FOLDER_NAME?.trim() || 'Math_Project';
-    const rootId = stored?.rootId ?? this.env.GOOGLE_DRIVE_ROOT_FOLDER_ID ?? await client.findFolderId(rootName, 'root');
-    if (!rootId) return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 0 };
-    const root = await client.readFileMetadata(rootId, 'id,name,mimeType,parents,trashed');
-    if (root.id !== rootId || root.name !== rootName || root.mimeType !== 'application/vnd.google-apps.folder' || root.trashed === true) {
-      throw new DriveMirrorError('invalid_response');
-    }
-
-    const syncId = stored?.syncId ?? await client.findFolderId('03_Sync', rootId);
-    if (!syncId) return { movedToTrash: 0, inspectedFiles: 0, preservedFiles: 0, protectedBankFileSkipped: false, foldersFound: 1 };
-    await this.assertDriveFolder(client, syncId, '03_Sync', rootId);
-
-    const targetFolders: Array<{ id: string; parentId: string; kind: DriveMirrorKind }> = [
-      { id: syncId, parentId: rootId, kind: 'state' },
-    ];
-    for (const name of ['events', 'state'] as const) {
-      const storedId = stored?.[name === 'events' ? 'eventsId' : 'stateId'];
-      const id = storedId ?? await client.findFolderId(name, syncId);
-      if (id) {
-        await this.assertDriveFolder(client, id, name, syncId);
-        targetFolders.push({ id, parentId: syncId, kind: name });
-      }
-    }
-    const backupsId = stored?.backupsId ?? await client.findFolderId('06_Backups', rootId);
-    if (backupsId) {
-      await this.assertDriveFolder(client, backupsId, '06_Backups', rootId);
-      targetFolders.push({ id: backupsId, parentId: rootId, kind: 'backups' });
-    }
-    const foldersFound = targetFolders.length + 1;
-
-    let movedToTrash = 0;
-    let inspectedFiles = 0;
-    let preservedFiles = 0;
-    let protectedBankFileSkipped = false;
-    let trashAttempts = 0;
-    for (const folder of targetFolders) {
-      const children: DriveFolderChild[] = await client.listFilesInFolder(folder.id);
-      for (const child of children) {
-        if (child.mimeType === 'application/vnd.google-apps.folder') continue;
-        inspectedFiles += 1;
-        if (child.id === bankFileId) {
-          protectedBankFileSkipped = true;
-          preservedFiles += 1;
-          continue;
-        }
-        if (!isLearningMirrorFileName(child.name) || !hasLearningMirrorOwnership(child.appProperties, folder.kind)) {
-          preservedFiles += 1;
-          continue;
-        }
-        if (trashAttempts >= LEARNING_RESET_TRASH_PER_CALL) {
-          return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound, remainingLearningMirrors: true };
-        }
-        trashAttempts += 1;
-        if (await client.trashFileInFolder(child.id, folder.id, folder.kind)) movedToTrash += 1;
-      }
-    }
-    return { movedToTrash, inspectedFiles, preservedFiles, protectedBankFileSkipped, foldersFound };
-  }
-
-  private async assertDriveFolder(client: GoogleDriveClient, id: string, name: string, parentId: string): Promise<void> {
-    const metadata = await client.readFileMetadata(id, 'id,name,mimeType,parents,trashed');
-    if (metadata.id !== id || metadata.name !== name || metadata.mimeType !== 'application/vnd.google-apps.folder'
-      || metadata.trashed === true || !Array.isArray(metadata.parents) || !metadata.parents.includes(parentId)) {
-      throw new DriveMirrorError('invalid_response');
-    }
-  }
-
-  private clearLearningRecords(): {
-    deletedLearningEvents: number;
-    deletedAppStateRecords: number;
-    deletedNotionProjectionRecords: number;
-    deletedNotionReferences: number;
-    retainedNotionReferences: number;
-    pendingNotionReconciliation: number;
-    deletedQueuedMirrorRecords: number;
-    bankSourceRecords: number;
-    activeAuthSessions: number;
-    preservedIdentityAndDriveConfigRecords: number;
-  } {
-    return this.ctx.storage.transactionSync(() => {
-      const count = (sql: string, ...args: Array<string | number>) => Number(this.ctx.storage.sql.exec<{ count: number }>(sql, ...args).one().count);
-      const summary = {
-        deletedLearningEvents: count('SELECT COUNT(*) AS count FROM learning_events'),
-        deletedAppStateRecords: count("SELECT COUNT(*) AS count FROM app_state WHERE key NOT IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')"),
-        deletedNotionProjectionRecords: count('SELECT COUNT(*) AS count FROM notion_projections'),
-        deletedNotionReferences: 0,
-        retainedNotionReferences: count('SELECT COUNT(*) AS count FROM notion_page_refs'),
-        pendingNotionReconciliation: this.notionResetReconciliationPendingCount(),
-        deletedQueuedMirrorRecords: count('SELECT COUNT(*) AS count FROM notion_state_queue')
-          + count('SELECT COUNT(*) AS count FROM notion_mistake_reviews')
-          + count('SELECT COUNT(*) AS count FROM notion_session_mistakes'),
-        bankSourceRecords: count('SELECT COUNT(*) AS count FROM bank_source'),
-        activeAuthSessions: count('SELECT COUNT(*) AS count FROM auth_sessions WHERE revoked_at IS NULL AND expires_at > ?', Date.now()),
-        preservedIdentityAndDriveConfigRecords: count("SELECT COUNT(*) AS count FROM app_state WHERE key IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')"),
-      };
-      this.ctx.storage.sql.exec('DELETE FROM learning_events');
-      this.ctx.storage.sql.exec("DELETE FROM app_state WHERE key NOT IN ('math-scratchpad-device-id-v1','math-scratchpad-drive-config-v1')");
-      this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = 0 WHERE singleton = 1');
-      this.ctx.storage.sql.exec('DELETE FROM notion_projections');
-      this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = 0 WHERE singleton = 1');
-      this.ctx.storage.sql.exec('DELETE FROM notion_state_queue');
-      this.ctx.storage.sql.exec('DELETE FROM notion_mistake_reviews');
-      this.ctx.storage.sql.exec('DELETE FROM notion_session_mistakes');
-      this.ctx.storage.sql.exec('DELETE FROM sync_health');
-      this.ctx.storage.sql.exec('DELETE FROM mirror_diagnostics');
-      this.ctx.storage.sql.exec('DELETE FROM rate_windows');
-      this.ctx.storage.sql.exec("DELETE FROM sqlite_sequence WHERE name = 'learning_events'");
-      return summary;
-    });
-  }
-
-  private journalNotionResetReferences(resetId: string): number {
-    const refs = this.ctx.storage.sql.exec<{ kind: string; external_key: string; page_id: string }>(
-      'SELECT kind, external_key, page_id FROM notion_page_refs ORDER BY kind, external_key',
-    ).toArray();
-    const now = new Date().toISOString();
-    this.ctx.storage.transactionSync(() => {
-      for (const ref of refs) {
-        const status = ['attempt', 'app-state', 'chapter-snapshot', 'mistake', 'concept', 'daily'].includes(ref.kind)
-          ? 'pending' : 'protected';
-        this.ctx.storage.sql.exec(
-          'INSERT OR IGNORE INTO notion_reset_reconciliation (reset_id, kind, external_key, page_id, owner_marker, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          resetId, ref.kind, ref.external_key, ref.page_id, 'math-scratchpad', status, now,
-        );
-      }
-    });
-    return refs.length;
-  }
-
-  private notionResetReconciliationPendingCount(resetId?: string): number {
-    const row = resetId === undefined
-      ? this.ctx.storage.sql.exec<{ count: number }>(
-        `SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE status IN ('pending', 'retry', 'ownership_unverified')`,
-      ).one()
-      : this.ctx.storage.sql.exec<{ count: number }>(
-        `SELECT COUNT(*) AS count FROM notion_reset_reconciliation WHERE reset_id = ? AND status IN ('pending', 'retry', 'ownership_unverified')`,
-        resetId,
-      ).one();
-    return Number(row.count);
-  }
-
   private async reconcileNotionResetReferences(resetId: string): Promise<{
     archived: number;
     protected: number;
@@ -589,7 +284,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }> {
     const dataSources = notionDataSourcesFromEnv(this.env);
     if (!dataSources || !this.env.NOTION_API_KEY) {
-      return { archived: 0, protected: 0, unverified: 0, retryable: 0, pending: this.notionResetReconciliationPendingCount(resetId) };
+      return { archived: 0, protected: 0, unverified: 0, retryable: 0, pending: notionResetReconciliationPendingCount(this.ctx.storage, resetId) };
     }
     this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY, this.budgetedFetch);
     const rows = this.ctx.storage.sql.exec<{
@@ -652,7 +347,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         totals.retryable += 1;
       }
     }
-    totals.pending = this.notionResetReconciliationPendingCount(resetId);
+    totals.pending = notionResetReconciliationPendingCount(this.ctx.storage, resetId);
     return totals;
   }
 
@@ -663,270 +358,17 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return this.bankClient;
   }
 
-  /** Read-only, owner-authenticated preflight. Never deletes or mutates learning data. */
-  private resetPreview(url: URL): Response {
-    const scope = url.searchParams.get('scope');
-    if (scope !== 'all' && scope !== 'session' && scope !== 'lesson' && scope !== 'section' && scope !== 'chapter') {
-      return json({ error: 'invalid_reset_scope' }, 400);
-    }
-    const requested = ['bankVersion', 'session', 'lesson', 'section', 'chapter'] as const;
-    const values = Object.fromEntries(requested.map(name => [name, url.searchParams.get(name)])) as Record<typeof requested[number], string | null>;
-    if (requested.some(name => values[name] !== null && (!values[name]?.trim() || values[name]!.length > 120 || /[\x00-\x1f]/.test(values[name]!)))) {
-      return json({ error: 'invalid_reset_scope' }, 400);
-    }
-    // Chapter uses the numeric chapter field of an event. Reject ambiguous or invalid IDs.
-    if (['chapter', 'lesson', 'section'].includes(scope) && !/^[1-9][0-9]{0,5}$/.test(values.chapter ?? '')) {
-      return json({ error: 'invalid_reset_chapter' }, 400);
-    }
-    const required = scope === 'section' ? ['bankVersion', 'chapter', 'lesson', 'section']
-      : scope === 'lesson' ? ['bankVersion', 'chapter', 'lesson']
-      : scope === 'chapter' ? ['bankVersion', 'chapter']
-      : scope === 'session' ? ['session'] : [];
-    if (requested.some(name => values[name] !== null && !required.includes(name))) return json({ error: 'invalid_reset_scope' }, 400);
-    if (required.some(name => !values[name as keyof typeof values])) return json({ error: 'missing_reset_filter' }, 400);
-    const fields = scope === 'section' ? ['bankVersion', 'chapter', 'lesson', 'section'] as const
-      : scope === 'lesson' ? ['bankVersion', 'chapter', 'lesson'] as const
-      : scope === 'chapter' ? ['bankVersion', 'chapter'] as const
-      : scope === 'session' ? ['session'] as const : [] as const;
-    const where = fields.length ? ` WHERE ${fields.map(name => name === 'chapter'
-      ? `json_extract(event_json, '$.chapter') = CAST(? AS INTEGER)`
-      : `json_extract(event_json, '$.${name}') = ?`).join(' AND ')}` : '';
-    const args = fields.map(name => values[name]!);
-    const matchingEvents = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM learning_events${where}`, ...args,
-    ).one().count);
-    const overall = this.ctx.storage.sql.exec<{ count: number; lastSeq: number | null }>(
-      'SELECT COUNT(*) AS count, MAX(seq) AS lastSeq FROM learning_events',
-    ).one();
-    const stateKeys = this.ctx.storage.sql.exec<{ key: string }>(
-      "SELECT key FROM app_state WHERE key LIKE 'math-scratchpad-%'",
-    ).toArray().map(record => record.key);
-    const protectedStateKeys = stateKeys.filter(key => key.includes('drive-config') || key.includes('bank-cache') || key.includes('device-id'));
-    const affectedSharedStateKeys = stateKeys.filter(isScopedResetSharedStateKey);
-    const notionPages = Number(this.ctx.storage.sql.exec<{ count: number }>(
-      'SELECT COUNT(*) AS count FROM notion_page_refs',
-    ).one().count);
-    let scopedExecution: Record<string, unknown> | undefined;
-    if (scope === 'lesson' || scope === 'chapter') {
-      const parsedScope = scope === 'lesson'
-        ? parseScopedLearningResetScope({
-          type: 'lesson', id: values.lesson, chapter: Number(values.chapter), bankVersion: values.bankVersion,
-        })
-        : parseScopedLearningResetScope({
-          type: 'chapter', id: values.chapter, bankVersion: values.bankVersion,
-        });
-      if (parsedScope) {
-        const plan = this.buildScopedResetSnapshot(parsedScope);
-        const enabled = this.env.SCOPED_RESET_ENABLED === 'true';
-        scopedExecution = {
-          enabled,
-          eligible: enabled && plan.blockers.length === 0,
-          snapshotToken: plan.snapshotToken,
-          matchingEvents: plan.matchingEvents,
-          removableEvents: plan.removableEventIds.length,
-          blockers: [...plan.blockers, ...(!enabled ? ['feature_disabled'] : [])].sort(),
-        };
-      } else {
-        scopedExecution = {
-          enabled: this.env.SCOPED_RESET_ENABLED === 'true',
-          eligible: false,
-          snapshotToken: null,
-          matchingEvents,
-          removableEvents: 0,
-          blockers: ['unsupported_or_invalid_scope'],
-        };
-      }
-    }
-    return json({
-      readOnly: true,
-      canExecute: false,
-      scope,
-      filters: Object.fromEntries(fields.map(name => [name, values[name]])),
-      matchingEvents,
-      totalEvents: Number(overall.count),
-      lastSeq: Number(overall.lastSeq ?? 0),
-      appStateRevision: readAppStateRevision(this.ctx.storage),
-      protectedBankAndIdentityStateKeys: protectedStateKeys.length,
-      sharedStateKeysRequiringSelectiveMerge: affectedSharedStateKeys.length,
-      notionPageReferencesRequiringReconciliation: scope === 'all' ? notionPages : null,
-      requiresCloudReconciliation: true,
-      ...(scopedExecution ? { scopedExecution } : {}),
-      warning: 'Preview only. Scoped execution is disabled unless its Worker flag is enabled and every safety check passes.',
-    });
-  }
-
-  private buildScopedResetSnapshot(scope: ScopedLearningResetScope) {
-    return buildScopedResetSnapshot(this.ctx.storage, {
-      drive: this.driveConfigured(),
-      notion: Boolean(notionDataSourcesFromEnv(this.env) && this.env.NOTION_API_KEY),
-    }, scope);
-  }
-
-  /** Rebuild derived Notion projections after deleting scoped source events. */
-  private rebuildNotionProjectionsFromEventLog(): void {
-    this.ctx.storage.sql.exec('DELETE FROM notion_projections');
-    this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = 0 WHERE singleton = 1');
-    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-      'SELECT seq, event_json FROM learning_events ORDER BY seq ASC',
-    ).toArray();
-    for (const row of rows) {
-      const event = learnEventSchema.parse(JSON.parse(row.event_json));
-      this.applyNotionProjection(event);
-      this.setProjectionSequence(Number(row.seq));
-    }
-  }
-
-  /** Journaled, owner-routed scoped reset. Every destructive write is one SQLite transaction. */
-  private async executeScopedReset(request: Request): Promise<Response> {
-    if (this.env.SCOPED_RESET_ENABLED !== 'true') return json({ error: 'scoped_reset_disabled' }, 503);
-    const raw = await readBoundedBody(request, MAX_SCOPED_RESET_BODY_BYTES);
-    if (!raw) return json({ error: 'payload_too_large' }, 413);
-    let input: Record<string, unknown>;
-    try {
-      const parsed: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw));
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return json({ error: 'invalid_scoped_reset_request' }, 400);
-      input = parsed as Record<string, unknown>;
-    } catch {
-      return json({ error: 'invalid_scoped_reset_request' }, 400);
-    }
-
-    const action = input.action;
-    const operationId = input.operationId;
-    const headerKey = request.headers.get('Idempotency-Key');
-    if ((action !== 'confirm_review' && action !== 'confirm_delete' && action !== 'execute')
-      || typeof operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)
-      || headerKey !== operationId) {
-      return json({ error: 'invalid_scoped_reset_request' }, 400);
-    }
-
-    const now = Date.now();
-    return this.ctx.storage.transactionSync(() => {
-      if (this.isLearningResetLocked()) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
-
-      if (action === 'confirm_review') {
-        const allowed = new Set(['action', 'operationId', 'scope', 'snapshotToken', 'confirmation']);
-        if (Object.keys(input).some(key => !allowed.has(key))
-          || input.confirmation !== SCOPED_RESET_REVIEW_CONFIRMATION
-          || typeof input.snapshotToken !== 'string' || !/^scoped-v1-[0-9a-f]{16}$/.test(input.snapshotToken)) {
-          return json({ error: 'invalid_scoped_reset_confirmation' }, 400);
-        }
-        const scope = parseScopedLearningResetScope(input.scope);
-        if (!scope) return json({ error: 'invalid_reset_scope' }, 400);
-        const scopeJson = canonicalJson(scope);
-        const existing = this.readScopedResetOperation(operationId);
-        if (existing) {
-          if (existing.scope_json !== scopeJson || existing.snapshot_token !== input.snapshotToken) {
-            return json({ error: 'idempotency_key_conflict' }, 409);
-          }
-          return this.scopedResetOperationResponse(existing, true);
-        }
-        const plan = this.buildScopedResetSnapshot(scope);
-        if (plan.blockers.length > 0) return json({ error: 'scoped_reset_not_safe', blockers: plan.blockers }, 409);
-        if (plan.snapshotToken !== input.snapshotToken) return json({ error: 'stale_reset_preview' }, 409);
-        const timestamp = new Date(now).toISOString();
-        this.ctx.storage.sql.exec(
-          `INSERT INTO ${SCOPED_RESET_OPERATIONS_TABLE}
-            (operation_id, scope_json, snapshot_token, state, expires_at, result_json, created_at, updated_at)
-           VALUES (?, ?, ?, 'prepared', ?, NULL, ?, ?)`,
-          operationId, scopeJson, input.snapshotToken, now + 5 * 60_000, timestamp, timestamp,
-        );
-        return json({ operationId, state: 'prepared', next: 'confirm_delete', expiresAt: now + 5 * 60_000 });
-      }
-
-      const existing = this.readScopedResetOperation(operationId);
-      if (!existing) return json({ error: 'scoped_reset_operation_not_found' }, 409);
-      if (existing.state === 'completed') return this.scopedResetOperationResponse(existing, true);
-      if (existing.expires_at < now) {
-        this.ctx.storage.sql.exec(
-          `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'expired', updated_at = ? WHERE operation_id = ? AND state != 'completed'`,
-          new Date(now).toISOString(), operationId,
-        );
-        return json({ error: 'scoped_reset_confirmation_expired' }, 409);
-      }
-      const scope = parseScopedLearningResetScope(JSON.parse(existing.scope_json));
-      if (!scope) return json({ error: 'scoped_reset_operation_corrupt' }, 500);
-
-      if (action === 'confirm_delete') {
-        if (Object.keys(input).some(key => !['action', 'operationId', 'confirmation'].includes(key))
-          || input.confirmation !== SCOPED_RESET_DELETE_CONFIRMATION) {
-          return json({ error: 'invalid_scoped_reset_confirmation' }, 400);
-        }
-        if (existing.state === 'approved') return this.scopedResetOperationResponse(existing, true);
-        if (existing.state !== 'prepared') return json({ error: 'scoped_reset_confirmation_required' }, 409);
-        const plan = this.buildScopedResetSnapshot(scope);
-        if (plan.blockers.length > 0) return json({ error: 'scoped_reset_not_safe', blockers: plan.blockers }, 409);
-        if (plan.snapshotToken !== existing.snapshot_token) return json({ error: 'stale_reset_preview' }, 409);
-        this.ctx.storage.sql.exec(
-          `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'approved', updated_at = ? WHERE operation_id = ? AND state = 'prepared'`,
-          new Date(now).toISOString(), operationId,
-        );
-        return json({ operationId, state: 'approved', next: 'execute' });
-      }
-
-      if (Object.keys(input).some(key => !['action', 'operationId'].includes(key))) {
-        return json({ error: 'invalid_scoped_reset_request' }, 400);
-      }
-      if (existing.state !== 'approved') return json({ error: 'scoped_reset_two_confirmations_required' }, 409);
-      const plan = this.buildScopedResetSnapshot(scope);
-      if (plan.blockers.length > 0) return json({ error: 'scoped_reset_not_safe', blockers: plan.blockers }, 409);
-      if (plan.snapshotToken !== existing.snapshot_token) return json({ error: 'stale_reset_preview' }, 409);
-
-      const allEvents = this.ctx.storage.sql.exec<{ event_json: string }>(
-        'SELECT event_json FROM learning_events ORDER BY seq ASC LIMIT ?', MAX_SCOPED_RESET_REBUILD_EVENTS + 1,
-      ).toArray();
-      const allEventsValid = allEvents.every(row => {
-        try { return learnEventSchema.safeParse(JSON.parse(row.event_json)).success; }
-        catch { return false; }
-      });
-      if (allEvents.length > MAX_SCOPED_RESET_REBUILD_EVENTS || !allEventsValid) {
-        return json({ error: 'projection_rebuild_not_safe' }, 409);
-      }
-
-      for (let offset = 0; offset < plan.removableEventIds.length; offset += 100) {
-        const batch = plan.removableEventIds.slice(offset, offset + 100);
-        const placeholders = batch.map(() => '?').join(',');
-        this.ctx.storage.sql.exec(`DELETE FROM learning_events WHERE event_id IN (${placeholders})`, ...batch);
-      }
-      this.rebuildNotionProjectionsFromEventLog();
-      const result = {
-        operationId,
-        completed: true,
-        deletedEvents: plan.removableEventIds.length,
-        preservedEvents: plan.totalEvents - plan.removableEventIds.length,
-        preservedAppStateRecords: Number(this.ctx.storage.sql.exec<{ count: number }>(
-          'SELECT COUNT(*) AS count FROM app_state',
-        ).one().count),
-        completedAt: new Date(now).toISOString(),
-        cloudReconciliation: 'not_configured',
-      };
-      const resultJson = JSON.stringify(result);
-      this.ctx.storage.sql.exec(
-        `UPDATE ${SCOPED_RESET_OPERATIONS_TABLE} SET state = 'completed', result_json = ?, updated_at = ? WHERE operation_id = ? AND state = 'approved'`,
-        resultJson, new Date(now).toISOString(), operationId,
-      );
-      return json(result);
-    });
-  }
-
-  private readScopedResetOperation(operationId: string): ScopedResetOperationRow | undefined {
-    return this.ctx.storage.sql.exec<ScopedResetOperationRow>(
-      `SELECT operation_id, scope_json, snapshot_token, state, expires_at, result_json
-       FROM ${SCOPED_RESET_OPERATIONS_TABLE} WHERE operation_id = ?`, operationId,
-    ).toArray()[0];
-  }
-
-  private scopedResetOperationResponse(operation: ScopedResetOperationRow, idempotent: boolean): Response {
-    if (operation.state === 'completed' && operation.result_json) {
-      const result = JSON.parse(operation.result_json) as Record<string, unknown>;
-      return json({ ...result, ...(idempotent ? { idempotent: true } : {}) });
-    }
-    return json({
-      operationId: operation.operation_id,
-      state: operation.state,
-      next: operation.state === 'prepared' ? 'confirm_delete' : operation.state === 'approved' ? 'execute' : undefined,
-      expiresAt: operation.expires_at,
-      ...(idempotent ? { idempotent: true } : {}),
-    });
+  private scopedResetDependencies(): ScopedResetDependencies {
+    return {
+      env: this.env,
+      storage: this.ctx.storage,
+      isLearningResetLocked: () => this.isLearningResetLocked(),
+      snapshot: scope => buildScopedResetSnapshot(this.ctx.storage, {
+        drive: this.driveConfigured(),
+        notion: Boolean(notionDataSourcesFromEnv(this.env) && this.env.NOTION_API_KEY),
+      }, scope),
+      rebuildNotionProjections: () => rebuildNotionProjectionsFromEventLog(this.ctx.storage),
+    };
   }
 
   /** Durable Object alarm retries configured private mirrors after transient failures. */
@@ -1080,68 +522,6 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }
 
 
-  private projectionSequence(): number {
-    return Number(this.ctx.storage.sql.exec<{ last_seq: number }>(
-      'SELECT last_seq FROM notion_projection_meta WHERE singleton = 1',
-    ).one().last_seq);
-  }
-
-  private setProjectionSequence(sequence: number): void {
-    this.ctx.storage.sql.exec('UPDATE notion_projection_meta SET last_seq = ? WHERE singleton = 1', sequence);
-  }
-
-  private readNotionProjection<T>(kind: string, key: string): T | undefined {
-    const row = this.ctx.storage.sql.exec<{ projection_json: string }>(
-      'SELECT projection_json FROM notion_projections WHERE projection_type = ? AND projection_key = ?',
-      kind, key,
-    ).toArray()[0];
-    return row ? JSON.parse(row.projection_json) as T : undefined;
-  }
-
-  private saveNotionProjection(kind: string, key: string, value: unknown): void {
-    this.ctx.storage.sql.exec(
-      'INSERT INTO notion_projections (projection_type, projection_key, projection_json) VALUES (?, ?, ?) ON CONFLICT(projection_type, projection_key) DO UPDATE SET projection_json = excluded.projection_json',
-      kind, key, JSON.stringify(value),
-    );
-  }
-
-  private applyNotionProjection(event: LearnEvent): void {
-    if (typeof event.isTest !== 'boolean') return;
-    if (event.type === 'chapter_snapshot') return;
-    const priorSession = this.readNotionProjection<SessionProjection>('session', event.session);
-    this.saveNotionProjection('session', event.session, applySessionEvent(priorSession, event));
-    if (event.isTest) return;
-
-    const dayKey = tehranDayKey(event.ts);
-    const priorDaily = this.readNotionProjection<DailyProjection>('daily', dayKey);
-    const daily = applyDailyEvent(priorDaily, event);
-    if (daily) this.saveNotionProjection('daily', dayKey, daily);
-
-    const conceptKey = [event.chapter, event.lesson, event.concept].join(':');
-    const priorConcept = this.readNotionProjection<ConceptProjection>('concept', conceptKey);
-    const concept = applyConceptEvent(priorConcept, event);
-    if (concept) this.saveNotionProjection('concept', conceptKey, concept);
-  }
-
-  private async repairNotionProjections(through: number): Promise<boolean> {
-    const projectedThrough = this.projectionSequence();
-    if (projectedThrough >= through) return true;
-    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
-      projectedThrough, through, NOTION_PROJECTION_PAGE_SIZE,
-    ).toArray();
-    if (rows.length === 0) return this.projectionSequence() >= through;
-    this.ctx.storage.transactionSync(() => {
-      for (const row of rows) {
-        const sequence = Number(row.seq);
-        if (sequence !== this.projectionSequence() + 1) break;
-        this.applyNotionProjection(JSON.parse(row.event_json) as LearnEvent);
-        this.setProjectionSequence(sequence);
-      }
-    });
-    return this.projectionSequence() >= through;
-  }
-
   private async getDriveStatus(): Promise<DriveMirrorStatus> {
     const maxSeq = await maxSequence(this.ctx.storage);
     if (!this.driveConfigured()) {
@@ -1251,7 +631,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async syncNotion(): Promise<NotionMirrorStatus> {
     if (this.isLearningResetLocked()) return this.getNotionStatus();
-    const reconciliationPending = this.notionResetReconciliationPendingCount();
+    const reconciliationPending = notionResetReconciliationPendingCount(this.ctx.storage);
     if (reconciliationPending > 0) {
       const current = await this.getNotionStatus();
       return { ...current, status: 'pending', pendingCount: Math.max(current.pendingCount, reconciliationPending) };
@@ -1272,10 +652,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       notionStateQueueCount: () => this.notionStateQueueCount(),
       saveNotionState: state => this.saveNotionState(state),
       notionPendingCount: (maxSeq, lastSeq) => this.notionPendingCount(maxSeq, lastSeq),
-      repairNotionProjections: through => this.repairNotionProjections(through),
+      repairNotionProjections: through => repairNotionProjections(this.ctx.storage, through),
       scheduleAlarmIn: delay => this.scheduleAlarmIn(delay),
       toNotionStatus: (state, maxSeq) => this.toNotionStatus(state, maxSeq),
-      readNotionProjection: <T>(kind: string, key: string) => this.readNotionProjection<T>(kind, key),
+      readNotionProjection: <T>(kind: string, key: string) => readNotionProjection<T>(this.ctx.storage, kind, key),
       createNotionContext: (sources, now) => this.createNotionContext(sources, now),
       recordDiagnostic: (destination, stage, code) => this.recordDiagnostic(destination, stage, code),
     });
