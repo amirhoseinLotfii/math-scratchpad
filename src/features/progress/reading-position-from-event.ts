@@ -3,11 +3,31 @@ import type { ReadingActivityType, ReadingPosition } from './reading-position-ty
 
 /** Event types that represent a meaningful learning location change. */
 const LOCATION_EVENT_TYPES = new Set<LearnEventType>([
-  'lesson_open', 'lesson_close', 'chunk_open', 'chunk_read', 'section_open', 'section_close',
-  'question_open', 'question_close', 'check_answer', 'check_skipped',
-  'example_attempt', 'example_revealed', 'content_revealed', 'tryit_attempt', 'exercise_attempt',
-  'step_open', 'step_close', 'step_added', 'step_edited', 'answer_edited',
-  'concept_complete', 'lesson_complete', 'section_complete', 'practice_started', 'lesson_skip',
+  'lesson_open',
+  'lesson_close',
+  'chunk_open',
+  'chunk_read',
+  'section_open',
+  'section_close',
+  'question_open',
+  'question_close',
+  'check_answer',
+  'check_skipped',
+  'example_attempt',
+  'example_revealed',
+  'content_revealed',
+  'tryit_attempt',
+  'exercise_attempt',
+  'step_open',
+  'step_close',
+  'step_added',
+  'step_edited',
+  'answer_edited',
+  'concept_complete',
+  'lesson_complete',
+  'section_complete',
+  'practice_started',
+  'lesson_skip',
 ]);
 
 export function isLocationLearnEvent(type: LearnEventType): boolean {
@@ -70,10 +90,7 @@ export function positionTimestamp(position: ReadingPosition | null | undefined):
 }
 
 /** Keep only the newest activity; never let an older event overwrite a newer one. */
-export function mergeLatestReadingPosition(
-  current: ReadingPosition | null,
-  incoming: ReadingPosition,
-): ReadingPosition {
+export function mergeLatestReadingPosition(current: ReadingPosition | null, incoming: ReadingPosition): ReadingPosition {
   if (!current) return incoming;
   if (positionTimestamp(incoming) < positionTimestamp(current)) return current;
   return {

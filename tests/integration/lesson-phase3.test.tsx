@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { Provider } from '../../src/app/store-provider';
 import { bankDocument, readArchive, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { actions, initialState, makeStore } from '../../src/store';
@@ -13,7 +13,10 @@ import type { DriveBank } from '../../src/features/drive-bank/drive-bank';
 
 const fixture = (): DriveBank => validateBank(JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as unknown);
 const VERSION = 'sample-v1-phase3';
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 function mountWithBank() {
   const bank = fixture();
@@ -24,13 +27,21 @@ function mountWithBank() {
   const store = makeStore(state);
   const now = Date.now();
   store.dispatch(actions.timerStart({ exerciseId: doc.exerciseId, now }));
-  render(<Provider store={store}><App initialBank={{ bank, version: VERSION }} /></Provider>);
+  render(
+    <Provider store={store}>
+      <App initialBank={{ bank, version: VERSION }} />
+    </Provider>,
+  );
   return { bank, doc, store };
 }
 
 describe('Phase 3 Learn integration', () => {
   it('offers a clear Learn empty state and opens the existing Drive bank flow when no bank is loaded', async () => {
-    render(<Provider store={makeStore(initialState())}><App /></Provider>);
+    render(
+      <Provider store={makeStore(initialState())}>
+        <App />
+      </Provider>,
+    );
     expect(screen.queryByRole('button', { name: 'Lesson' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Exercise menu' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Lessons' }));
@@ -100,15 +111,19 @@ describe('Phase 3 Learn integration', () => {
     await user.click(screen.getByRole('button', { name: 'Skip to practice' }));
     await user.click(within(screen.getByRole('dialog', { name: 'Skip to practice?' })).getByRole('button', { name: 'Skip to practice' }));
     await waitFor(() => expect(screen.getByText('Sample practice 1.')).toBeVisible());
-    expect(store.getState().doc.exercises.map(question => question.bankQuestionId)).toEqual([
-      'SAMPLE-1.1-P01', 'SAMPLE-1.1-P02', 'SAMPLE-1.1-P03',
+    expect(store.getState().doc.exercises.map((question) => question.bankQuestionId)).toEqual([
+      'SAMPLE-1.1-P01',
+      'SAMPLE-1.1-P02',
+      'SAMPLE-1.1-P03',
     ]);
     expect(serialize(store.getState())).not.toContain('Option B');
     const archive = readArchive();
     expect(archive).toHaveLength(1);
     expect(archive[0].data).not.toContain('Option B');
     expect(JSON.parse(archive[0].data).doc.exercises.map((question: { bankQuestionId: string }) => question.bankQuestionId)).toEqual([
-      'SAMPLE-1.1-P01', 'SAMPLE-1.1-P02', 'SAMPLE-1.1-P03',
+      'SAMPLE-1.1-P01',
+      'SAMPLE-1.1-P02',
+      'SAMPLE-1.1-P03',
     ]);
     expect(store.getState().doc.session?.bankId).toBe('sample-lessons');
   });
@@ -120,7 +135,11 @@ describe('Phase 3 Learn integration', () => {
     doc.exercises[0].bankQuestionId = 'unknown-question';
     state.doc = doc;
     const store = makeStore(state);
-    render(<Provider store={store}><App initialBank={{ bank, version: VERSION }} /></Provider>);
+    render(
+      <Provider store={store}>
+        <App initialBank={{ bank, version: VERSION }} />
+      </Provider>,
+    );
     expect(screen.queryByRole('button', { name: 'Lesson' })).not.toBeInTheDocument();
   });
 
@@ -133,7 +152,9 @@ describe('Phase 3 Learn integration', () => {
     await user.click(screen.getByRole('button', { name: 'Skip to practice' }));
     await user.click(within(screen.getByRole('dialog', { name: 'Skip to practice?' })).getByRole('button', { name: 'Skip to practice' }));
     await waitFor(() => expect(screen.getByText('Sample practice 1.')).toBeVisible());
-    fireEvent.change(screen.getByRole('combobox', { name: 'Select question' }), { target: { value: store.getState().doc.exercises.at(-1)!.id } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Select question' }), {
+      target: { value: store.getState().doc.exercises.at(-1)!.id },
+    });
     await user.click(screen.getByRole('button', { name: 'Finish session' }));
     const confidence = screen.getByRole('dialog', { name: /confidence/i });
     await user.click(within(confidence).getByRole('radio', { name: 'Medium' }));

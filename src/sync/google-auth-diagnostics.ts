@@ -15,7 +15,7 @@ export function recordGoogleAuthDiagnostic(event: string, detail?: string): void
 }
 
 export function getGoogleAuthDiagnostics(): GoogleAuthDiagnostic[] {
-  return entries.map(entry => ({ ...entry }));
+  return entries.map((entry) => ({ ...entry }));
 }
 
 export function subscribeGoogleAuthDiagnostics(listener: () => void): () => void {

@@ -10,7 +10,7 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
   await expect(reference.getByRole('heading', { name: 'تعریف تابع' })).toBeVisible();
   const illustration = reference.getByRole('img', { name: 'تصویر نمونهٔ درس برای آزمون نمایش شکل.' });
   await expect(illustration).toBeVisible();
-  await expect.poll(() => illustration.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => illustration.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect(reference.getByText('توضیح فارسیِ تصویر نمونه.')).toBeVisible();
   await expect(reference.getByRole('radio')).toHaveCount(0);
   await expect(reference.getByRole('button', { name: /بخش بعدی/ })).toBeVisible();
@@ -22,7 +22,10 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
 
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'درس‌ها' }).getByRole('button', { name: /^توابع و تابع‌نما/ }).click();
+  await page
+    .getByRole('dialog', { name: 'درس‌ها' })
+    .getByRole('button', { name: /^توابع و تابع‌نما/ })
+    .click();
   const interactive = page.getByRole('region', { name: 'درس‌نامه', exact: true });
   await expect(interactive).toHaveAttribute('lang', 'fa');
   await expect(interactive).toHaveAttribute('dir', 'rtl');
@@ -37,7 +40,7 @@ test('desktop lesson reference is paged and readable, checks accept answers, and
   await expect(field).toBeVisible();
   await answer.getByRole('button', { name: 'بازکردن صفحه‌کلید' }).click();
   await answer.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '8', exact: true }).click();
-  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
+  await expect.poll(() => field.evaluate((element) => (element as HTMLElement & { value: string }).value)).toBe('8');
   await expect(interactive.getByRole('button', { name: /بخش قبلی/ })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

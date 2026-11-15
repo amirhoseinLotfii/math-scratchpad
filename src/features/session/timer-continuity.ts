@@ -36,22 +36,19 @@ export function writeTimerHeartbeat(now = Date.now()): void {
  * of slack). A recent reload therefore continues seamlessly, while time with
  * the app closed is dropped and the segment restarts at `now`.
  */
-export function clampRestoredTimer<T extends TimedExercise>(
-  exercise: T,
-  now = Date.now(),
-  heartbeat = readTimerHeartbeat(now),
-): T {
+export function clampRestoredTimer<T extends TimedExercise>(exercise: T, now = Date.now(), heartbeat = readTimerHeartbeat(now)): T {
   const since = exercise.timerRunningSince;
   if (exercise.timerPaused || !Number.isFinite(since)) return exercise;
-  const base = Number.isFinite(exercise.elapsedMs) && (exercise.elapsedMs as number) >= 0 ? exercise.elapsedMs as number : 0;
+  const base = Number.isFinite(exercise.elapsedMs) && (exercise.elapsedMs as number) >= 0 ? (exercise.elapsedMs as number) : 0;
   const startedAt = since as number;
   // A clock that moved backwards must not produce negative or invented time.
   if (startedAt > now) return { ...exercise, elapsedMs: base, timerRunningSince: now };
 
   const totalGap = now - startedAt;
-  const liveUntil = heartbeat !== null && heartbeat >= startedAt
-    ? Math.min(now, heartbeat + TIMER_HEARTBEAT_INTERVAL_MS)
-    : Math.min(now, startedAt + TIMER_HEARTBEAT_INTERVAL_MS);
+  const liveUntil =
+    heartbeat !== null && heartbeat >= startedAt
+      ? Math.min(now, heartbeat + TIMER_HEARTBEAT_INTERVAL_MS)
+      : Math.min(now, startedAt + TIMER_HEARTBEAT_INTERVAL_MS);
   const credited = Math.max(0, Math.min(totalGap, liveUntil - startedAt));
   if (credited >= totalGap) return exercise;
   return { ...exercise, elapsedMs: base + credited, timerRunningSince: now };
@@ -63,6 +60,6 @@ export function clampRestoredTimers<T extends { exercises: TimedExercise[] }>(
   now = Date.now(),
   heartbeat = readTimerHeartbeat(now),
 ): T {
-  if (!doc.exercises.some(exercise => !exercise.timerPaused && Number.isFinite(exercise.timerRunningSince))) return doc;
-  return { ...doc, exercises: doc.exercises.map(exercise => clampRestoredTimer(exercise, now, heartbeat)) };
+  if (!doc.exercises.some((exercise) => !exercise.timerPaused && Number.isFinite(exercise.timerRunningSince))) return doc;
+  return { ...doc, exercises: doc.exercises.map((exercise) => clampRestoredTimer(exercise, now, heartbeat)) };
 }

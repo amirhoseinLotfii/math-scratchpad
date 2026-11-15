@@ -1,7 +1,7 @@
 import { initialKeyboardOpen } from './shared/lib/ui-prefs';
 import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
-import { App } from './App';
+import { App } from './app/app';
 import { makeStore, actions, initialState } from './store';
 import { serialize, validateSession } from './persistence';
 import { getLearningStorage, initializeLearningStorage, flushLearningStorage } from './sync/browser-db';
@@ -26,7 +26,9 @@ void (async () => {
       if (saved.prefs) state.prefs = saved.prefs;
       restored = true;
     }
-  } catch { state.notice = 'Draft could not be restored. Import Session JSON if available.'; }
+  } catch {
+    state.notice = 'Draft could not be restored. Import Session JSON if available.';
+  }
   const store = makeStore(state);
   if (!restored) store.dispatch(actions.startFractionRound());
   store.dispatch(actions.keyboard(initialKeyboardOpen(false)));
@@ -34,16 +36,33 @@ void (async () => {
   let pending: ReturnType<typeof setTimeout>;
   let warned = false;
   function save() {
-    try { getLearningStorage().setItem(KEY, serialize(store.getState())); }
-    catch { if (!warned) { warned = true; store.dispatch(actions.notice('Draft storage is unavailable. Export Session JSON to keep your work.')); } }
+    try {
+      getLearningStorage().setItem(KEY, serialize(store.getState()));
+    } catch {
+      if (!warned) {
+        warned = true;
+        store.dispatch(actions.notice('Draft storage is unavailable. Export Session JSON to keep your work.'));
+      }
+    }
   }
-  store.subscribe(() => { clearTimeout(pending); pending = setTimeout(save, 180); });
-  window.addEventListener('pagehide', () => { save(); void flushLearningStorage(); });
+  store.subscribe(() => {
+    clearTimeout(pending);
+    pending = setTimeout(save, 180);
+  });
+  window.addEventListener('pagehide', () => {
+    save();
+    void flushLearningStorage();
+  });
   const sync = new BrowserSyncRuntime();
   setDefaultSyncRuntime(sync);
   if (persistence.dbAvailable) await sync.start();
-  root.removeAttribute('role'); root.textContent = '';
-  createRoot(root).render(<Provider store={store}><App /></Provider>);
+  root.removeAttribute('role');
+  root.textContent = '';
+  createRoot(root).render(
+    <Provider store={store}>
+      <App />
+    </Provider>,
+  );
 })().catch(() => {
   root.setAttribute('role', 'alert');
   root.textContent = 'Math Scratchpad could not safely open saved work. Existing browser data was left untouched.';

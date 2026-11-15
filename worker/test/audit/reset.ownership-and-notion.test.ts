@@ -1,15 +1,15 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { expect, it } from 'vitest';
+import { journalNotionResetReferences } from '../../src/event-store/reset-repository';
 import type { WorkerEnv } from '../../src/env';
 import type { NotionClientPort } from '../../src/notion-mirror';
 
 type Target = {
   env: WorkerEnv;
-  ctx: { storage: { sql: { exec: <T = Record<string, unknown>>(sql: string, ...args: Array<string | number | null>) => { one: () => T; toArray: () => T[] } } } };
+  ctx: { storage: DurableObjectStorage };
   driveConfigured: () => boolean;
   driveClient: unknown;
   notionClient?: NotionClientPort;
-  journalNotionResetReferences: (resetId: string) => number;
   reconcileNotionResetReferences: (resetId: string) => Promise<{ archived: number; protected: number; unverified: number; retryable: number; pending: number }>;
   executeLearningReset: (req: Request) => Promise<Response>;
 };
@@ -169,7 +169,7 @@ it('reset.mocked-notion-success-archives-only-verified-project-pages', async () 
     target.ctx.storage.sql.exec('INSERT INTO notion_page_refs (kind, external_key, page_id) VALUES (?, ?, ?)', 'pomodoro', 'pomodoro-1', 'pomodoro-page');
     const resetId = crypto.randomUUID();
     try {
-      expect(target.journalNotionResetReferences(resetId)).toBe(4);
+      expect(journalNotionResetReferences(target.ctx.storage, resetId)).toBe(4);
       const result = await target.reconcileNotionResetReferences(resetId);
       expect(result).toMatchObject({ archived: 1, unverified: 1, pending: 1 });
       expect(retrieved.sort()).toEqual(['foreign-page', 'owned-page']);

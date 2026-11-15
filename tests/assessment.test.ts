@@ -7,13 +7,17 @@ function q(answer: string, simplest = false): DiagnosticQuestion {
   return { id: 1, stem: 'آزمون', source: '', expected: answer, skill: 'Regression', simplest };
 }
 function ex(expression: string): Exercise {
-  return { id: uid(), source: 'exercise', mode: 'math',
-    steps: [{ id: uid(), final: true, status: 'unchecked', expression: parse(expression) }] };
+  return {
+    id: uid(),
+    source: 'exercise',
+    mode: 'math',
+    steps: [{ id: uid(), final: true, status: 'unchecked', expression: parse(expression) }],
+  };
 }
 describe('No-hint 30-question bank', () => {
   it('has 30 unique questions with Persian stems and valid LTR math expressions', () => {
     expect(diagnosticQuestions).toHaveLength(30);
-    expect(new Set(diagnosticQuestions.map(x => x.id)).size).toBe(30);
+    expect(new Set(diagnosticQuestions.map((x) => x.id)).size).toBe(30);
     for (const question of diagnosticQuestions) {
       expect(question.stem).toMatch(/[\u0600-\u06ff]/);
       expect(question.source).not.toMatch(/[\u0600-\u06ff]/);

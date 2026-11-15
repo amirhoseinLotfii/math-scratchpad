@@ -3,7 +3,7 @@ import type { LearningEventStore } from './event-store';
 export interface WorkerEnv {
   EVENT_STORE: DurableObjectNamespace<LearningEventStore>;
   ALLOWED_ORIGIN: string;
-  OWNER_EMAIL: string;
+  OWNER_EMAIL?: string;
   GOOGLE_CLIENT_ID: string;
   /** Confidential Google OAuth client secret; add with `wrangler secret put`. */
   GOOGLE_DRIVE_CLIENT_SECRET?: string;

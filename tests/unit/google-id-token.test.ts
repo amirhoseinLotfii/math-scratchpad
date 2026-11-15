@@ -1,16 +1,35 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearGoogleIdToken, ensureGoogleIdToken, getGoogleIdToken, googleIdTokenReady, mountGoogleIdButton, refreshGoogleIdTokenSilently } from '../../src/sync/google-id-token';
+import {
+  clearGoogleIdToken,
+  ensureGoogleIdToken,
+  getGoogleIdToken,
+  googleIdTokenReady,
+  mountGoogleIdButton,
+  refreshGoogleIdTokenSilently,
+} from '../../src/sync/google-id-token';
 
 let credentialCallback: ((response: { credential?: string }) => void) | undefined;
 let promptCredential = '';
 let promptNotification = { isNotDisplayed: () => false, isSkippedMoment: () => false, isDismissedMoment: () => false };
 const identityApi = {
-  initialize: vi.fn((options: { callback: (response: { credential?: string }) => void }) => { credentialCallback = options.callback; }),
-  renderButton: vi.fn((element: HTMLElement) => { element.textContent = 'Google sign-in'; }),
-  prompt: vi.fn((callback?: (notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean; isDismissedMoment: () => boolean }) => void) => {
-    callback?.(promptNotification);
-    if (promptCredential) credentialCallback?.({ credential: promptCredential });
+  initialize: vi.fn((options: { callback: (response: { credential?: string }) => void }) => {
+    credentialCallback = options.callback;
   }),
+  renderButton: vi.fn((element: HTMLElement) => {
+    element.textContent = 'Google sign-in';
+  }),
+  prompt: vi.fn(
+    (
+      callback?: (notification: {
+        isNotDisplayed: () => boolean;
+        isSkippedMoment: () => boolean;
+        isDismissedMoment: () => boolean;
+      }) => void,
+    ) => {
+      callback?.(promptNotification);
+      if (promptCredential) credentialCallback?.({ credential: promptCredential });
+    },
+  ),
 };
 const google = { accounts: { oauth2: {}, id: identityApi } };
 
@@ -98,10 +117,13 @@ describe('Google Identity Services ID-token session', () => {
 
   it('restores a saved credential in a new tab from shared browser storage', async () => {
     const token = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
-    localStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({
-      token,
-      expiresAt: Date.now() + 3_600_000,
-    }));
+    localStorage.setItem(
+      'math-scratchpad-google-id-token-v1',
+      JSON.stringify({
+        token,
+        expiresAt: Date.now() + 3_600_000,
+      }),
+    );
     sessionStorage.removeItem('math-scratchpad-google-id-token-v1');
     vi.resetModules();
     const otherTab = await import('../../src/sync/google-id-token');
@@ -114,10 +136,13 @@ describe('Google Identity Services ID-token session', () => {
 
   it('migrates an older tab-only session into shared browser storage', async () => {
     const token = encodedCredential(Math.floor(Date.now() / 1000) + 3600);
-    sessionStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({
-      token,
-      expiresAt: Date.now() + 3_600_000,
-    }));
+    sessionStorage.setItem(
+      'math-scratchpad-google-id-token-v1',
+      JSON.stringify({
+        token,
+        expiresAt: Date.now() + 3_600_000,
+      }),
+    );
     localStorage.removeItem('math-scratchpad-google-id-token-v1');
     vi.resetModules();
     const migrated = await import('../../src/sync/google-id-token');
@@ -129,10 +154,13 @@ describe('Google Identity Services ID-token session', () => {
 
   it('silently refreshes an expired ID token when a prior session hint remains', async () => {
     const expired = encodedCredential(Math.floor(Date.now() / 1000) - 10);
-    localStorage.setItem('math-scratchpad-google-id-token-v1', JSON.stringify({
-      token: expired,
-      expiresAt: Date.now() - 10_000,
-    }));
+    localStorage.setItem(
+      'math-scratchpad-google-id-token-v1',
+      JSON.stringify({
+        token: expired,
+        expiresAt: Date.now() - 10_000,
+      }),
+    );
     vi.resetModules();
     const identity = await import('../../src/sync/google-id-token');
     installGoogleApi(google);

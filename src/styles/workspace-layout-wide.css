@@ -1,0 +1,155 @@
+@media (min-width: 900px) {
+  #math-scratchpad-redux .quick-math-tools .math-tool-icon {
+    width: 24px;
+    height: 28px;
+  }
+  #math-scratchpad-redux .wide-more-tools {
+    font-size: 12px;
+    padding: 8px;
+    min-height: 44px;
+  }
+  #math-scratchpad-redux .work-heading h2 {
+    margin-bottom: 4px;
+    font-size: 24px;
+  }
+  #math-scratchpad-redux .work-heading {
+    margin-bottom: 14px;
+  }
+  #math-scratchpad-redux .work-heading p {
+    margin: 0;
+    font-size: 14px;
+  }
+  #math-scratchpad-redux .steps {
+    gap: 12px;
+  }
+  #math-scratchpad-redux .step {
+    padding: 16px;
+    background: var(--background);
+  }
+  #math-scratchpad-redux .step.current-step {
+    border-color: var(--ring);
+  }
+  #math-scratchpad-redux .step-title {
+    font-size: 16px;
+  }
+  #math-scratchpad-redux .expression {
+    min-height: 88px;
+  }
+  #math-scratchpad-redux button.add-step {
+    margin: 10px 0;
+    min-height: 48px;
+  }
+  #math-scratchpad-redux .math-keyboard {
+    flex: initial;
+    margin: 0 0 16px;
+  }
+  #math-scratchpad-redux .key-grid {
+    flex: initial;
+    grid-template-rows: repeat(4, 48px);
+  }
+  #math-scratchpad-redux .review-controls {
+    margin-top: auto;
+    padding-top: 24px;
+  }
+  #math-scratchpad-redux .wide-keyboard-hint {
+    font-size: 12px;
+    color: var(--muted-foreground);
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin: 0 0 16px;
+  }
+  #math-scratchpad-redux .question-navigation {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 12px;
+  }
+  #math-scratchpad-redux .question-navigation button {
+    min-width: 150px;
+  }
+  #math-scratchpad-redux .question-navigation button:last-child {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  #math-scratchpad-redux .review-button {
+    width: auto;
+    align-self: flex-end;
+  }
+  #math-scratchpad-redux .shortcut-panel {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  #math-scratchpad-redux .shortcut-panel summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 4px 0;
+  }
+  #math-scratchpad-redux .question-navigator {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100dvh - 116px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    padding: 14px;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+  }
+  #math-scratchpad-redux .question-navigator h2 {
+    font-size: 18px;
+  }
+  #math-scratchpad-redux .question-navigator ol {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0 0;
+    display: grid;
+    gap: 8px;
+  }
+  #math-scratchpad-redux .question-navigator .question-destination {
+    display: flex;
+    width: 100%;
+    min-height: 64px;
+    justify-content: flex-start;
+    gap: 12px;
+    text-align: left;
+    padding: 10px;
+  }
+  #math-scratchpad-redux .question-destination[aria-current='page'] {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+    background: var(--secondary);
+  }
+  #math-scratchpad-redux .question-destination:focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 2px;
+  }
+  #math-scratchpad-redux .destination-status {
+    display: block;
+    font-size: 12px;
+    color: var(--muted-foreground);
+    margin-top: 3px;
+  }
+  #math-scratchpad-redux .question-state-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+  }
+  #math-scratchpad-redux .state-answered {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  #math-scratchpad-redux .state-draft {
+    border-color: var(--ring);
+  }
+}

@@ -2,9 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { dismissWellbeing, expect, test } from '../support/test';
 
-const sizes = [
-  { suffix: 'desktop-1280x900', width: 1280, height: 900 },
-];
+const sizes = [{ suffix: 'desktop-1280x900', width: 1280, height: 900 }];
 
 async function capture(page: import('@playwright/test').Page, name: string, fullPage: boolean) {
   const path = resolve(`artifacts/lessons/phase5-${name}.png`);
@@ -15,7 +13,10 @@ async function capture(page: import('@playwright/test').Page, name: string, full
 async function openLesson(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /^Sample lesson/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Lessons' })
+    .getByRole('button', { name: /^Sample lesson/ })
+    .click();
   await expect(page.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
 }
 

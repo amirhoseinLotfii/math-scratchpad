@@ -14,8 +14,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5195',
     launchOptions: {
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-        || (existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined),
+      executablePath:
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined),
       args: ['--no-sandbox', '--disable-gpu'],
     },
     trace: 'retain-on-failure',
@@ -27,7 +27,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `npx wrangler dev --local --config worker/wrangler.audit-e2e.jsonc --port 8789 --persist-to /tmp/math-scratchpad-aud003-worker-${process.pid}`,
+      command:
+        'npx wrangler dev --local --config worker/wrangler.audit-e2e.jsonc --port 8789 ' +
+        `--persist-to /tmp/math-scratchpad-aud003-worker-${process.pid}`,
       cwd: root,
       url: 'http://127.0.0.1:8789/health',
       timeout: 60_000,

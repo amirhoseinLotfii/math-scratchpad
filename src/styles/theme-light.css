@@ -1,0 +1,58 @@
+/* Light palette is applied only when the learner explicitly selects it. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-background: #f5f7f5;
+  --color-background-secondary: #e9eeea;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #f0f4f1;
+  --color-surface-sunken: #edf2ee;
+
+  --color-text-primary: #17211b;
+  --color-text-secondary: #2c3931;
+  --color-text-muted: #43534a;
+  --color-text-disabled: #647169;
+
+  --color-primary: #087a54;
+  --color-primary-hover: #066644;
+  --color-primary-active: #0d5e43;
+  --color-primary-foreground: #ffffff;
+  --color-primary-300: #066644;
+  --color-primary-400: #087a54;
+  --color-primary-500: #0d5e43;
+  --color-primary-900: #d9efe3;
+
+  --color-success: #176b3a;
+  --color-success-hover: #12572f;
+  --color-warning: #765000;
+  --color-warning-hover: #624100;
+  --color-error: #b42318;
+  --color-error-hover: #941d14;
+  --color-error-400: #a32118;
+  --color-success-foreground: #ffffff;
+  --color-warning-foreground: #17211b;
+  --color-error-foreground: #ffffff;
+
+  --color-border: #65756b;
+  --color-border-strong: #506056;
+  --color-border-subtle: #dce4de;
+  --color-border-form: #65756b;
+  --color-ring: #125faa;
+  --color-ring-hover: #0e4f91;
+  --color-highlight: #e3f3e9;
+  --color-highlight-foreground: #d9efe3;
+
+  --color-math-background: #ffffff;
+  --color-math-surface: #f0f4f1;
+  --color-math-border: #65756b;
+  --color-math-placeholder: #43534a;
+
+  --color-background-rgb: 245, 247, 245;
+  --color-surface-rgb: 255, 255, 255;
+  --color-surface-elevated-rgb: 240, 244, 241;
+  --color-text-primary-rgb: 23, 33, 27;
+  --color-text-secondary-rgb: 44, 57, 49;
+  --color-text-muted-rgb: 67, 83, 74;
+}
+:root[data-theme='light'] #math-scratchpad-redux {
+  color-scheme: light;
+}

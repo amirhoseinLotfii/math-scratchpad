@@ -1,0 +1,11 @@
+#math-scratchpad-redux .step-header button.final-marker {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+@container (min-width: 840px) {
+  #math-scratchpad-redux button.desktop-action {
+    display: inline-flex;
+  }
+}

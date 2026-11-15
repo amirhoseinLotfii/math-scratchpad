@@ -1,0 +1,11 @@
+export const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
+export const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
+export const DRIVE_BATCH_API = 'https://www.googleapis.com/batch/drive/v3';
+export const GOOGLE_TOKEN_API = 'https://oauth2.googleapis.com/token';
+export const GOOGLE_DRIVE_ABOUT_API = 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,me)';
+export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+export const MAX_ETAG_RETRIES = 3;
+export const SIMPLE_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
+export const MULTIPART_UPLOAD_LIMIT_BYTES = SIMPLE_UPLOAD_LIMIT_BYTES - 16 * 1024;
+export const DRIVE_GET_RETRY_ATTEMPTS = 3;
+export const DRIVE_GET_RETRY_BASE_DELAY_MS = 150;

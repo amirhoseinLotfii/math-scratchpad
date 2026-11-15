@@ -1,0 +1,275 @@
+#math-scratchpad-redux .selection {
+  display: flex;
+  align-items: start;
+  gap: 7px;
+  border-top: 1px solid var(--ms-border);
+  padding-top: 12px;
+  min-height: 28px;
+}
+#math-scratchpad-redux .selection-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--ms-primary);
+  margin-top: 6px;
+}
+#math-scratchpad-redux .toolbar,
+#math-scratchpad-redux .shortcut-list,
+#math-scratchpad-redux .topic-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+#math-scratchpad-redux .toolbar > button {
+  flex: 1;
+  font-size: 13px;
+  padding-inline: 6px;
+}
+#math-scratchpad-redux .keyboard-toolbar > button:first-child {
+  background: var(--ms-highlight);
+}
+#math-scratchpad-redux .shortcut-list > button {
+  min-width: 48px;
+  font-family: Georgia, serif;
+  font-size: 21px;
+}
+#math-scratchpad-redux .key-grid,
+#math-scratchpad-redux .navigation-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  direction: ltr;
+  margin: 8px 0;
+}
+#math-scratchpad-redux .key-grid button {
+  font-size: 24px;
+  min-height: 56px;
+  padding-inline: 2px;
+}
+#math-scratchpad-redux .key-grid .number-key {
+  background: linear-gradient(150deg, var(--color-surface-elevated), var(--color-surface-sunken));
+}
+#math-scratchpad-redux .key-grid .operator-key {
+  background: var(--ms-highlight);
+  border-color: var(--color-highlight);
+}
+#math-scratchpad-redux .editing-tools button,
+#math-scratchpad-redux .navigation-grid button {
+  padding-inline: 3px;
+}
+#math-scratchpad-redux .symbols-panel {
+  padding: 12px;
+  margin-inline: 0;
+}
+#math-scratchpad-redux .panel-heading {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+#math-scratchpad-redux .panel-heading h2 {
+  margin: 0;
+}
+#math-scratchpad-redux .symbol-shortcuts {
+  padding-bottom: 6px;
+}
+#math-scratchpad-redux .symbols-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+#math-scratchpad-redux .symbol-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+#math-scratchpad-redux .symbol-item {
+  display: flex;
+  min-width: 0;
+}
+#math-scratchpad-redux .symbol-item > button:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border-radius: 12px 0 0 12px;
+  padding: 8px;
+}
+#math-scratchpad-redux .symbol-item > button:first-child > span:first-child {
+  font-family: Georgia, serif;
+  font-size: 26px;
+  min-width: 42px;
+  text-align: center;
+}
+#math-scratchpad-redux .symbol-item > button:last-child {
+  border-radius: 0 12px 12px 0;
+  padding-inline: 9px;
+}
+#math-scratchpad-redux .symbol-item > button[aria-pressed='true'] {
+  color: var(--color-warning);
+  box-shadow: none;
+}
+#math-scratchpad-redux .topic-list {
+  gap: 6px;
+  padding-block: 6px;
+  border-block: 1px solid var(--ms-border);
+}
+#math-scratchpad-redux .topic-list button {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+#math-scratchpad-redux .template-preview {
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-success);
+  border-radius: 14px;
+  padding: 12px;
+  min-width: 0;
+}
+#math-scratchpad-redux .preview-formula {
+  padding-block: 10px;
+  min-width: 0;
+}
+#math-scratchpad-redux .template-preview > button {
+  width: 100%;
+}
+#math-scratchpad-redux .structure-selection {
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--color-highlight);
+  border: 1px solid var(--color-success);
+  border-radius: 14px;
+}
+#math-scratchpad-redux .structure-label {
+  color: var(--ms-primary);
+  font-size: 13px;
+}
+#math-scratchpad-redux .structure-label .small {
+  display: block;
+}
+#math-scratchpad-redux .primary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+#math-scratchpad-redux .primary-actions button {
+  font-size: 17px;
+  min-height: 56px;
+}
+#math-scratchpad-redux .review-controls {
+  border-top: 1px solid var(--ms-border);
+  padding-top: 16px;
+  margin-top: 20px;
+}
+#math-scratchpad-redux .copy-state {
+  font-size: 13px;
+  color: var(--ms-primary);
+}
+#math-scratchpad-redux .copy-state:empty,
+#math-scratchpad-redux [role='status']:empty {
+  display: none;
+}
+#math-scratchpad-redux .copy-state.changed {
+  color: var(--ms-warning);
+}
+#math-scratchpad-redux .manual-copy textarea,
+#math-scratchpad-redux #session-json {
+  min-height: 170px;
+  font-family: ui-monospace, monospace;
+}
+@media (hover: hover) {
+  #math-scratchpad-redux button:not(:disabled):hover {
+    border-color: var(--color-primary);
+  }
+}
+@container (max-width: 520px) {
+  #math-scratchpad-redux .symbols-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (max-width: 400px) {
+  #math-scratchpad-redux .scratchpad {
+    padding: 12px;
+    border-radius: 18px;
+  }
+  #math-scratchpad-redux .app-header {
+    padding-right: 76px;
+    gap: 6px;
+  }
+  #math-scratchpad-redux .step {
+    padding: 8px;
+  }
+  #math-scratchpad-redux .step-header {
+    gap: 4px;
+  }
+  #math-scratchpad-redux .step-header > button {
+    padding-inline: 7px;
+  }
+  #math-scratchpad-redux .step-state {
+    font-size: 12px;
+  }
+  #math-scratchpad-redux .step-state.needs-review,
+  #math-scratchpad-redux .step-state.edited {
+    padding: 4px;
+  }
+  #math-scratchpad-redux .key-grid,
+  #math-scratchpad-redux .navigation-grid {
+    gap: 6px;
+  }
+  #math-scratchpad-redux .key-grid button {
+    min-height: 50px;
+  }
+  #math-scratchpad-redux .topic-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #math-scratchpad-redux .topic-list button {
+    min-width: 0;
+  }
+  #math-scratchpad-redux .setup-panel {
+    padding: 12px;
+  }
+}
+/* Quick templates share the numeric column widths; deletion stays at top-right. */
+#math-scratchpad-redux .quick-key-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  direction: ltr;
+  unicode-bidi: isolate;
+  margin: 8px 0;
+  align-items: start;
+}
+#math-scratchpad-redux .quick-key-row .shortcut-list {
+  grid-column: 1 / span 3;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+#math-scratchpad-redux .quick-key-row button {
+  min-width: 0;
+  min-height: 48px;
+  padding-inline: 2px;
+}
+#math-scratchpad-redux .quick-key-row .backspace-key {
+  grid-column: 4;
+  font-size: 24px;
+}
+#math-scratchpad-redux .navigation-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@container (max-width: 400px) {
+  #math-scratchpad-redux .quick-key-row,
+  #math-scratchpad-redux .quick-key-row .shortcut-list {
+    gap: 6px;
+  }
+}
+/* 0.5 desktop-first notebook: the keyboard is a sibling, never nested into a step. */
+#math-scratchpad-redux {
+  max-width: 1200px;
+}

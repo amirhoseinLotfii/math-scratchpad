@@ -11,31 +11,31 @@ import { ReadingPosition } from './reading-position-types';
 export interface RestorePositionProps {
   /** Identifier for the current chapter */
   chapterId?: string;
-  
+
   /** Identifier for the current lesson */
   lessonId?: string;
-  
+
   /** Identifier for the current section */
   sectionId?: string;
-  
+
   /** Identifier for the current exercise */
   exerciseId?: string;
-  
+
   /** Identifier for the current step */
   stepId?: string;
-  
+
   /** Content version for cache invalidation */
   contentVersion?: string;
-  
+
   /** Children to wrap */
   children: React.ReactNode;
-  
+
   /** Custom scroll container ref */
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
-  
+
   /** Callback when position is restored */
   onPositionRestored?: (position: ReadingPosition) => void;
-  
+
   /** Callback when position fails to restore */
   onRestoreFailed?: (error: Error) => void;
 }
@@ -63,11 +63,13 @@ export function RestorePosition({
   /** Check if current content matches the stored position */
   const matchesStoredPosition = useCallback(() => {
     if (!position) return false;
-    return position.chapterId === chapterId &&
-           position.lessonId === lessonId &&
-           position.sectionId === sectionId &&
-           position.exerciseId === exerciseId &&
-           position.stepId === stepId;
+    return (
+      position.chapterId === chapterId &&
+      position.lessonId === lessonId &&
+      position.sectionId === sectionId &&
+      position.exerciseId === exerciseId &&
+      position.stepId === stepId
+    );
   }, [position, chapterId, lessonId, sectionId, exerciseId, stepId]);
 
   /** Check if content version matches */
@@ -83,18 +85,16 @@ export function RestorePosition({
     }
 
     setIsRestoring(true);
-    
+
     try {
       // Wait for content to be ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       const scrollContainer = scrollContainerRef?.current || containerRef.current || window;
-      
+
       if (position.scrollOffset !== undefined) {
-        const scrollTarget = scrollContainer === window 
-          ? window
-          : scrollContainer as HTMLElement;
-        
+        const scrollTarget = scrollContainer === window ? window : (scrollContainer as HTMLElement);
+
         scrollTarget.scrollTo({
           top: position.scrollOffset,
           behavior: 'auto', // Use auto to avoid smooth scroll jank
@@ -121,10 +121,8 @@ export function RestorePosition({
   /** Track scroll position */
   const handleScroll = useCallback(() => {
     const scrollContainer = scrollContainerRef?.current || containerRef.current || window;
-    const scrollOffset = scrollContainer === window 
-      ? window.scrollY
-      : (scrollContainer as HTMLElement).scrollTop;
-    
+    const scrollOffset = scrollContainer === window ? window.scrollY : (scrollContainer as HTMLElement).scrollTop;
+
     trackPosition({
       chapterId,
       lessonId,
@@ -139,10 +137,10 @@ export function RestorePosition({
   /** Setup scroll listener */
   useEffect(() => {
     const scrollContainer = scrollContainerRef?.current || containerRef.current || window;
-    
-    const container = scrollContainer === window ? window : scrollContainer as HTMLElement;
+
+    const container = scrollContainer === window ? window : (scrollContainer as HTMLElement);
     container.addEventListener('scroll', handleScroll, { passive: true });
-    
+
     return () => {
       container.removeEventListener('scroll', handleScroll);
     };
@@ -160,7 +158,7 @@ export function RestorePosition({
     // Setup intersection observer for content anchors
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        entries.forEach(entry => {
+        entries.forEach((entry) => {
           if (entry.isIntersecting && entry.target.hasAttribute('data-anchor-id')) {
             const anchorId = entry.target.getAttribute('data-anchor-id');
             if (anchorId) {
@@ -181,7 +179,7 @@ export function RestorePosition({
         // CSS margin syntax requires units; bare 0 is invalid for IntersectionObserver.
         rootMargin: '0px 0px -45% 0px',
         threshold: 0.1,
-      }
+      },
     );
 
     return () => {
@@ -194,11 +192,11 @@ export function RestorePosition({
   /** Ref callback for container */
   const containerRefCallback = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node;
-    
+
     // Observe all anchor elements within the container
     if (node && observerRef.current) {
       const anchors = node.querySelectorAll('[data-anchor-id]');
-      anchors.forEach(anchor => observerRef.current?.observe(anchor));
+      anchors.forEach((anchor) => observerRef.current?.observe(anchor));
     }
   }, []);
 
@@ -210,10 +208,7 @@ export function RestorePosition({
 }
 
 /** Hook for semantic scroll restoration */
-export function useSemanticScrollRestoration(
-  containerRef: React.RefObject<HTMLElement | null>,
-  anchors: string[]
-) {
+export function useSemanticScrollRestoration(containerRef: React.RefObject<HTMLElement | null>, anchors: string[]) {
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null);
 
   /** Find the closest anchor above the current scroll position */
@@ -228,17 +223,17 @@ export function useSemanticScrollRestoration(
     const effectiveBottom = Math.min(containerTop + containerHeight, viewportHeight);
 
     const scrollPosition = container.scrollTop;
-    
+
     let closestAnchor: string | null = null;
     let closestDistance = Infinity;
 
-    anchors.forEach(anchorId => {
+    anchors.forEach((anchorId) => {
       const anchor = container.querySelector(`[data-anchor-id="${anchorId}"]`);
       if (anchor) {
         const anchorRect = anchor.getBoundingClientRect();
         const anchorTop = anchorRect.top - container.getBoundingClientRect().top + container.scrollTop;
         const distance = Math.abs(anchorTop - scrollPosition);
-        
+
         if (distance < closestDistance) {
           closestDistance = distance;
           closestAnchor = anchorId;
@@ -262,10 +257,10 @@ export function useSemanticScrollRestoration(
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-    
+
     // Initial check
     handleScroll();
-    
+
     return () => {
       container.removeEventListener('scroll', handleScroll);
     };
@@ -274,14 +269,17 @@ export function useSemanticScrollRestoration(
   return {
     activeAnchor,
     findClosestAnchor,
-    scrollToAnchor: useCallback((anchorId: string, behavior: ScrollBehavior = 'smooth') => {
-      const container = containerRef.current;
-      if (container) {
-        const anchor = container.querySelector(`[data-anchor-id="${anchorId}"]`);
-        if (anchor) {
-          anchor.scrollIntoView({ behavior, block: 'start' });
+    scrollToAnchor: useCallback(
+      (anchorId: string, behavior: ScrollBehavior = 'smooth') => {
+        const container = containerRef.current;
+        if (container) {
+          const anchor = container.querySelector(`[data-anchor-id="${anchorId}"]`);
+          if (anchor) {
+            anchor.scrollIntoView({ behavior, block: 'start' });
+          }
         }
-      }
-    }, [containerRef]),
+      },
+      [containerRef],
+    ),
   };
 }

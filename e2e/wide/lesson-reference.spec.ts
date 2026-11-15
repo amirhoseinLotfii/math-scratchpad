@@ -11,7 +11,7 @@ test('desktop exercise menu opens the lesson picker with keyboard navigation', a
   const lessonsItem = page.getByRole('menuitem', { name: 'Lessons' });
   await expect(lessonsItem).toBeVisible();
   await page.keyboard.press('Home');
-  for (let item = 0; item < 10 && !(await lessonsItem.evaluate(element => element === document.activeElement)); item++) {
+  for (let item = 0; item < 10 && !(await lessonsItem.evaluate((element) => element === document.activeElement)); item++) {
     await page.keyboard.press('ArrowDown');
   }
   await expect(lessonsItem).toBeFocused();
@@ -37,19 +37,29 @@ test('desktop lesson reference keeps section navigation clear, collapsible and k
   await expect(infoToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(metadata).toBeVisible();
   const expandedA11y = await new AxeBuilder({ page }).include('.lesson-reference-dialog').analyze();
-  expect(expandedA11y.violations.filter(item => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
+  expect(expandedA11y.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
   await reference.getByRole('button', { name: 'Hide lesson information' }).click();
   await expect(metadata).toBeHidden();
 
   const content = reference.locator('.lesson-reference-content');
-  await content.evaluate(element => { element.style.flex = 'none'; element.style.height = '80px'; element.scrollTop = element.scrollHeight; });
-  await expect.poll(() => content.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await content.evaluate((element) => {
+    element.style.flex = 'none';
+    element.style.height = '80px';
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   await reference.getByRole('button', { name: 'Next section →' }).click();
   await expect(reference.getByRole('heading', { name: 'Another sample concept' })).toBeVisible();
-  await expect.poll(() => content.evaluate(element => element.scrollTop)).toBe(0);
-  await content.evaluate(element => { element.style.removeProperty('flex'); element.style.removeProperty('height'); });
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBe(0);
+  await content.evaluate((element) => {
+    element.style.removeProperty('flex');
+    element.style.removeProperty('height');
+  });
 
-  const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+  }));
   expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
   const panel = await reference.boundingBox();
   expect(panel?.width).toBeGreaterThan(550);

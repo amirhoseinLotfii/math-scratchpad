@@ -1,3 +1,5 @@
+import { validRecord, type WorkerSession } from './worker-session-record';
+export type { WorkerSession } from './worker-session-record';
 /**
  * Durable Worker session on top of short-lived Google Identity Services tokens.
  *
@@ -24,9 +26,6 @@ const USABLE_SKEW_MS = 60_000;
 /** Renew from a fresh GIS token when less than this remains. */
 const RENEW_BEFORE_MS = 24 * 60 * 60_000;
 const SESSION_REQUEST_TIMEOUT_MS = 10_000;
-const SESSION_PATTERN = /^mss1\.[A-Za-z0-9_-]{43}$/;
-
-export type WorkerSession = { token: string; expiresAt: number };
 
 let cached: WorkerSession | undefined;
 let hydrated: Promise<void> | undefined;
@@ -40,19 +39,16 @@ export function isWorkerSessionToken(token: string | null | undefined): boolean 
   return typeof token === 'string' && token.startsWith('mss1.');
 }
 
-function validRecord(value: unknown): WorkerSession | undefined {
-  if (!value || typeof value !== 'object') return undefined;
-  const record = value as { token?: unknown; expiresAt?: unknown };
-  if (typeof record.token !== 'string' || !SESSION_PATTERN.test(record.token)
-    || typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt)) return undefined;
-  return { token: record.token, expiresAt: record.expiresAt };
-}
-
 function database(): Promise<IDBPDatabase> | undefined {
   if (typeof indexedDB === 'undefined') return undefined;
   dbPromise ??= openDB(WORKER_SESSION_DB_NAME, 1, {
-    upgrade(db) { if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); },
-  }).catch(error => { dbPromise = undefined; throw error; });
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    },
+  }).catch((error) => {
+    dbPromise = undefined;
+    throw error;
+  });
   return dbPromise;
 }
 
@@ -64,12 +60,21 @@ function listenAcrossTabs(): void {
   if (channel || typeof BroadcastChannel === 'undefined') return;
   try {
     channel = new BroadcastChannel(CHANNEL_NAME);
-    channel.onmessage = () => { hydrated = undefined; void hydrateWorkerSession().then(announce); };
-  } catch { channel = undefined; }
+    channel.onmessage = () => {
+      hydrated = undefined;
+      void hydrateWorkerSession().then(announce);
+    };
+  } catch {
+    channel = undefined;
+  }
 }
 
 function notifyTabs(): void {
-  try { channel?.postMessage('changed'); } catch { /* Cross-tab notice is a hint only. */ }
+  try {
+    channel?.postMessage('changed');
+  } catch {
+    /* Cross-tab notice is a hint only. */
+  }
 }
 
 async function persist(value: WorkerSession | undefined): Promise<void> {
@@ -80,7 +85,9 @@ async function persist(value: WorkerSession | undefined): Promise<void> {
       if (value) await db.put(STORE, value, RECORD_KEY);
       else await db.delete(STORE, RECORD_KEY);
     }
-  } catch { /* The in-memory session still works for this page. */ }
+  } catch {
+    /* The in-memory session still works for this page. */
+  }
   notifyTabs();
   announce();
 }
@@ -97,7 +104,9 @@ export function hydrateWorkerSession(): Promise<void> {
         cached = undefined;
         if (stored) await db?.delete(STORE, RECORD_KEY);
       }
-    } catch { cached = undefined; }
+    } catch {
+      cached = undefined;
+    }
   })();
   return hydrated;
 }
@@ -123,16 +132,21 @@ export function exchangeIdTokenForWorkerSession(idToken: string): Promise<Worker
     lastIssueFailure = undefined;
     try {
       const response = await fetcher(`${SYNC_API_ORIGIN}/session`, {
-        method: 'POST', cache: 'no-store', headers: { Authorization: `Bearer ${idToken}` }, signal: controller.signal,
+        method: 'POST',
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${idToken}` },
+        signal: controller.signal,
       });
       if (response.status !== 201) {
         lastIssueFailure = { code: 'session_rejected', status: response.status };
         recordGoogleAuthDiagnostic('session_rejected', `http_${response.status}`);
         return undefined;
       }
-      const issued = validRecord(await response.json().then(
-        (value: { sessionToken?: unknown; expiresAt?: unknown }) => ({ token: value?.sessionToken, expiresAt: value?.expiresAt }),
-      ));
+      const issued = validRecord(
+        await response
+          .json()
+          .then((value: { sessionToken?: unknown; expiresAt?: unknown }) => ({ token: value?.sessionToken, expiresAt: value?.expiresAt })),
+      );
       if (!issued || issued.expiresAt <= Date.now() + USABLE_SKEW_MS) {
         lastIssueFailure = { code: 'session_rejected', status: response.status };
         recordGoogleAuthDiagnostic('session_rejected', 'invalid_201_body');
@@ -145,9 +159,7 @@ export function exchangeIdTokenForWorkerSession(idToken: string): Promise<Worker
       recordGoogleAuthDiagnostic('session_created', 'http_201');
       return issued;
     } catch {
-      lastIssueFailure = controller.signal.aborted
-        ? { code: 'network_timeout' }
-        : { code: 'network_error' };
+      lastIssueFailure = controller.signal.aborted ? { code: 'network_timeout' } : { code: 'network_error' };
       recordGoogleAuthDiagnostic(lastIssueFailure.code);
       return undefined;
     } finally {
@@ -211,8 +223,8 @@ export async function subscribeApiToken(listener: (token: string) => void): Prom
   deliver(getWorkerSession()?.token);
   let unsubscribeGoogle: () => void = () => undefined;
   try {
-    unsubscribeGoogle = await subscribeGoogleIdToken(idToken => {
-      void exchangeIdTokenForWorkerSession(idToken).then(session => deliver(session?.token ?? getWorkerSession()?.token));
+    unsubscribeGoogle = await subscribeGoogleIdToken((idToken) => {
+      void exchangeIdTokenForWorkerSession(idToken).then((session) => deliver(session?.token ?? getWorkerSession()?.token));
     });
   } catch (problem) {
     // Without GIS the stored Worker session can still be used.
@@ -236,15 +248,19 @@ export function handleApiUnauthorized(token: string | null | undefined): void {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener(API_UNAUTHORIZED_EVENT, event => handleApiUnauthorized((event as CustomEvent<string>).detail));
+  window.addEventListener(API_UNAUTHORIZED_EVENT, (event) => handleApiUnauthorized((event as CustomEvent<string>).detail));
 }
 
 async function revokeOnServer(token: string): Promise<void> {
   try {
     await fetcher(`${SYNC_API_ORIGIN}/session/revoke`, {
-      method: 'POST', cache: 'no-store', headers: { Authorization: `Bearer ${token}` },
+      method: 'POST',
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` },
     });
-  } catch { /* The server-side expiry still bounds an unrevoked session. */ }
+  } catch {
+    /* The server-side expiry still bounds an unrevoked session. */
+  }
 }
 
 /** Logout: revoke this device's Worker session on the server and remove it from IndexedDB. */
@@ -260,9 +276,17 @@ export async function resetWorkerSessionForTests(options: { fetcher?: typeof fet
   hydrated = undefined;
   issueFlight = undefined;
   fetcher = options.fetcher ?? ((...args) => fetch(...args));
-  try { (await dbPromise)?.close(); } catch { /* ignore */ }
+  try {
+    (await dbPromise)?.close();
+  } catch {
+    /* ignore */
+  }
   dbPromise = undefined;
-  try { await deleteDB(WORKER_SESSION_DB_NAME); } catch { /* ignore */ }
+  try {
+    await deleteDB(WORKER_SESSION_DB_NAME);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Simulates a page reload in tests: forget memory, keep IndexedDB. */

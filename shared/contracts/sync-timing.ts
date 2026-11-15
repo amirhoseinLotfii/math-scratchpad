@@ -1,0 +1,2 @@
+export const NETWORK_SYNC_DEBOUNCE_MS = 3_400;
+export const NETWORK_SYNC_MAX_WAIT_MS = 30_000;

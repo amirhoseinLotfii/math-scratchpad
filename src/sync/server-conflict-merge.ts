@@ -14,66 +14,77 @@ function equal(left: MergeValue, right: MergeValue): boolean {
   if (left === right) return true;
   if (left === MISSING || right === MISSING || left === null || right === null) return false;
   if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) && Array.isArray(right)
-      && left.length === right.length
-      && left.every((value, index) => equal(value, right[index] as JsonValue));
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => equal(value, right[index] as JsonValue))
+    );
   }
   if (typeof left !== 'object' || typeof right !== 'object') return false;
-  const leftKeys = Object.keys(left).sort(), rightKeys = Object.keys(right).sort();
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key, index) => key === rightKeys[index]
-      && equal(left[key] as JsonValue, right[key] as JsonValue));
+  const leftKeys = Object.keys(left).sort(),
+    rightKeys = Object.keys(right).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key, index) => key === rightKeys[index] && equal(left[key] as JsonValue, right[key] as JsonValue))
+  );
 }
 
 function uniqueStrings(value: MergeValue): value is string[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'string')
-    && new Set(value).size === value.length;
+  return Array.isArray(value) && value.every((item) => typeof item === 'string') && new Set(value).size === value.length;
 }
 
 function idArray(value: MergeValue): value is JsonObject[] {
-  return Array.isArray(value) && value.every(item => isObject(item) && typeof item.id === 'string')
-    && new Set(value.map(item => (item as JsonObject).id)).size === value.length;
+  return (
+    Array.isArray(value) &&
+    value.every((item) => isObject(item) && typeof item.id === 'string') &&
+    new Set(value.map((item) => (item as JsonObject).id)).size === value.length
+  );
 }
 
 function mergeStringSet(base: string[], local: string[], remote: string[]): string[] {
-  const baseSet = new Set(base), localSet = new Set(local), remoteSet = new Set(remote);
+  const baseSet = new Set(base),
+    localSet = new Set(local),
+    remoteSet = new Set(remote);
   const candidates = [...base, ...local, ...remote];
   const selected: string[] = [];
   for (const item of candidates) {
     if (selected.includes(item)) continue;
-    const wasPresent = baseSet.has(item), localPresent = localSet.has(item), remotePresent = remoteSet.has(item);
-    const keep = localPresent === wasPresent ? remotePresent
-      : remotePresent === wasPresent ? localPresent
-        : localPresent;
+    const wasPresent = baseSet.has(item),
+      localPresent = localSet.has(item),
+      remotePresent = remoteSet.has(item);
+    const keep = localPresent === wasPresent ? remotePresent : remotePresent === wasPresent ? localPresent : localPresent;
     if (keep) selected.push(item);
   }
   return selected;
 }
 
 function orderedIdMerge(base: JsonObject[], local: JsonObject[], remote: JsonObject[], path: string, conflicts: string[]): JsonValue[] {
-  const baseIds = base.map(item => item.id as string);
-  const localIds = local.map(item => item.id as string);
-  const remoteIds = remote.map(item => item.id as string);
+  const baseIds = base.map((item) => item.id as string);
+  const localIds = local.map((item) => item.id as string);
+  const remoteIds = remote.map((item) => item.id as string);
   const baseIndex = new Map(baseIds.map((id, index) => [id, index]));
   const merged = new Map<string, JsonValue>();
   const ids = [...new Set([...baseIds, ...localIds, ...remoteIds])];
 
   for (const id of ids) {
-    const baseItem = base.find(item => item.id === id) ?? MISSING;
-    const localItem = local.find(item => item.id === id) ?? MISSING;
-    const remoteItem = remote.find(item => item.id === id) ?? MISSING;
+    const baseItem = base.find((item) => item.id === id) ?? MISSING;
+    const localItem = local.find((item) => item.id === id) ?? MISSING;
+    const remoteItem = remote.find((item) => item.id === id) ?? MISSING;
     const result = mergeValue(baseItem, localItem, remoteItem, `${path}[id=${id}]`, conflicts);
     if (result !== MISSING) merged.set(id, result as JsonValue);
   }
 
   if (conflicts.length) return [...merged.values()];
-  const edges = new Map([...merged.keys()].map(id => [id, new Set<string>()]));
+  const edges = new Map([...merged.keys()].map((id) => [id, new Set<string>()]));
   const addChangedOrderConstraints = (sequence: string[]) => {
-    const present = sequence.filter(id => merged.has(id));
+    const present = sequence.filter((id) => merged.has(id));
     for (let left = 0; left < present.length; left++) {
       for (let right = left + 1; right < present.length; right++) {
-        const before = present[left]!, after = present[right]!;
-        const baseBefore = baseIndex.get(before), baseAfter = baseIndex.get(after);
+        const before = present[left]!,
+          after = present[right]!;
+        const baseBefore = baseIndex.get(before),
+          baseAfter = baseIndex.get(after);
         const newItem = baseBefore === undefined || baseAfter === undefined;
         if (newItem || baseBefore! > baseAfter!) edges.get(before)?.add(after);
       }
@@ -88,7 +99,7 @@ function orderedIdMerge(base: JsonObject[], local: JsonObject[], remote: JsonObj
   const remaining = new Set(merged.keys());
   while (remaining.size) {
     const available = [...remaining]
-      .filter(id => ![...edges.entries()].some(([before, after]) => remaining.has(before) && after.has(id)))
+      .filter((id) => ![...edges.entries()].some(([before, after]) => remaining.has(before) && after.has(id)))
       .sort((left, right) => (rank.get(left) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right) ?? Number.MAX_SAFE_INTEGER));
     const next = available[0];
     if (!next) {
@@ -98,7 +109,7 @@ function orderedIdMerge(base: JsonObject[], local: JsonObject[], remote: JsonObj
     ordered.push(next);
     remaining.delete(next);
   }
-  return ordered.map(id => merged.get(id)!);
+  return ordered.map((id) => merged.get(id)!);
 }
 
 function appendOnlyMerge(base: MergeValue, local: JsonValue[], remote: JsonValue[]): MergeValue | undefined {
@@ -113,7 +124,7 @@ function appendOnlyMerge(base: MergeValue, local: JsonValue[], remote: JsonValue
   if (!retainsBaseOrder(local) || !retainsBaseOrder(remote)) return undefined;
   const combined = [...previous];
   for (const candidate of [...local, ...remote]) {
-    if (!combined.some(item => equal(item, candidate))) combined.push(candidate);
+    if (!combined.some((item) => equal(item, candidate))) combined.push(candidate);
   }
   return combined;
 }
@@ -146,8 +157,7 @@ function mergeValue(base: MergeValue, local: MergeValue, remote: MergeValue, pat
 
   // Replacing AST nodes in the same math sequence is a single editing action,
   // even when both editors generate different node IDs for the replacement.
-  if (path.endsWith('.children') && Array.isArray(local) && Array.isArray(remote)
-    && (base === MISSING || Array.isArray(base))) {
+  if (path.endsWith('.children') && Array.isArray(local) && Array.isArray(remote) && (base === MISSING || Array.isArray(base))) {
     conflicts.push(path);
     return local;
   }
@@ -167,8 +177,11 @@ function mergeValue(base: MergeValue, local: MergeValue, remote: MergeValue, pat
 
 function parseJson(value: string | null): { ok: true; value: JsonValue | typeof MISSING } | { ok: false } {
   if (value === null) return { ok: true, value: MISSING };
-  try { return { ok: true, value: JSON.parse(value) as JsonValue }; }
-  catch { return { ok: false }; }
+  try {
+    return { ok: true, value: JSON.parse(value) as JsonValue };
+  } catch {
+    return { ok: false };
+  }
 }
 
 type SessionEnvelope = {
@@ -184,42 +197,66 @@ function isSessionEnvelope(value: JsonValue): value is SessionEnvelope {
   const state = (value as JsonObject).state;
   if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
   const row = state as JsonObject;
-  const session = row.session, sync = row.sync;
-  return (value as JsonObject).version === 3
-    && !!session && typeof session === 'object' && !Array.isArray(session)
-    && !!sync && typeof sync === 'object' && !Array.isArray(sync)
-    && Number.isSafeInteger((sync as JsonObject).revision)
-    && typeof (sync as JsonObject).writerId === 'string';
+  const session = row.session,
+    sync = row.sync;
+  return (
+    (value as JsonObject).version === 3 &&
+    !!session &&
+    typeof session === 'object' &&
+    !Array.isArray(session) &&
+    !!sync &&
+    typeof sync === 'object' &&
+    !Array.isArray(sync) &&
+    Number.isSafeInteger((sync as JsonObject).revision) &&
+    typeof (sync as JsonObject).writerId === 'string'
+  );
 }
 
-function mergeSessionEnvelope(base: SessionEnvelope | null, local: SessionEnvelope, remote: SessionEnvelope): { value?: string; paths: string[] } {
+function mergeSessionEnvelope(
+  base: SessionEnvelope | null,
+  local: SessionEnvelope,
+  remote: SessionEnvelope,
+): { value?: string; paths: string[] } {
   const paths: string[] = [];
   const session = mergeValue(base?.state.session ?? MISSING, local.state.session, remote.state.session, '$.state.session', paths);
   if (paths.length || !isObject(session)) return { paths };
   const revision = Math.max(base?.state.sync.revision ?? 0, local.state.sync.revision, remote.state.sync.revision) + 1;
   return {
-    value: JSON.stringify({ version: 3, state: {
-      session,
-      sync: { revision, writerId: local.state.sync.writerId },
-    } }),
+    value: JSON.stringify({
+      version: 3,
+      state: {
+        session,
+        sync: { revision, writerId: local.state.sync.writerId },
+      },
+    }),
     paths,
   };
 }
 
-export type ServerValueMerge =
-  | { ok: true; value: string | null }
-  | { ok: false; conflictPaths: string[] };
+export type ServerValueMerge = { ok: true; value: string | null } | { ok: false; conflictPaths: string[] };
 
 /** Three-way merge for JSON records; non-JSON or overlapping edits remain explicit conflicts. */
-export function mergeServerStateValues(key: string, baseValue: string | null, localValue: string | null, remoteValue: string | null): ServerValueMerge {
+export function mergeServerStateValues(
+  key: string,
+  baseValue: string | null,
+  localValue: string | null,
+  remoteValue: string | null,
+): ServerValueMerge {
   if (localValue === baseValue) return { ok: true, value: remoteValue };
   if (remoteValue === baseValue || localValue === remoteValue) return { ok: true, value: localValue };
 
-  const base = parseJson(baseValue), local = parseJson(localValue), remote = parseJson(remoteValue);
+  const base = parseJson(baseValue),
+    local = parseJson(localValue),
+    remote = parseJson(remoteValue);
   if (!base.ok || !local.ok || !remote.ok) return { ok: false, conflictPaths: ['$'] };
-  if (key === SESSION_KEY && local.value !== MISSING && remote.value !== MISSING
-    && (base.value === MISSING || isSessionEnvelope(base.value))
-    && isSessionEnvelope(local.value) && isSessionEnvelope(remote.value)) {
+  if (
+    key === SESSION_KEY &&
+    local.value !== MISSING &&
+    remote.value !== MISSING &&
+    (base.value === MISSING || isSessionEnvelope(base.value)) &&
+    isSessionEnvelope(local.value) &&
+    isSessionEnvelope(remote.value)
+  ) {
     const result = mergeSessionEnvelope(base.value === MISSING ? null : base.value, local.value, remote.value);
     return result.value === undefined ? { ok: false, conflictPaths: result.paths } : { ok: true, value: result.value };
   }
@@ -236,12 +273,23 @@ export function mergeServerStateValues(key: string, baseValue: string | null, lo
 /** Advance the app-local draft revision when the learner explicitly keeps this device's version. */
 export function keepLocalServerConflictValue(key: string, localValue: string | null, remoteValue: string | null): string | null {
   if (key !== SESSION_KEY || localValue === null || remoteValue === null) return localValue;
-  const local = parseJson(localValue), remote = parseJson(remoteValue);
-  if (!local.ok || !remote.ok || local.value === MISSING || remote.value === MISSING
-    || !isSessionEnvelope(local.value) || !isSessionEnvelope(remote.value)) return localValue;
+  const local = parseJson(localValue),
+    remote = parseJson(remoteValue);
+  if (
+    !local.ok ||
+    !remote.ok ||
+    local.value === MISSING ||
+    remote.value === MISSING ||
+    !isSessionEnvelope(local.value) ||
+    !isSessionEnvelope(remote.value)
+  )
+    return localValue;
   const revision = Math.max(local.value.state.sync.revision, remote.value.state.sync.revision) + 1;
-  return JSON.stringify({ version: 3, state: {
-    session: local.value.state.session,
-    sync: { revision, writerId: local.value.state.sync.writerId },
-  } });
+  return JSON.stringify({
+    version: 3,
+    state: {
+      session: local.value.state.session,
+      sync: { revision, writerId: local.value.state.sync.writerId },
+    },
+  });
 }

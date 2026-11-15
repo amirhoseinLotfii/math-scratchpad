@@ -33,7 +33,10 @@
     "test:architecture": "vitest run tests/architecture",
     "test:browser:prepare": "node scripts/prepare-browser.mjs",
     "test:wide": "vitest run tests/wide",
-    "test:wide:browser": "playwright test --project=laptop-1024 --project=laptop-1440 --project=desktop-1920 --project=desktop-2560"
+    "test:wide:browser": "playwright test --project=laptop-1024 --project=laptop-1440 --project=desktop-1920 --project=desktop-2560",
+    "format": "prettier --write \"{src,shared,worker/src,worker/tests,tests,e2e,scripts}/**/*.{ts,tsx,css,mjs}\"",
+    "format:check": "prettier --check \"{src,shared,worker/src,worker/tests,tests,e2e,scripts}/**/*.{ts,tsx,css,mjs}\"",
+    "test:perf": "vitest run tests/perf"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
@@ -77,6 +80,7 @@
     "fake-indexeddb": "^6.2.7",
     "fast-check": "^4.10.2",
     "jsdom": "^26.1.0",
+    "prettier": "3.6.2",
     "typescript": "^5.9.0",
     "vite": "8.3.5",
     "vitest": "^4.0.0",

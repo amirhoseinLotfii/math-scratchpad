@@ -19,14 +19,12 @@ export function menuAction(name: string) {
 
 export async function submenuAction(name: string) {
   showMoreMenuActions();
-  const submenuName = /^(?:Start Round 1|Start 30-question diagnostic|Use example|Use current expression)/.test(name)
-    ? 'Practice'
-    : 'Data';
+  const submenuName = /^(?:Start Round 1|Start 30-question diagnostic|Use example|Use current expression)/.test(name) ? 'Practice' : 'Data';
   const trigger = screen.getByRole('menuitem', { name: submenuName });
   if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
   const submenu = await screen.findByRole('menu', { name: submenuName });
   const items = await within(submenu).findAllByRole('menuitem');
-  const item = items.find(candidate => candidate.textContent?.includes(name));
+  const item = items.find((candidate) => candidate.textContent?.includes(name));
   if (!item) throw new Error(`Menu action not found in ${submenuName}: ${name}`);
   return item;
 }

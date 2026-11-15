@@ -16,11 +16,18 @@ describe('scoped reset groundwork (read-only planning)', () => {
     expect(parseScopedLearningResetScope(lesson)).toEqual(lesson);
     expect(parseScopedLearningResetScope(chapter)).toEqual(chapter);
     for (const invalid of [
-      null, [], {}, { type: 'lesson', id: '1.1', bankVersion: 'v21' },
-      { ...lesson, chapter: 100 }, { ...lesson, chapter: 1.5 },
-      { ...lesson, bankVersion: '' }, { ...lesson, id: ' 1.1 ' },
-      { ...lesson, unexpected: true }, { ...chapter, id: '01' },
-      { ...chapter, id: '100' }, { ...chapter, chapter: 1 },
+      null,
+      [],
+      {},
+      { type: 'lesson', id: '1.1', bankVersion: 'v21' },
+      { ...lesson, chapter: 100 },
+      { ...lesson, chapter: 1.5 },
+      { ...lesson, bankVersion: '' },
+      { ...lesson, id: ' 1.1 ' },
+      { ...lesson, unexpected: true },
+      { ...chapter, id: '01' },
+      { ...chapter, id: '100' },
+      { ...chapter, chapter: 1 },
     ]) {
       expect(parseScopedLearningResetScope(invalid)).toBeUndefined();
     }

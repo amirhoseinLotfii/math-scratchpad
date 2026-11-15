@@ -1,188 +1,220 @@
 import { test, expect } from './support/test';
 import { startBatch } from './support/mobile-journey';
 function mathField(page: import('@playwright/test').Page, step = 'Step 1 expression') {
- return page.locator(`math-field[aria-label="${step}"]`);
+  return page.locator(`math-field[aria-label="${step}"]`);
 }
 function readLatex(field: import('@playwright/test').Locator) {
- return field.evaluate(element => (element as HTMLElement & { value: string }).value);
+  return field.evaluate((element) => (element as HTMLElement & { value: string }).value);
 }
 async function typeWithAppKeys(page: import('@playwright/test').Page, value: string) {
- const showKeyboard = page.getByRole('button', { name: 'Show Keyboard' });
- if (await showKeyboard.count()) await showKeyboard.click();
- const group = page.getByRole('group', { name: 'Numeric keys' });
- for (const digit of value) await group.getByRole('button', { name: digit, exact: true }).tap();
+  const showKeyboard = page.getByRole('button', { name: 'Show Keyboard' });
+  if (await showKeyboard.count()) await showKeyboard.click();
+  const group = page.getByRole('group', { name: 'Numeric keys' });
+  for (const digit of value) await group.getByRole('button', { name: digit, exact: true }).tap();
 }
 test('confidence dialog traps Tab and Shift+Tab and restores focus', async ({ page }) => {
- await startBatch(page);
- const next = page.getByRole('button', { name: /Next question/i }); await next.click();
- const dialog = page.getByRole('dialog', { name: /confidence/i });
- for (let i = 0; i < 12; i++) {
-  await page.keyboard.press('Tab');
-  expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true);
- }
- await page.keyboard.press('Shift+Tab');
- expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true);
- await page.keyboard.press('Escape'); await expect(next).toBeFocused();
+  await startBatch(page);
+  const next = page.getByRole('button', { name: /Next question/i });
+  await next.click();
+  const dialog = page.getByRole('dialog', { name: /confidence/i });
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Tab');
+    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press('Shift+Tab');
+  expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(next).toBeFocused();
 });
 test('batch completion requires confidence and offers explicit export actions', async ({ page }) => {
- await startBatch(page);
- const selector = page.getByRole('combobox', { name: 'Select question' });
- const last = await selector.locator('option').last().getAttribute('value');
- await selector.selectOption(last!);
- await page.getByRole('button', { name: /Finish session/i }).click();
- const confidence = page.getByRole('dialog', { name: /confidence/i });
- await expect(confidence.getByRole('radio', { checked: true })).toHaveCount(0);
- await confidence.getByRole('radio', { name: 'High' }).check();
- await confidence.getByRole('button', { name: /Continue/i }).click();
- const complete = page.getByRole('dialog', { name: /Session complete/i });
- await expect(complete.getByRole('button', { name: 'Copy full session JSON' })).toBeVisible();
- await expect(complete.getByRole('button', { name: 'Check · Copy for Review' })).toBeVisible();
+  await startBatch(page);
+  const selector = page.getByRole('combobox', { name: 'Select question' });
+  const last = await selector.locator('option').last().getAttribute('value');
+  await selector.selectOption(last!);
+  await page.getByRole('button', { name: /Finish session/i }).click();
+  const confidence = page.getByRole('dialog', { name: /confidence/i });
+  await expect(confidence.getByRole('radio', { checked: true })).toHaveCount(0);
+  await confidence.getByRole('radio', { name: 'High' }).check();
+  await confidence.getByRole('button', { name: /Continue/i }).click();
+  const complete = page.getByRole('dialog', { name: /Session complete/i });
+  await expect(complete.getByRole('button', { name: 'Copy full session JSON' })).toBeVisible();
+  await expect(complete.getByRole('button', { name: 'Check · Copy for Review' })).toBeVisible();
 });
 test('menu stays within viewport and does not push the page horizontally', async ({ page }) => {
- await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
- const exportButton = page.getByRole('menuitem', { name: /^Copy full session JSON/ });
- await expect(exportButton).toBeInViewport();
- const box = await exportButton.boundingBox();
- expect(box!.x).toBeGreaterThanOrEqual(0);
- expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  const exportButton = page.getByRole('menuitem', { name: /^Copy full session JSON/ });
+  await expect(exportButton).toBeInViewport();
+  const box = await exportButton.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 test('mobile data actions expand on touch and stay inside the menu', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
- await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).tap();
- const importAction = page.getByRole('menuitem', { name: 'Import session JSON' });
- await importAction.scrollIntoViewIfNeeded();
- await expect(importAction).toBeVisible();
- const box = await importAction.boundingBox();
- expect(box!.x).toBeGreaterThanOrEqual(0);
- expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
- expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
- await importAction.tap();
- await expect(page.getByRole('textbox', { name: 'Copy or paste session JSON' })).toBeVisible();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).tap();
+  const importAction = page.getByRole('menuitem', { name: 'Import session JSON' });
+  await importAction.scrollIntoViewIfNeeded();
+  await expect(importAction).toBeVisible();
+  const box = await importAction.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await importAction.tap();
+  await expect(page.getByRole('textbox', { name: 'Copy or paste session JSON' })).toBeVisible();
 });
 test('mobile data actions stay open when the trigger is clicked with a mouse', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
- await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
- await expect(page.getByRole('group', { name: 'Data actions' })).toBeVisible();
- await expect(page.getByRole('menuitem', { name: 'Import session JSON' })).toBeVisible();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Data actions' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Import session JSON' })).toBeVisible();
 });
 test('batch progress and question selector stay readable at narrow phone widths', { tag: '@only-mobile-320-or-390' }, async ({ page }) => {
- await startBatch(page);
- const title = page.locator('.app-header .brand'), progress = page.locator('.header-progress'), actions = page.locator('.header-actions');
- const selector = page.getByRole('combobox', { name: 'Select question' });
- await expect(progress).toContainText('0 of 20 practice questions answered');
- const [titleBox, progressBox, actionsBox, selectorBox] = await Promise.all([title.boundingBox(), progress.boundingBox(), actions.boundingBox(), selector.boundingBox()]);
- expect(titleBox && progressBox && actionsBox && selectorBox).toBeTruthy();
- const overlaps = (a: NonNullable<typeof titleBox>, b: NonNullable<typeof progressBox>) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
- expect(overlaps(titleBox!, progressBox!)).toBe(false);
- expect(overlaps(actionsBox!, progressBox!)).toBe(false);
- expect(selectorBox!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 40);
- expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await startBatch(page);
+  const title = page.locator('.app-header .brand'),
+    progress = page.locator('.header-progress'),
+    actions = page.locator('.header-actions');
+  const selector = page.getByRole('combobox', { name: 'Select question' });
+  await expect(progress).toContainText('0 of 20 practice questions answered');
+  const [titleBox, progressBox, actionsBox, selectorBox] = await Promise.all([
+    title.boundingBox(),
+    progress.boundingBox(),
+    actions.boundingBox(),
+    selector.boundingBox(),
+  ]);
+  expect(titleBox && progressBox && actionsBox && selectorBox).toBeTruthy();
+  const overlaps = (a: NonNullable<typeof titleBox>, b: NonNullable<typeof progressBox>) =>
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  expect(overlaps(titleBox!, progressBox!)).toBe(false);
+  expect(overlaps(actionsBox!, progressBox!)).toBe(false);
+  expect(selectorBox!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 40);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 test('200 percent text size preserves controls and avoids page overflow', async ({ page }) => {
- await page.goto('/'); await page.addStyleTag({ content: '#math-scratchpad-redux { font-size: 200% !important } #math-scratchpad-redux button { font-size: 2rem !important }' });
- await expect(page.getByRole('button', { name: 'Add step', exact: true })).toBeVisible();
- expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.goto('/');
+  await page.addStyleTag({
+    content: '#math-scratchpad-redux { font-size: 200% !important } #math-scratchpad-redux button { font-size: 2rem !important }',
+  });
+  await expect(page.getByRole('button', { name: 'Add step', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 test('long formula uses local scrolling without page overflow', async ({ page }) => {
- await page.goto('/');
- const field = mathField(page);
- await expect(field).toBeVisible();
- await field.click();
- await page.keyboard.type('123456789012345678901234567890123456789012345678901234567890');
- expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
- expect(await readLatex(field)).toContain('12345678901234567890');
- await expect(field).toBeVisible();
+  await page.goto('/');
+  const field = mathField(page);
+  await expect(field).toBeVisible();
+  await field.click();
+  await page.keyboard.type('123456789012345678901234567890123456789012345678901234567890');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await readLatex(field)).toContain('12345678901234567890');
+  await expect(field).toBeVisible();
 });
 test('reset and Undo preserve editable expression in a real browser', async ({ page }) => {
- await page.goto('/'); const field = mathField(page);
- const initial = await readLatex(field);
- await typeWithAppKeys(page, '9');
- const afterEdit = await readLatex(field);
- expect(afterEdit).not.toBe(initial);
- await field.focus(); await page.keyboard.press('Control+z');
- await expect.poll(() => readLatex(field)).toBe(initial);
- await page.keyboard.press('Control+Shift+z');
- await expect.poll(() => readLatex(field)).toBe(afterEdit);
- await page.getByRole('button', { name: 'Reset Step 1' }).click();
- await expect.poll(() => readLatex(field)).not.toBe(afterEdit);
- await typeWithAppKeys(page, '4');
- await expect.poll(() => readLatex(field)).toBe('4');
+  await page.goto('/');
+  const field = mathField(page);
+  const initial = await readLatex(field);
+  await typeWithAppKeys(page, '9');
+  const afterEdit = await readLatex(field);
+  expect(afterEdit).not.toBe(initial);
+  await field.focus();
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => readLatex(field)).toBe(initial);
+  await page.keyboard.press('Control+Shift+z');
+  await expect.poll(() => readLatex(field)).toBe(afterEdit);
+  await page.getByRole('button', { name: 'Reset Step 1' }).click();
+  await expect.poll(() => readLatex(field)).not.toBe(afterEdit);
+  await typeWithAppKeys(page, '4');
+  await expect.poll(() => readLatex(field)).toBe('4');
 });
 test('rotation preserves the current answer and keeps next-question control reachable', async ({ page }) => {
- await startBatch(page); const field = mathField(page); await typeWithAppKeys(page, '123');
- const before = await readLatex(field);
- await page.setViewportSize({ width: 844, height: 390 });
- await expect.poll(() => readLatex(field)).toBe(before);
- await page.getByRole('button', { name: /Next question/i }).scrollIntoViewIfNeeded();
- await expect(page.getByRole('button', { name: /Next question/i })).toBeInViewport();
+  await startBatch(page);
+  const field = mathField(page);
+  await typeWithAppKeys(page, '123');
+  const before = await readLatex(field);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect.poll(() => readLatex(field)).toBe(before);
+  await page.getByRole('button', { name: /Next question/i }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button', { name: /Next question/i })).toBeInViewport();
 });
 test('tapping a number never moves to a different question', async ({ page }) => {
- await startBatch(page);
- const selector = page.getByRole('combobox', { name: 'Select question' }); const before = await selector.inputValue();
- await typeWithAppKeys(page, '123');
- await expect.poll(() => readLatex(mathField(page))).toBe('123');
- await expect(selector).toHaveValue(before);
+  await startBatch(page);
+  const selector = page.getByRole('combobox', { name: 'Select question' });
+  const before = await selector.inputValue();
+  await typeWithAppKeys(page, '123');
+  await expect.poll(() => readLatex(mathField(page))).toBe('123');
+  await expect(selector).toHaveValue(before);
 });
 test('clipboard export contains the whole batch rather than only the visible question', async ({ page, context }) => {
- await context.grantPermissions(['clipboard-read', 'clipboard-write']);
- await startBatch(page); await typeWithAppKeys(page, '123');
- await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
- await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
- const text = await page.evaluate(() => navigator.clipboard.readText());
- const data = JSON.parse(text);
- expect(data.doc.exercises).toHaveLength(20);
- expect(JSON.stringify(data.doc.exercises[0].steps)).toContain('123');
- expect(data.doc.exercises.every((x: Record<string, unknown>) => !('expected' in x))).toBe(true);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await startBatch(page);
+  await typeWithAppKeys(page, '123');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  const data = JSON.parse(text);
+  expect(data.doc.exercises).toHaveLength(20);
+  expect(JSON.stringify(data.doc.exercises[0].steps)).toContain('123');
+  expect(data.doc.exercises.every((x: Record<string, unknown>) => !('expected' in x))).toBe(true);
 });
 test('Add step and tool cards follow the approved vertical reading order', async ({ page }) => {
- await page.goto('/');
- const step = await page.locator('[data-step-id]').last().boundingBox();
- const add = await page.getByRole('button', { name: 'Add step', exact: true }).boundingBox();
- const tools = await page.getByRole('group', { name: 'Quick math tools' }).boundingBox();
- expect(add!.y).toBeGreaterThanOrEqual(step!.y + step!.height);
- expect(tools!.y).toBeGreaterThanOrEqual(add!.y + add!.height);
- expect(add!.height).toBeGreaterThanOrEqual(44);
+  await page.goto('/');
+  const step = await page.locator('[data-step-id]').last().boundingBox();
+  const add = await page.getByRole('button', { name: 'Add step', exact: true }).boundingBox();
+  const tools = await page.getByRole('group', { name: 'Quick math tools' }).boundingBox();
+  expect(add!.y).toBeGreaterThanOrEqual(step!.y + step!.height);
+  expect(tools!.y).toBeGreaterThanOrEqual(add!.y + add!.height);
+  expect(add!.height).toBeGreaterThanOrEqual(44);
 });
 test('batch editing hides the primary review footer but keeps navigation reachable', async ({ page }) => {
- await startBatch(page);
- await expect(page.getByRole('button', { name: 'Check · Copy for Review' })).toHaveCount(0);
- const previous = page.getByRole('button', { name: /Previous/i });
- await expect(previous).toBeDisabled();
- await page.getByRole('button', { name: /Next question/i }).scrollIntoViewIfNeeded();
- await expect(page.getByRole('button', { name: /Next question/i })).toBeInViewport();
+  await startBatch(page);
+  await expect(page.getByRole('button', { name: 'Check · Copy for Review' })).toHaveCount(0);
+  const previous = page.getByRole('button', { name: /Previous/i });
+  await expect(previous).toBeDisabled();
+  await page.getByRole('button', { name: /Next question/i }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button', { name: /Next question/i })).toBeInViewport();
 });
 test('icon-only reset and delete have readable accessible names and touch areas', async ({ page }) => {
- await page.goto('/');
- for (const name of ['Reset Step 1','Delete Step 1']) {
-  const control = page.getByRole('button', { name }); const box = await control.boundingBox();
-  expect(box!.width).toBeGreaterThanOrEqual(44); expect(box!.height).toBeGreaterThanOrEqual(44);
- }
+  await page.goto('/');
+  for (const name of ['Reset Step 1', 'Delete Step 1']) {
+    const control = page.getByRole('button', { name });
+    const box = await control.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
 });
 test('copy denial exposes a manual JSON fallback without leaving the question', async ({ page }) => {
- await page.addInitScript(() => {
-  Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw Error('Denied'); } } });
-  document.execCommand = () => false;
- });
- await startBatch(page);
- const before = await page.getByRole('combobox', { name: 'Select question' }).inputValue();
- await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
- await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
- const fallback = page.getByRole('textbox', { name: /session JSON/i });
- await expect(fallback).toBeVisible(); expect(JSON.parse(await fallback.inputValue()).doc.exercises).toHaveLength(20);
- await expect(page.getByRole('combobox', { name: 'Select question' })).toHaveValue(before);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async () => {
+          throw Error('Denied');
+        },
+      },
+    });
+    document.execCommand = () => false;
+  });
+  await startBatch(page);
+  const before = await page.getByRole('combobox', { name: 'Select question' }).inputValue();
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /^Copy full session JSON/ }).press('Enter');
+  const fallback = page.getByRole('textbox', { name: /session JSON/i });
+  await expect(fallback).toBeVisible();
+  expect(JSON.parse(await fallback.inputValue()).doc.exercises).toHaveLength(20);
+  await expect(page.getByRole('combobox', { name: 'Select question' })).toHaveValue(before);
 });
 test('larger available height does not leave unused space below the keypad actions', async ({ page }) => {
- await page.setViewportSize({ width: 390, height: 1500 }); await startBatch(page);
- const next = await page.getByRole('button', { name: /Next question/i }).boundingBox();
- const scratchpad = await page.locator('.scratchpad').boundingBox();
- expect(scratchpad).not.toBeNull();
- expect(scratchpad!.y + scratchpad!.height - (next!.y + next!.height)).toBeLessThanOrEqual(48);
+  await page.setViewportSize({ width: 390, height: 1500 });
+  await startBatch(page);
+  const next = await page.getByRole('button', { name: /Next question/i }).boundingBox();
+  const scratchpad = await page.locator('.scratchpad').boundingBox();
+  expect(scratchpad).not.toBeNull();
+  expect(scratchpad!.y + scratchpad!.height - (next!.y + next!.height)).toBeLessThanOrEqual(48);
 });

@@ -31,9 +31,18 @@ export function MathInsertDialog({ open, onOpenChange, onInsert, wide, onCloseAu
   const [expanded, setExpanded] = useState(false);
   const [choice, setChoice] = useState(0);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const options = useMemo(() => wide
-    ? [...INSERT_OPTIONS, ...symbolList.filter(item => !INSERT_OPTIONS.some(base => base.kind === item.key)).map(item => ({ name: item.title, kind: item.key }))]
-    : INSERT_OPTIONS, [wide]);
+  const options = useMemo(
+    () =>
+      wide
+        ? [
+            ...INSERT_OPTIONS,
+            ...symbolList
+              .filter((item) => !INSERT_OPTIONS.some((base) => base.kind === item.key))
+              .map((item) => ({ name: item.title, kind: item.key })),
+          ]
+        : INSERT_OPTIONS,
+    [wide],
+  );
   const visible = expanded ? options : options.slice(0, INSERT_VISIBLE);
 
   useEffect(() => {
@@ -42,7 +51,9 @@ export function MathInsertDialog({ open, onOpenChange, onInsert, wide, onCloseAu
       setExpanded(false);
     }
   }, [open]);
-  useEffect(() => { setChoice(0); }, [wide]);
+  useEffect(() => {
+    setChoice(0);
+  }, [wide]);
   useEffect(() => {
     if (!open) return;
     const button = refs.current[choice];
@@ -55,7 +66,7 @@ export function MathInsertDialog({ open, onOpenChange, onInsert, wide, onCloseAu
     if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
       event.preventDefault();
       const delta = ({ ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 } as Record<string, number>)[event.key];
-      setChoice(current => (current + delta + size) % size);
+      setChoice((current) => (current + delta + size) % size);
     } else if ((event.key === 'Home' || event.key === 'End') && (event.target as HTMLElement).hasAttribute('data-insert-kind')) {
       event.preventDefault();
       setChoice(event.key === 'Home' ? 0 : size - 1);
@@ -75,7 +86,7 @@ export function MathInsertDialog({ open, onOpenChange, onInsert, wide, onCloseAu
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="insert-dialog"
-        onOpenAutoFocus={event => {
+        onOpenAutoFocus={(event) => {
           event.preventDefault();
           const first = refs.current[0];
           if (first?.isConnected) first.focus({ preventScroll: true });
@@ -91,10 +102,15 @@ export function MathInsertDialog({ open, onOpenChange, onInsert, wide, onCloseAu
             <Button
               key={option.kind}
               data-insert-kind={option.kind}
-              ref={element => { refs.current[index] = element; }}
+              ref={(element) => {
+                refs.current[index] = element;
+              }}
               aria-pressed={choice === index}
               onFocus={() => setChoice(index)}
-              onClick={() => { onInsert(option.kind); onOpenChange(false); }}
+              onClick={() => {
+                onInsert(option.kind);
+                onOpenChange(false);
+              }}
             >
               {option.name}
             </Button>

@@ -8,7 +8,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5194',
     launchOptions: {
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined),
+      executablePath:
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined),
       args: ['--no-sandbox', '--disable-gpu'],
     },
   },

@@ -1,8 +1,9 @@
+import { upsertByExternalKey } from './notion-page-repository';
+export { syncNotionAppState } from './notion-app-state';
 import { Client } from '@notionhq/client';
-import type { LearnEvent } from '../../src/sync/events';
+import type { LearnEvent } from '../../shared/contracts/learn-event';
 import {
   buildAttemptProperties,
-  buildAppStateMirrorProperties,
   buildChapterSnapshotProperties,
   buildConceptProperties,
   buildDailyReportProperties,
@@ -82,8 +83,6 @@ export type NotionEventContext = {
   getSessionPageIds(sessionIds: string[]): Promise<string[]>;
 };
 
-const RETRY_LIMIT = 2;
-
 export function notionDataSourcesFromEnv(env: WorkerEnv): NotionDataSources | null {
   const values = [
     env.NOTION_DATA_SOURCE_ATTEMPTS,
@@ -92,7 +91,7 @@ export function notionDataSourcesFromEnv(env: WorkerEnv): NotionDataSources | nu
     env.NOTION_DATA_SOURCE_CONCEPTS,
     env.NOTION_DATA_SOURCE_DAILY_REPORTS,
   ];
-  if (!env.NOTION_API_KEY || values.some(value => !value)) return null;
+  if (!env.NOTION_API_KEY || values.some((value) => !value)) return null;
   return {
     attempts: normalizeDataSourceId(values[0]!),
     sessions: normalizeDataSourceId(values[1]!),
@@ -112,20 +111,23 @@ export function createNotionClient(token: string, fetcher: typeof fetch = global
   return client as unknown as NotionClientPort;
 }
 
-export async function syncNotionEvent(context: NotionEventContext, input: {
-  event: LearnEvent;
-  session: SessionProjection;
-  daily?: DailyProjection;
-  concept?: ConceptProjection;
-}): Promise<void> {
+export async function syncNotionEvent(
+  context: NotionEventContext,
+  input: {
+    event: LearnEvent;
+    session: SessionProjection;
+    daily?: DailyProjection;
+    concept?: ConceptProjection;
+  },
+): Promise<void> {
   const { event, session, daily, concept } = input;
   if (typeof event.isTest !== 'boolean') return;
   if (event.type === 'chapter_snapshot') {
     await syncChapterSnapshot(context, event);
     return;
   }
-  const editableStateEvent = event.type === 'answer_edited' || event.type === 'step_edited'
-    || event.type === 'step_added' || event.type === 'confidence_set';
+  const editableStateEvent =
+    event.type === 'answer_edited' || event.type === 'step_edited' || event.type === 'step_added' || event.type === 'confidence_set';
   const sessionPageId = await upsertByExternalKey(context, {
     kind: 'session',
     key: event.session,
@@ -180,130 +182,25 @@ export async function syncNotionEvent(context: NotionEventContext, input: {
 
   const mistakeIds = await context.getSessionMistakePageIds(event.session);
   if (mistakeIds.length > 0) {
-    await context.call(() => context.client.pages.update({
-      page_id: sessionPageId,
-      properties: { Mistakes: { relation: mistakeIds.map(id => ({ id })) } },
-    }));
-  }
-}
-
-export async function syncNotionAppState(context: NotionEventContext, input: {
-  key: string;
-  value: string | null;
-  revision: number;
-  updatedAt: string;
-}): Promise<void> {
-  const prefix = `state:${encodeURIComponent(input.key)}:`;
-  const previousRefs = await context.getPageRefs?.('app-state', prefix) ?? [];
-  const chunks = input.value === null ? [] : splitCodePoints(input.value, 40_000);
-  const syncedAt = new Date().toISOString();
-  for (let part = 0; part < chunks.length; part += 1) {
-    const externalKey = `${prefix}${part}`;
-    await upsertByExternalKey(context, {
-      kind: 'app-state',
-      key: externalKey,
-      dataSourceId: context.dataSources.attempts,
-      property: 'Event ID',
-      filter: { property: 'Event ID', rich_text: { equals: externalKey } },
-      properties: buildAppStateMirrorProperties({
-        externalKey, key: input.key, value: chunks[part]!, revision: input.revision,
-        part, parts: chunks.length, updatedAt: input.updatedAt, syncedAt,
+    await context.call(() =>
+      context.client.pages.update({
+        page_id: sessionPageId,
+        properties: { Mistakes: { relation: mistakeIds.map((id) => ({ id })) } },
       }),
-    });
+    );
   }
-  for (const ref of previousRefs) {
-    const part = Number(ref.key.slice(prefix.length));
-    if (Number.isInteger(part) && part >= 0 && part < chunks.length) continue;
-    await context.call(() => context.client.pages.update({ page_id: ref.pageId, archived: true }));
-    await context.deletePageRef?.('app-state', ref.key);
-  }
-}
-
-/** Archive only a project page whose source and app-specific row key still match the durable ref. */
-export async function archiveVerifiedNotionResetPage(
-  context: NotionEventContext,
-  input: { kind: string; externalKey: string; pageId: string },
-): Promise<'archived' | 'protected' | 'unverified'> {
-  if (input.kind === 'session') return 'protected';
-  const dataSourceId = dataSourceForResetKind(input.kind, context.dataSources);
-  if (!dataSourceId) return 'protected';
-
-  const page = await context.call(() => context.client.pages.retrieve({ page_id: input.pageId }));
-  if (page.id !== input.pageId || !isVerifiedProjectNotionPage(page, input, dataSourceId)) return 'unverified';
-  await context.call(() => context.client.pages.update({ page_id: input.pageId, archived: true }));
-  return 'archived';
-}
-
-function dataSourceForResetKind(kind: string, sources: NotionDataSources): string | undefined {
-  if (kind === 'attempt' || kind === 'app-state' || kind === 'chapter-snapshot') return sources.attempts;
-  if (kind === 'mistake') return sources.mistakes;
-  if (kind === 'concept') return sources.concepts;
-  if (kind === 'daily') return sources.dailyReports;
-  return undefined;
-}
-
-function isVerifiedProjectNotionPage(
-  page: Record<string, unknown>,
-  input: { kind: string; externalKey: string },
-  expectedDataSourceId: string,
-): boolean {
-  const parent = page.parent && typeof page.parent === 'object' ? page.parent as Record<string, unknown> : undefined;
-  if (parent?.data_source_id !== expectedDataSourceId) return false;
-  const properties = page.properties && typeof page.properties === 'object'
-    ? page.properties as Record<string, unknown> : undefined;
-  if (!properties) return false;
-
-  const markerProperty = input.kind === 'concept' ? 'Concept ID' : input.kind === 'daily' ? 'Date' : 'Event ID';
-  if (notionPropertyText(properties[markerProperty]) !== input.externalKey) return false;
-
-  if (input.kind === 'app-state' || input.kind === 'chapter-snapshot') {
-    const raw = notionPropertyText(properties['Steps Raw']);
-    try {
-      const marker = JSON.parse(raw) as { format?: unknown };
-      const expected = input.kind === 'app-state' ? 'math-scratchpad.app-state-mirror/v1' : 'math-scratchpad.chapter-snapshot/v1';
-      return marker.format === expected;
-    } catch { return false; }
-  }
-
-  if (input.kind === 'attempt' || input.kind === 'mistake') {
-    const isTest = notionCheckbox(properties.isTest);
-    const mode = notionSelectName(properties['Data Mode']);
-    return isTest !== undefined && mode === (isTest ? 'Test' : 'Live');
-  }
-  if (input.kind === 'concept') return notionCheckbox(properties.isTest) === false && notionSelectName(properties['Data Mode']) === 'Live';
-  if (input.kind === 'daily') return notionSelectName(properties['Data Mode']) === 'Live';
-  return false;
-}
-
-function notionPropertyText(value: unknown): string {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
-  const property = value as Record<string, unknown>;
-  const segments = Array.isArray(property.rich_text) ? property.rich_text : Array.isArray(property.title) ? property.title : [];
-  return segments.map(segment => {
-    if (!segment || typeof segment !== 'object' || Array.isArray(segment)) return '';
-    const text = (segment as Record<string, unknown>).text;
-    return text && typeof text === 'object' && !Array.isArray(text)
-      ? String((text as Record<string, unknown>).content ?? '') : '';
-  }).join('');
-}
-
-function notionCheckbox(value: unknown): boolean | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const checkbox = (value as Record<string, unknown>).checkbox;
-  return typeof checkbox === 'boolean' ? checkbox : undefined;
-}
-
-function notionSelectName(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const select = (value as Record<string, unknown>).select;
-  if (!select || typeof select !== 'object' || Array.isArray(select)) return undefined;
-  const name = (select as Record<string, unknown>).name;
-  return typeof name === 'string' ? name : undefined;
 }
 
 async function syncChapterSnapshot(context: NotionEventContext, event: LearnEvent): Promise<void> {
-  if (event.type !== 'chapter_snapshot' || !event.snapshotId || !event.snapshotBankId || event.snapshotPart === undefined
-    || event.snapshotParts === undefined || !event.snapshotSha256 || event.snapshotData === undefined) {
+  if (
+    event.type !== 'chapter_snapshot' ||
+    !event.snapshotId ||
+    !event.snapshotBankId ||
+    event.snapshotPart === undefined ||
+    event.snapshotParts === undefined ||
+    !event.snapshotSha256 ||
+    event.snapshotData === undefined
+  ) {
     throw new Error('invalid_chapter_snapshot');
   }
   const externalKey = `chapter-snapshot:${event.snapshotId}:${event.snapshotPart}`;
@@ -329,22 +226,12 @@ async function syncChapterSnapshot(context: NotionEventContext, event: LearnEven
   });
 }
 
-function splitCodePoints(value: string, maxLength: number): string[] {
-  if (value.length === 0) return [''];
-  const chars = Array.from(value);
-  const chunks: string[] = [];
-  for (let index = 0; index < chars.length; index += maxLength) chunks.push(chars.slice(index, index + maxLength).join(''));
-  return chunks;
-}
-
 async function upsertMistake(context: NotionEventContext, event: LearnEvent, sessionPageId: string, attemptPageId: string): Promise<void> {
   const itemKey = mistakeKey(event);
   const existingState = await context.getMistakeState(itemKey);
   const sameEvent = existingState?.eventId === event.id;
   const reviewSuccesses = sameEvent ? existingState.reviewSuccesses : 0;
-  const status = sameEvent
-    ? reviewSuccesses >= 2 ? 'resolved' : reviewSuccesses > 0 ? 'reviewing' : 'open'
-    : 'open';
+  const status = sameEvent ? (reviewSuccesses >= 2 ? 'resolved' : reviewSuccesses > 0 ? 'reviewing' : 'open') : 'open';
   const pageId = await upsertByExternalKey(context, {
     kind: 'mistake',
     key: event.id,
@@ -378,98 +265,6 @@ async function resolvePreviousMistake(context: NotionEventContext, event: LearnE
   await context.setMistakeState(itemKey, { eventId: state.eventId, reviewSuccesses: successes, lastReviewEventId: event.id });
 }
 
-async function upsertByExternalKey(context: NotionEventContext, input: {
-  kind: string;
-  key: string;
-  dataSourceId: string;
-  property: string;
-  filter: Record<string, unknown>;
-  properties: Record<string, unknown>;
-}): Promise<string> {
-  const cached = await context.getPageRef(input.kind, input.key);
-  if (cached) {
-    await context.call(() => context.client.pages.update({ page_id: cached, properties: input.properties }));
-    return cached;
-  }
-
-  const matches = await context.call(() => context.client.dataSources.query({
-    data_source_id: input.dataSourceId,
-    filter: input.filter,
-    page_size: 1,
-  }));
-  const existing = matches.results[0]?.id;
-  if (existing) {
-    await context.setPageRef(input.kind, input.key, existing);
-    await context.call(() => context.client.pages.update({ page_id: existing, properties: input.properties }));
-    return existing;
-  }
-
-  const created = await context.call(() => context.client.pages.create({
-    parent: { data_source_id: input.dataSourceId },
-    properties: input.properties,
-  }));
-  await context.setPageRef(input.kind, input.key, created.id);
-  return created.id;
-}
-
-export function notionErrorCode(error: unknown): NotionErrorCode {
-  const value = error as { code?: string; status?: number; headers?: Headers | Record<string, string> } | null;
-  const code = value?.code?.toLowerCase() ?? '';
-  const status = Number(value?.status ?? 0);
-  if (code === 'subrequest_budget_exceeded' || (error instanceof Error && error.message === 'subrequest_budget_exceeded')) return 'subrequest_budget_exceeded';
-  if (status === 401 || code.includes('unauthorized')) return 'token_invalid';
-  if (status === 404 || code.includes('object_not_found')) return 'database_not_shared';
-  if (status === 400 || code.includes('validation')) return 'schema_mismatch';
-  if (status === 429 || code.includes('rate_limited')) return 'rate_limited';
-  if (status >= 500 || code.includes('internal')) return 'remote_error';
-  return 'network_error';
-}
-
-export function retryDelayMs(error: unknown, attempt: number): number | null {
-  const value = error as { code?: string; status?: number; headers?: Headers | Record<string, string> } | null;
-  const status = Number(value?.status ?? 0);
-  const code = value?.code?.toLowerCase() ?? '';
-  if (!(status === 429 || status >= 500 || code.includes('rate_limited'))) return null;
-  const headers = value?.headers;
-  const retryHeader = headers instanceof Headers
-    ? headers.get('retry-after')
-    : headers && Object.entries(headers).find(([key]) => key.toLowerCase() === 'retry-after')?.[1];
-  const parsed = Number(retryHeader);
-  const waitMs = Number.isFinite(parsed) && parsed > 0 ? parsed * 1_000 : 500 * (2 ** attempt);
-  return Math.min(waitMs, 10_000);
-}
-
-export const NOTION_RETRY_LIMIT = RETRY_LIMIT;
-
-export class NotionRequestQueue {
-  private chain: Promise<void> = Promise.resolve();
-  private lastStartedAt = 0;
-
-  constructor(
-    private readonly minimumIntervalMs = 350,
-    private readonly wait: (milliseconds: number) => Promise<void> = sleep,
-  ) {}
-
-  run<T>(operation: () => Promise<T>): Promise<T> {
-    const task = this.chain.then(async () => {
-      for (let attempt = 0; ; attempt += 1) {
-        const remaining = this.minimumIntervalMs - (Date.now() - this.lastStartedAt);
-        if (remaining > 0) await this.wait(remaining);
-        this.lastStartedAt = Date.now();
-        try {
-          return await operation();
-        } catch (error) {
-          const retryDelay = retryDelayMs(error, attempt);
-          if (retryDelay === null || attempt >= NOTION_RETRY_LIMIT) throw error;
-          await this.wait(retryDelay);
-        }
-      }
-    });
-    this.chain = task.then(() => undefined, () => undefined);
-    return task;
-  }
-}
-
 function normalizeDataSourceId(value: string): string {
   return value.replace(/^collection:\/\//, '').replace(/[{}]/g, '');
 }
@@ -478,6 +273,5 @@ function mistakeKey(event: LearnEvent): string {
   return [event.chapter, event.lesson, event.concept, event.itemId ?? ''].join(':');
 }
 
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, milliseconds));
-}
+export { archiveVerifiedNotionResetPage } from './notion-reset-archive';
+export { notionErrorCode, retryDelayMs, NOTION_RETRY_LIMIT, NotionRequestQueue } from './notion-request-queue';

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { ServerConnectionGate } from '../../src/sync/server-connection-gate';
 
-const gateMocks = vi.hoisted(() => ({ resetPending: true, resetStatusVerified: true, ensureWorkerSession: vi.fn(async () => undefined), googleButtonCalls: 0 }));
+const gateMocks = vi.hoisted(() => ({
+  resetPending: true,
+  resetStatusVerified: true,
+  ensureWorkerSession: vi.fn(async () => undefined),
+  googleButtonCalls: 0,
+}));
 
 vi.mock('../../src/sync/browser-db', () => ({
   getAuthenticatedServerStorage: () => undefined,
@@ -16,7 +21,12 @@ vi.mock('../../src/sync/learning-reset-epoch', () => ({
 vi.mock('../../src/sync/worker-session', () => ({
   ensureWorkerSession: gateMocks.ensureWorkerSession,
 }));
-vi.mock('../../src/sync/google-login-button', () => ({ GoogleLoginButton: () => { gateMocks.googleButtonCalls += 1; return null; } }));
+vi.mock('../../src/sync/google-login-button', () => ({
+  GoogleLoginButton: () => {
+    gateMocks.googleButtonCalls += 1;
+    return null;
+  },
+}));
 
 afterEach(() => {
   cleanup();

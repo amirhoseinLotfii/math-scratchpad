@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, extname, join } from 'node:path';
 // IIFE output has no import.meta; replace every environment value read by the app.
 const result = await build({
   entryPoints: [process.argv[2] ?? 'src/main.tsx'],
@@ -17,17 +17,41 @@ const result = await build({
   },
   loader: { '.css': 'empty' },
 });
-const appCss = await readFile('src/styles/tokens.css', 'utf8') + '\n' + await readFile('src/fonts.css', 'utf8') + '\n' + await readFile('src/styles.css', 'utf8');
-let mathCss = await readFile('node_modules/mathlive/mathlive-fonts.css', 'utf8') + '\n' + await readFile('node_modules/mathlive/mathlive-static.css', 'utf8');
-for (const match of [...mathCss.matchAll(/url\((fonts\/[^)]+)\)/g)]) {
-  const fontPath = match[1];
-  const font = await readFile(join('node_modules/mathlive', fontPath));
-  mathCss = mathCss.replaceAll(`url(${fontPath})`, `url(data:font/woff2;base64,${font.toString('base64')})`);
+async function expandStylesheet(path) {
+  let css = await readFile(path, 'utf8');
+  for (const [rule, relative] of css.matchAll(/@import ['"]([.][^'"]+)['"];?/g)) {
+    css = css.replace(rule, await expandStylesheet(join(dirname(path), relative)));
+  }
+  return inlineFonts(css, dirname(path));
 }
+
+async function inlineFonts(css, directory) {
+  for (const [source, quoted, unquoted] of css.matchAll(/url\((?:['"]([^'"]+)['"]|([^)]+))\)/g)) {
+    const relative = quoted ?? unquoted;
+    const extension = extname(relative);
+    if (extension !== '.woff' && extension !== '.woff2') continue;
+    const font = await readFile(join(directory, relative));
+    css = css.replace(source, `url(data:font/${extension.slice(1)};base64,${font.toString('base64')})`);
+  }
+  return css;
+}
+
+const appCss = (await Promise.all(['src/styles/tokens.css', 'src/fonts.css', 'src/styles.css'].map(expandStylesheet))).join('\n');
+const mathDirectory = 'node_modules/mathlive';
+const mathCss = (
+  await Promise.all(['mathlive-fonts.css', 'mathlive-static.css'].map((file) => expandStylesheet(join(mathDirectory, file))))
+).join('\n');
 const css = `${appCss}\n${mathCss}`;
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const fragment = `<div id="math-scratchpad-redux"></div>\n<style>\n${css}\n</style>\n<script>\n(()=>{${js}})();\n</script>\n`;
 if (Buffer.byteLength(fragment) >= 3000000) throw Error('Inline bundle is too large.');
+await mkdir('dist', { recursive: true });
 await writeFile('dist/inline-fragment.html', fragment);
-await writeFile('dist/standalone.html', `<!doctype html>\n<html lang="en" dir="ltr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>Math Scratchpad</title></head><body>${fragment}</body></html>`);
-console.log(`Self-contained bundle: ${Buffer.byteLength(fragment)} bytes (MathLive fonts embedded for offline use).`);
+await writeFile(
+  'dist/standalone.html',
+  '<!doctype html>\n<html lang="en" dir="ltr"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+    '<meta name="color-scheme" content="light dark"><title>Math Scratchpad</title></head>' +
+    `<body>${fragment}</body></html>`,
+);
+console.log(`Self-contained bundle: ${Buffer.byteLength(fragment)} bytes (all editor fonts embedded for offline use).`);

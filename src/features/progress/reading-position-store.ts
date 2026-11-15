@@ -2,10 +2,7 @@ import { create } from 'zustand';
 import type { LearnEvent } from '../../sync/events';
 import { getDeviceId, subscribeToLearnEvents } from '../../sync/events';
 import { subscribeLearningStorage } from '../../sync/browser-db';
-import {
-  mergeLatestReadingPosition,
-  readingPositionFromLearnEvent,
-} from './reading-position-from-event';
+import { mergeLatestReadingPosition, readingPositionFromLearnEvent } from './reading-position-from-event';
 import {
   clearReadingPositionFromLearningStorage,
   readReadingPositionFromLearningStorage,
@@ -95,11 +92,11 @@ export function startReadingPositionPersistence(): () => void {
   eventUnsubscribe?.();
   storageUnsubscribe?.();
 
-  eventUnsubscribe = subscribeToLearnEvents(event => {
+  eventUnsubscribe = subscribeToLearnEvents((event) => {
     void useReadingPositionStore.getState().applyLearnEvent(event);
   });
 
-  storageUnsubscribe = subscribeLearningStorage(change => {
+  storageUnsubscribe = subscribeLearningStorage((change) => {
     if (change.key !== READING_POSITION_STORAGE_KEY) return;
     const remote = readReadingPositionFromLearningStorage();
     if (!remote) {

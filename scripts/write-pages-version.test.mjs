@@ -14,7 +14,7 @@ test('builds a production identity from the full main commit SHA', () => {
   });
 });
 
-test('writes version.json with the exact Pages release identity', async t => {
+test('writes version.json with the exact Pages release identity', async (t) => {
   const outputDir = await mkdtemp(path.join(os.tmpdir(), 'math-scratchpad-pages-version-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
 

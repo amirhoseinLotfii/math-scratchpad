@@ -10,7 +10,9 @@ test('question statements render the bank’s common math forms on desktop', asy
   };
 
   await expect(page.getByRole('math', { name: 'Original question expression' })).toBeVisible();
-  await expect.poll(() => mathHost('Original question expression').evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
+  await expect
+    .poll(() => mathHost('Original question expression').evaluate((element) => !!element.shadowRoot?.childElementCount))
+    .toBe(true);
 
   await goTo(2);
   await expect(page.getByRole('radio', { name: '>' })).toBeVisible();
@@ -25,11 +27,15 @@ test('question statements render the bank’s common math forms on desktop', asy
 
   await goTo(5);
   await expect(mathHost('Original question expression')).toBeVisible();
-  await expect.poll(() => mathHost('Original question expression').evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
+  await expect
+    .poll(() => mathHost('Original question expression').evaluate((element) => !!element.shadowRoot?.childElementCount))
+    .toBe(true);
 
   await goTo(6);
   await expect(mathHost('Original question expression')).toBeVisible();
-  await expect.poll(() => mathHost('Original question expression').evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
+  await expect
+    .poll(() => mathHost('Original question expression').evaluate((element) => !!element.shadowRoot?.childElementCount))
+    .toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   await goTo(7);
@@ -42,7 +48,7 @@ test('question statements render the bank’s common math forms on desktop', asy
   const secondChoice = mathHost('Mathematical answer choice 2');
   await expect(firstChoice).toBeVisible();
   await expect(secondChoice).toBeVisible();
-  await expect.poll(() => secondChoice.evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
+  await expect.poll(() => secondChoice.evaluate((element) => !!element.shadowRoot?.childElementCount)).toBe(true);
   await page.getByRole('radio', { name: /Mathematical answer choice 2/ }).check();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
@@ -50,7 +56,7 @@ test('question statements render the bank’s common math forms on desktop', asy
     await goTo(index);
     const expression = mathHost('Original question expression');
     await expect(expression).toBeVisible();
-    await expect.poll(() => expression.evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
+    await expect.poll(() => expression.evaluate((element) => !!element.shadowRoot?.childElementCount)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
 
@@ -59,6 +65,6 @@ test('question statements render the bank’s common math forms on desktop', asy
   await expect(mixedProse).toContainText('دامنه');
   const inlineMath = mixedProse.locator('.lesson-inline-math math-span');
   await expect(inlineMath).toBeVisible();
-  await expect.poll(() => inlineMath.evaluate(element => !!element.shadowRoot?.childElementCount)).toBe(true);
+  await expect.poll(() => inlineMath.evaluate((element) => !!element.shadowRoot?.childElementCount)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

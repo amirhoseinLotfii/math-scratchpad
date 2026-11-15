@@ -11,9 +11,17 @@ export type DiagnosticGrade = {
 
 function fraction(n: bigint, d: bigint): FractionResult {
   if (d === 0n) throw Error('Division by zero');
-  if (d < 0n) { n = -n; d = -d; }
-  let a = n < 0n ? -n : n, b = d;
-  while (b) { const r = a % b; a = b; b = r; }
+  if (d < 0n) {
+    n = -n;
+    d = -d;
+  }
+  let a = n < 0n ? -n : n,
+    b = d;
+  while (b) {
+    const r = a % b;
+    a = b;
+    b = r;
+  }
   const g = a || 1n;
   return { n: n / g, d: d / g };
 }
@@ -30,8 +38,12 @@ function num(value: string): FractionResult {
 function squareRoot(value: bigint) {
   if (value < 0n) throw Error('Negative radicand');
   if (value < 2n) return value;
-  let a = value, b = (a + 1n) / 2n;
-  while (b < a) { a = b; b = (b + value / b) / 2n; }
+  let a = value,
+    b = (a + 1n) / 2n;
+  while (b < a) {
+    a = b;
+    b = (b + value / b) / 2n;
+  }
   if (a * a !== value) throw Error('Non-rational root requires review');
   return a;
 }
@@ -43,7 +55,8 @@ function valueNode(node: MathNode): Value {
   if (node.type === 'fraction') return { value: div(evaluateSequence(node.numerator), evaluateSequence(node.denominator)), frac: true };
   if (node.type === 'group') return { value: evaluateSequence(node.body) };
   if (node.type === 'power') {
-    const base = evaluateSequence(node.base), exp = evaluateSequence(node.exponent);
+    const base = evaluateSequence(node.base),
+      exp = evaluateSequence(node.exponent);
     if (exp.d !== 1n || exp.n < 0n || exp.n > 32n) throw Error('Unsupported exponent');
     return { value: fraction(base.n ** exp.n, base.d ** exp.n) };
   }
@@ -58,7 +71,9 @@ function valueNode(node: MathNode): Value {
   throw Error('Notation requires manual review');
 }
 function tokenize(nodes: MathNode[]): Item[] {
-  return nodes.map(n => n.type === 'operator' ? { op: n.value === '−' ? '-' : n.value === '×' ? '*' : n.value === '÷' ? '/' : n.value } : valueNode(n));
+  return nodes.map((n) =>
+    n.type === 'operator' ? { op: n.value === '−' ? '-' : n.value === '×' ? '*' : n.value === '÷' ? '/' : n.value } : valueNode(n),
+  );
 }
 /** Exact rational evaluation of complete, supported mathematical expressions. */
 export function evaluateSequence(seq: Sequence): FractionResult {
@@ -76,14 +91,22 @@ export function evaluateSequence(seq: Sequence): FractionResult {
     return v.value;
   }
   function unary(): FractionResult {
-    if (isOp(arr[i], '-')) { i++; const v = unary(); return fraction(-v.n, v.d); }
-    if (isOp(arr[i], '+')) { i++; return unary(); }
+    if (isOp(arr[i], '-')) {
+      i++;
+      const v = unary();
+      return fraction(-v.n, v.d);
+    }
+    if (isOp(arr[i], '+')) {
+      i++;
+      return unary();
+    }
     return atom();
   }
   function product(): FractionResult {
     let a = unary();
     while (isOp(arr[i], '*') || isOp(arr[i], '/')) {
-      const operator = (arr[i++] as Op).op, b = unary();
+      const operator = (arr[i++] as Op).op,
+        b = unary();
       a = operator === '*' ? mul(a, b) : div(a, b);
     }
     return a;
@@ -91,7 +114,8 @@ export function evaluateSequence(seq: Sequence): FractionResult {
   function expression(): FractionResult {
     let a = product();
     while (isOp(arr[i], '+') || isOp(arr[i], '-')) {
-      const operator = (arr[i++] as Op).op, b = product();
+      const operator = (arr[i++] as Op).op,
+        b = product();
       a = operator === '+' ? add(a, b) : sub(a, b);
     }
     return a;
@@ -105,7 +129,8 @@ function splitEquality(seq: Sequence): Sequence[] {
   let tokens: MathNode[] = [];
   for (const node of seq.children) {
     if (node.type === 'operator' && node.value === '=') {
-      parts.push({ id: seq.id, type: 'sequence', children: tokens }); tokens = [];
+      parts.push({ id: seq.id, type: 'sequence', children: tokens });
+      tokens = [];
     } else tokens.push(node);
   }
   parts.push({ id: seq.id, type: 'sequence', children: tokens });
@@ -140,12 +165,13 @@ function simpleForm(seq: Sequence, result: FractionResult) {
     numerator = numerator.slice(1);
   }
   if (numerator.length !== 1 || only.denominator.children.length !== 1) return false;
-  const n = numerator[0], d = only.denominator.children[0];
+  const n = numerator[0],
+    d = only.denominator.children[0];
   if (n.type !== 'number' || d.type !== 'number' || !/^\d+$/.test(n.value) || !/^\d+$/.test(d.value)) return false;
   return sign * BigInt(n.value) === result.n && BigInt(d.value) === result.d;
 }
 export function gradeDiagnostic(exercise: Exercise, question: DiagnosticQuestion): DiagnosticGrade {
-  const marked = exercise.steps.find(s => s.final);
+  const marked = exercise.steps.find((s) => s.final);
   const last = marked ?? exercise.steps.at(-1);
   if (!last) return { numeric: 'unverified', form: 'unverified', steps: 'unverified', reason: 'No solution entered' };
   let consistency: DiagnosticGrade['steps'] = 'consistent';
@@ -155,16 +181,34 @@ export function gradeDiagnostic(exercise: Exercise, question: DiagnosticQuestion
     try {
       const evaluated = parts.map(evaluateSequence);
       if (evaluated.some((v, i) => i > 0 && !same(evaluated[i - 1], v))) consistency = 'inconsistent';
-    } catch { consistency = 'unverified'; }
+    } catch {
+      consistency = 'unverified';
+    }
   }
-  const parts = splitEquality(last.expression), lastPart = parts.at(-1)!;
+  const parts = splitEquality(last.expression),
+    lastPart = parts.at(-1)!;
   try {
-    const actual = evaluateSequence(lastPart), expected = evaluateExpected(question.expected);
-    const numeric = same(actual, expected) ? 'correct' as const : 'incorrect' as const;
-    const form = numeric !== 'correct' || !question.simplest ? 'not-required' as const :
-      simpleForm(lastPart, actual) ? 'simplified' as const : 'equivalent-unsimplified' as const;
-    return { numeric, form, steps: consistency, reason: numeric === 'correct' ? 'Equivalent numerical value' : 'Different numerical value' };
+    const actual = evaluateSequence(lastPart),
+      expected = evaluateExpected(question.expected);
+    const numeric = same(actual, expected) ? ('correct' as const) : ('incorrect' as const);
+    const form =
+      numeric !== 'correct' || !question.simplest
+        ? ('not-required' as const)
+        : simpleForm(lastPart, actual)
+          ? ('simplified' as const)
+          : ('equivalent-unsimplified' as const);
+    return {
+      numeric,
+      form,
+      steps: consistency,
+      reason: numeric === 'correct' ? 'Equivalent numerical value' : 'Different numerical value',
+    };
   } catch (err) {
-    return { numeric: 'unverified', form: 'unverified', steps: consistency === 'consistent' ? 'unverified' : consistency, reason: err instanceof Error ? err.message : 'Expression requires manual review' };
+    return {
+      numeric: 'unverified',
+      form: 'unverified',
+      steps: consistency === 'consistent' ? 'unverified' : consistency,
+      reason: err instanceof Error ? err.message : 'Expression requires manual review',
+    };
   }
 }

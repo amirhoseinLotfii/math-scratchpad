@@ -181,7 +181,7 @@ Build order follows `CODEX_SYNC_AND_FEATURES _1_.md` Scope 21. A card is complet
 
 ## Fresh handoff audit — 2026-11-03 14:00 Asia/Tehran
 
-- The connected Cloudflare identity is the personal owner account `amirhoseinlotfalizadeprogramer@gmail.com`, matching `OWNER_EMAIL`.
+- The connected Cloudflare identity is the personal owner account `the configured owner`, matching `OWNER_EMAIL`.
 - Production Worker `math-scratchpad-sync` still routes 100% traffic to version `9d5c41bd-b338-45bb-b0bc-70c8129be568`. Its live bundle does not contain `/drive/status`, `/notion/status`, a scheduled handler, or `NOTION_DATA_SOURCE_ATTEMPTS`; it is still the P0-2 Worker, not the P0-3–P0-7 implementation.
 - Production secret-name listing now shows `GOOGLE_DRIVE_CLIENT_SECRET` and `NOTION_API_KEY` (values were not read). `GOOGLE_DRIVE_REFRESH_TOKEN` is still absent.
 - Production Worker settings still have only the base variables `ALLOWED_ORIGIN`, `EVENT_RATE_LIMIT`, `GOOGLE_CLIENT_ID`, and `OWNER_EMAIL`, plus the existing `EVENT_STORE` Durable Object binding. All five `NOTION_DATA_SOURCE_*` variables are absent.

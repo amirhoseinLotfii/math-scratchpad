@@ -15,7 +15,7 @@ export type LessonSection = {
 };
 
 function latinDigits(value: string): string {
-  return value.replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
+  return value.replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
 }
 
 export function pageRange(value?: string): [number, number] | undefined {
@@ -31,19 +31,21 @@ function blockPage(block: LessonBlock): number | undefined {
 
 function explicitSections(lesson: Lesson, definitions: LessonSectionDefinition[]): LessonSection[] {
   const conceptById = new Map(lesson.concepts.map((concept, conceptIndex) => [concept.id, { concept, conceptIndex }]));
-  return definitions.flatMap(definition => {
+  return definitions.flatMap((definition) => {
     const [startPage, endPage] = pageRange(definition.pages) ?? [];
-    const concepts = definition.conceptIds.flatMap(id => {
+    const concepts = definition.conceptIds.flatMap((id) => {
       const entry = conceptById.get(id);
       if (!entry) return [];
-      const tagged = entry.concept.blocks.filter(block => blockPage(block) !== undefined);
-      const unpaged = entry.concept.blocks.filter(block => blockPage(block) === undefined);
+      const tagged = entry.concept.blocks.filter((block) => blockPage(block) !== undefined);
+      const unpaged = entry.concept.blocks.filter((block) => blockPage(block) === undefined);
       const blocks = [
-        ...entry.concept.blocks.filter(block => {
+        ...entry.concept.blocks.filter((block) => {
           const page = blockPage(block);
           return page !== undefined && startPage !== undefined && endPage !== undefined && page >= startPage && page <= endPage;
         }),
-        ...(!tagged.length || definitions.findIndex(section => section.conceptIds.includes(id)) === definitions.indexOf(definition) ? unpaged : []),
+        ...(!tagged.length || definitions.findIndex((section) => section.conceptIds.includes(id)) === definitions.indexOf(definition)
+          ? unpaged
+          : []),
       ];
       return blocks.length ? [{ ...entry, blocks }] : [];
     });
@@ -68,7 +70,7 @@ export function buildLessonSections(lesson: Lesson): LessonSection[] {
 
   // Old lesson banks may have page ranges but no page on individual blocks. Keep
   // each concept intact in that case instead of guessing where to cut its text.
-  if (!datedBlocks.some(item => item.block.type !== 'unsupported' && item.block.page)) {
+  if (!datedBlocks.some((item) => item.block.type !== 'unsupported' && item.block.page)) {
     return lesson.concepts.map((concept, conceptIndex) => {
       const [startPage, endPage] = pageRange(concept.pages) ?? [];
       return {
@@ -95,7 +97,7 @@ export function buildLessonSections(lesson: Lesson): LessonSection[] {
 
   for (const item of datedBlocks) {
     if (item.page === undefined) {
-      let entry = unpagedSection.concepts.find(candidate => candidate.concept.id === item.concept.id);
+      let entry = unpagedSection.concepts.find((candidate) => candidate.concept.id === item.concept.id);
       if (!entry) {
         entry = { concept: item.concept, conceptIndex: item.conceptIndex, blocks: [] };
         unpagedSection.concepts.push(entry);
@@ -107,7 +109,7 @@ export function buildLessonSections(lesson: Lesson): LessonSection[] {
     const startPage = firstPage + Math.floor((page - firstPage) / 2) * 2;
     const section = sectionByStart.get(startPage);
     if (!section) continue;
-    let entry = section.concepts.find(candidate => candidate.concept.id === item.concept.id);
+    let entry = section.concepts.find((candidate) => candidate.concept.id === item.concept.id);
     if (!entry) {
       entry = { concept: item.concept, conceptIndex: item.conceptIndex, blocks: [] };
       section.concepts.push(entry);
@@ -115,6 +117,7 @@ export function buildLessonSections(lesson: Lesson): LessonSection[] {
     entry.blocks.push(item.block);
   }
 
-  return [...sectionByStart.values()].filter(section => section.concepts.length > 0)
+  return [...sectionByStart.values()]
+    .filter((section) => section.concepts.length > 0)
     .concat(unpagedSection.concepts.length ? [unpagedSection] : []);
 }

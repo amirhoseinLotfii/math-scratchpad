@@ -7,7 +7,7 @@ test('mobile math tools keep comfortable spacing and the plus stays close to the
   await expect(history).toHaveCSS('display', 'none');
 
   const quickTools = page.locator('.quick-math-tools button');
-  const boxes = await Promise.all((await quickTools.all()).map(button => button.boundingBox()));
+  const boxes = await Promise.all((await quickTools.all()).map((button) => button.boundingBox()));
   expect(boxes).toHaveLength(5);
   for (const box of boxes) {
     expect(box?.width).toBeGreaterThanOrEqual(44);
@@ -18,13 +18,13 @@ test('mobile math tools keep comfortable spacing and the plus stays close to the
   }
 
   const field = page.locator('math-field[aria-label="Step 1 expression"]');
-  const plusMetrics = await field.evaluate(element => {
+  const plusMetrics = await field.evaluate((element) => {
     const root = element.shadowRoot!;
-    const plus = [...root.querySelectorAll('*')].find(node => node.children.length === 0 && node.textContent?.trim() === '+');
+    const plus = [...root.querySelectorAll('*')].find((node) => node.children.length === 0 && node.textContent?.trim() === '+');
     if (!plus?.parentElement) return null;
     const siblings = [...plus.parentElement.children];
     const plusIndex = siblings.indexOf(plus);
-    const nextTerm = siblings.slice(plusIndex + 1).find(node => (node as HTMLElement).classList.contains('ML__mfrac'));
+    const nextTerm = siblings.slice(plusIndex + 1).find((node) => (node as HTMLElement).classList.contains('ML__mfrac'));
     if (!nextTerm) return null;
     const plusBox = plus.getBoundingClientRect();
     const nextTermBox = nextTerm.getBoundingClientRect();

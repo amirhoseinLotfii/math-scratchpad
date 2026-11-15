@@ -1,3 +1,4 @@
+import { OversizedStateWarning, useHasOversizedState } from './state-sync-budget-ui';
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getAuthenticatedServerStorage, isLocalLearningResetPending, readQuarantineCount } from './browser-db';
 import { ensureWorkerSession } from './worker-session';
@@ -21,12 +22,18 @@ function isLocalOnlyMode(): boolean {
 }
 
 /** Keeps the editor usable from durable local data while the server is unavailable. */
-export function ServerConnectionGate({ children, tokenProvider, onAuthenticated, flushPendingDraft }: {
+export function ServerConnectionGate({
+  children,
+  tokenProvider,
+  onAuthenticated,
+  flushPendingDraft,
+}: {
   children: ReactNode;
   tokenProvider: () => string | undefined;
   onAuthenticated: (token: string) => Promise<void>;
   flushPendingDraft: () => Promise<void>;
 }) {
+  const hasOversizedState = useHasOversizedState();
   const [state, setState] = useState<GateState>(INITIAL);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [resetPending, setResetPending] = useState(isLocalOnlyMode());
@@ -42,7 +49,10 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       epoch.current += 1;
       activeCheck.current?.abort();
       setResetPending(true);
-      setState({ kind: 'blocked', message: 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.' });
+      setState({
+        kind: 'blocked',
+        message: 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.',
+      });
       return;
     }
     setResetPending(false);
@@ -76,12 +86,11 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       await getAuthenticatedServerStorage()?.flush();
       if (id !== epoch.current || isLocalOnlyMode()) return;
       await verifyOwnerServerConnection(token, controller.signal);
+      getAuthenticatedServerStorage()?.flushPendingWrites();
       if (id === epoch.current) setState({ kind: 'online', message: '' });
     } catch (problem) {
       if (id === epoch.current) {
-        const message = problem instanceof Error && problem.name !== 'AbortError'
-          ? problem.message
-          : 'پاسخ سرور در زمان مجاز دریافت نشد.';
+        const message = problem instanceof Error && problem.name !== 'AbortError' ? problem.message : 'پاسخ سرور در زمان مجاز دریافت نشد.';
         setState({ kind: 'blocked', message: `همگام‌سازی سرور موقتاً برقرار نیست: ${message} ${localStorageMessage()}` });
       }
     } finally {
@@ -103,18 +112,24 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       if (pending) {
         epoch.current += 1;
         activeCheck.current?.abort();
-        setState({ kind: 'blocked', message: 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.' });
-      }
-      else if (mounted.current) void check();
+        setState({
+          kind: 'blocked',
+          message: 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.',
+        });
+      } else if (mounted.current) void check();
     };
     const handleQuarantineCount = (event: Event) => {
       const count = (event as CustomEvent<number>).detail;
       if (Number.isSafeInteger(count) && count >= 0) setQuarantinedCount(count);
     };
-    void readQuarantineCount().then(setQuarantinedCount).catch(() => {});
+    void readQuarantineCount()
+      .then(setQuarantinedCount)
+      .catch(() => {});
     window.addEventListener(LOCAL_RESET_STATE_CHANGED_EVENT, handleResetStateChange);
     window.addEventListener('math-scratchpad:learning-quarantine-changed', handleQuarantineCount);
-    const handleOnline = () => { void check(); };
+    const handleOnline = () => {
+      void check();
+    };
     const handleStorageError = (event: Event) => {
       epoch.current += 1;
       const message = (event as CustomEvent<string>).detail;
@@ -128,7 +143,9 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
     window.addEventListener('focus', handleOnline);
     window.addEventListener('math-scratchpad:storage-error', handleStorageError);
     document.addEventListener('visibilitychange', handleOnline);
-    const interval = window.setInterval(() => { void check(); }, PING_INTERVAL_MS);
+    const interval = window.setInterval(() => {
+      void check();
+    }, PING_INTERVAL_MS);
     void check();
     return () => {
       mounted.current = false;
@@ -150,19 +167,36 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       <div data-server-editor data-connection-state={resetPending ? 'local' : state.kind}>
         {children}
       </div>
-      {(state.kind !== 'online' || resetPending) && (!overlayOpen || resetPending) && (
+      {(state.kind !== 'online' || resetPending || hasOversizedState) && (!overlayOpen || resetPending) && (
         <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl">
           <div className="server-connection-gate-header">
-            <strong>{resetPending ? 'حالت محلی فعال است' : state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}</strong>
-            {!resetPending && <button type="button" aria-label="بررسی دوباره اتصال" onClick={() => { void check(); }}>بررسی اتصال</button>}
+            <strong>
+              {resetPending ? 'حالت محلی فعال است' : state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}
+            </strong>
+            {!resetPending && (
+              <button
+                type="button"
+                aria-label="بررسی دوباره اتصال"
+                onClick={() => {
+                  void check();
+                }}
+              >
+                بررسی اتصال
+              </button>
+            )}
           </div>
-          <p className="server-connection-gate-message">{resetPending
-            ? 'پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.'
-            : state.message}</p>
-          {quarantinedCount > 0 && <p className="server-connection-gate-message">{quarantinedCount} رویداد قدیمی در قرنطینه نگه داشته شده‌اند و حذف نشده‌اند.</p>}
-          {!resetPending && <div className="server-connection-gate-google">
-            <GoogleLoginButton onComplete={() => check()} />
-          </div>}
+          <p className="server-connection-gate-message">
+            {resetPending ? 'پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.' : state.message}
+          </p>
+          {hasOversizedState && <OversizedStateWarning />}
+          {quarantinedCount > 0 && (
+            <p className="server-connection-gate-message">{quarantinedCount} رویداد قدیمی در قرنطینه نگه داشته شده‌اند و حذف نشده‌اند.</p>
+          )}
+          {!resetPending && state.kind !== 'online' && (
+            <div className="server-connection-gate-google">
+              <GoogleLoginButton onComplete={() => check()} />
+            </div>
+          )}
         </aside>
       )}
     </ServerConnectionOverlayContext.Provider>

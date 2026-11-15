@@ -9,7 +9,9 @@ import {
 } from '../../src/features/session/timer-continuity';
 import { elapsedAt } from '../../src/features/math-editor/model/model';
 
-afterEach(() => { localStorage.removeItem(TIMER_HEARTBEAT_KEY); });
+afterEach(() => {
+  localStorage.removeItem(TIMER_HEARTBEAT_KEY);
+});
 
 const NOW = Date.parse('2026-11-09T12:00:00Z');
 const MINUTE = 60_000;

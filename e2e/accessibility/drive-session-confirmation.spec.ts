@@ -15,45 +15,76 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
     const hash = '5722e9ceb3077a549643b3e349b6b44058f422818edfddec115e9703a07fc024';
     const testEmail = 'qa-fixture@example.test';
     const encoded = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: testEmail }))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
     const fakeToken = `head.${encoded}.signature`;
     const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
     Object.defineProperty(crypto.subtle, 'digest', {
       configurable: true,
       value: (algorithm: AlgorithmIdentifier, data: BufferSource) => {
         if (algorithm === 'SHA-256' && new TextDecoder().decode(data) === testEmail) {
-          return Promise.resolve(Uint8Array.from(hash.match(/../g)!, byte => Number.parseInt(byte, 16)).buffer);
+          return Promise.resolve(Uint8Array.from(hash.match(/../g)!, (byte) => Number.parseInt(byte, 16)).buffer);
         }
         return originalDigest(algorithm, data);
       },
     });
     class DocsView {
       constructor(_viewId: unknown) {}
-      setMimeTypes() { return this; }
-      setMode() { return this; }
-      setQuery() { return this; }
+      setMimeTypes() {
+        return this;
+      }
+      setMode() {
+        return this;
+      }
+      setQuery() {
+        return this;
+      }
     }
     class PickerBuilder {
       callback: (data: unknown) => void = () => undefined;
-      addView() { return this; }
-      setOAuthToken() { return this; }
-      setDeveloperKey() { return this; }
-      setAppId() { return this; }
-      setOrigin() { return this; }
-      setLocale() { return this; }
-      setTitle() { return this; }
-      setCallback(callback: (data: unknown) => void) { this.callback = callback; return this; }
-      build() { return { setVisible: () => this.callback({ action: 'picked', docs: [{ id: 'qa-file-id-12345', name: 'QA-bank.json' }] }) }; }
+      addView() {
+        return this;
+      }
+      setOAuthToken() {
+        return this;
+      }
+      setDeveloperKey() {
+        return this;
+      }
+      setAppId() {
+        return this;
+      }
+      setOrigin() {
+        return this;
+      }
+      setLocale() {
+        return this;
+      }
+      setTitle() {
+        return this;
+      }
+      setCallback(callback: (data: unknown) => void) {
+        this.callback = callback;
+        return this;
+      }
+      build() {
+        return { setVisible: () => this.callback({ action: 'picked', docs: [{ id: 'qa-file-id-12345', name: 'QA-bank.json' }] }) };
+      }
     }
     const handlers: { signIn?: (credential: { credential: string }) => void } = {};
     const google = {
       accounts: {
         oauth2: {
           hasGrantedAllScopes: () => true,
-          initTokenClient: (config: { callback: (token: unknown) => void }) => ({ requestAccessToken: () => config.callback({ access_token: 'isolated-test-token', expires_in: 3600 }) }),
+          initTokenClient: (config: { callback: (token: unknown) => void }) => ({
+            requestAccessToken: () => config.callback({ access_token: 'isolated-test-token', expires_in: 3600 }),
+          }),
         },
         id: {
-          initialize: (config: { callback: typeof handlers.signIn }) => { handlers.signIn = config.callback; },
+          initialize: (config: { callback: typeof handlers.signIn }) => {
+            handlers.signIn = config.callback;
+          },
           prompt: () => handlers.signIn?.({ credential: fakeToken }),
           renderButton: (element: HTMLElement) => {
             const button = document.createElement('button');
@@ -65,26 +96,49 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
           },
         },
       },
-      picker: { ViewId: { DOCS: 'docs' }, DocsViewMode: { LIST: 'list' }, Action: { PICKED: 'picked', CANCEL: 'cancel' }, DocsView, PickerBuilder },
+      picker: {
+        ViewId: { DOCS: 'docs' },
+        DocsViewMode: { LIST: 'list' },
+        Action: { PICKED: 'picked', CANCEL: 'cancel' },
+        DocsView,
+        PickerBuilder,
+      },
     };
     Object.assign(window, { google, gapi: {} });
   });
-  await page.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', route => {
+  await page.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/session' && route.request().method() === 'POST') {
-      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }),
+      });
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) });
   });
-  await page.route('https://www.googleapis.com/**', async route => {
+  await page.route('https://www.googleapis.com/**', async (route) => {
     const url = route.request().url();
     if (url.includes('/userinfo')) return route.fulfill({ json: { email: 'qa-fixture@example.test', email_verified: true } });
     if (url.includes('alt=media')) return route.fulfill({ status: 200, contentType: 'application/json', body: bankText });
-    return route.fulfill({ json: { id: 'qa-file-id-12345', name: 'QA-bank.json', mimeType: 'application/json', md5Checksum: 'qa-md5', headRevisionId: 'qa-r1', version: '1', size: String(bankText.length) } });
+    return route.fulfill({
+      json: {
+        id: 'qa-file-id-12345',
+        name: 'QA-bank.json',
+        mimeType: 'application/json',
+        md5Checksum: 'qa-md5',
+        headRevisionId: 'qa-r1',
+        version: '1',
+        size: String(bankText.length),
+      },
+    });
   });
 
   const nativeDialogs: string[] = [];
-  page.on('dialog', async dialog => { nativeDialogs.push(dialog.message()); await dialog.dismiss(); });
+  page.on('dialog', async (dialog) => {
+    nativeDialogs.push(dialog.message());
+    await dialog.dismiss();
+  });
   await page.goto('/');
   await page.getByRole('button', { name: 'Exercise menu' }).click();
   await page.getByRole('menuitem', { name: /Google Drive/ }).click();
@@ -129,6 +183,8 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
 
 test('Drive bank inspector traps keyboard focus and Escape restores workspace access', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('https://accounts.google.com/gsi/client', (route) => route.abort());
+  await page.route('https://apis.google.com/js/api.js', (route) => route.abort());
   await page.goto('/');
   const menu = page.getByRole('button', { name: 'Exercise menu' });
   await menu.click();
@@ -137,12 +193,12 @@ test('Drive bank inspector traps keyboard focus and Escape restores workspace ac
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('aria-modal', 'true');
   // The menu's focus restoration must not leave initial focus behind the modal.
-  await expect.poll(async () => panel.evaluate(node => node.contains(document.activeElement))).toBe(true);
+  await expect.poll(async () => panel.evaluate((node) => node.contains(document.activeElement))).toBe(true);
   const close = panel.getByRole('button', { name: 'Close' });
   await close.focus();
   await page.keyboard.press('Tab');
   await expect(panel).toContainText('Google Drive question bank');
-  await expect.poll(async () => panel.evaluate(node => node.contains(document.activeElement))).toBe(true);
+  await expect.poll(async () => panel.evaluate((node) => node.contains(document.activeElement))).toBe(true);
   await page.keyboard.press('Shift+Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Escape');

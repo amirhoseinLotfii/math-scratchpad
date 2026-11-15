@@ -11,11 +11,21 @@ export function createWorkerDeployArgs({ sha, branch }) {
   }
   return [
     'deploy',
-    '--config', 'worker/wrangler.jsonc',
+    '--config',
+    'worker/wrangler.jsonc',
     '--env=',
-    '--var', 'RELEASE_ENV:production',
-    '--var', `RELEASE_SHA:${sha.toLowerCase()}`,
+    '--var',
+    'RELEASE_ENV:production',
+    '--var',
+    `RELEASE_SHA:${sha.toLowerCase()}`,
   ];
+}
+
+export function assertOwnerSecret(secretList) {
+  const secrets = JSON.parse(secretList);
+  if (!Array.isArray(secrets) || !secrets.some((entry) => entry?.name === 'OWNER_EMAIL' && entry.type === 'secret_text')) {
+    throw new Error('OWNER_EMAIL must be configured as a Worker secret before deployment.');
+  }
 }
 
 function main() {
@@ -27,6 +37,19 @@ function main() {
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Invalid Worker release identity.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const secretList = spawnSync('wrangler', ['secret', 'list', '--config', 'worker/wrangler.jsonc', '--env=', '--format', 'json'], {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  try {
+    if (secretList.error || secretList.status !== 0) throw new Error('Unable to verify the production Worker secret.');
+    assertOwnerSecret(secretList.stdout);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'Unable to verify the production Worker secret.');
     process.exitCode = 1;
     return;
   }

@@ -1,0 +1,270 @@
+.lesson-picker-group ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lesson-picker-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 50px;
+  text-align: left;
+}
+.lesson-picker-item svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--success);
+}
+.lesson-picker-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.lesson-status {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.lesson-status-learning {
+  color: var(--primary);
+  border-color: var(--color-success);
+}
+.lesson-status-practising {
+  color: var(--color-text-secondary);
+  border-color: var(--color-primary);
+}
+.lesson-status-done {
+  color: var(--success);
+  border-color: var(--color-success);
+}
+.lesson-state {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  width: min(100%, 900px);
+  min-width: 0;
+  margin-inline: auto;
+  padding: max(16px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom));
+  color: var(--foreground);
+  font: 16px/1.6 var(--font-sans);
+}
+.lesson-state h1 {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 30px);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.lesson-state p {
+  max-width: 68ch;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.lesson-state h1:focus {
+  outline: none;
+}
+.lesson-state h1:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+.lesson-state-error > p[role='alert'] {
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--destructive);
+  background: var(--color-surface);
+  color: var(--color-error-400);
+}
+.lesson-skeleton {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.lesson-skeleton span {
+  display: block;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--raised);
+}
+.lesson-skeleton span:first-child {
+  width: 52%;
+  height: 26px;
+}
+.lesson-skeleton span:last-child {
+  width: 74%;
+}
+.lesson-picker-empty {
+  margin: 4px 2px;
+  padding: 12px;
+  border-inline-start: 3px solid var(--border);
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+.lesson-picker-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 12px;
+}
+.lesson-picker-empty-state .lesson-picker-empty {
+  padding: 0;
+}
+.bank-validation-warnings {
+  border-block-start: 1px solid var(--border);
+  margin-block: 10px;
+  padding-block-start: 8px;
+}
+.bank-validation-warnings ul {
+  max-block-size: 12rem;
+  overflow: auto;
+  padding-inline-start: 1.5rem;
+}
+.bank-validation-warnings li {
+  margin-block: 4px;
+  overflow-wrap: anywhere;
+}
+.lesson-reference-dialog {
+  left: auto;
+  right: max(16px, env(safe-area-inset-right));
+  top: max(16px, env(safe-area-inset-top));
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(820px, 60vw, calc(100vw - 40px));
+  height: min(94dvh, 1120px);
+  max-height: calc(100dvh - 32px);
+  padding: 20px 24px;
+  overflow: hidden;
+  text-align: start;
+  font-size: 16px;
+  line-height: 1.85;
+}
+.lesson-reference-dialog > h2 {
+  flex: none;
+  max-width: 100%;
+  margin: 0;
+  font-size: clamp(21px, 1.6vw, 25px);
+  line-height: 1.5;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.lesson-reference-dialog :is(h2, h3, h4, p, figcaption) {
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.lesson-reference-dialog > p {
+  flex: none;
+  max-width: 100%;
+  margin: 0;
+}
+.lesson-reference-dialog .lesson-reference-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 7px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+  unicode-bidi: isolate;
+  overflow-wrap: anywhere;
+}
+.lesson-reference-dialog .lesson-reference-metadata-separator {
+  color: var(--border);
+}
+.lesson-reference-dialog #lesson-reference-description {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.lesson-reference-dialog .lesson-reference-mode {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.lesson-reference-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-inline: 4px 8px;
+  scroll-padding-block: 16px;
+  scrollbar-gutter: stable;
+}
+.lesson-reference-concept {
+  display: grid;
+  gap: 14px;
+  padding-block: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.lesson-reference-concept > .lesson-section-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 14px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.lesson-reference-concept > .lesson-section-label > span + span {
+  color: var(--muted-foreground);
+}
+.lesson-reference-concept > h2 {
+  margin: 0;
+  font-size: clamp(20px, 1.45vw, 23px);
+  line-height: 1.55;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  hyphens: none;
+}
+.lesson-reference-dialog .lesson-concept-blocks {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+}
+.lesson-reference-dialog .lesson-block {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+}
+.lesson-reference-dialog .lesson-block h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.lesson-reference-dialog .lesson-block p,
+.lesson-reference-dialog .lesson-block-paragraph {
+  margin: 4px 0;
+  line-height: 1.9;
+  max-width: 76ch;
+}
+.lesson-reference-dialog .lesson-note {
+  border-inline-start: 3px solid var(--warning);
+}
+.lesson-reference-dialog .lesson-example {
+  background: var(--raised);
+}
+.lesson-reference-dialog .lesson-example-progress {
+  margin: 10px 0 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.lesson-reference-dialog .lesson-example-steps {
+  display: grid;
+  gap: 7px;
+}

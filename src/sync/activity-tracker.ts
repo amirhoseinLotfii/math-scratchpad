@@ -1,31 +1,8 @@
 import { emitLearnEvent, type LearnEventContext, type LearnEventDraft, type LearnEventType } from './events';
 
-export type ActivityScope = {
-  id: string;
-  parentScopeId?: string;
-  openType: LearnEventType;
-  closeType?: LearnEventType;
-  context?: LearnEventContext;
-  fields?: Omit<LearnEventDraft, 'type' | 'ts' | 'endTs' | 'durationMs' | 'activeMs' | 'distractedMs' | 'pausedMs'>;
-};
+import type { ActivityScope, OpenScope, ActivityTrackerOptions } from './activity-scope';
+export type { ActivityScope } from './activity-scope';
 
-type OpenScope = ActivityScope & {
-  startedAt: number;
-  startedIso: string;
-  activeMs: number;
-  distractedMs: number;
-  pausedMs: number;
-  parentScopeId?: string;
-};
-
-type ActivityTrackerOptions = {
-  idleMs?: number;
-  now?: () => number;
-  toIso?: (time: number) => string;
-  publish?: (context: LearnEventContext, event: LearnEventDraft) => void;
-};
-
-/** Shared visibility, focus, idle and active-time accounting for nested learning scopes. */
 export class ActivityTracker {
   private readonly scopes = new Map<string, OpenScope>();
   private readonly idleMs: number;
@@ -44,12 +21,15 @@ export class ActivityTracker {
   private documentTarget: Document | undefined;
   private windowTarget: Window | undefined;
 
-  constructor(private baseContext: LearnEventContext, options: ActivityTrackerOptions = {}) {
+  constructor(
+    private baseContext: LearnEventContext,
+    options: ActivityTrackerOptions = {},
+  ) {
     this.idleMs = options.idleMs ?? 120_000;
     this.now = options.now ?? (() => performance.now());
     const monotonicOrigin = this.now();
     const wallClockOrigin = Date.now();
-    this.toIso = options.toIso ?? (time => new Date(wallClockOrigin + Math.max(0, time - monotonicOrigin)).toISOString());
+    this.toIso = options.toIso ?? ((time) => new Date(wallClockOrigin + Math.max(0, time - monotonicOrigin)).toISOString());
     this.publish = options.publish ?? emitLearnEvent;
     this.lastSettledAt = monotonicOrigin;
     this.lastActivityAt = this.lastSettledAt;
@@ -78,7 +58,7 @@ export class ActivityTracker {
     const scope = this.scopes.get(id);
     if (!scope) return;
     if (this.focusedStepScopeId === id) this.focusedStepScopeId = null;
-    for (const child of [...this.scopes.values()].filter(candidate => candidate.parentScopeId === id)) this.stopScope(child.id);
+    for (const child of [...this.scopes.values()].filter((candidate) => candidate.parentScopeId === id)) this.stopScope(child.id);
     const end = this.now();
     this.settle(end);
     this.scopes.delete(id);
@@ -166,7 +146,7 @@ export class ActivityTracker {
     const focusStep = (target: EventTarget | null) => {
       const element = target instanceof Element ? target.closest<HTMLElement>('[data-step-id]') : null;
       const stepId = element?.dataset.stepId;
-      const parent = [...this.scopes.values()].reverse().find(scope => scope.openType === 'question_open');
+      const parent = [...this.scopes.values()].reverse().find((scope) => scope.openType === 'question_open');
       const nextScopeId = stepId && parent ? `step:${parent.id}:${stepId}` : null;
       if (nextScopeId === this.focusedStepScopeId) return;
       if (this.focusedStepScopeId) this.stopScope(this.focusedStepScopeId);

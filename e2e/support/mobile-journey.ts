@@ -4,29 +4,38 @@ import { serialize } from '../../src/persistence';
 export const legacyStorageKey = 'math-scratchpad-redux-v2';
 export const storageKey = 'math-scratchpad-session-v3';
 export async function startBatch(page: Page) {
- await page.goto('/'); await page.getByRole('button', { name: 'Exercise menu' }).click();
- await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
- await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
- await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
- await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
- await dismissWellbeing(page);
- await expect(page.locator('select[aria-label="Select question"] option')).toHaveCount(20);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Exercise menu' }).click();
+  await page.getByRole('menuitem', { name: 'Show more' }).press('Enter');
+  await page.getByRole('menuitem', { name: 'Practice', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /Start Round 1/ }).press('Enter');
+  await page.getByRole('button', { name: 'Start 20 Questions', exact: true }).click();
+  await dismissWellbeing(page);
+  await expect(page.locator('select[aria-label="Select question"] option')).toHaveCount(20);
 }
 export async function openConfidence(page: Page) {
- await startBatch(page); await page.getByRole('button', { name: /Next question/i }).click();
- const dialog = page.getByRole('dialog', { name: /confidence/i }); await expect(dialog).toBeVisible(); return dialog;
+  await startBatch(page);
+  await page.getByRole('button', { name: /Next question/i }).click();
+  const dialog = page.getByRole('dialog', { name: /confidence/i });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }
 export async function openCompletion(page: Page) {
- const s = makeStore(initialState()); s.dispatch(actions.startFractionRound());
- s.dispatch(actions.switchExercise(s.getState().doc.exercises.at(-1)!.id));
- s.dispatch(actions.command({ type: 'digit', value: '3' }));
- const data = JSON.parse(serialize(s.getState()));
- data.doc.exercises.slice(0, -1).forEach((e: { skipped: boolean }) => { e.skipped = true; });
- await page.addInitScript(({ key, raw }) => localStorage.setItem(key, raw), { key: legacyStorageKey, raw: JSON.stringify(data) });
- await page.goto('/'); await page.getByRole('button', { name: /Finish session/i }).click();
- const confidence = page.getByRole('dialog', { name: /confidence/i });
- await confidence.getByRole('radio', { name: 'High' }).check();
- await confidence.getByRole('button', { name: /Continue/i }).click();
- const dialog = page.getByRole('dialog', { name: /Session complete/i }); await expect(dialog).toBeVisible();
- return dialog;
+  const s = makeStore(initialState());
+  s.dispatch(actions.startFractionRound());
+  s.dispatch(actions.switchExercise(s.getState().doc.exercises.at(-1)!.id));
+  s.dispatch(actions.command({ type: 'digit', value: '3' }));
+  const data = JSON.parse(serialize(s.getState()));
+  data.doc.exercises.slice(0, -1).forEach((e: { skipped: boolean }) => {
+    e.skipped = true;
+  });
+  await page.addInitScript(({ key, raw }) => localStorage.setItem(key, raw), { key: legacyStorageKey, raw: JSON.stringify(data) });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Finish session/i }).click();
+  const confidence = page.getByRole('dialog', { name: /confidence/i });
+  await confidence.getByRole('radio', { name: 'High' }).check();
+  await confidence.getByRole('button', { name: /Continue/i }).click();
+  const dialog = page.getByRole('dialog', { name: /Session complete/i });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }

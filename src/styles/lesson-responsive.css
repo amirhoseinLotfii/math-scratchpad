@@ -1,0 +1,273 @@
+.lesson-reference-dialog .lesson-example-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+.lesson-reference-dialog .lesson-example-step.is-latest {
+  padding-inline-start: 8px;
+  border-inline-start: 2px solid var(--primary);
+}
+.lesson-reference-dialog .lesson-example-step-label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.lesson-reference-dialog .lesson-example-step p {
+  margin: 0;
+}
+.lesson-reference-dialog .lesson-formula,
+.lesson-reference-dialog .lesson-check-source {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-block: 4px;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lesson-reference-dialog .lesson-attached-formula {
+  width: fit-content;
+  max-width: 100%;
+  margin: 9px 0 12px;
+  padding: 5px 12px;
+  border-inline-start: 2px solid var(--primary);
+  border-radius: 6px;
+  background: var(--raised);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lesson-reference-dialog .lesson-attached-formula .lesson-formula {
+  margin: 0;
+}
+.lesson-reference-dialog .lesson-reference-source-page {
+  width: fit-content;
+  max-width: 100%;
+  margin: 3px 0 -8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.lesson-reference-dialog math-div.math-display {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lesson-reference-dialog math-span.math-display {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lesson-reference-dialog .math-sequence {
+  display: inline-flex;
+  align-items: center;
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+.lesson-reference-dialog .top-sequence {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  max-width: 100%;
+}
+.lesson-reference-dialog .math-chunk,
+.lesson-reference-dialog .group,
+.lesson-reference-dialog .radical {
+  display: inline-flex;
+  align-items: center;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lesson-reference-dialog .math-chunk {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.lesson-reference-dialog .math-token {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 32px;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--foreground);
+  font:
+    30px/1.3 'Cambria Math',
+    'STIX Two Math',
+    Georgia,
+    serif;
+  white-space: pre;
+  font-variant-numeric: lining-nums;
+}
+.lesson-reference-dialog .fraction {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 36px;
+  text-align: center;
+  vertical-align: middle;
+}
+.lesson-reference-dialog .fraction > span {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 24px;
+}
+.lesson-reference-dialog .fraction > span:first-child {
+  border-bottom: 1.5px solid currentColor;
+}
+.lesson-reference-dialog .power {
+  display: inline-flex;
+  align-items: center;
+}
+.lesson-reference-dialog .power > sup {
+  align-self: flex-start;
+  padding-bottom: 18px;
+}
+.lesson-reference-dialog .power > sup .math-token {
+  font-size: 20px;
+}
+.lesson-reference-dialog .radical > span:first-child {
+  font:
+    34px Georgia,
+    serif;
+}
+.lesson-reference-dialog .lesson-raw-math {
+  display: inline-block;
+  max-width: 100%;
+  padding: 7px 9px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--raised);
+  font:
+    14px/1.5 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: pre;
+}
+.lesson-reference-dialog .lesson-image {
+  display: block;
+  max-width: 100%;
+  max-height: min(58vh, 680px);
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--background);
+}
+.lesson-reference-dialog .lesson-image-fallback,
+.lesson-reference-dialog .lesson-unsupported {
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.lesson-reference-checks {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+.lesson-reference-checks > h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.lesson-reference-check {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+}
+.lesson-reference-check h4 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 8px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.lesson-reference-check p {
+  margin: 5px 0;
+  line-height: 1.85;
+}
+.lesson-reference-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lesson-reference-choices li {
+  min-width: 48px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--raised);
+  text-align: center;
+}
+#math-scratchpad-redux .lesson-skip-practice {
+  min-height: 44px;
+  margin-top: 6px;
+  color: var(--muted-foreground);
+}
+#math-scratchpad-redux .lesson-practice-error {
+  padding: 9px 11px;
+  border-inline-start: 3px solid var(--destructive);
+  background: var(--color-surface);
+  color: var(--color-error-400);
+}
+#math-scratchpad-redux .lesson-progress-message,
+#math-scratchpad-redux .lesson-persistence-warning {
+  padding: 9px 11px;
+  border-inline-start: 3px solid var(--warning);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--warning);
+  overflow-wrap: anywhere;
+}
+#math-scratchpad-redux .lesson-persistence-warning {
+  margin: 8px 0 12px;
+}
+#math-scratchpad-redux .lesson-screen[lang='fa'] {
+  direction: rtl;
+  font-size: 16px;
+  line-height: 1.85;
+}
+#math-scratchpad-redux .lesson-screen[lang='fa'] .lesson-book-line {
+  text-align: left;
+  unicode-bidi: isolate;
+}
+#math-scratchpad-redux .lesson-section-content {
+  display: grid;
+  gap: 16px;
+}
+#math-scratchpad-redux .lesson-section-concept {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+#math-scratchpad-redux .lesson-section-concept-label {
+  margin: 0 0 4px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+#math-scratchpad-redux .lesson-section-concept h3 {
+  margin: 0 0 12px;
+  font-size: clamp(18px, 2.7vw, 22px);
+  line-height: 1.5;
+}

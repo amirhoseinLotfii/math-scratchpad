@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { LearnEvent } from '../../src/sync/events';
-import {
-  mergeLatestReadingPosition,
-  readingPositionFromLearnEvent,
-} from '../../src/features/progress/reading-position-from-event';
+import { mergeLatestReadingPosition, readingPositionFromLearnEvent } from '../../src/features/progress/reading-position-from-event';
 import type { ReadingPosition } from '../../src/features/progress/reading-position-types';
-import {
-  deserializeReadingPosition,
-  serializeReadingPosition,
-} from '../../src/features/progress/reading-position-storage';
+import { deserializeReadingPosition, serializeReadingPosition } from '../../src/features/progress/reading-position-storage';
 
 function event(partial: Partial<LearnEvent> & Pick<LearnEvent, 'type' | 'ts'>): LearnEvent {
   return {
@@ -28,11 +22,13 @@ function event(partial: Partial<LearnEvent> & Pick<LearnEvent, 'type' | 'ts'>): 
 
 describe('reading position from latest learn event', () => {
   it('maps a location event into a reading position', () => {
-    const position = readingPositionFromLearnEvent(event({
-      type: 'section_open',
-      ts: '2026-11-08T12:00:00.000Z',
-      itemId: 'q1',
-    }));
+    const position = readingPositionFromLearnEvent(
+      event({
+        type: 'section_open',
+        ts: '2026-11-08T12:00:00.000Z',
+        itemId: 'q1',
+      }),
+    );
     expect(position).toMatchObject({
       userId: '22222222-2222-4222-8222-222222222222',
       chapterId: '2',
@@ -45,10 +41,14 @@ describe('reading position from latest learn event', () => {
   });
 
   it('ignores non-location events', () => {
-    expect(readingPositionFromLearnEvent(event({
-      type: 'tab_hidden',
-      ts: '2026-11-08T12:00:00.000Z',
-    }))).toBeNull();
+    expect(
+      readingPositionFromLearnEvent(
+        event({
+          type: 'tab_hidden',
+          ts: '2026-11-08T12:00:00.000Z',
+        }),
+      ),
+    ).toBeNull();
   });
 
   it('keeps the newest activity when merging', () => {

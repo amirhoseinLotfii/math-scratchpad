@@ -63,7 +63,12 @@ export function MathLiveStepInput({
     // the page body receives early physical keystrokes instead of the field.
     // Capture only math keys when this field was the user's last click target.
     let pendingFocus = false;
-    const click = () => { pendingFocus = true; };
+    const requestFocus = () => {
+      pendingFocus = true;
+      // On narrow layouts MathLive can prevent the pointer's default focus
+      // while its viewport is still settling. Respect the explicit field click.
+      if (attached && document.activeElement !== field) field.focus();
+    };
     const outsidePointer = (event: PointerEvent) => {
       if (!field.contains(event.target as Node)) pendingFocus = false;
     };
@@ -75,7 +80,7 @@ export function MathLiveStepInput({
       if (attached) insertMathSymbol(stepId, event.key);
       else pendingInitialKeys.push(event.key);
     };
-    field.addEventListener('click', click, true);
+    field.addEventListener('click', requestFocus, true);
     document.addEventListener('pointerdown', outsidePointer, true);
     document.addEventListener('keydown', earlyGlobalKeydown, true);
     // Listen before awaiting custom-element upgrade so a fast first keystroke
@@ -110,7 +115,7 @@ export function MathLiveStepInput({
         field.removeEventListener('focus', focus);
         if (mathfieldForStep(stepId) === field) registerMathfield(stepId, null);
       }
-      field.removeEventListener('click', click, true);
+      field.removeEventListener('click', requestFocus, true);
       document.removeEventListener('pointerdown', outsidePointer, true);
       document.removeEventListener('keydown', earlyGlobalKeydown, true);
       field.removeEventListener('keydown', keydown, true);

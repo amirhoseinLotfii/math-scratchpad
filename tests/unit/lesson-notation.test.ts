@@ -7,7 +7,7 @@ describe('read-only lesson notation', () => {
   });
   it('recognizes simple text, equation fragments and indexed roots', () => {
     const parts = parseLessonNotation(String.raw`f(x)=x^2;\quad \text{(a) } 2\quad \text{(b) } \sqrt[3]{x}`);
-    expect(parts?.filter(part => part.type === 'formula')).toHaveLength(2);
+    expect(parts?.filter((part) => part.type === 'formula')).toHaveLength(2);
     expect(parts).toContainEqual({ type: 'root', degree: '3', radicand: 'x' });
     expect(parts).toContainEqual({ type: 'text', text: '(a) ' });
     expect(parseLessonNotation(String.raw`f(x)=c,\ \text{where } c \text{ is constant}`)).not.toBeNull();
@@ -27,6 +27,8 @@ describe('read-only lesson notation', () => {
     ]);
   });
   it('leaves unmarked and unmatched delimiters as prose without parsing', () => {
-    expect(splitLessonText(String.raw`عبارت \\cdot و $x^2 را بررسی کن.`)).toEqual([{ type: 'text', text: String.raw`عبارت \\cdot و $x^2 را بررسی کن.` }]);
+    expect(splitLessonText(String.raw`عبارت \\cdot و $x^2 را بررسی کن.`)).toEqual([
+      { type: 'text', text: String.raw`عبارت \\cdot و $x^2 را بررسی کن.` },
+    ]);
   });
 });

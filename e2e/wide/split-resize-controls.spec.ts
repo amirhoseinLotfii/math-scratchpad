@@ -6,7 +6,10 @@ test.describe('split pane resize controls', () => {
     await page.goto('/e2e/fixtures/lesson-connected-preview.html?sections=1&no-wellbeing=1');
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();
-    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Not started/ }).click();
+    await page
+      .getByRole('dialog', { name: 'Lessons' })
+      .getByRole('button', { name: /Sample lesson.*Not started/ })
+      .click();
 
     const separator = page.getByRole('separator', { name: 'Resize lesson panel' });
     await expect(separator).toBeVisible();

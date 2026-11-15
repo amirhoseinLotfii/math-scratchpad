@@ -17,8 +17,15 @@ function parseBankResponse(value: unknown, fileId: string, withText: boolean): W
   if (!value || typeof value !== 'object') return undefined;
   const record = value as { fileId?: unknown; meta?: unknown; text?: unknown };
   const meta = record.meta as DriveMeta | undefined;
-  if (record.fileId !== fileId || !meta || typeof meta !== 'object' || meta.id !== fileId
-    || typeof meta.name !== 'string' || typeof meta.mimeType !== 'string') return undefined;
+  if (
+    record.fileId !== fileId ||
+    !meta ||
+    typeof meta !== 'object' ||
+    meta.id !== fileId ||
+    typeof meta.name !== 'string' ||
+    typeof meta.mimeType !== 'string'
+  )
+    return undefined;
   if (withText && typeof record.text !== 'string') return undefined;
   return { fileId, meta, ...(withText ? { text: record.text as string } : {}) };
 }
@@ -26,8 +33,12 @@ function parseBankResponse(value: unknown, fileId: string, withText: boolean): W
 async function errorCode(response: Response): Promise<string> {
   try {
     const value: unknown = await response.json();
-    return value && typeof value === 'object' && typeof (value as { error?: unknown }).error === 'string' ? (value as { error: string }).error : '';
-  } catch { return ''; }
+    return value && typeof value === 'object' && typeof (value as { error?: unknown }).error === 'string'
+      ? (value as { error: string }).error
+      : '';
+  } catch {
+    return '';
+  }
 }
 
 /** A problem with the bank file itself; the client Drive path would fail the same way. */
@@ -42,7 +53,8 @@ function hardFileError(code: string): BankFileError | undefined {
 
 async function registerBankSource(token: string, fileId: string, fileName: string): Promise<boolean> {
   const response = await fetch(`${SYNC_API_ORIGIN}/bank/source`, {
-    method: 'POST', cache: 'no-store',
+    method: 'POST',
+    cache: 'no-store',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileId, ...(fileName ? { fileName } : {}) }),
   });
@@ -58,24 +70,31 @@ async function registerBankSource(token: string, fileId: string, fileName: strin
  */
 export async function readBankViaWorker(fileId: string, fileName: string, withText: boolean): Promise<WorkerBankResponse | undefined> {
   let token: string | undefined;
-  try { token = await ensureApiToken(); } catch { return undefined; }
+  try {
+    token = await ensureApiToken();
+  } catch {
+    return undefined;
+  }
   if (!token) return undefined;
   const path = withText ? '/bank/content' : '/bank/meta';
   try {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const response = await fetch(`${SYNC_API_ORIGIN}${path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
-      if (response.status === 401) { handleApiUnauthorized(token); return undefined; }
+      if (response.status === 401) {
+        handleApiUnauthorized(token);
+        return undefined;
+      }
       if (response.ok) {
         const parsed = parseBankResponse(await response.json(), fileId, withText);
         if (parsed) return parsed;
         // Another file is registered (e.g. picked on another device): register this one once.
-        if (attempt === 0 && await registerBankSource(token, fileId, fileName)) continue;
+        if (attempt === 0 && (await registerBankSource(token, fileId, fileName))) continue;
         return undefined;
       }
       const code = await errorCode(response);
       const hard = hardFileError(code);
       if (hard) throw hard;
-      if (attempt === 0 && code === 'bank_source_not_registered' && await registerBankSource(token, fileId, fileName)) continue;
+      if (attempt === 0 && code === 'bank_source_not_registered' && (await registerBankSource(token, fileId, fileName))) continue;
       return undefined;
     }
   } catch (problem) {

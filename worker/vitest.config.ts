@@ -6,7 +6,7 @@ export default defineConfig({
     wrangler: { configPath: 'worker/wrangler.jsonc' },
     // Enabled only inside the isolated local Worker test environment. The
     // production and staging Wrangler configurations deliberately omit it.
-    miniflare: { bindings: { EVENT_RATE_LIMIT: '5', SCOPED_RESET_ENABLED: 'true' } },
+    miniflare: { bindings: { OWNER_EMAIL: 'owner@example.test', EVENT_RATE_LIMIT: '5', SCOPED_RESET_ENABLED: 'true' } },
   })],
   test: {
     include: ['worker/tests/**/*.test.ts'],

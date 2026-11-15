@@ -13,5 +13,5 @@ test('desktop diagnostic keeps immediate physical math input before focus upgrad
   const field = page.locator('math-field[aria-label="Step 1 expression"]').first();
   await field.click();
   await page.keyboard.type('7139');
-  await expect.poll(() => field.evaluate(el => el.shadowRoot?.querySelector('.ML__base')?.textContent)).toContain('7139');
+  await expect.poll(() => field.evaluate((el) => el.shadowRoot?.querySelector('.ML__base')?.textContent)).toContain('7139');
 });

@@ -1,10 +1,11 @@
+import { mockGoogle, mockDrive, panel, media, connect } from './drive-bank-ui-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { Provider } from '../../src/app/store-provider';
 import { QuestionNavigator } from '../../src/features/workspace/components/question-navigator';
-import { QuestionTimer } from '../../src/QuestionTimer';
-import { DriveBankPanel, POLL_MS } from '../../src/features/drive-bank/drive-bank-panel';
+import { QuestionTimer } from '../../src/features/session/components/question-timer';
+import { POLL_MS } from '../../src/features/drive-bank/drive-bank-panel';
 import { actions, initialState, makeStore } from '../../src/store';
 import { bankDocument, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { parse } from '../../src/parser';
@@ -12,105 +13,152 @@ import { clearDriveSessionToken } from '../../src/features/drive-bank/google';
 import { clearGoogleIdToken } from '../../src/sync/google-id-token';
 import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
 import userEvent from '@testing-library/user-event';
-vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async (p: { email?: string }) => p?.email === 'me@example.com' }));
+vi.mock('../../src/features/drive-bank/identity', () => ({
+  permittedAccount: async (p: { email?: string }) => p?.email === 'me@example.com',
+}));
 
-const BANK = (source = '1+2', version = 'v1') => JSON.stringify({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'GEN', version, questions: [{ id: 'A', mode: 'math', source }, { id: 'B', mode: 'text', source: 'متن' }] });
-afterEach(async () => { cleanup(); localStorage.clear(); sessionStorage.clear(); clearDriveSessionToken(); clearGoogleIdToken(); await resetWorkerSessionForTests(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
+const BANK = (source = '1+2', version = 'v1') =>
+  JSON.stringify({
+    schema_version: 'math-scratchpad.bank/1.0',
+    bank_id: 'GEN',
+    version,
+    questions: [
+      { id: 'A', mode: 'math', source },
+      { id: 'B', mode: 'text', source: 'متن' },
+    ],
+  });
+afterEach(async () => {
+  cleanup();
+  localStorage.clear();
+  sessionStorage.clear();
+  clearDriveSessionToken();
+  clearGoogleIdToken();
+  await resetWorkerSessionForTests();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  delete window.google;
+  delete window.gapi;
+});
 
 describe('question navigator', () => {
   it('shows per-question statuses and keyboard movement without duplicating header totals', async () => {
-    const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x'); doc.exercises[0].steps[0].expression = parse('3'); doc.exercises[0].confidence = 'high'; doc.exercises[1].skipped = true;
-    const onSelect = vi.fn(); render(<QuestionNavigator doc={doc} onSelect={onSelect} />);
+    const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x');
+    doc.exercises[0].steps[0].expression = parse('3');
+    doc.exercises[0].confidence = 'high';
+    doc.exercises[1].skipped = true;
+    const onSelect = vi.fn();
+    render(<QuestionNavigator doc={doc} onSelect={onSelect} />);
     expect(screen.queryByText(/of 2 answered/)).toBeNull();
     expect(screen.queryByRole('progressbar')).toBeNull();
-    const buttons = screen.getAllByRole('button').filter(b => b.classList.contains('question-destination')); expect(buttons[0].textContent).toContain('Answered'); expect(buttons[1].textContent).toContain('Skipped');
+    const buttons = screen.getAllByRole('button').filter((b) => b.classList.contains('question-destination'));
+    expect(buttons[0].textContent).toContain('Answered');
+    expect(buttons[1].textContent).toContain('Skipped');
     expect(buttons[0].getAttribute('aria-current')).toBe('page');
-    const user = userEvent.setup(); buttons[0].focus(); await user.keyboard('{ArrowDown}'); expect(document.activeElement).toBe(buttons[1]); await user.keyboard('{Home}'); expect(document.activeElement).toBe(buttons[0]);
-    await user.click(buttons[1]); expect(onSelect).toHaveBeenCalledWith(doc.exercises[1].id);
+    const user = userEvent.setup();
+    buttons[0].focus();
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(buttons[1]);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(buttons[0]);
+    await user.click(buttons[1]);
+    expect(onSelect).toHaveBeenCalledWith(doc.exercises[1].id);
   });
 });
 
 describe('question timer display', () => {
-  it.each([[0, '00:00'], [999, '00:00'], [61000, '01:01'], [3599000, '59:59'], [3600000, '60:00']])('%i ms -> %s', (ms, text) => {
-    vi.useFakeTimers(); const store = makeStore(initialState()); const ex = store.getState().doc.exercises[0]; store.dispatch(actions.addQuestionTime({ exerciseId: ex.id, milliseconds: ms }));
-    render(<Provider store={store}><QuestionTimer exerciseId={ex.id} /></Provider>);
+  it.each([
+    [0, '00:00'],
+    [999, '00:00'],
+    [61000, '01:01'],
+    [3599000, '59:59'],
+    [3600000, '60:00'],
+  ])('%i ms -> %s', (ms, text) => {
+    vi.useFakeTimers();
+    const store = makeStore(initialState());
+    const ex = store.getState().doc.exercises[0];
+    store.dispatch(actions.addQuestionTime({ exerciseId: ex.id, milliseconds: ms }));
+    render(
+      <Provider store={store}>
+        <QuestionTimer exerciseId={ex.id} />
+      </Provider>,
+    );
     expect(screen.getByLabelText('Question elapsed time').textContent).toBe(text);
   });
   it('pause button toggles aria-pressed and label; direction is LTR', async () => {
-    const store = makeStore(initialState()); const { container } = render(<Provider store={store}><QuestionTimer exerciseId={store.getState().doc.exercises[0].id} /></Provider>);
-    const b = screen.getByRole('button', { name: 'Pause' }); expect(b.getAttribute('aria-pressed')).toBe('false');
-    await userEvent.setup().click(b); expect(screen.getByRole('button', { name: 'Resume' }).getAttribute('aria-pressed')).toBe('true');
+    const store = makeStore(initialState());
+    const { container } = render(
+      <Provider store={store}>
+        <QuestionTimer exerciseId={store.getState().doc.exercises[0].id} />
+      </Provider>,
+    );
+    const b = screen.getByRole('button', { name: 'Pause' });
+    expect(b.getAttribute('aria-pressed')).toBe('false');
+    await userEvent.setup().click(b);
+    expect(screen.getByRole('button', { name: 'Resume' }).getAttribute('aria-pressed')).toBe('true');
     expect(container.querySelector('.question-timer')?.getAttribute('dir')).toBe('ltr');
   });
 });
 
-function mockGoogle(email = 'me@example.com') {
-  const picker = { ViewId: { DOCS: 'd' }, DocsViewMode: { LIST: 'l' }, Action: { PICKED: 'picked', CANCEL: 'cancel' }, DocsView: class { setMimeTypes() { return this; } setMode() { return this; } setQuery() { return this; } },
-    PickerBuilder: class { cb: (d: unknown) => void = () => undefined; addView() { return this; } setOAuthToken() { return this; } setDeveloperKey() { return this; } setAppId() { return this; } setOrigin() { return this; } setLocale() { return this; } setTitle() { return this; } setCallback(cb: (d: unknown) => void) { this.cb = cb; return this; } build() { return { setVisible: () => this.cb({ action: 'picked', docs: [{ id: 'private-file-123', name: 'MATH_QUESTION_BANK.json' }] }) }; } } };
-  const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  let idCallback: ((response: { credential?: string }) => void) | undefined;
-  const identity = {
-    initialize: (options: { callback: (response: { credential?: string }) => void }) => { idCallback = options.callback; },
-    prompt: () => idCallback?.({ credential: `header.${payload}.signature` }),
-    renderButton: (element: HTMLElement) => {
-      const button = document.createElement('button');
-      button.type = 'button'; button.textContent = 'Sign in with Google'; button.setAttribute('aria-label', 'Sign in with Google');
-      button.addEventListener('click', () => idCallback?.({ credential: `header.${payload}.signature` }));
-      element.replaceChildren(button);
-    },
-  };
-  window.gapi = {}; window.google = { picker, accounts: { id: identity, oauth2: { hasGrantedAllScopes: () => true, initTokenClient: (c: { callback: (r: unknown) => void }) => ({ requestAccessToken: () => c.callback({ access_token: 'tok', expires_in: 3600 }) }) } } };
-  return email;
-}
-function mockDrive(state: { content: string; rev: number; status?: number; email?: string; mime?: string }) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
-    const url = String(input);
-    if (url.endsWith('/session')) return Response.json({ sessionToken: `mss1.${'T'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }, { status: 201 });
-    if (url.includes('userinfo')) return new Response(JSON.stringify({ email: state.email ?? 'me@example.com', email_verified: true }));
-    if (state.status) return new Response('', { status: state.status });
-    if (url.includes('alt=media')) return new Response(state.content);
-    return new Response(JSON.stringify({ id: 'private-file-123', name: 'b.json', mimeType: state.mime ?? 'application/json', md5Checksum: `m${state.rev}`, headRevisionId: `r${state.rev}` }));
-  });
-}
-function panel() {
-  const store = makeStore(initialState()); const onAvailable = vi.fn(), onBankReady = vi.fn();
-  const view = render(<Provider store={store}><DriveBankPanel open close={() => undefined} onAvailable={onAvailable} onBankReady={onBankReady} /></Provider>);
-  return { store, onAvailable, onBankReady, view, user: userEvent.setup() };
-}
-const media = (f: ReturnType<typeof mockDrive>) => f.mock.calls.filter(c => String(c[0]).includes('alt=media')).length;
-async function connect(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'Sign in with Google' }));
-  await screen.findByText('نشست Google در سرور تأیید شد.');
-  await user.click(await screen.findByRole('button', { name: 'Grant Google Drive access' }));
-}
-
 describe('Drive bank panel', () => {
   it('uses English LTR app controls, a polite status region and no manual config inputs', () => {
-    mockGoogle(); mockDrive({ content: '', rev: 1 }); panel();
-    const region = screen.getByRole('dialog', { name: 'Google Drive question bank' }); expect(region.getAttribute('dir')).toBe('ltr'); expect(region.getAttribute('lang')).toBe('en');
-    expect(within(region).getByRole('status').getAttribute('aria-live')).toBe('polite'); expect(within(region).queryAllByRole('textbox')).toHaveLength(0);
+    mockGoogle();
+    mockDrive({ content: '', rev: 1 });
+    panel();
+    const region = screen.getByRole('dialog', { name: 'Google Drive question bank' });
+    expect(region.getAttribute('dir')).toBe('ltr');
+    expect(region.getAttribute('lang')).toBe('en');
+    expect(within(region).getByRole('status').getAttribute('aria-live')).toBe('polite');
+    expect(within(region).queryAllByRole('textbox')).toHaveLength(0);
   });
   it('rejects a non-project Google account and keeps disconnected', async () => {
-    mockGoogle(); mockDrive({ content: BANK(), rev: 1, email: 'other@example.com' }); const { user } = panel(); await connect(user);
-    expect(await screen.findByText(/حساب Google Drive با حساب واردشده یکی نیست/)).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Choose bank file' })).toBeNull();
+    mockGoogle();
+    mockDrive({ content: BANK(), rev: 1, email: 'other@example.com' });
+    const { user } = panel();
+    await connect(user);
+    expect(await screen.findByText(/حساب Google Drive با حساب واردشده یکی نیست/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Choose bank file' })).toBeNull();
   });
   it('downloads once, then polls metadata only until it changes', async () => {
-    mockGoogle(); const drive = { content: BANK(), rev: 1 }; const f = mockDrive(drive); const { user, onAvailable, onBankReady } = panel();
+    mockGoogle();
+    const drive = { content: BANK(), rev: 1 };
+    const f = mockDrive(drive);
+    const { user, onAvailable, onBankReady } = panel();
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    await connect(user); expect(await screen.findByText(/2 questions ready/)).toBeTruthy(); expect(onAvailable).toHaveBeenLastCalledWith(true); expect(onBankReady.mock.lastCall?.[0]).toMatchObject({ bank_id: 'GEN' });
+    await connect(user);
+    expect(await screen.findByText(/2 questions ready/)).toBeTruthy();
+    expect(onAvailable).toHaveBeenLastCalledWith(true);
+    expect(onBankReady.mock.lastCall?.[0]).toMatchObject({ bank_id: 'GEN' });
     const n = media(f);
-    await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); }); await waitFor(() => expect(f.mock.calls.length).toBeGreaterThan(3)); expect(media(f)).toBe(n);
-    drive.content = BANK('1+5', 'v2'); drive.rev = 2;
-    await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); }); expect(await screen.findByText(/version v2/)).toBeTruthy(); expect(media(f)).toBe(n + 1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    await waitFor(() => expect(f.mock.calls.length).toBeGreaterThan(3));
+    expect(media(f)).toBe(n);
+    drive.content = BANK('1+5', 'v2');
+    drive.rev = 2;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    expect(await screen.findByText(/version v2/)).toBeTruthy();
+    expect(media(f)).toBe(n + 1);
   });
   it('a broken update keeps the previous bank and says so', async () => {
-    mockGoogle(); const drive = { content: BANK(), rev: 1 }; mockDrive(drive); const { user } = panel(); await connect(user); await screen.findByText(/2 questions/);
-    drive.content = BANK('x_1', 'v2'); drive.rev = 2; await user.click(screen.getByRole('button', { name: 'Check now' }));
+    mockGoogle();
+    const drive = { content: BANK(), rev: 1 };
+    mockDrive(drive);
+    const { user } = panel();
+    await connect(user);
+    await screen.findByText(/2 questions/);
+    drive.content = BANK('x_1', 'v2');
+    drive.rev = 2;
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
     expect(await screen.findByText(/Unsupported input near _1.*previously loaded bank and current session were preserved/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open received batch' })).toBeTruthy();
   });
   it('warns when a fetched bank version differs from the active session', async () => {
-    mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store } = panel();
+    mockGoogle();
+    mockDrive({ content: BANK(), rev: 1 });
+    const { user, store } = panel();
     const doc = bankDocument(validateBank(JSON.parse(BANK())), 'v1-old');
     store.dispatch(actions.load({ doc }));
     const before = structuredClone(store.getState().doc);
@@ -119,51 +167,38 @@ describe('Drive bank panel', () => {
     expect(store.getState().doc).toEqual(before);
   });
   it('explains that Learn progress is scoped by bank version even without an active bank session', async () => {
-    mockGoogle(); const raw = JSON.parse(BANK());
+    mockGoogle();
+    const raw = JSON.parse(BANK());
     raw.lessons = [{ id: 'L1', book: 'Sample', section: '1', title: 'Lesson', concepts: [] }];
-    mockDrive({ content: JSON.stringify(raw), rev: 1 }); const { user } = panel();
+    mockDrive({ content: JSON.stringify(raw), rev: 1 });
+    const { user } = panel();
     await connect(user);
     expect(await screen.findByText(/Lesson progress is kept separately for each bank version/)).toBeTruthy();
   });
   it('shows Google Doc and 403 errors in English', async () => {
-    mockGoogle(); const drive = { content: BANK(), rev: 1, mime: 'application/vnd.google-apps.document' } as Parameters<typeof mockDrive>[0]; mockDrive(drive); const { user } = panel(); await connect(user);
+    mockGoogle();
+    const drive = { content: BANK(), rev: 1, mime: 'application/vnd.google-apps.document' } as Parameters<typeof mockDrive>[0];
+    mockDrive(drive);
+    const { user } = panel();
+    await connect(user);
     expect(await screen.findByText(/The bank file is a Google Doc/)).toBeTruthy();
-    drive.mime = undefined; drive.status = 403; await user.click(screen.getByRole('button', { name: 'Check now' })); expect(await screen.findByText(/Google denied access \(403\)/)).toBeTruthy();
+    drive.mime = undefined;
+    drive.status = 403;
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText(/Google denied access \(403\)/)).toBeTruthy();
   });
   it('401 expires the connection', async () => {
-    mockGoogle(); const drive = { content: BANK(), rev: 1 } as Parameters<typeof mockDrive>[0]; mockDrive(drive); const { user } = panel(); await connect(user); await screen.findByText(/2 questions/);
-    drive.status = 401; await user.click(screen.getByRole('button', { name: 'Check now' }));
+    mockGoogle();
+    const drive = { content: BANK(), rev: 1 } as Parameters<typeof mockDrive>[0];
+    mockDrive(drive);
+    const { user } = panel();
+    await connect(user);
+    await screen.findByText(/2 questions/);
+    drive.status = 401;
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
     expect(await screen.findByText(/authorization expired/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Grant Google Drive access' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
   });
-  it('opening the bank archives the old session and the same version cannot be reopened', async () => {
-    mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store, onAvailable } = panel(); const originalSessionId = store.getState().doc.session?.id; await connect(user);
-    const open = await screen.findByRole('button', { name: 'Open received batch' }); await user.click(open);
-    const batchDialog = await screen.findByRole('dialog', { name: 'Open a new question batch?' }); expect(within(batchDialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
-    await user.click(within(batchDialog).getByRole('button', { name: 'Open batch' }));
-    expect(store.getState().doc.exercises.map(e => e.bankQuestionId)).toEqual(['A', 'B']); expect(onAvailable).toHaveBeenLastCalledWith(false);
-    expect(await screen.findByText(/Saved sessions \(1\)/)).toBeTruthy();
-    await user.click(screen.getByText(/Saved sessions \(1\)/));
-    const resume = screen.getByRole('button', { name: 'Resume' }); await user.click(resume);
-    const restoreDialog = await screen.findByRole('dialog', { name: 'Restore this saved session?' });
-    await user.click(within(restoreDialog).getByRole('button', { name: 'Cancel' }));
-    expect(resume).toHaveFocus(); expect(store.getState().doc.session?.bankId).toBe('GEN');
-    await user.click(resume); await user.click(await screen.findByRole('button', { name: 'Restore session' }));
-    expect(store.getState().doc.session?.id).toBe(originalSessionId);
-  });
-  it('cancelling the confirm leaves the session untouched', async () => {
-    mockGoogle(); mockDrive({ content: BANK(), rev: 1 }); const { user, store } = panel(); await connect(user);
-    const before = JSON.stringify(store.getState().doc); const open = await screen.findByRole('button', { name: 'Open received batch' }); await user.click(open);
-    const dialog = await screen.findByRole('dialog', { name: 'Open a new question batch?' });
-    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    expect(open).toHaveFocus(); expect(JSON.stringify(store.getState().doc)).toBe(before);
-  });
-  it('remembers the picked file id only', async () => {
-    mockGoogle(); mockDrive({ content: '', rev: 1 }); const { user } = panel(); await connect(user); await screen.findByText(/selected bank file is empty/);
-    expect(JSON.parse(localStorage.getItem('math-scratchpad-drive-config-v1')!)).toEqual({ fileId: 'private-file-123', fileName: 'MATH_QUESTION_BANK.json' });
-  });
-  it('store actions used by the panel: load replaces doc', () => { const s = makeStore(initialState()); const doc = bankDocument(validateBank(JSON.parse(BANK())), 'x'); s.dispatch(actions.load({ doc })); expect(s.getState().doc.session?.bankId).toBe('GEN'); });
 });

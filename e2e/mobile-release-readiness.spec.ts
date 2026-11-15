@@ -6,18 +6,24 @@ test.use({ autoDismissWellbeing: false });
 test('mobile offline status is compact, discoverable and does not block math actions', { tag: '@only-mobile-390' }, async ({ page }) => {
   // The retry control is available only after the public reset guard has been
   // verified. Keep the endpoint synthetic so this test never depends on a live Worker.
-  await page.route('**/reset/status', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
-  }));
-  for (const size of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 430, height: 932 }]) {
+  await page.route('**/reset/status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'idle', epoch: LEARNING_RESET_EPOCH }),
+    }),
+  );
+  for (const size of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+  ]) {
     await page.setViewportSize(size);
     await page.goto('/?serverMode');
     const status = page.getByRole('status', { name: 'وضعیت همگام‌سازی' });
     await expect(status).toBeVisible();
     await expect(status.getByRole('button', { name: 'بررسی دوباره اتصال' })).toBeVisible();
-    const height = await status.evaluate(el => el.getBoundingClientRect().height);
+    const height = await status.evaluate((el) => el.getBoundingClientRect().height);
     expect(height, JSON.stringify(size)).toBeLessThan(250);
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await expect(page.getByRole('menuitem', { name: 'New Problem' })).toBeVisible();
@@ -47,7 +53,6 @@ test('practice completion tells learner how many answers remain unverified', { t
   await done.getByRole('button', { name: 'Finish & Analyze' }).click();
   await expect(page.getByRole('region', { name: 'Diagnostic report' })).toContainText('unverified');
 });
-
 
 test('session summary counts saved drafts separately from untouched questions', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.goto('/');

@@ -1,0 +1,272 @@
+#math-scratchpad-redux .keyboard-toolbar button {
+  font-size: 12px;
+  padding: 6px 4px;
+  min-width: 0;
+  min-height: 44px;
+  gap: 4px;
+}
+#math-scratchpad-redux .keyboard-toolbar button > span {
+  font-size: 18px;
+}
+#math-scratchpad-redux .key-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(48px, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+#math-scratchpad-redux .key-grid button {
+  min-width: 44px;
+  min-height: 48px;
+  padding: 5px 3px;
+  font-size: 24px;
+}
+#math-scratchpad-redux .key-grid .operator-key {
+  background: var(--color-highlight);
+}
+#math-scratchpad-redux .key-grid button:nth-last-child(2) {
+  font-size: 13px;
+}
+#math-scratchpad-redux .more-tools-panel {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 8px;
+  background: var(--card);
+}
+#math-scratchpad-redux .editing-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#math-scratchpad-redux .review-controls {
+  border: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+#math-scratchpad-redux .review-button {
+  width: 100%;
+  min-height: 52px;
+}
+#math-scratchpad-redux .question-navigation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#math-scratchpad-redux .question-navigation button {
+  font-size: 13px;
+  min-height: 48px;
+}
+#math-scratchpad-redux [role='status']:empty,
+#math-scratchpad-redux .copy-state:empty {
+  display: none;
+}
+#math-scratchpad-redux .copy-state,
+#math-scratchpad-redux [role='status'] {
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+#math-scratchpad-redux p[role='alert'],
+.modal-content [role='alert'] {
+  color: var(--destructive);
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(var(--color-neutral-1000-rgb), 0.04);
+}
+.modal-content {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  z-index: 51;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  padding: 20px;
+  font: 16px/1.5 var(--font-sans);
+  box-sizing: border-box;
+}
+.modal-content h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+.modal-content p {
+  color: var(--muted-foreground);
+  margin: 8px 0 16px;
+}
+.modal-content fieldset {
+  min-width: 0;
+  margin: 16px 0;
+  padding: 0;
+  border: 0;
+}
+.modal-content legend {
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+.modal-content legend span {
+  color: var(--muted-foreground);
+}
+.confidence-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.confidence-options label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 48px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.confidence-options input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+.confidence-options label:has(:checked) {
+  background: var(--color-highlight);
+  border-color: var(--ring);
+}
+.confidence-options label:focus-within {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.completion-actions {
+  display: grid;
+  gap: 10px;
+}
+.insert-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.dropdown-content {
+  z-index: 60;
+  width: min(310px, calc(100vw - 24px));
+  max-height: var(--radix-dropdown-menu-content-available-height);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  padding: 6px;
+  box-shadow: 0 12px 40px rgba(var(--color-neutral-1000-rgb), 0.03);
+  font: 14px/1.4 var(--font-sans);
+  box-sizing: border-box;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  min-height: 44px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+}
+.dropdown-item[data-highlighted] {
+  background: var(--secondary);
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.dropdown-item svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+.dropdown-sub-trigger {
+  justify-content: space-between;
+}
+.dropdown-sub-content {
+  max-height: var(--radix-dropdown-menu-content-available-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.menu-description {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-top: 4px;
+}
+[aria-hidden='true'][inert] {
+  pointer-events: none;
+}
+@container (min-width: 840px) {
+  #math-scratchpad-redux .scratchpad {
+    padding: 24px;
+  }
+  #math-scratchpad-redux .desktop-action {
+    display: inline-flex;
+  }
+  #math-scratchpad-redux .eyebrow,
+  #math-scratchpad-redux .subtitle {
+    display: block;
+  }
+  #math-scratchpad-redux .step-header .final-marker {
+    display: inline-flex;
+  }
+  #math-scratchpad-redux .keyboard-toggle[aria-expanded='true'] {
+    display: inline-flex;
+  }
+  #math-scratchpad-redux .notebook-main {
+    max-width: 900px;
+    margin-inline: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (forced-colors: active) {
+  .ui-button,
+  #math-scratchpad-redux button,
+  .modal-content,
+  .dropdown-content {
+    forced-color-adjust: auto;
+    border: 1px solid ButtonText;
+  }
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+}
+#math-scratchpad-redux .editor-layout {
+  align-items: stretch;
+}
+#math-scratchpad-redux .quick-math-tools .math-tool-icon {
+  width: 32px;
+  height: 38px;
+}
+#math-scratchpad-redux .header-actions {
+  display: flex;
+}
+#math-scratchpad-redux button.desktop-action {
+  display: none;
+}

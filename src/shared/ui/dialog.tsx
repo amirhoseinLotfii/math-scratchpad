@@ -5,7 +5,14 @@ export const Dialog = Primitive.Root;
 export const DialogTitle = Primitive.Title;
 export const DialogDescription = Primitive.Description;
 export const DialogClose = Primitive.Close;
-export const DialogContent = forwardRef<ElementRef<typeof Primitive.Content>, ComponentPropsWithoutRef<typeof Primitive.Content>>(({ children, className, ...props }, ref) => (
- <Primitive.Portal><Primitive.Overlay className="modal-overlay" /><Primitive.Content aria-modal="true" ref={ref} className={cn('modal-content', className)} {...props}>{children}</Primitive.Content></Primitive.Portal>
-));
+export const DialogContent = forwardRef<ElementRef<typeof Primitive.Content>, ComponentPropsWithoutRef<typeof Primitive.Content>>(
+  ({ children, className, ...props }, ref) => (
+    <Primitive.Portal>
+      <Primitive.Overlay className="modal-overlay" />
+      <Primitive.Content aria-modal="true" ref={ref} className={cn('modal-content', className)} {...props}>
+        {children}
+      </Primitive.Content>
+    </Primitive.Portal>
+  ),
+);
 DialogContent.displayName = 'DialogContent';
