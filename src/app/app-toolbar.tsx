@@ -58,6 +58,7 @@ export function AppToolbar({
           dispatch(actions.keyboard(open));
           if (open) requestAnimationFrame(focusEditor);
         }}
+        onOpenSyncPanel={() => setActiveInspector('sync')}
       >
         <ExerciseMenu
           open={menu}
