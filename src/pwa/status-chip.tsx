@@ -109,6 +109,8 @@ export function StatusChip({ onOpenSyncPanel }: { onOpenSyncPanel?: () => void }
         aria-expanded={open}
         aria-live="polite"
         aria-atomic="true"
+        lang="fa"
+        dir="rtl"
         onClick={() => setOpen(true)}
       >
         <span className="pwa-status-chip-dot" aria-hidden="true" />
