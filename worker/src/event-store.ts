@@ -1,12 +1,17 @@
+import { maxSequence, readEventsAfter, readEventsThrough, readPage } from './event-store/event-repository';
+import { initializeStoreSchema } from './event-store/schema';
+import { json } from './event-store/response';
+import { handleSession } from './event-store/session-service';
+import { readBank, registerBankSource } from './event-store/bank-source-service';
+import { appStateRevision as readAppStateRevision, readAppState, writeAppState } from './event-store/state-repository';
+import { MAX_BODY_BYTES, MAX_BATCH_SIZE, NOTION_RESET_RECONCILIATION_PER_CALL, RATE_WINDOW_MS, DRIVE_STATE_KEY, DRIVE_DEBOUNCE_MS, DRIVE_RETRY_MS, WEEKLY_BACKUP_RETRY_MS, NOTION_PROJECTION_PAGE_SIZE, NOTION_EVENTS_PER_RUN, NOTION_STATE_KEYS_PER_RUN, NOTION_DEBOUNCE_MS, NOTION_RETRY_MS, MAX_MIRROR_SUBREQUESTS, NOTION_MIRROR_STATE_KEY, LEARNING_RESET_TABLE, SCOPED_RESET_OPERATIONS_TABLE, MAX_SCOPED_RESET_BODY_BYTES, MAX_SCOPED_RESET_REBUILD_EVENTS, SCOPED_RESET_REVIEW_CONFIRMATION, SCOPED_RESET_DELETE_CONFIRMATION, LEARNING_RESET_TRASH_PER_CALL } from './event-store/limits';
 import { isScopedResetSharedStateKey } from '../../shared/contracts/storage-keys';
-import { MAX_BANK_BYTES, MAX_SYNC_STATE_VALUE_BYTES, utf8Bytes } from '../../shared/contracts/limits';
 import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../shared/contracts/learn-event';
 import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
 import { DriveMirrorError, GoogleDriveClient, hasLearningMirrorOwnership, type DriveFileRef, type DriveMirrorErrorCode, type DriveFolderChild, type DriveMirrorKind, type DriveSnapshotRef } from './google-drive';
 import { snapshotName } from './immutable-snapshot';
-import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from './session';
 import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../shared/contracts/reset-epoch';
 import {
   classifyScopedLearningEvent,
@@ -47,14 +52,6 @@ import {
   type SequencedLearnEvent,
 } from './drive-projection';
 
-const MAX_BODY_BYTES = 250_000;
-const MAX_STATE_BODY_BYTES = 2_100_000;
-const MAX_BATCH_SIZE = 50;
-const MAX_PAGE_SIZE = 100;
-const NOTION_RESET_RECONCILIATION_PER_CALL = 10;
-const RATE_WINDOW_MS = 60_000;
-
-type StoredEvent = { seq: number; event: LearnEvent };
 type AppendResult = { id: string; seq: number; duplicate: boolean };
 type DriveMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
@@ -92,30 +89,6 @@ export type DriveMirrorStatus = {
   };
 };
 
-const DRIVE_STATE_KEY = 'drive-mirror-state-v1';
-const DRIVE_DEBOUNCE_MS = 1_000;
-const DRIVE_RETRY_MS = 60_000;
-const WEEKLY_BACKUP_RETRY_MS = 60_000;
-const DRIVE_MIRROR_PAGE_SIZE = 500;
-const NOTION_PROJECTION_PAGE_SIZE = 1_000;
-const NOTION_EVENTS_PER_RUN = 20;
-const NOTION_STATE_KEYS_PER_RUN = 10;
-const NOTION_DEBOUNCE_MS = 250;
-const NOTION_RETRY_MS = 60_000;
-const MAX_MIRROR_SUBREQUESTS = 40;
-const NOTION_MIRROR_STATE_KEY = 'notion-mirror-state-v1';
-const LEARNING_RESET_TABLE = 'learning_reset_control';
-const SCOPED_RESET_OPERATIONS_TABLE = 'scoped_reset_operations';
-const MAX_SCOPED_RESET_BODY_BYTES = 16_384;
-const MAX_SCOPED_RESET_REBUILD_EVENTS = 5_000;
-const SCOPED_RESET_REVIEW_CONFIRMATION = 'I_REVIEWED_SCOPED_RESET_PREVIEW';
-const SCOPED_RESET_DELETE_CONFIRMATION = 'I_CONFIRM_SCOPED_LEARNING_DATA_DELETION';
-/**
- * Each trashed mirror costs two Drive subrequests (verify + batch trash). Keep one reset call
- * well under the Workers Free per-invocation subrequest cap (50) and resume on retry.
- */
-const LEARNING_RESET_TRASH_PER_CALL = 12;
-
 type StoredNotionMirrorState = {
   status: 'pending' | 'syncing' | 'synced' | 'error';
   lastSeq: number;
@@ -149,12 +122,6 @@ type ScopedResetSnapshot = {
 class MirrorSubrequestBudgetExceeded extends Error {
   readonly code = 'subrequest_budget_exceeded';
   constructor() { super('subrequest_budget_exceeded'); }
-}
-
-function json(data: unknown, status = 200, headers?: HeadersInit): Response {
-  const responseHeaders = new Headers(headers);
-  responseHeaders.set('Cache-Control', 'no-store');
-  return Response.json(data, { status, headers: responseHeaders });
 }
 
 function canonicalJson(value: unknown): string {
@@ -203,14 +170,6 @@ export function mergeWeeklyBackupContent(remote: string, desired: string): strin
   return desired;
 }
 
-function integerQuery(url: URL, name: string, fallback: number): number | null {
-  const raw = url.searchParams.get(name);
-  if (raw === null) return fallback;
-  if (!/^(0|[1-9]\d*)$/.test(raw)) return null;
-  const value = Number(raw);
-  return Number.isSafeInteger(value) ? value : null;
-}
-
 /** One owner-scoped, append-only SQLite event log. */
 export class LearningEventStore extends DurableObject<WorkerEnv> {
   private readonly rateLimit: number;
@@ -239,88 +198,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env);
     this.rateLimit = this.parseRateLimit(env.EVENT_RATE_LIMIT);
-    // Queryable operational mirror status: unlike internal Durable Object KV,
-    // this can be inspected through the authenticated Cloudflare SQL console.
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sync_health (destination TEXT PRIMARY KEY, status TEXT NOT NULL, pending_count INTEGER NOT NULL, last_error TEXT, last_synced_at TEXT, updated_at TEXT NOT NULL)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror_diagnostics (destination TEXT PRIMARY KEY, failure_stage TEXT NOT NULL, error_code TEXT NOT NULL, updated_at TEXT NOT NULL)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror_configuration (destination TEXT PRIMARY KEY, configured INTEGER NOT NULL, updated_at TEXT NOT NULL)');
-    const configuration = [
-      ['drive', Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_REFRESH_TOKEN)],
-      ['notion', Boolean(notionDataSourcesFromEnv(env))],
-    ] as const;
-    for (const [destination, configured] of configuration) {
-      ctx.storage.sql.exec(
-        'INSERT INTO mirror_configuration(destination,configured,updated_at) VALUES(?,?,?) ON CONFLICT(destination) DO UPDATE SET configured=excluded.configured,updated_at=excluded.updated_at',
-        destination, configured ? 1 : 0, new Date().toISOString(),
-      );
-    }
-
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT, revision INTEGER NOT NULL, updated_at TEXT NOT NULL)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS app_state_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER NOT NULL)');
-    ctx.storage.sql.exec('INSERT OR IGNORE INTO app_state_meta (singleton, revision) VALUES (1, 0)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projections (projection_type TEXT NOT NULL, projection_key TEXT NOT NULL, projection_json TEXT NOT NULL, PRIMARY KEY (projection_type, projection_key))');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_projection_meta (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), last_seq INTEGER NOT NULL)');
-    ctx.storage.sql.exec('INSERT OR IGNORE INTO notion_projection_meta (singleton, last_seq) VALUES (1, 0)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_page_refs (kind TEXT NOT NULL, external_key TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (kind, external_key))');
-    ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS notion_reset_reconciliation (
-      reset_id TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      external_key TEXT NOT NULL,
-      page_id TEXT NOT NULL,
-      owner_marker TEXT NOT NULL,
-      status TEXT NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      last_attempt_at TEXT,
-      last_error TEXT,
-      created_at TEXT NOT NULL,
-      reconciled_at TEXT,
-      PRIMARY KEY (reset_id, kind, external_key)
-    )`);
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_state_queue (key TEXT PRIMARY KEY, revision INTEGER NOT NULL)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_mistake_reviews (item_key TEXT PRIMARY KEY, event_id TEXT NOT NULL, review_successes INTEGER NOT NULL, last_review_event_id TEXT)');
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS notion_session_mistakes (session_id TEXT NOT NULL, page_id TEXT NOT NULL, PRIMARY KEY (session_id, page_id))');
-    ctx.storage.sql.exec(`
-      CREATE TABLE IF NOT EXISTS learning_events (
-        seq INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id TEXT NOT NULL UNIQUE,
-        event_json TEXT NOT NULL,
-        event_ts TEXT NOT NULL
-      )
-    `);
-    // Worker sessions: only SHA-256 digests of the bearer values are stored.
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, sub TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)');
-    // The question-bank file the owner picked once with Google Picker (drive.file grant for this OAuth app).
-    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS bank_source (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), file_id TEXT NOT NULL, file_name TEXT NOT NULL, registered_at TEXT NOT NULL)');
-    ctx.storage.sql.exec(`
-      CREATE TABLE IF NOT EXISTS rate_windows (
-        window_start INTEGER PRIMARY KEY,
-        request_count INTEGER NOT NULL
-      )
-    `);
-    ctx.storage.sql.exec(`
-      CREATE TABLE IF NOT EXISTS ${LEARNING_RESET_TABLE} (
-        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-        status TEXT NOT NULL,
-        reset_id TEXT,
-        completed_at TEXT,
-        client_epoch TEXT
-      )
-    `);
-    const resetColumns = ctx.storage.sql.exec<{ name: string }>(`PRAGMA table_info(${LEARNING_RESET_TABLE})`).toArray();
-    if (!resetColumns.some(column => column.name === 'client_epoch')) {
-      ctx.storage.sql.exec(`ALTER TABLE ${LEARNING_RESET_TABLE} ADD COLUMN client_epoch TEXT`);
-    }
-    ctx.storage.sql.exec(`INSERT OR IGNORE INTO ${LEARNING_RESET_TABLE} (singleton, status, reset_id) VALUES (1, 'idle', NULL)`);
-    ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS ${SCOPED_RESET_OPERATIONS_TABLE} (
-      operation_id TEXT PRIMARY KEY,
-      scope_json TEXT NOT NULL,
-      snapshot_token TEXT NOT NULL,
-      state TEXT NOT NULL,
-      expires_at INTEGER NOT NULL,
-      result_json TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`);
+    initializeStoreSchema(ctx, env);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -339,13 +217,13 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         return json({ error: 'client_update_required', requiredEpoch }, 426);
       }
     }
-    if (request.method === 'POST' && url.pathname.startsWith('/internal/session/')) return this.handleSession(url.pathname, request);
+    if (request.method === 'POST' && url.pathname.startsWith('/internal/session/')) return handleSession(this.ctx.storage, () => this.consumeRateLimit(), url.pathname, request);
     if ((request.method === 'GET' && (url.pathname === '/bank/meta' || url.pathname === '/bank/content'))
       || (request.method === 'POST' && url.pathname === '/bank/source')) {
       const rate = this.consumeRateLimit();
       if (rate) return rate;
-      if (url.pathname === '/bank/source') return this.registerBankSource(request);
-      return this.readBank(url.pathname === '/bank/content');
+      if (url.pathname === '/bank/source') return registerBankSource(this.ctx.storage, () => this.bankDriveClient(), request);
+      return readBank(this.ctx.storage, () => this.bankDriveClient(), url.pathname === '/bank/content');
     }
     const supported = (request.method === 'POST' && (url.pathname === '/events' || url.pathname === '/reset/execute'))
       || (request.method === 'GET' && (url.pathname === '/sync' || url.pathname === '/snapshot' || url.pathname === '/drive/status' || url.pathname === '/notion/status' || url.pathname === '/state' || url.pathname === '/reset/preview'))
@@ -382,8 +260,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
     if (url.pathname === '/reset/preview') return this.resetPreview(url);
     if (request.method === 'POST' && url.pathname === '/reset/execute') return this.executeScopedReset(request);
-    if (url.pathname === '/state') return request.method === 'GET' ? this.readAppState()
-      : this.trackLearningMutation(() => this.writeAppState(request));
+    if (url.pathname === '/state') return request.method === 'GET' ? readAppState(this.ctx.storage)
+      : this.trackLearningMutation(() => writeAppState(this.ctx.storage, request, () => this.isLearningResetLocked(), (key, revision) => this.mirrorStateChange(key, revision)));
     if (url.pathname === '/events') return this.trackLearningMutation(() => this.append(request));
     if (url.pathname === '/drive/status') return json(await this.getDriveStatus());
     if (url.pathname === '/notion/status') return json(await this.getNotionStatus());
@@ -396,7 +274,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const status = await this.syncNotion();
       return json({ notion: status }, status.status === 'synced' ? 200 : status.status === 'not_configured' ? 503 : status.status === 'pending' ? 202 : 502);
     }
-    return this.readPage(url, url.pathname === '/snapshot');
+    return readPage(this.ctx.storage, url, url.pathname === '/snapshot');
   }
 
   private isLearningResetLocked(): boolean {
@@ -839,120 +717,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }
 
 
-  /** Internal session bookkeeping; reachable only through the Worker's stub, never from the public router. */
-  private async handleSession(pathname: string, request: Request): Promise<Response> {
-    const body = await readBoundedBody(request, 4_096);
-    if (!body) return json({ error: 'payload_too_large' }, 413);
-    let input: { tokenHash?: unknown; email?: unknown; sub?: unknown; all?: unknown };
-    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
-    catch { return json({ error: 'invalid_session_request' }, 400); }
-    const now = Date.now();
-    const tokenHash = typeof input.tokenHash === 'string' && SESSION_HASH_PATTERN.test(input.tokenHash) ? input.tokenHash : undefined;
-
-    if (pathname === '/internal/session/issue') {
-      const rate = this.consumeRateLimit();
-      if (rate) return rate;
-      if (!tokenHash || typeof input.email !== 'string' || !input.email || input.email.length > 320
-        || typeof input.sub !== 'string' || !input.sub || input.sub.length > 255) {
-        return json({ error: 'invalid_session_request' }, 400);
-      }
-      const expiresAt = now + SESSION_TTL_MS;
-      this.ctx.storage.transactionSync(() => {
-        this.ctx.storage.sql.exec('DELETE FROM auth_sessions WHERE expires_at <= ? OR (revoked_at IS NOT NULL AND revoked_at <= ?)', now, now - SESSION_TTL_MS);
-        this.ctx.storage.sql.exec(
-          'INSERT INTO auth_sessions (token_hash, email, sub, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)',
-          tokenHash, input.email, input.sub, now, expiresAt,
-        );
-        this.ctx.storage.sql.exec(
-          `UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL AND token_hash NOT IN (
-             SELECT token_hash FROM auth_sessions WHERE revoked_at IS NULL ORDER BY created_at DESC, token_hash LIMIT ?)`,
-          now, MAX_ACTIVE_SESSIONS,
-        );
-      });
-      return json({ expiresAt }, 201);
-    }
-
-    if (pathname === '/internal/session/verify') {
-      if (!tokenHash) return json({ error: 'session_invalid' }, 401);
-      const row = this.ctx.storage.sql.exec<{ email: string; sub: string; expires_at: number; revoked_at: number | null }>(
-        'SELECT email, sub, expires_at, revoked_at FROM auth_sessions WHERE token_hash = ?', tokenHash,
-      ).toArray()[0];
-      if (!row || row.revoked_at !== null || Number(row.expires_at) <= now) return json({ error: 'session_invalid' }, 401);
-      return json({ email: row.email, sub: row.sub, expiresAt: Number(row.expires_at) });
-    }
-
-    if (pathname === '/internal/session/revoke') {
-      const rate = this.consumeRateLimit();
-      if (rate) return rate;
-      if (input.all === true) {
-        const revoked = this.ctx.storage.sql.exec('UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL', now).rowsWritten;
-        return json({ revoked });
-      }
-      if (!tokenHash) return json({ error: 'invalid_session_request' }, 400);
-      const revoked = this.ctx.storage.sql.exec('UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL', now, tokenHash).rowsWritten;
-      return json({ revoked });
-    }
-    return json({ error: 'not_found' }, 404);
-  }
-
   /** Separate from the mirror client so bank reads never overwrite mirror diagnostics. */
   private bankDriveClient(): GoogleDriveClient {
     this.bankClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
     return this.bankClient;
-  }
-
-  private bankErrorResponse(error: unknown): Response {
-    if (error instanceof BankTooLargeError) return json({ error: 'bank_too_large' }, 413);
-    if (error instanceof BankFileTypeError) return json({ error: error.message }, 422);
-    const code = error instanceof DriveMirrorError ? error.code : 'internal_error';
-    if (code === 'not_configured') return json({ error: 'drive_not_configured' }, 503);
-    if (code === 'permission_denied') return json({ error: 'bank_not_accessible' }, 403);
-    if (code === 'reauthorization_required' || code === 'account_mismatch') return json({ error: 'drive_reauthorization_required', code }, 502);
-    if (code === 'quota_exceeded') return json({ error: 'drive_rate_limited' }, 429);
-    return json({ error: 'drive_unavailable', code }, 502);
-  }
-
-  /** Register the picked bank file after confirming the server Drive credential can read it. */
-  private async registerBankSource(request: Request): Promise<Response> {
-    const body = await readBoundedBody(request, 4_096);
-    if (!body) return json({ error: 'payload_too_large' }, 413);
-    let input: { fileId?: unknown; fileName?: unknown };
-    try { input = JSON.parse(new TextDecoder().decode(body)) ?? {}; }
-    catch { return json({ error: 'invalid_bank_source' }, 400); }
-    if (typeof input.fileId !== 'string' || !isValidDriveFileId(input.fileId)
-      || (input.fileName !== undefined && (typeof input.fileName !== 'string' || input.fileName.length > 255))) {
-      return json({ error: 'invalid_bank_source' }, 400);
-    }
-    const client = this.bankDriveClient();
-    if (!client.isConfigured) return json({ error: 'drive_not_configured' }, 503);
-    let meta: BankFileMeta;
-    try { meta = await readBankMetadata(client, input.fileId); }
-    catch (error) { return this.bankErrorResponse(error); }
-    const fileName = typeof input.fileName === 'string' && input.fileName ? input.fileName : meta.name;
-    this.ctx.storage.sql.exec(
-      'INSERT INTO bank_source (singleton, file_id, file_name, registered_at) VALUES (1, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET file_id=excluded.file_id, file_name=excluded.file_name, registered_at=excluded.registered_at',
-      input.fileId, fileName, new Date().toISOString(),
-    );
-    return json({ fileId: input.fileId, fileName, meta });
-  }
-
-  /** Read only the registered bank file, with the Worker's own Drive credential. */
-  private async readBank(includeContent: boolean): Promise<Response> {
-    const source = this.ctx.storage.sql.exec<{ file_id: string; file_name: string }>(
-      'SELECT file_id, file_name FROM bank_source WHERE singleton = 1',
-    ).toArray()[0];
-    if (!source) return json({ error: 'bank_source_not_registered' }, 404);
-    const client = this.bankDriveClient();
-    if (!client.isConfigured) return json({ error: 'drive_not_configured' }, 503);
-    try {
-      const meta = await readBankMetadata(client, source.file_id);
-      if (!includeContent) return json({ fileId: source.file_id, fileName: source.file_name, meta });
-      const text = await client.readTextContent(source.file_id);
-      if (new TextEncoder().encode(text).byteLength > MAX_BANK_BYTES) return json({ error: 'bank_too_large' }, 413);
-      return json({ fileId: source.file_id, fileName: source.file_name, meta, text });
-    } catch (error) {
-      return this.bankErrorResponse(error);
-    }
   }
 
   /** Read-only, owner-authenticated preflight. Never deletes or mutates learning data. */
@@ -1037,7 +805,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       matchingEvents,
       totalEvents: Number(overall.count),
       lastSeq: Number(overall.lastSeq ?? 0),
-      appStateRevision: this.appStateRevision(),
+      appStateRevision: readAppStateRevision(this.ctx.storage),
       protectedBankAndIdentityStateKeys: protectedStateKeys.length,
       sharedStateKeysRequiringSelectiveMerge: affectedSharedStateKeys.length,
       notionPageReferencesRequiringReconciliation: scope === 'all' ? notionPages : null,
@@ -1072,7 +840,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const appStateRows = this.ctx.storage.sql.exec<{
       key: string; value: string | null; revision: number; updated_at: string;
     }>('SELECT key, value, revision, updated_at FROM app_state ORDER BY key').toArray();
-    const appStateRevision = this.appStateRevision();
+    const appStateRevision = readAppStateRevision(this.ctx.storage);
     const sharedStateKeyCount = appStateRows.filter(row => isScopedResetSharedStateKey(row.key)).length;
     const notionPageCount = Number(this.ctx.storage.sql.exec<{ count: number }>(
       'SELECT COUNT(*) AS count FROM notion_page_refs',
@@ -1353,65 +1121,16 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     }
   }
 
-  private appStateRevision(): number {
-    return Number(this.ctx.storage.sql.exec<{ revision: number }>(
-      'SELECT revision FROM app_state_meta WHERE singleton = 1',
-    ).one().revision);
-  }
-
-  private readAppState(): Response {
-    const rows = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number; updated_at: string }>(
-      'SELECT key, value, revision, updated_at FROM app_state ORDER BY key',
-    ).toArray();
-    const records = rows.map(({ updated_at, ...record }) => ({ ...record, updatedAt: updated_at }));
-    return json({ records, revision: this.appStateRevision() });
-  }
-
-  private async writeAppState(request: Request): Promise<Response> {
-    const body = await readBoundedBody(request, MAX_STATE_BODY_BYTES);
-    if (!body) return json({ error: 'payload_too_large' }, 413);
-    let value: unknown;
-    try { value = JSON.parse(new TextDecoder().decode(body)); }
-    catch { return json({ error: 'invalid_state_json' }, 400); }
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return json({ error: 'invalid_state' }, 400);
-    const item = value as { key?: unknown; value?: unknown; revision?: unknown };
-    if (typeof item.key !== 'string' || !item.key.startsWith('math-scratchpad') || item.key.length > 200
-      || !(typeof item.value === 'string' || item.value === null)
-      || !Number.isSafeInteger(item.revision) || Number(item.revision) < 0) {
-      return json({ error: 'invalid_state' }, 400);
-    }
-    const bytes = item.value === null ? 0 : utf8Bytes(item.value);
-    if (bytes > MAX_SYNC_STATE_VALUE_BYTES) {
-      return json({ error: 'state_value_too_large', key: item.key, bytes, limit: MAX_SYNC_STATE_VALUE_BYTES }, 413);
-    }
-    const result = this.ctx.storage.transactionSync(() => {
-      if (this.isLearningResetLocked()) return { conflict: false, resetting: true, revision: 0, updatedAt: '' };
-      const existing = this.ctx.storage.sql.exec<{ revision: number }>(
-        'SELECT revision FROM app_state WHERE key = ?', item.key!,
-      ).toArray()[0];
-      const current = existing?.revision ?? 0;
-      if (current !== item.revision) return { conflict: true, resetting: false, revision: current };
-      const revision = current + 1;
-      const updatedAt = new Date().toISOString();
-      this.ctx.storage.sql.exec(
-        'INSERT INTO app_state (key, value, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, revision=excluded.revision, updated_at=excluded.updated_at',
-        item.key!, item.value as string | null, revision, updatedAt,
-      );
-      this.ctx.storage.sql.exec('UPDATE app_state_meta SET revision = revision + 1 WHERE singleton = 1');
-      return { conflict: false, resetting: false, revision, updatedAt };
-    });
-    if (result.resetting) return json({ error: 'learning_reset_in_progress' }, 503, { 'Retry-After': '10' });
-    if (result.conflict) return json({ error: 'state_conflict', revision: result.revision }, 409);
+  private async mirrorStateChange(key: string, revision: number): Promise<void> {
     if (this.driveConfigured()) {
       const state = await this.readDriveState();
       await this.saveDriveState({
         ...state, status: 'pending',
-        pendingCount: Math.max(0, (await this.maxSequence()) - state.lastSeq) + 1,
+        pendingCount: Math.max(0, (await maxSequence(this.ctx.storage)) - state.lastSeq) + 1,
       });
       await this.scheduleAlarmIn(DRIVE_DEBOUNCE_MS);
     }
-    await this.queueNotionState(item.key!, result.revision);
-    return json({ key: item.key, revision: result.revision, updatedAt: result.updatedAt });
+    await this.queueNotionState(key, revision);
   }
 
   private parseRateLimit(raw: string | undefined): number {
@@ -1617,11 +1336,6 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return saved;
   }
 
-  private async maxSequence(): Promise<number> {
-    return Number(this.ctx.storage.sql.exec<{ seq: number }>(
-      'SELECT COALESCE(MAX(seq), 0) AS seq FROM learning_events',
-    ).one().seq);
-  }
 
   private projectionSequence(): number {
     return Number(this.ctx.storage.sql.exec<{ last_seq: number }>(
@@ -1686,7 +1400,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }
 
   private async getDriveStatus(): Promise<DriveMirrorStatus> {
-    const maxSeq = await this.maxSequence();
+    const maxSeq = await maxSequence(this.ctx.storage);
     if (!this.driveConfigured()) {
       return {
         status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null,
@@ -1699,7 +1413,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       status: state.status,
       lastSyncedAt: state.lastSyncedAt ?? null,
       pendingCount: Math.max(0, maxSeq - state.lastSeq)
-        + (state.appStateRevision === this.appStateRevision() ? 0 : 1),
+        + (state.appStateRevision === readAppStateRevision(this.ctx.storage) ? 0 : 1),
       quarantinedCount: state.quarantinedCount ?? null,
       lastError: state.lastError ?? null,
       failureStage: state.status === 'error' ? this.readDiagnosticStage('drive') : null,
@@ -1725,7 +1439,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   }
 
   private async getNotionStatus(): Promise<NotionMirrorStatus> {
-    const maxSeq = await this.maxSequence();
+    const maxSeq = await maxSequence(this.ctx.storage);
     if (!notionDataSourcesFromEnv(this.env)) {
       return { status: 'not_configured', lastSyncedAt: null, pendingCount: maxSeq, quarantinedCount: null, lastError: null };
     }
@@ -1759,7 +1473,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       key, revision,
     );
     const state = await this.readNotionState();
-    const maxSeq = await this.maxSequence();
+    const maxSeq = await maxSequence(this.ctx.storage);
     await this.saveNotionState({
       ...state,
       status: 'pending',
@@ -1774,7 +1488,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (!notionDataSourcesFromEnv(this.env)) return;
     const state = await this.readNotionState();
     if (cursor <= state.lastSeq) return;
-    const maxSeq = await this.maxSequence();
+    const maxSeq = await maxSequence(this.ctx.storage);
     await this.saveNotionState({
       ...state,
       status: 'pending',
@@ -1809,7 +1523,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     const dataSources = notionDataSourcesFromEnv(this.env);
     if (!dataSources || !this.env.NOTION_API_KEY) return this.getNotionStatus();
     const state = await this.readNotionState();
-    const through = await this.maxSequence();
+    const through = await maxSequence(this.ctx.storage);
     if (through === state.lastSeq && this.notionStateQueueCount() === 0 && state.status === 'synced') {
       // Backfill the SQL health dashboard for mirrors synced before the table existed.
       await this.saveNotionState({ ...state, pendingCount: 0 });
@@ -1837,7 +1551,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       }
 
       this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY, this.budgetedFetch);
-      const events = this.readEventsAfter(state.lastSeq, through, NOTION_EVENTS_PER_RUN);
+      const events = readEventsAfter(this.ctx.storage, state.lastSeq, through, NOTION_EVENTS_PER_RUN);
       let lastSeq = state.lastSeq;
       let lastSyncedAt = state.lastSyncedAt;
       let quarantinedCount = state.quarantinedCount ?? 0;
@@ -1895,7 +1609,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
           'DELETE FROM notion_state_queue WHERE key = ? AND revision <= ?', queued.key, revision,
         );
         lastSyncedAt = new Date().toISOString();
-        const currentMax = await this.maxSequence();
+        const currentMax = await maxSequence(this.ctx.storage);
         await this.saveNotionState({
           status: 'pending',
           lastSeq,
@@ -1905,7 +1619,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         });
       }
 
-      const currentMax = await this.maxSequence();
+      const currentMax = await maxSequence(this.ctx.storage);
       const pendingCount = this.notionPendingCount(currentMax, lastSeq);
       const completed: StoredNotionMirrorState = {
         status: pendingCount === 0 ? 'synced' : 'pending',
@@ -1918,7 +1632,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       if (pendingCount > 0) await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
       return this.toNotionStatus(completed, currentMax);
     } catch (error) {
-      const currentMax = await this.maxSequence();
+      const currentMax = await maxSequence(this.ctx.storage);
       const currentState = await this.readNotionState();
       const failed: StoredNotionMirrorState = {
         ...currentState,
@@ -2010,7 +1724,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     if (!this.driveConfigured()) return;
     const state = await this.readDriveState();
     if (cursor <= state.lastSeq) return;
-    const maxSeq = await this.maxSequence();
+    const maxSeq = await maxSequence(this.ctx.storage);
     await this.saveDriveState({
       ...state,
       status: 'pending',
@@ -2043,7 +1757,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
   private async performWeeklyBackup(now = new Date()): Promise<DriveMirrorStatus['weeklyBackup']> {
     if (!this.driveConfigured()) return { status: 'not_configured', lastCreatedAt: null, lastError: null };
     const state = await this.readDriveState();
-    if (!state.folders && (await this.maxSequence()) === 0 && this.appStateRevision() === 0) {
+    if (!state.folders && (await maxSequence(this.ctx.storage)) === 0 && readAppStateRevision(this.ctx.storage) === 0) {
       return { status: 'scheduled', lastCreatedAt: null, lastError: null };
     }
     const date = formatTehran(now).slice(0, 10);
@@ -2067,8 +1781,8 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       state.folders = folders;
       await this.saveDriveState({ ...state, status: state.status, folders });
 
-      const through = await this.maxSequence();
-      const events = this.readEventsThrough(through);
+      const through = await maxSequence(this.ctx.storage);
+      const events = readEventsThrough(this.ctx.storage, through);
       const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
       const quarantinedCount = events.length - mirrorableEvents.length;
       const snapshotCreatedAtUtc = state.weeklyBackup?.date === date && state.weeklyBackup.snapshotCreatedAtUtc
@@ -2125,21 +1839,21 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
 
   private async performDriveSync(): Promise<DriveMirrorStatus> {
     const state = await this.readDriveState();
-    const through = await this.maxSequence();
-    if (!state.folders && through === 0 && this.appStateRevision() === 0) {
+    const through = await maxSequence(this.ctx.storage);
+    if (!state.folders && through === 0 && readAppStateRevision(this.ctx.storage) === 0) {
       return {
         status: 'synced', lastSyncedAt: null, pendingCount: 0, quarantinedCount: 0,
         lastError: null, failureStage: null,
         weeklyBackup: { status: 'scheduled', lastCreatedAt: null, lastError: null },
       };
     }
-    if (through === state.lastSeq && state.appStateRevision === this.appStateRevision() && state.status === 'synced') return this.getDriveStatus();
+    if (through === state.lastSeq && state.appStateRevision === readAppStateRevision(this.ctx.storage) && state.status === 'synced') return this.getDriveStatus();
     await this.saveDriveState({ ...state, status: 'syncing', pendingCount: Math.max(0, through - state.lastSeq), lastError: undefined });
 
     try {
       this.driveClient ??= new GoogleDriveClient(this.env, this.budgetedFetch);
       const client = this.driveClient;
-      const events = this.readEventsThrough(through);
+      const events = readEventsThrough(this.ctx.storage, through);
       const mirrorableEvents = events.filter(item => typeof item.event.isTest === 'boolean');
       const quarantinedCount = events.length - mirrorableEvents.length;
       const newEvents = mirrorableEvents.filter(item => item.seq > state.lastSeq);
@@ -2181,7 +1895,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         desiredContent: desiredProgress,
         mergeContent: mergeProgressContent,
       });
-      const stateRevision = this.appStateRevision();
+      const stateRevision = readAppStateRevision(this.ctx.storage);
       const persistedState = this.ctx.storage.sql.exec<{ key: string; value: string | null; revision: number }>(
         'SELECT key, value, revision FROM app_state ORDER BY key',
       ).toArray();
@@ -2222,9 +1936,9 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
         mergeContent: mergeManifestContent,
       });
 
-      const currentMax = await this.maxSequence();
+      const currentMax = await maxSequence(this.ctx.storage);
       const pendingCount = Math.max(0, currentMax - through)
-        + (this.appStateRevision() === stateRevision ? 0 : 1);
+        + (readAppStateRevision(this.ctx.storage) === stateRevision ? 0 : 1);
       const finalState: DriveMirrorState = {
         ...state,
         status: pendingCount === 0 ? 'synced' : 'pending',
@@ -2254,7 +1968,7 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       const code = error instanceof DriveMirrorError ? error.code : (error as { code?: unknown } | null)?.code === 'subrequest_budget_exceeded'
         ? 'subrequest_budget_exceeded' : error instanceof Error && error.message === 'event_id_conflict'
         ? 'etag_conflict' : 'network_error';
-      const currentMax = await this.maxSequence();
+      const currentMax = await maxSequence(this.ctx.storage);
       const failed: DriveMirrorState = {
         ...state,
         status: 'error',
@@ -2280,90 +1994,10 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     }
   }
 
-  private readEventsAfter(cursor: number, through: number, limit: number): SequencedLearnEvent[] {
-    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
-      cursor, through, limit,
-    ).toArray();
-    return rows.map(row => ({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent }));
-  }
 
-  private readEventsThrough(through: number): SequencedLearnEvent[] {
-    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-      'SELECT seq, event_json FROM learning_events WHERE seq <= ? ORDER BY seq ASC LIMIT ?',
-      through, DRIVE_MIRROR_PAGE_SIZE,
-    ).toArray();
-    const events: SequencedLearnEvent[] = rows.map(row => ({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent }));
-    let cursor = events.at(-1)?.seq ?? 0;
-    while (cursor < through) {
-      const page = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-        'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
-        cursor, through, DRIVE_MIRROR_PAGE_SIZE,
-      ).toArray();
-      if (page.length === 0) break;
-      for (const row of page) events.push({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent });
-      cursor = events.at(-1)!.seq;
-    }
-    return events;
-  }
-
-  private readPage(url: URL, isSnapshot: boolean): Response {
-    const cursor = integerQuery(url, 'cursor', 0);
-    const requestedThrough = integerQuery(url, 'through', -1);
-    const limit = integerQuery(url, 'limit', MAX_PAGE_SIZE);
-    if (cursor === null || requestedThrough === null || limit === null || limit < 1 || limit > MAX_PAGE_SIZE) {
-      return json({ error: 'invalid_cursor_or_limit' }, 400);
-    }
-
-    const maxSeq = Number(this.ctx.storage.sql.exec<{ seq: number }>(
-      'SELECT COALESCE(MAX(seq), 0) AS seq FROM learning_events',
-    ).one().seq);
-    const through = requestedThrough === -1 ? maxSeq : requestedThrough;
-    if (cursor > through || through > maxSeq) return json({ error: 'invalid_cursor_or_limit' }, 400);
-
-    const rows = this.ctx.storage.sql.exec<{ seq: number; event_json: string }>(
-      'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
-      cursor, through, limit,
-    ).toArray();
-    const events: StoredEvent[] = rows.map(row => ({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent }));
-    const nextCursor = events.length > 0 ? events[events.length - 1].seq : cursor;
-    const response = {
-      events,
-      cursor: nextCursor,
-      through,
-      hasMore: nextCursor < through,
-      ...(isSnapshot ? { snapshotCursor: through } : {}),
-    };
-    return json(response);
-  }
 }
 
 class EventConflictError extends Error {}
-class BankTooLargeError extends Error {}
-class BankFileTypeError extends Error {}
-
-/** Same limit as the browser's bank parser. */
-const BANK_META_FIELDS = 'id,name,mimeType,size,md5Checksum,modifiedTime,headRevisionId,version,trashed';
-type BankFileMeta = { id: string; name: string; mimeType: string; size?: string; md5Checksum?: string; modifiedTime?: string; headRevisionId?: string; version?: string; trashed?: boolean };
-
-function isValidDriveFileId(id: string): boolean {
-  return /^[A-Za-z0-9_-]{10,150}$/.test(id);
-}
-
-async function readBankMetadata(client: GoogleDriveClient, fileId: string): Promise<BankFileMeta> {
-  const raw = await client.readFileMetadata(fileId, BANK_META_FIELDS);
-  if (raw.id !== fileId || typeof raw.name !== 'string' || typeof raw.mimeType !== 'string') throw new DriveMirrorError('invalid_response');
-  const meta: BankFileMeta = { id: fileId, name: raw.name, mimeType: raw.mimeType };
-  for (const key of ['size', 'md5Checksum', 'modifiedTime', 'headRevisionId', 'version'] as const) {
-    if (typeof raw[key] === 'string') meta[key] = raw[key] as string;
-  }
-  if (typeof raw.trashed === 'boolean') meta.trashed = raw.trashed;
-  if (meta.trashed) throw new BankFileTypeError('bank_trashed');
-  if (meta.mimeType.startsWith('application/vnd.google-apps.')) throw new BankFileTypeError('bank_not_json_file');
-  if (meta.size !== undefined && Number(meta.size) > MAX_BANK_BYTES) throw new BankTooLargeError();
-  return meta;
-}
-
 function mergeProgressContent(remote: string, desired: string): string {
   const previous = parseJsonContent(remote);
   const current = parseJsonContent(desired);
