@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, reset, runInDurableObject } from 'cloudflare:test';
 import fc from 'fast-check';
-import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
+import { learnEventSchema, type LearnEvent } from '../../shared/contracts/learn-event';
 import {
   buildProgressProjection,
   buildSyncManifest,

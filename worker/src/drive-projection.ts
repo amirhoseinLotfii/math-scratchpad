@@ -1,4 +1,4 @@
-import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
+import { learnEventSchema, type LearnEvent } from '../../shared/contracts/learn-event';
 
 export type SequencedLearnEvent = { seq: number; event: LearnEvent };
 export type DrivePosition = { chapter: number; lesson: string; section: string; chunkId?: string };

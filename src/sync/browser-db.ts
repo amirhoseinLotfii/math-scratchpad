@@ -1,3 +1,5 @@
+import { isLearningStorageKey } from '../../shared/contracts/storage-keys';
+export { isLearningStorageKey } from '../../shared/contracts/storage-keys';
 import { SYNC_STATE_BUDGET_BYTES, utf8Bytes } from '../../shared/contracts/limits';
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { LearnEvent } from './events';
@@ -74,23 +76,9 @@ interface LearningDb extends DBSchema {
   meta: { key: string; value: MetaRecord };
 }
 
-const SESSION_KEYS = new Set([
-  'math-scratchpad-session-v3',
-  'math-scratchpad-redux-v2',
-  'math-scratchpad-flow-v1',
-  'math-scratchpad-drive-session-archive-v1',
-  'math-scratchpad-inline-fractions-round1-v1',
-  'math-scratchpad-reading-position-v1',
-]);
 const DEVICE_ID_KEY = 'math-scratchpad-device-id-v1';
 const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1:';
 
-export function isLearningStorageKey(key: string): boolean {
-  return SESSION_KEYS.has(key)
-    || key.startsWith('math-scratchpad-lesson-progress-v1:')
-    || key.startsWith('math-scratchpad-last-open-lesson-v1:')
-    || key.startsWith('math-scratchpad-reading-position-v1:');
-}
 function isIndexedDbCacheKey(key: string): boolean {
   return isLearningStorageKey(key) || key === DEVICE_ID_KEY || key.startsWith(BANK_CACHE_PREFIX);
 }

@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client';
-import type { LearnEvent } from '../../src/sync/events';
+import type { LearnEvent } from '../../shared/contracts/learn-event';
 import {
   buildAttemptProperties,
   buildAppStateMirrorProperties,

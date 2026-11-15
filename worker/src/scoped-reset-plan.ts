@@ -1,4 +1,4 @@
-import type { LearnEvent } from '../../src/sync/events';
+import type { LearnEvent } from '../../shared/contracts/learn-event';
 
 /**
  * A scoped reset must be unambiguous across bank versions and across chapters

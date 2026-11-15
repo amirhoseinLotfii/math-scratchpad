@@ -1,3 +1,4 @@
+import { MAX_BANK_TEXT_CHARS, MAX_QUESTIONS_PER_BANK } from '../../../shared/contracts/limits';
 import { ascii, blankStep, leaves, MAX_SESSION_EXERCISES, uid, type AnswerType, type Document, type Exercise } from '../../model';
 import { newSessionMeta, type ScratchState } from '../../store';
 import { parse } from '../../parser';
@@ -8,7 +9,7 @@ import { flushLearningStorage, getLearningStorage } from '../../sync/browser-db'
 
 export const BANK_SCHEMA = 'math-scratchpad.bank/1.0';
 /** A chapter bank may span many lessons; each launched practice session stays within MAX_SESSION_EXERCISES. */
-export const MAX_QUESTIONS_PER_BANK = 1000;
+export { MAX_QUESTIONS_PER_BANK } from '../../../shared/contracts/limits';
 export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
 export const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1';
 const BANK_CACHE_SCHEMA = 1;
@@ -281,7 +282,7 @@ export function driveError(status: number, action: string): Error {
 export const EMPTY_BANK = 'EMPTY_BANK';
 /** Parse bank text; an empty file is a valid "no questions yet" state, not a crash. */
 export function parseBankText(body: string): DriveBank | typeof EMPTY_BANK {
-  if (body.length > 1000000) throw Error('The bank file is too large.');
+  if (body.length > MAX_BANK_TEXT_CHARS) throw Error('The bank file is too large.');
   if (!body.replace(/^\uFEFF/, '').trim()) return EMPTY_BANK;
   let json: unknown;
   try { json = JSON.parse(body.replace(/^\uFEFF/, '')); } catch { throw Error('The bank file is not valid JSON. The current session was not changed.'); }

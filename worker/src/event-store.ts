@@ -1,12 +1,13 @@
-import { MAX_SYNC_STATE_VALUE_BYTES, utf8Bytes } from '../../shared/contracts/limits';
+import { isScopedResetSharedStateKey } from '../../shared/contracts/storage-keys';
+import { MAX_BANK_BYTES, MAX_SYNC_STATE_VALUE_BYTES, utf8Bytes } from '../../shared/contracts/limits';
 import { DurableObject } from 'cloudflare:workers';
-import { learnEventSchema, type LearnEvent } from '../../src/sync/events';
+import { learnEventSchema, type LearnEvent } from '../../shared/contracts/learn-event';
 import { readBoundedBody } from './body';
 import type { WorkerEnv } from './env';
 import { DriveMirrorError, GoogleDriveClient, hasLearningMirrorOwnership, type DriveFileRef, type DriveMirrorErrorCode, type DriveFolderChild, type DriveMirrorKind, type DriveSnapshotRef } from './google-drive';
 import { snapshotName } from './immutable-snapshot';
 import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from './session';
-import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../shared/contracts/reset-epoch';
 import {
   classifyScopedLearningEvent,
   parseScopedLearningResetScope,
@@ -173,18 +174,6 @@ function scopedResetFingerprint(value: string): string {
     hash = BigInt.asUintN(64, hash * 1_099_511_628_211n);
   }
   return `scoped-v1-${hash.toString(16).padStart(16, '0')}`;
-}
-
-function isScopedResetSharedStateKey(key: string): boolean {
-  return [
-    'math-scratchpad-session-v3',
-    'math-scratchpad-redux-v2',
-    'math-scratchpad-flow-v1',
-    'math-scratchpad-drive-session-archive-v1',
-    'math-scratchpad-reading-position-v1',
-    'math-scratchpad-lesson-progress-v1:',
-    'math-scratchpad-last-open-lesson-v1:',
-  ].some(marker => marker.endsWith(':') ? key.startsWith(marker) : key === marker);
 }
 
 function isLearningMirrorFileName(name: string): boolean {
@@ -2354,7 +2343,6 @@ class BankTooLargeError extends Error {}
 class BankFileTypeError extends Error {}
 
 /** Same limit as the browser's bank parser. */
-const MAX_BANK_BYTES = 1_000_000;
 const BANK_META_FIELDS = 'id,name,mimeType,size,md5Checksum,modifiedTime,headRevisionId,version,trashed';
 type BankFileMeta = { id: string; name: string; mimeType: string; size?: string; md5Checksum?: string; modifiedTime?: string; headRevisionId?: string; version?: string; trashed?: boolean };
 

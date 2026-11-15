@@ -1,0 +1,4 @@
+tests/fixtures/
+**/node_modules/
+**/__snapshots__/
+dist/

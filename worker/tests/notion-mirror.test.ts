@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, reset, runInDurableObject } from 'cloudflare:test';
-import type { LearnEvent } from '../../src/sync/events';
+import type { LearnEvent } from '../../shared/contracts/learn-event';
 import type { WorkerEnv } from '../src/env';
 import {
   applyDailyEvent,

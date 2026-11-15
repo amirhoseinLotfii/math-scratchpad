@@ -1,5 +1,5 @@
-export const LEARNING_RESET_EPOCH = '2026-11-12-v3';
-export const LEARNING_RESET_EPOCH_HEADER = 'X-Math-Scratchpad-Reset-Epoch';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER, isValidLearningResetEpoch } from '../../shared/contracts/reset-epoch';
+export { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER, isValidLearningResetEpoch } from '../../shared/contracts/reset-epoch';
 export const LOCAL_SERVER_RESET_EPOCH_KEY = 'math-scratchpad-server-learning-reset-epoch-v1';
 export const LOCAL_RESET_PENDING_KEY = 'math-scratchpad-local-learning-reset-pending-v1';
 export const LOCAL_PENDING_RESET_EPOCH_KEY = 'math-scratchpad-pending-learning-reset-epoch-v1';
@@ -11,12 +11,14 @@ export const LOCAL_PENDING_EPOCH_PREFIX = 'local-pending:';
 
 const activeServerWrites = new Set<AbortController>();
 let serverResetStatusVerified = true;
-const browserWindow = (globalThis as typeof globalThis & {
-  window?: {
-    dispatchEvent: (event: Event) => boolean;
-    addEventListener: (type: string, listener: (event: { key: string | null; newValue: string | null }) => void) => void;
-  };
-}).window;
+const browserWindow = (
+  globalThis as typeof globalThis & {
+    window?: {
+      dispatchEvent: (event: Event) => boolean;
+      addEventListener: (type: string, listener: (event: { key: string | null; newValue: string | null }) => void) => void;
+    };
+  }
+).window;
 
 export class ServerWriteBlockedError extends Error {
   constructor() {
@@ -90,16 +92,11 @@ export async function fetchWithServerWriteGuard(
 }
 
 if (browserWindow) {
-  browserWindow.addEventListener('storage', event => {
+  browserWindow.addEventListener('storage', (event) => {
     if (event.key !== LOCAL_RESET_PENDING_KEY) return;
     if (event.newValue === '1') abortActiveServerWrites();
     notifyWriteGuardChanged();
   });
-}
-
-export function isValidLearningResetEpoch(value: unknown): value is string {
-  return typeof value === 'string' && value.length >= 8 && value.length <= 128
-    && /^[a-zA-Z0-9._:-]+$/.test(value);
 }
 
 export function getLearningResetRequestEpoch(): string {
@@ -111,8 +108,11 @@ export function getLearningResetRequestEpoch(): string {
 }
 
 export function getStoredServerLearningResetEpoch(): string | null {
-  try { return localStorage.getItem(LOCAL_SERVER_RESET_EPOCH_KEY); }
-  catch { return null; }
+  try {
+    return localStorage.getItem(LOCAL_SERVER_RESET_EPOCH_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function markLocalLearningResetPending(): void {
@@ -121,8 +121,9 @@ export function markLocalLearningResetPending(): void {
     getLocalPendingResetCreationEpoch();
     abortActiveServerWrites();
     notifyWriteGuardChanged();
+  } catch {
+    /* A blocked browser storage must fail closed at the caller. */
   }
-  catch { /* A blocked browser storage must fail closed at the caller. */ }
 }
 
 /** Current server candidate while locked, or a durable local marker until it is known. */
@@ -144,22 +145,30 @@ export function getLocalPendingResetCreationEpoch(): string {
 
 export function hasLocalPendingResetMetadata(): boolean {
   try {
-    return !!globalThis.localStorage.getItem(LOCAL_PENDING_RESET_EPOCH_KEY)
-      || !!globalThis.localStorage.getItem(LOCAL_PENDING_RESET_SCOPE_KEY);
-  } catch { return true; }
+    return (
+      !!globalThis.localStorage.getItem(LOCAL_PENDING_RESET_EPOCH_KEY) || !!globalThis.localStorage.getItem(LOCAL_PENDING_RESET_SCOPE_KEY)
+    );
+  } catch {
+    return true;
+  }
 }
 
 export function setLocalPendingResetEpoch(epoch: string): void {
   if (!isValidLearningResetEpoch(epoch)) throw new Error('The pending reset epoch is invalid.');
-  try { globalThis.localStorage.setItem(LOCAL_PENDING_RESET_EPOCH_KEY, epoch); }
-  catch { /* The caller keeps the write guard closed. */ }
+  try {
+    globalThis.localStorage.setItem(LOCAL_PENDING_RESET_EPOCH_KEY, epoch);
+  } catch {
+    /* The caller keeps the write guard closed. */
+  }
 }
 
 export function clearLocalPendingResetMetadata(): void {
   try {
     globalThis.localStorage.removeItem(LOCAL_PENDING_RESET_EPOCH_KEY);
     globalThis.localStorage.removeItem(LOCAL_PENDING_RESET_SCOPE_KEY);
-  } catch { /* The reset guard remains authoritative if storage is unavailable. */ }
+  } catch {
+    /* The reset guard remains authoritative if storage is unavailable. */
+  }
 }
 
 /** Fail closed before the first status check; the editor can still use local storage. */

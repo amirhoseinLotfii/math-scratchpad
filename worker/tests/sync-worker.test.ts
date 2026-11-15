@@ -6,7 +6,7 @@ import { verifyGoogleIdToken } from '../src/auth';
 import { createApp, type IdTokenVerifier } from '../src/index';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
 import { DriveMirrorError } from '../src/google-drive';
-import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
+import { LEARNING_RESET_EPOCH, LEARNING_RESET_EPOCH_HEADER } from '../../shared/contracts/reset-epoch';
 
 const OWNER_EMAIL = 'amirhoseinlotfalizadeprogramer@gmail.com';
 const CLIENT_ID = 'test-google-client.apps.googleusercontent.com';

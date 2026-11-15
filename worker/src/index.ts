@@ -4,7 +4,7 @@ import { verifyGoogleIdToken } from './auth';
 import { readBoundedBody } from './body';
 import type { GoogleIdentity, WorkerEnv } from './env';
 import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSessionToken } from './session';
-import { isValidLearningResetEpoch, LEARNING_RESET_EPOCH_HEADER } from '../../src/sync/learning-reset-epoch';
+import { isValidLearningResetEpoch, LEARNING_RESET_EPOCH_HEADER } from '../../shared/contracts/reset-epoch';
 
 const MAX_BODY_BYTES = 250_000;
 const MAX_SCOPED_RESET_BODY_BYTES = 16_384;

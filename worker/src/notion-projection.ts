@@ -1,4 +1,4 @@
-import type { LearnEvent } from '../../src/sync/events';
+import type { LearnEvent } from '../../shared/contracts/learn-event';
 
 const ATTEMPT_TYPES = new Set<LearnEvent['type']>([
   'check_answer', 'example_attempt', 'tryit_attempt', 'exercise_attempt', 'mixed_review_attempt',
