@@ -183,6 +183,8 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
 
 test('Drive bank inspector traps keyboard focus and Escape restores workspace access', { tag: '@only-mobile-390' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('https://accounts.google.com/gsi/client', (route) => route.abort());
+  await page.route('https://apis.google.com/js/api.js', (route) => route.abort());
   await page.goto('/');
   const menu = page.getByRole('button', { name: 'Exercise menu' });
   await menu.click();
