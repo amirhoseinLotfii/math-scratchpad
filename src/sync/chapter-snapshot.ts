@@ -7,7 +7,7 @@ import { flushLearningStorage, queueLearnEvent } from './browser-db';
 const SNAPSHOT_CHUNK_SIZE = 3_800;
 
 function hex(bytes: ArrayBuffer): string {
-  return [...new Uint8Array(bytes)].map(value => value.toString(16).padStart(2, '0')).join('');
+  return [...new Uint8Array(bytes)].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
 function uuidFromHash(hash: string): string {

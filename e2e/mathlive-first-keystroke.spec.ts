@@ -15,7 +15,7 @@ test('new diagnostic question accepts the first physical keystroke immediately a
   // Deliberately type without waiting for MathLive to finish its lazy focus.
   await page.keyboard.type('7139');
   await expect(field).toBeFocused();
-  await expect.poll(() => field.evaluate(el => el.shadowRoot?.querySelector('.ML__base')?.textContent)).toContain('7139');
+  await expect.poll(() => field.evaluate((el) => el.shadowRoot?.querySelector('.ML__base')?.textContent)).toContain('7139');
   await page.reload();
-  await expect.poll(() => field.evaluate(el => el.shadowRoot?.querySelector('.ML__base')?.textContent)).toContain('7139');
+  await expect.poll(() => field.evaluate((el) => el.shadowRoot?.querySelector('.ML__base')?.textContent)).toContain('7139');
 });

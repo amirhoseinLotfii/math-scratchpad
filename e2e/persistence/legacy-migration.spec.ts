@@ -13,28 +13,43 @@ const LEGACY_VALUE = JSON.stringify({
 
 async function installWorker(page: Page) {
   const events: Array<{ seq: number; event: Record<string, any> }> = [];
-  await page.route(`${API}/**`, async route => {
-    const request = route.request(), url = new URL(request.url());
+  await page.route(`${API}/**`, async (route) => {
+    const request = route.request(),
+      url = new URL(request.url());
     if (url.pathname === '/session' && request.method() === 'POST') {
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }),
+      });
       return;
     }
     if (url.pathname === '/events' && request.method() === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as { events?: Array<Record<string, any>> };
-      const acknowledgements = (body.events ?? []).map(event => {
-        const existing = events.find(row => row.event.id === event.id);
+      const acknowledgements = (body.events ?? []).map((event) => {
+        const existing = events.find((row) => row.event.id === event.id);
         if (existing) return { id: event.id, seq: existing.seq, duplicate: true };
-        const seq = events.length + 1; events.push({ seq, event });
+        const seq = events.length + 1;
+        events.push({ seq, event });
         return { id: event.id, seq, duplicate: false };
       });
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: acknowledgements, cursor: events.length }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ events: acknowledgements, cursor: events.length }),
+      });
       return;
     }
     if (url.pathname === '/snapshot' || url.pathname === '/sync') {
-      const cursor = Number(url.searchParams.get('cursor') ?? 0), through = events.length;
-      const rows = events.filter(row => row.seq > cursor && row.seq <= through).slice(0, Number(url.searchParams.get('limit') ?? 100));
+      const cursor = Number(url.searchParams.get('cursor') ?? 0),
+        through = events.length;
+      const rows = events.filter((row) => row.seq > cursor && row.seq <= through).slice(0, Number(url.searchParams.get('limit') ?? 100));
       const next = rows.at(-1)?.seq ?? cursor;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: rows, cursor: next, through, snapshotCursor: through, hasMore: next < through }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ events: rows, cursor: next, through, snapshotCursor: through, hasMore: next < through }),
+      });
       return;
     }
     await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) });
@@ -42,27 +57,34 @@ async function installWorker(page: Page) {
   return events;
 }
 
-test('legacy lesson progress stays intact until server chunks are verified and Drive backup is still required', { tag: '@only-laptop-1440' }, async ({ page }, testInfo: TestInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: LEGACY_KEY, value: LEGACY_VALUE });
-  await installFakeGoogleAuth(page);
-  const serverEvents = await installWorker(page);
-  const syncPanel = await openSyncPanel(page);
-  await expect(syncPanel).toHaveAttribute('lang', 'fa');
-  await page.getByRole('button', { name: GOOGLE_AUTH_BUTTON_NAME }).click();
-  await page.getByRole('button', { name: 'ارسال و راستی‌آزمایی داده‌های قدیمی' }).click();
+test(
+  'legacy lesson progress stays intact until server chunks are verified and Drive backup is still required',
+  { tag: '@only-laptop-1440' },
+  async ({ page }, testInfo: TestInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), { key: LEGACY_KEY, value: LEGACY_VALUE });
+    await installFakeGoogleAuth(page);
+    const serverEvents = await installWorker(page);
+    const syncPanel = await openSyncPanel(page);
+    await expect(syncPanel).toHaveAttribute('lang', 'fa');
+    await page.getByRole('button', { name: GOOGLE_AUTH_BUTTON_NAME }).click();
+    await page.getByRole('button', { name: 'ارسال و راستی‌آزمایی داده‌های قدیمی' }).click();
 
-  await expect(syncPanel.getByText(/تعداد بخش‌ها و هش هر داده با نسخهٔ سرور تطبیق داده شد/)).toBeVisible({ timeout: 15_000 });
-  await expect(syncPanel.getByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' })).toBeVisible();
-  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), LEGACY_KEY)).toBe(LEGACY_VALUE);
-  await expect.poll(() => readOutboxCount(page)).toBe(0);
+    await expect(syncPanel.getByText(/تعداد بخش‌ها و هش هر داده با نسخهٔ سرور تطبیق داده شد/)).toBeVisible({ timeout: 15_000 });
+    await expect(syncPanel.getByRole('button', { name: 'پشتیبان‌گیری در Drive و پایان مهاجرت' })).toBeVisible();
+    await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), LEGACY_KEY)).toBe(LEGACY_VALUE);
+    await expect.poll(() => readOutboxCount(page)).toBe(0);
 
-  await testInfo.attach(`p0-3-migration-${testInfo.project.name}.png`, { body: await syncPanel.screenshot(), contentType: 'image/png' });
+    await testInfo.attach(`p0-3-migration-${testInfo.project.name}.png`, { body: await syncPanel.screenshot(), contentType: 'image/png' });
 
-  const migrationEvents = serverEvents.filter(row => row.event.type === 'legacy_state_migration');
-  expect(migrationEvents.length).toBeGreaterThan(0);
-  expect(migrationEvents.every(row => row.event.migrationChunk.id && row.event.migrationChunk.sha256)).toBe(true);
-  expect(migrationEvents.map(row => row.event.itemId)).toContain(LEGACY_KEY);
-  expect(await readLegacyMigration(page)).toMatchObject({ status: 'server-verified', entries: [{ key: LEGACY_KEY, value: LEGACY_VALUE }] });
-  expect(serverEvents.filter(row => row.event.migrationChunk).every(row => row.event.type === 'legacy_state_migration')).toBe(true);
-});
+    const migrationEvents = serverEvents.filter((row) => row.event.type === 'legacy_state_migration');
+    expect(migrationEvents.length).toBeGreaterThan(0);
+    expect(migrationEvents.every((row) => row.event.migrationChunk.id && row.event.migrationChunk.sha256)).toBe(true);
+    expect(migrationEvents.map((row) => row.event.itemId)).toContain(LEGACY_KEY);
+    expect(await readLegacyMigration(page)).toMatchObject({
+      status: 'server-verified',
+      entries: [{ key: LEGACY_KEY, value: LEGACY_VALUE }],
+    });
+    expect(serverEvents.filter((row) => row.event.migrationChunk).every((row) => row.event.type === 'legacy_state_migration')).toBe(true);
+  },
+);

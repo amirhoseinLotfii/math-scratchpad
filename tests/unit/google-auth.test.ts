@@ -4,7 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: vi.fn(async () => true) }));
 
 import { permittedAccount } from '../../src/features/drive-bank/identity';
-import { clearDriveSessionToken, ensureDriveSessionToken, readDriveSessionToken, refreshDriveSessionTokenSilently } from '../../src/features/drive-bank/google';
+import {
+  clearDriveSessionToken,
+  ensureDriveSessionToken,
+  readDriveSessionToken,
+  refreshDriveSessionTokenSilently,
+} from '../../src/features/drive-bank/google';
 import { establishGoogleIdentitySession, requestDriveAccessTokenFromGesture } from '../../src/sync/google-auth';
 import { clearGoogleIdToken, commitGoogleIdToken, getGoogleIdToken } from '../../src/sync/google-id-token';
 import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
@@ -56,7 +61,9 @@ afterEach(async () => {
 describe('split Google identity and Drive authorization', () => {
   it('creates the Worker session from the ID token and requires HTTP 201', async () => {
     const idToken = credential(Math.floor(Date.now() / 1000) + 3600);
-    const fetcher = vi.fn(async () => Response.json({ sessionToken: SESSION, expiresAt: SESSION_EXPIRY() }, { status: 201 })) as unknown as typeof fetch;
+    const fetcher = vi.fn(async () =>
+      Response.json({ sessionToken: SESSION, expiresAt: SESSION_EXPIRY() }, { status: 201 }),
+    ) as unknown as typeof fetch;
     await resetWorkerSessionForTests({ fetcher });
     commitGoogleIdToken(idToken);
 
@@ -64,9 +71,13 @@ describe('split Google identity and Drive authorization', () => {
 
     expect(result.idToken).toBe(idToken);
     expect(result.workerSession.token).toBe(SESSION);
-    expect(fetcher).toHaveBeenCalledWith(expect.stringMatching(/\/session$/), expect.objectContaining({
-      method: 'POST', headers: { Authorization: `Bearer ${idToken}` },
-    }));
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringMatching(/\/session$/),
+      expect.objectContaining({
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      }),
+    );
     expect(getGoogleIdToken()).toBe(idToken);
   });
 
@@ -77,7 +88,8 @@ describe('split Google identity and Drive authorization', () => {
     commitGoogleIdToken(idToken);
 
     await expect(establishGoogleIdentitySession(idToken)).rejects.toMatchObject({
-      code: 'session_rejected', status: 403,
+      code: 'session_rejected',
+      status: 403,
     });
     expect(readDriveSessionToken()).toBeUndefined();
   });
@@ -102,7 +114,7 @@ describe('split Google identity and Drive authorization', () => {
     expect(tokenClient.requestAccessToken).toHaveBeenCalledTimes(1);
     expect(tokenClient.requestAccessToken).toHaveBeenCalledWith({ prompt: '' });
     await expect(request).resolves.toMatchObject({ accessToken: 'drive-access-token' });
-    expect(calls.map(url => url.endsWith('/session') ? 'session' : 'userinfo')).toEqual(['session', 'userinfo']);
+    expect(calls.map((url) => (url.endsWith('/session') ? 'session' : 'userinfo'))).toEqual(['session', 'userinfo']);
     expect(readDriveSessionToken()?.accessToken).toBe('drive-access-token');
     expect(localStorage.getItem('math-scratchpad-drive-consent-v1')).toBe('1');
     expect(permittedAccount).toHaveBeenCalledWith({ email: 'owner@example.test', email_verified: true });
@@ -110,9 +122,11 @@ describe('split Google identity and Drive authorization', () => {
 
   it('rejects a Drive account that differs from the identity session', async () => {
     const idToken = credential(Math.floor(Date.now() / 1000) + 3600, 'other@example.test');
-    const fetcher = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/session')
-      ? Response.json({ sessionToken: SESSION, expiresAt: SESSION_EXPIRY() }, { status: 201 })
-      : Response.json({ email: 'owner@example.test', email_verified: true }, { status: 200 })) as unknown as typeof fetch;
+    const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/session')
+        ? Response.json({ sessionToken: SESSION, expiresAt: SESSION_EXPIRY() }, { status: 201 })
+        : Response.json({ email: 'owner@example.test', email_verified: true }, { status: 200 }),
+    ) as unknown as typeof fetch;
     await resetWorkerSessionForTests({ fetcher });
     vi.stubGlobal('fetch', fetcher);
     commitGoogleIdToken(idToken);
@@ -125,11 +139,14 @@ describe('split Google identity and Drive authorization', () => {
 });
 
 describe('Drive access-token silent refresh', () => {
-  it('silently mints a Drive token with prompt: \'\' after prior consent when the saved token expired', async () => {
-    localStorage.setItem('math-scratchpad-drive-token-v1', JSON.stringify({
-      accessToken: 'stale-drive-token',
-      expiresAt: Date.now() - 1_000,
-    }));
+  it("silently mints a Drive token with prompt: '' after prior consent when the saved token expired", async () => {
+    localStorage.setItem(
+      'math-scratchpad-drive-token-v1',
+      JSON.stringify({
+        accessToken: 'stale-drive-token',
+        expiresAt: Date.now() - 1_000,
+      }),
+    );
     const { tokenClient } = installDriveOauth('rotated-drive-token');
 
     expect(readDriveSessionToken()).toBeUndefined();

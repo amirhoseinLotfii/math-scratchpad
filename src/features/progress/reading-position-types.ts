@@ -10,40 +10,40 @@ export type ContentAnchorId = string;
 export interface ReadingPosition {
   /** Unique user identifier */
   userId: string;
-  
+
   /** Current chapter identifier */
   chapterId?: string;
-  
+
   /** Current lesson identifier */
   lessonId?: string;
-  
+
   /** Current section within lesson */
   sectionId?: string;
-  
+
   /** Specific content anchor (e.g., example, exercise) */
   contentAnchorId?: ContentAnchorId;
-  
+
   /** Current exercise identifier */
   exerciseId?: string;
-  
+
   /** Current step within exercise */
   stepId?: string;
-  
+
   /** Scroll position in the container */
   scrollOffset?: number;
-  
+
   /** Relative offset within content */
   relativeOffset?: number;
-  
+
   /** Version of the content being read */
   contentVersion: string;
-  
+
   /** Type of the last meaningful activity */
   lastActivity: ReadingActivityType;
-  
+
   /** When the position was last updated */
   updatedAt: Date;
-  
+
   /** Device/session metadata */
   deviceMetadata?: {
     viewportWidth: number;
@@ -53,7 +53,7 @@ export interface ReadingPosition {
 }
 
 /** Types of meaningful learning activities */
-export type ReadingActivityType = 
+export type ReadingActivityType =
   | 'reading'
   | 'exercise_started'
   | 'exercise_completed'
@@ -76,13 +76,13 @@ export interface MinimalReadingPosition {
 export interface ReadingPositionConfig {
   /** Enable automatic position tracking */
   enabled: boolean;
-  
+
   /** Debounce time for position updates (ms) */
   debounceTime: number;
-  
+
   /** Enable cross-device sync */
   syncEnabled: boolean;
-  
+
   /** Prefix for storage keys */
   storagePrefix: string;
 }

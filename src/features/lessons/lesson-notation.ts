@@ -1,9 +1,7 @@
 import { parse } from '../../parser';
 import type { Sequence } from '../../model';
 
-export type LessonTextPart =
-  | { type: 'text'; text: string }
-  | { type: 'math'; latex: string };
+export type LessonTextPart = { type: 'text'; text: string } | { type: 'math'; latex: string };
 
 /** Split only explicitly delimited inline TeX; never send lesson prose to a math parser. */
 export function splitLessonText(text: string): LessonTextPart[] {
@@ -41,7 +39,12 @@ export function parseLessonNotation(latex: string): LessonNotationPart[] | null 
   let at = 0;
   const appendFormula = (text: string) => {
     if (!text.trim().replace(/\\ /g, '').trim()) return true;
-    try { parts.push({ type: 'formula', expression: parse(text.replace(/\\ /g, ' ')) }); return true; } catch { return false; }
+    try {
+      parts.push({ type: 'formula', expression: parse(text.replace(/\\ /g, ' ')) });
+      return true;
+    } catch {
+      return false;
+    }
   };
   for (const match of latex.matchAll(tokens)) {
     if (!appendFormula(latex.slice(at, match.index))) return null;

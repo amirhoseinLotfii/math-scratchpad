@@ -22,13 +22,12 @@ describe('MathLive answer compatibility', () => {
     store.dispatch(actions.command({ type: 'final' }));
     const saved = validateSession(JSON.parse(serialize(store.getState())));
     expect(saved.doc.exercises[0].steps[0]).toMatchObject({ id: stepId, final: true, mathLatex: latex });
-    expect(buildTutorExport(saved.doc).items[0].steps).toEqual([
-      { step_id: stepId, number: 1, latex, is_final: true },
-    ]);
+    expect(buildTutorExport(saved.doc).items[0].steps).toEqual([{ step_id: stepId, number: 1, latex, is_final: true }]);
   });
 
   it('keeps an empty MathLive placeholder unanswered and does not make keystrokes app-history entries', () => {
-    const store = makeStore(initialState()), stepId = exerciseOf(store.getState().doc).steps[0].id;
+    const store = makeStore(initialState()),
+      stepId = exerciseOf(store.getState().doc).steps[0].id;
     store.dispatch(actions.mathLiveInput({ stepId, value: String.raw`\placeholder{}` }));
     expect(exerciseOf(store.getState().doc).steps[0].mathLatex).toBe(String.raw`\placeholder{}`);
     expect(stepLatex(exerciseOf(store.getState().doc).steps[0])).toBe(String.raw`\square`);
@@ -36,7 +35,8 @@ describe('MathLive answer compatibility', () => {
   });
 
   it('replaces an empty field placeholder when the first physical key is routed through the adapter', () => {
-    const store = makeStore(initialState()), stepId = exerciseOf(store.getState().doc).steps[0].id;
+    const store = makeStore(initialState()),
+      stepId = exerciseOf(store.getState().doc).steps[0].id;
     const field = document.createElement('math-field') as unknown as MathfieldElement;
     field.value = String.raw`\placeholder{}`;
     registerMathfield(stepId, field);

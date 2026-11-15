@@ -1,71 +1,90 @@
 import { expect, test } from '@playwright/test';
 import { readLearningCache } from '../support/indexeddb';
 
-test('Learn progress restores in the connected app and its lesson status survives Practice reload', { tag: '@only-mobile-390' }, async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 640 });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.goto('/e2e/fixtures/lesson-connected-preview.html');
+test(
+  'Learn progress restores in the connected app and its lesson status survives Practice reload',
+  { tag: '@only-mobile-390' },
+  async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 640 });
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.goto('/e2e/fixtures/lesson-connected-preview.html');
 
-  const setup = page.getByRole('dialog', { name: 'Before you start this batch' });
-  if (await setup.isVisible().catch(() => false)) await setup.getByRole('button', { name: 'Skip for now' }).click();
-  await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Not started/ }).click();
-  await page.getByRole('radio', { name: 'Option B' }).check();
-  await page.getByRole('radio', { name: 'Confidence 4' }).check();
-  await page.getByRole('button', { name: 'Next section →' }).click();
-  const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-  const answerField = editor.locator('math-field[aria-label="Step 1 expression"]');
-  await editor.getByRole('button', { name: 'Show Keyboard' }).click();
-  await editor.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '8', exact: true }).click();
-  await expect.poll(() => answerField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
-  await expect(answerField).toBeInViewport();
-  await expect(page.getByRole('group', { name: 'Question expression' })).toBeInViewport();
-  const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, page: document.documentElement.scrollWidth }));
-  expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
+    const setup = page.getByRole('dialog', { name: 'Before you start this batch' });
+    if (await setup.isVisible().catch(() => false)) await setup.getByRole('button', { name: 'Skip for now' }).click();
+    await page.getByRole('button', { name: 'Exercise menu' }).click();
+    await page.getByRole('menuitem', { name: 'Lessons' }).click();
+    await page
+      .getByRole('dialog', { name: 'Lessons' })
+      .getByRole('button', { name: /Sample lesson.*Not started/ })
+      .click();
+    await page.getByRole('radio', { name: 'Option B' }).check();
+    await page.getByRole('radio', { name: 'Confidence 4' }).check();
+    await page.getByRole('button', { name: 'Next section →' }).click();
+    const editor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+    const answerField = editor.locator('math-field[aria-label="Step 1 expression"]');
+    await editor.getByRole('button', { name: 'Show Keyboard' }).click();
+    await editor.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '8', exact: true }).click();
+    await expect.poll(() => answerField.evaluate((element) => (element as HTMLElement & { value: string }).value)).toBe('8');
+    await expect(answerField).toBeInViewport();
+    await expect(page.getByRole('group', { name: 'Question expression' })).toBeInViewport();
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
 
-  const progressKey = 'math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview';
-  await expect.poll(async () => !!(await readLearningCache(page, progressKey))).toBe(true);
-  const saved = JSON.parse((await readLearningCache(page, progressKey))!);
-  expect(saved.lessons['SAMPLE-1.1']).toMatchObject({ status: 'learning', currentConceptIndex: 1, answeredCheckIds: ['SAMPLE-1.1-L01', 'SAMPLE-1.1-L02'] });
-  await page.reload();
-  const restartedSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
-  if (await restartedSetup.isVisible().catch(() => false)) await restartedSetup.getByRole('button', { name: 'Skip for now' }).click();
-  await page.getByRole('button', { name: 'Exercise menu' }).click();
-  await page.getByRole('menuitem', { name: 'Lessons' }).click();
-  await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Learning/ }).click();
-  await expect(page.getByRole('heading', { name: 'Second sample concept' })).toBeVisible();
-  const restoredEditor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
-  const restoredField = restoredEditor.locator('math-field[aria-label="Step 1 expression"]');
-  await expect.poll(() => restoredField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
-  await expect(restoredEditor.getByRole('button', { name: 'Show Keyboard' })).toBeVisible();
-  await expect(restoredEditor.getByRole('group', { name: 'Numeric keys' })).toHaveCount(0);
-  await page.getByRole('button', { name: '← Previous section' }).click();
-  await expect(page.getByRole('radio', { name: 'Option B' })).toBeChecked();
-  await expect(page.getByRole('radio', { name: 'Confidence 4' })).toBeChecked();
-  await page.getByRole('button', { name: 'Next section →' }).click();
-  await page.getByRole('button', { name: 'Next section →' }).click();
-  await page.getByRole('button', { name: 'Start practice' }).click();
-  await expect(page.getByText('Sample practice 1.')).toBeVisible();
-  const archive = JSON.parse((await readLearningCache(page, 'math-scratchpad-drive-session-archive-v1')) ?? '[]');
-  expect(archive).toHaveLength(1);
+    const progressKey = 'math-scratchpad-lesson-progress-v1:sample-lessons:sample-v1-browser-preview';
+    await expect.poll(async () => !!(await readLearningCache(page, progressKey))).toBe(true);
+    const saved = JSON.parse((await readLearningCache(page, progressKey))!);
+    expect(saved.lessons['SAMPLE-1.1']).toMatchObject({
+      status: 'learning',
+      currentConceptIndex: 1,
+      answeredCheckIds: ['SAMPLE-1.1-L01', 'SAMPLE-1.1-L02'],
+    });
+    await page.reload();
+    const restartedSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
+    if (await restartedSetup.isVisible().catch(() => false)) await restartedSetup.getByRole('button', { name: 'Skip for now' }).click();
+    await page.getByRole('button', { name: 'Exercise menu' }).click();
+    await page.getByRole('menuitem', { name: 'Lessons' }).click();
+    await page
+      .getByRole('dialog', { name: 'Lessons' })
+      .getByRole('button', { name: /Sample lesson.*Learning/ })
+      .click();
+    await expect(page.getByRole('heading', { name: 'Second sample concept' })).toBeVisible();
+    const restoredEditor = page.getByRole('region', { name: 'Math answer for SAMPLE-1.1-L02' });
+    const restoredField = restoredEditor.locator('math-field[aria-label="Step 1 expression"]');
+    await expect.poll(() => restoredField.evaluate((element) => (element as HTMLElement & { value: string }).value)).toBe('8');
+    await expect(restoredEditor.getByRole('button', { name: 'Show Keyboard' })).toBeVisible();
+    await expect(restoredEditor.getByRole('group', { name: 'Numeric keys' })).toHaveCount(0);
+    await page.getByRole('button', { name: '← Previous section' }).click();
+    await expect(page.getByRole('radio', { name: 'Option B' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: 'Confidence 4' })).toBeChecked();
+    await page.getByRole('button', { name: 'Next section →' }).click();
+    await page.getByRole('button', { name: 'Next section →' }).click();
+    await page.getByRole('button', { name: 'Start practice' }).click();
+    await expect(page.getByText('Sample practice 1.')).toBeVisible();
+    const archive = JSON.parse((await readLearningCache(page, 'math-scratchpad-drive-session-archive-v1')) ?? '[]');
+    expect(archive).toHaveLength(1);
 
-  await page.reload();
-  const finalSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
-  if (await finalSetup.isVisible().catch(() => false)) await finalSetup.getByRole('button', { name: 'Skip for now' }).click();
-  const practiceMenu = page.getByRole('combobox', { name: 'Select question' });
-  const lastQuestion = await practiceMenu.locator('option').last().getAttribute('value');
-  await practiceMenu.selectOption(lastQuestion!);
-  await page.getByRole('button', { name: 'Finish session' }).click();
-  const confidence = page.getByRole('dialog', { name: /confidence/i });
-  await confidence.getByRole('radio', { name: 'Medium' }).click();
-  await confidence.getByRole('button', { name: /continue/i }).click();
-  await expect.poll(async () => {
-    const raw = await readLearningCache(page, progressKey);
-    return raw ? JSON.parse(raw).lessons['SAMPLE-1.1']?.status : undefined;
-  }).toBe('done');
-  const completedProgress = JSON.parse((await readLearningCache(page, progressKey))!);
-  expect(completedProgress.lessons['SAMPLE-1.1'].status).toBe('done');
-  expect(JSON.parse((await readLearningCache(page, 'math-scratchpad-drive-session-archive-v1')) ?? '[]').length).toBe(1);
-});
+    await page.reload();
+    const finalSetup = page.getByRole('dialog', { name: 'Before you start this batch' });
+    if (await finalSetup.isVisible().catch(() => false)) await finalSetup.getByRole('button', { name: 'Skip for now' }).click();
+    const practiceMenu = page.getByRole('combobox', { name: 'Select question' });
+    const lastQuestion = await practiceMenu.locator('option').last().getAttribute('value');
+    await practiceMenu.selectOption(lastQuestion!);
+    await page.getByRole('button', { name: 'Finish session' }).click();
+    const confidence = page.getByRole('dialog', { name: /confidence/i });
+    await confidence.getByRole('radio', { name: 'Medium' }).click();
+    await confidence.getByRole('button', { name: /continue/i }).click();
+    await expect
+      .poll(async () => {
+        const raw = await readLearningCache(page, progressKey);
+        return raw ? JSON.parse(raw).lessons['SAMPLE-1.1']?.status : undefined;
+      })
+      .toBe('done');
+    const completedProgress = JSON.parse((await readLearningCache(page, progressKey))!);
+    expect(completedProgress.lessons['SAMPLE-1.1'].status).toBe('done');
+    expect(JSON.parse((await readLearningCache(page, 'math-scratchpad-drive-session-archive-v1')) ?? '[]').length).toBe(1);
+  },
+);

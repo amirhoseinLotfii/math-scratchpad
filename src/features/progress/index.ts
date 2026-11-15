@@ -1,6 +1,6 @@
 /**
  * Reading Position & Continue Where You Left Off Feature
- * 
+ *
  * This module provides functionality for tracking and restoring user's reading position
  * across sessions and devices, enabling users to continue from where they left off.
  */
@@ -15,29 +15,13 @@ export {
   SESSION_KEY,
 } from './reading-position-types';
 
-export {
-  useReadingPositionStore,
-  getMinimalPosition,
-  startReadingPositionPersistence,
-} from './reading-position-store';
+export { useReadingPositionStore, getMinimalPosition, startReadingPositionPersistence } from './reading-position-store';
 
-export {
-  READING_POSITION_STORAGE_KEY,
-  serializeReadingPosition,
-  deserializeReadingPosition,
-} from './reading-position-storage';
+export { READING_POSITION_STORAGE_KEY, serializeReadingPosition, deserializeReadingPosition } from './reading-position-storage';
 
-export {
-  readingPositionFromLearnEvent,
-  mergeLatestReadingPosition,
-  isLocationLearnEvent,
-} from './reading-position-from-event';
+export { readingPositionFromLearnEvent, mergeLatestReadingPosition, isLocationLearnEvent } from './reading-position-from-event';
 
-export {
-  sectionAnchorId,
-  conceptAnchorId,
-  parseAnchorId,
-} from './reading-position-anchors';
+export { sectionAnchorId, conceptAnchorId, parseAnchorId } from './reading-position-anchors';
 
 export {
   ReadingPositionProvider,
@@ -46,13 +30,6 @@ export {
   ContinueLearningButton,
 } from './reading-position-context';
 
-export {
-  initializeReadingPositionSync,
-  cleanupReadingPositionSync,
-  getTimeSinceLastSync,
-} from './reading-position-sync';
+export { initializeReadingPositionSync, cleanupReadingPositionSync, getTimeSinceLastSync } from './reading-position-sync';
 
-export {
-  RestorePosition,
-  useSemanticScrollRestoration,
-} from './restore-position';
+export { RestorePosition, useSemanticScrollRestoration } from './restore-position';

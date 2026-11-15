@@ -14,20 +14,23 @@ export function subscribeServerStorageBudget(listener: () => void) {
 
 export function StateBudgetMeter({ bytes }: { bytes: number }) {
   if (bytes < SYNC_STATE_BUDGET_BYTES * 0.8) return null;
-  const percent = persian.format(Math.floor(bytes * 100 / SYNC_STATE_BUDGET_BYTES));
-  return <p role="status" className="small" dir="rtl" lang="fa">حجم جلسه: {percent}٪ ظرفیت همگام‌سازی</p>;
+  const percent = persian.format(Math.floor((bytes * 100) / SYNC_STATE_BUDGET_BYTES));
+  return (
+    <p role="status" className="small" dir="rtl" lang="fa">
+      حجم جلسه: {percent}٪ ظرفیت همگام‌سازی
+    </p>
+  );
 }
 
 export function useHasOversizedState(): boolean {
   return useSyncExternalStore(
-    subscribeServerStorageBudget, () => !!getAuthenticatedServerStorage()?.getOversizedState().size, () => false,
+    subscribeServerStorageBudget,
+    () => !!getAuthenticatedServerStorage()?.getOversizedState().size,
+    () => false,
   );
 }
 
-export function OversizedStateWarning({ storage, onBackup }: {
-  storage?: ServerBackedStorage;
-  onBackup?: () => void;
-}) {
+export function OversizedStateWarning({ storage, onBackup }: { storage?: ServerBackedStorage; onBackup?: () => void }) {
   const status = useSyncExternalStore(
     subscribeServerStorageBudget,
     () => (storage ?? getAuthenticatedServerStorage())?.getOversizedState() ?? EMPTY_STATUS,
@@ -36,7 +39,7 @@ export function OversizedStateWarning({ storage, onBackup }: {
   const [backupResult, setBackupResult] = useState('');
   const [busy, setBusy] = useState(false);
   if (!status.size) return null;
-  const bytes = Math.max(...Array.from(status.values(), item => item.bytes));
+  const bytes = Math.max(...Array.from(status.values(), (item) => item.bytes));
 
   async function download() {
     if (onBackup) {
@@ -55,13 +58,16 @@ export function OversizedStateWarning({ storage, onBackup }: {
     }
   }
 
-  return <div className="server-connection-gate-message" dir="rtl" lang="fa">
-    <p role="status">
-      این جلسه برای همگام‌سازی ابری خیلی بزرگ است ({persian.format(Math.ceil(bytes / 1_000))} از ۹۵۰ کیلوبایت).
-      روی این دستگاه ذخیره است. برای همگام‌سازی، یک جلسهٔ تازه شروع کن یا پشتیبان بگیر.
-    </p>
-    <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm"
-      disabled={busy} onClick={() => void download()}>دانلود پشتیبان کامل JSON</button>
-    {backupResult && <p role="status">{backupResult}</p>}
-  </div>;
+  return (
+    <div className="server-connection-gate-message" dir="rtl" lang="fa">
+      <p role="status">
+        این جلسه برای همگام‌سازی ابری خیلی بزرگ است ({persian.format(Math.ceil(bytes / 1_000))} از ۹۵۰ کیلوبایت). روی این دستگاه ذخیره است.
+        برای همگام‌سازی، یک جلسهٔ تازه شروع کن یا پشتیبان بگیر.
+      </p>
+      <button type="button" className="rounded-lg border border-white/25 px-3 py-2 text-sm" disabled={busy} onClick={() => void download()}>
+        دانلود پشتیبان کامل JSON
+      </button>
+      {backupResult && <p role="status">{backupResult}</p>}
+    </div>
+  );
 }

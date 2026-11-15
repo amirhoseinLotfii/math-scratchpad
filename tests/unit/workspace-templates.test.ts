@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { readWorkspaceTemplate, workspaceTemplateStorageKey, writeWorkspaceTemplate } from '../../src/features/workspace/model/workspace-templates';
+import {
+  readWorkspaceTemplate,
+  workspaceTemplateStorageKey,
+  writeWorkspaceTemplate,
+} from '../../src/features/workspace/model/workspace-templates';
 
 function storage() {
   const values = new Map<string, string>();
   return {
     values,
-    getItem(key: string) { return values.get(key) ?? null; },
-    setItem(key: string, value: string) { values.set(key, value); },
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
   };
 }
 

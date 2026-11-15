@@ -11,8 +11,12 @@ export class StateWriteCoalescer {
 
   constructor(private readonly send: (key: string, value: string | null, keepalive: boolean) => void) {}
 
-  get size() { return this.writes.size; }
-  has(key: string) { return this.writes.has(key); }
+  get size() {
+    return this.writes.size;
+  }
+  has(key: string) {
+    return this.writes.has(key);
+  }
 
   set(key: string, value: string | null) {
     const existing = this.writes.get(key);

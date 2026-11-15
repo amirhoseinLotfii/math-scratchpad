@@ -12,23 +12,47 @@ import { ContinueLearningButton } from '../../src/features/progress/reading-posi
 import { sectionAnchorId } from '../../src/features/progress/reading-position-anchors';
 import type { LessonProgress } from '../../src/features/lessons/types';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear(); });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  localStorage.clear();
+});
 
 function sampleBank(): DriveBank {
-  const raw = JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as { lessons: Array<{ concepts: Array<{ blocks: unknown[] }> }> };
+  const raw = JSON.parse(readFileSync('examples/MATH_QUESTION_BANK.sample.json', 'utf8')) as {
+    lessons: Array<{ concepts: Array<{ blocks: unknown[] }> }>;
+  };
   raw.lessons[0].concepts[0].blocks.push({ type: 'example', title: 'Worked example', steps: ['Step one of the book solution'] });
   return validateBank(raw);
 }
 
 /** Split view matching; the sample bank has no page tags, so each concept is its own section. */
 function wide(matches: boolean) {
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: matches || !query.includes('1100'), media: query, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: matches || !query.includes('1100'),
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
 }
 
 function mount(options: { restore?: LessonRestoreTarget } = {}) {
-  const bank = sampleBank(), lesson = bank.lessons![0];
+  const bank = sampleBank(),
+    lesson = bank.lessons![0];
   const onProgress = vi.fn<(progress: LessonProgress) => void>();
-  render(<Provider store={makeStore(initialState())}><LessonScreen bank={bank} lesson={lesson} restore={options.restore} onBack={vi.fn()} onProgress={onProgress} onStartPractice={vi.fn()} /></Provider>);
+  render(
+    <Provider store={makeStore(initialState())}>
+      <LessonScreen
+        bank={bank}
+        lesson={lesson}
+        restore={options.restore}
+        onBack={vi.fn()}
+        onProgress={onProgress}
+        onStartPractice={vi.fn()}
+      />
+    </Provider>,
+  );
   return { bank, lesson, onProgress };
 }
 
@@ -74,7 +98,8 @@ describe('lesson continuation and pane accessibility', () => {
 
   it('opens the requested section and scrolls to its anchor without focusing an editor', async () => {
     wide(true);
-    const bank = sampleBank(), lesson = bank.lessons![0];
+    const bank = sampleBank(),
+      lesson = bank.lessons![0];
     const sections = buildLessonSections(lesson);
     expect(sections.length).toBeGreaterThan(1);
     const target = sections[sections.length - 1];

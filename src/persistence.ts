@@ -1,7 +1,18 @@
 import { metadataSchema } from './features/session/schemas/session-schema';
 import {
-  ascii, fields, leaves, MAX_SESSION_EXERCISES, templateCounts,
-  type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, type Step,
+  ascii,
+  fields,
+  leaves,
+  MAX_SESSION_EXERCISES,
+  templateCounts,
+  type Cursor,
+  type Document,
+  type Exercise,
+  type MathNode,
+  type Preferences,
+  type Sequence,
+  type SessionMeta,
+  type Step,
 } from './model';
 import { initialState, type ScratchState } from './store';
 import { getLearningStorage } from './sync/browser-db';
@@ -11,14 +22,11 @@ const EMPTY: Record<string, unknown> = {};
 const operators = ['+', '−', '×', '÷', '=', '<', '>', '≤', '≥', '≠', ','];
 
 function bag(value: unknown): Record<string, unknown> {
-  return value !== null && (typeof value === 'object' || typeof value === 'function')
-    ? value as Record<string, unknown>
-    : EMPTY;
+  return value !== null && (typeof value === 'object' || typeof value === 'function') ? (value as Record<string, unknown>) : EMPTY;
 }
 
 function isoText(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 40
-    && /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+  return typeof value === 'string' && value.length <= 40 && /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/.test(value);
 }
 
 function integerIn(value: unknown, min: number, max: number): value is number {
@@ -46,15 +54,14 @@ function isShortString(value: unknown, max: number): value is string {
 
 function normalizeChoices(value: unknown): string[] | undefined {
   if (!Array.isArray(value) || value.length < 2 || value.length > 12) return;
-  return value.every(choice => isShortString(choice, 500) && choice.trim().length > 0) ? value : undefined;
+  return value.every((choice) => isShortString(choice, 500) && choice.trim().length > 0) ? value : undefined;
 }
 
 function normalizePreferences(value: unknown): Preferences | undefined {
   if (!value) return;
   const prefs = bag(value);
-  const symbols = (items: unknown, limit: number) => Array.isArray(items)
-    ? items.filter((symbol): symbol is string => isShortString(symbol, 29)).slice(0, limit)
-    : [];
+  const symbols = (items: unknown, limit: number) =>
+    Array.isArray(items) ? items.filter((symbol): symbol is string => isShortString(symbol, 29)).slice(0, limit) : [];
   return { compact: prefs.compact !== false, favorites: symbols(prefs.favorites, 12), recent: symbols(prefs.recent, 4) };
 }
 
@@ -81,9 +88,16 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
 
   function sequence(value: unknown, depth: number): Sequence {
     const v = bag(value);
-    if (v.type !== 'sequence' || depth > 18 || !Array.isArray(v.children)
-      || !v.children.length || v.children.length > 200 || ++count > 3000) throw Error('Invalid sequence.');
-    return { id: id(v.id), type: 'sequence', children: v.children.map(child => node(child, depth + 1)) };
+    if (
+      v.type !== 'sequence' ||
+      depth > 18 ||
+      !Array.isArray(v.children) ||
+      !v.children.length ||
+      v.children.length > 200 ||
+      ++count > 3000
+    )
+      throw Error('Invalid sequence.');
+    return { id: id(v.id), type: 'sequence', children: v.children.map((child) => node(child, depth + 1)) };
   }
 
   function node(value: unknown, depth: number): MathNode {
@@ -91,9 +105,12 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
     const v = bag(value);
     const nodeId = id(v.id);
     if (typeof v.value === 'string') {
-      if ((v.type === 'number' && /^[0-9.]{0,60}$/.test(v.value))
-        || (v.type === 'identifier' && /^[a-zA-Zπθ∞σ]$/.test(v.value))
-        || (v.type === 'operator' && operators.includes(v.value))) return { id: nodeId, type: v.type, value: v.value };
+      if (
+        (v.type === 'number' && /^[0-9.]{0,60}$/.test(v.value)) ||
+        (v.type === 'identifier' && /^[a-zA-Zπθ∞σ]$/.test(v.value)) ||
+        (v.type === 'operator' && operators.includes(v.value))
+      )
+        return { id: nodeId, type: v.type, value: v.value };
     }
     if (v.type === 'fraction') {
       return { id: nodeId, type: v.type, numerator: sequence(v.numerator, depth + 1), denominator: sequence(v.denominator, depth + 1) };
@@ -106,11 +123,16 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
       return { id: nodeId, type: v.type, body: sequence(v.body, depth + 1), ...(v.delim === 'bracket' ? { delim: 'bracket' } : {}) };
     }
     if (v.type === 'matrix' && (v.size === 2 || v.size === 3) && Array.isArray(v.cells) && v.cells.length === v.size ** 2) {
-      return { id: nodeId, type: v.type, size: v.size, cells: v.cells.map(cell => sequence(cell, depth + 1)) };
+      return { id: nodeId, type: v.type, size: v.size, cells: v.cells.map((cell) => sequence(cell, depth + 1)) };
     }
-    if (v.type === 'template' && typeof v.kind === 'string' && Object.hasOwn(templateCounts, v.kind)
-      && Array.isArray(v.args) && v.args.length === templateCounts[v.kind]) {
-      return { id: nodeId, type: v.type, kind: v.kind, args: v.args.map(arg => sequence(arg, depth + 1)) };
+    if (
+      v.type === 'template' &&
+      typeof v.kind === 'string' &&
+      Object.hasOwn(templateCounts, v.kind) &&
+      Array.isArray(v.args) &&
+      v.args.length === templateCounts[v.kind]
+    ) {
+      return { id: nodeId, type: v.type, kind: v.kind, args: v.args.map((arg) => sequence(arg, depth + 1)) };
     }
     throw Error('Invalid mathematical content.');
   }
@@ -130,17 +152,32 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
   const exercises = raw.exercises.map((value: unknown): Exercise => {
     metadataSchema.parse(value);
     const ex = bag(value);
-    if (!isShortString(ex.source, 4000) || (ex.mode !== 'math' && ex.mode !== 'text')
-      || !Array.isArray(ex.steps) || !ex.steps.length || ex.steps.length > 40) throw Error('Invalid exercise.');
-    if (ex.steps.some(value => {
-      const latex = bag(value).mathLatex;
-      return latex !== undefined && !isShortString(latex, 4000);
-    })) throw Error('Invalid saved math expression.');
-    if (ex.steps.filter(value => bag(value).final).length > 1) throw Error('Only one final answer is allowed.');
+    if (
+      !isShortString(ex.source, 4000) ||
+      (ex.mode !== 'math' && ex.mode !== 'text') ||
+      !Array.isArray(ex.steps) ||
+      !ex.steps.length ||
+      ex.steps.length > 40
+    )
+      throw Error('Invalid exercise.');
+    if (
+      ex.steps.some((value) => {
+        const latex = bag(value).mathLatex;
+        return latex !== undefined && !isShortString(latex, 4000);
+      })
+    )
+      throw Error('Invalid saved math expression.');
+    if (ex.steps.filter((value) => bag(value).final).length > 1) throw Error('Only one final answer is allowed.');
     const candidate = ex.answerType;
     const choices = candidate === 'choice' ? normalizeChoices(ex.choices) : undefined;
-    const answerType = candidate === 'math' || candidate === 'text' || candidate === 'true_false_why'
-      || candidate === 'find_mistake' || (candidate === 'choice' && choices) ? candidate : undefined;
+    const answerType =
+      candidate === 'math' ||
+      candidate === 'text' ||
+      candidate === 'true_false_why' ||
+      candidate === 'find_mistake' ||
+      (candidate === 'choice' && choices)
+        ? candidate
+        : undefined;
     const allowsAnswerText = answerType === 'text' || answerType === 'choice' || answerType === 'find_mistake';
 
     return {
@@ -152,7 +189,8 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
       ...(choices ? { choices } : {}),
       ...(allowsAnswerText && isShortString(ex.answerText, 4000) ? { answerText: ex.answerText } : {}),
       ...(answerType === 'true_false_why' && (ex.answerChoice === 'true' || ex.answerChoice === 'false')
-        ? { answerChoice: ex.answerChoice } : {}),
+        ? { answerChoice: ex.answerChoice }
+        : {}),
       ...(answerType === 'true_false_why' && isShortString(ex.answerReason, 4000) ? { answerReason: ex.answerReason } : {}),
       ...(typeof ex.bankQuestionId === 'string' && /^[\w.-]{1,100}$/.test(ex.bankQuestionId) ? { bankQuestionId: ex.bankQuestionId } : {}),
       ...(ex.stage === 'learn' || ex.stage === 'practice' ? { stage: ex.stage } : {}),
@@ -168,31 +206,37 @@ export function validateSession(input: unknown): { doc: Document; prefs?: Prefer
       ...(isShortString(ex.hintNote, 500) ? { hintNote: ex.hintNote } : {}),
       ...(isShortString(ex.guidance, 2000) && ex.guidance.trim() ? { guidance: ex.guidance } : {}),
       ...(isoText(ex.guidanceOpenedAt) ? { guidanceOpenedAt: ex.guidanceOpenedAt } : {}),
-      ...(typeof ex.timerRunningSince === 'number' && Number.isFinite(ex.timerRunningSince)
-        && ex.timerRunningSince > 0 && ex.timerRunningSince <= Date.now() + 86_400_000 ? { timerRunningSince: ex.timerRunningSince } : {}),
+      ...(typeof ex.timerRunningSince === 'number' &&
+      Number.isFinite(ex.timerRunningSince) &&
+      ex.timerRunningSince > 0 &&
+      ex.timerRunningSince <= Date.now() + 86_400_000
+        ? { timerRunningSince: ex.timerRunningSince }
+        : {}),
       ...(ex.timerPaused === true ? { timerPaused: true } : {}),
       ...(isShortString(ex.migrationNotes, 5000) ? { migrationNotes: ex.migrationNotes } : {}),
       steps: ex.steps.map(step),
     };
   });
   const exerciseId = legacy ? raw.exercise : raw.exerciseId;
-  const ex = exercises.find(exercise => exercise.id === exerciseId) ?? exercises.at(-1)!;
+  const ex = exercises.find((exercise) => exercise.id === exerciseId) ?? exercises.at(-1)!;
   const legacyGap = bag(raw.gap);
   const old = legacy
     ? { stepId: raw.step, nodeId: raw.node, offset: raw.caret, sequenceId: legacyGap.sequenceId, index: legacyGap.index }
     : bag(raw.cursor);
-  const activeStep = ex.steps.find(step => step.id === old.stepId) ?? ex.steps.at(-1)!;
+  const activeStep = ex.steps.find((step) => step.id === old.stepId) ?? ex.steps.at(-1)!;
   const all = leaves(activeStep.expression);
-  const leaf = all.find(item => item.node.id === old.nodeId)?.node ?? all[0].node;
-  const offset = leaf.type === 'number' && typeof old.offset === 'number' && Number.isInteger(old.offset)
-    ? Math.max(0, Math.min(leaf.value.length, old.offset)) : 0;
+  const leaf = all.find((item) => item.node.id === old.nodeId)?.node ?? all[0].node;
+  const offset =
+    leaf.type === 'number' && typeof old.offset === 'number' && Number.isInteger(old.offset)
+      ? Math.max(0, Math.min(leaf.value.length, old.offset))
+      : 0;
   const cursor: Cursor = { stepId: activeStep.id, nodeId: leaf.id, offset, sequenceId: null, index: 0, selected: null };
 
   // Restore only verified structural selections and sequence boundaries.
   function sequences(s: Sequence): Sequence[] {
-    return [s, ...s.children.flatMap(n => fields(n).flatMap(([child]) => sequences(child)))];
+    return [s, ...s.children.flatMap((n) => fields(n).flatMap(([child]) => sequences(child)))];
   }
-  const gap = sequences(activeStep.expression).find(s => s.id === old.sequenceId);
+  const gap = sequences(activeStep.expression).find((s) => s.id === old.sequenceId);
   if (gap && integerIn(old.index, 0, gap.children.length)) {
     cursor.sequenceId = gap.id;
     cursor.index = old.index;

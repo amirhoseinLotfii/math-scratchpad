@@ -28,11 +28,17 @@ export const SPLIT_RATIO_STORAGE_KEY = 'math-scratchpad:lesson-split-ratio';
 const GUIDED = /^\s*مثال\s+هدایت|^\s*guided\s+example/i;
 const HOW_TO_OR_METHOD = /How\s*To|^\s*روش\s|کادر\s*«?چگونه/i;
 
-export function exampleWorkKey(conceptId: string, blockIndex: number) { return `ex:${conceptId}:${blockIndex}`; }
-export function questionWorkKey(questionId: string) { return `q:${questionId}`; }
+export function exampleWorkKey(conceptId: string, blockIndex: number) {
+  return `ex:${conceptId}:${blockIndex}`;
+}
+export function questionWorkKey(questionId: string) {
+  return `q:${questionId}`;
+}
 
 /** Wide screens get a docked lesson + work split; narrower screens switch with tabs. */
-export function lessonPaneMode(splitMatches: boolean): LessonPaneMode { return splitMatches ? 'split' : 'tabs'; }
+export function lessonPaneMode(splitMatches: boolean): LessonPaneMode {
+  return splitMatches ? 'split' : 'tabs';
+}
 
 export function clampSplitRatio(value: unknown): number {
   const number = typeof value === 'string' ? Number(value) : value;
@@ -57,7 +63,11 @@ function blockText(block: LessonBlock): string {
  * Work items for one section, in reading order: worked examples and guided examples from the
  * lesson text, then the section's quick checks (L), then its exercises (book first, as selected).
  */
-export function buildSectionWorkItems(section: LessonSection | undefined, checks: BankQuestion[], exercises: BankQuestion[]): LessonWorkItem[] {
+export function buildSectionWorkItems(
+  section: LessonSection | undefined,
+  checks: BankQuestion[],
+  exercises: BankQuestion[],
+): LessonWorkItem[] {
   if (!section) return [];
   const items: LessonWorkItem[] = [];
   for (const { concept, blocks } of section.concepts) {
@@ -66,29 +76,62 @@ export function buildSectionWorkItems(section: LessonSection | undefined, checks
       if (blockIndex < 0) continue;
       const text = blockText(block);
       if (block.type === 'example' && block.steps.length && !HOW_TO_OR_METHOD.test(text)) {
-        items.push({ key: exampleWorkKey(concept.id, blockIndex), kind: 'example', conceptId: concept.id, blockIndex, block, title: text, workQuestion: { id: exampleWorkKey(concept.id, blockIndex), mode: 'math', source: '' } });
+        items.push({
+          key: exampleWorkKey(concept.id, blockIndex),
+          kind: 'example',
+          conceptId: concept.id,
+          blockIndex,
+          block,
+          title: text,
+          workQuestion: { id: exampleWorkKey(concept.id, blockIndex), mode: 'math', source: '' },
+        });
       } else if (block.type === 'note' && GUIDED.test(text)) {
-        items.push({ key: exampleWorkKey(concept.id, blockIndex), kind: 'guided', conceptId: concept.id, blockIndex, block, title: text, workQuestion: { id: exampleWorkKey(concept.id, blockIndex), mode: 'math', source: '' } });
+        items.push({
+          key: exampleWorkKey(concept.id, blockIndex),
+          kind: 'guided',
+          conceptId: concept.id,
+          blockIndex,
+          block,
+          title: text,
+          workQuestion: { id: exampleWorkKey(concept.id, blockIndex), mode: 'math', source: '' },
+        });
       }
     }
   }
-  for (const question of checks) items.push({ key: questionWorkKey(question.id), kind: 'check', question, title: question.prompt || question.source, workQuestion: question });
-  for (const question of exercises) items.push({ key: questionWorkKey(question.id), kind: 'exercise', question, title: question.prompt || question.source, workQuestion: { ...question, id: questionWorkKey(question.id) } });
+  for (const question of checks)
+    items.push({
+      key: questionWorkKey(question.id),
+      kind: 'check',
+      question,
+      title: question.prompt || question.source,
+      workQuestion: question,
+    });
+  for (const question of exercises)
+    items.push({
+      key: questionWorkKey(question.id),
+      kind: 'exercise',
+      question,
+      title: question.prompt || question.source,
+      workQuestion: { ...question, id: questionWorkKey(question.id) },
+    });
   return items;
 }
 
 /** Keeps the selection when it still exists in this section, otherwise picks the first item. */
 export function resolveSelectedWorkItem(items: LessonWorkItem[], selectedKey: string | undefined): LessonWorkItem | undefined {
-  return items.find(item => item.key === selectedKey) ?? items[0];
+  return items.find((item) => item.key === selectedKey) ?? items[0];
 }
 
 /** Valid storage keys for work in one lesson: example/guided blocks of its concepts and its practice questions. */
 export function allowedWorkKeys(lesson: Lesson, questions: BankQuestion[]): Set<string> {
   const keys = new Set<string>();
-  lesson.concepts.forEach(concept => concept.blocks.forEach((block, index) => {
-    if (block.type === 'example' || block.type === 'note') keys.add(exampleWorkKey(concept.id, index));
-  }));
-  for (const question of questions) if (question.lessonId === lesson.id && question.stage !== 'learn') keys.add(questionWorkKey(question.id));
+  lesson.concepts.forEach((concept) =>
+    concept.blocks.forEach((block, index) => {
+      if (block.type === 'example' || block.type === 'note') keys.add(exampleWorkKey(concept.id, index));
+    }),
+  );
+  for (const question of questions)
+    if (question.lessonId === lesson.id && question.stage !== 'learn') keys.add(questionWorkKey(question.id));
   return keys;
 }
 
@@ -112,27 +155,35 @@ export function normalizeWorkAnswers(
     const legacyRaw = raw.legacyMathSteps;
     const legacyMathSteps = legacyRaw === undefined ? undefined : validSteps(key, { steps: legacyRaw });
     if (legacyRaw !== undefined && !legacyMathSteps) continue;
-    const withLegacy = <T extends LessonWorkAnswer>(answer: T): T => legacyMathSteps ? { ...answer, legacyMathSteps } : answer;
+    const withLegacy = <T extends LessonWorkAnswer>(answer: T): T => (legacyMathSteps ? { ...answer, legacyMathSteps } : answer);
     if (raw.type === 'math') {
       const steps = validSteps(key, response);
       if (!steps) continue;
       if (expected === 'math') result[key] = { type: 'math', steps };
       else {
         const legacy = legacyMathSteps ?? steps;
-        if (!legacy.some(step => !stepIsBlank(step))) continue;
-        result[key] = expected === 'true_false_why'
-          ? { type: 'true_false_why', reason: '', legacyMathSteps: legacy }
-          : { type: expected, value: '', legacyMathSteps: legacy };
+        if (!legacy.some((step) => !stepIsBlank(step))) continue;
+        result[key] =
+          expected === 'true_false_why'
+            ? { type: 'true_false_why', reason: '', legacyMathSteps: legacy }
+            : { type: expected, value: '', legacyMathSteps: legacy };
       }
       continue;
     }
     if (raw.type !== expected) continue;
-    if ((expected === 'text' || expected === 'find_mistake' || expected === 'choice')
-      && typeof raw.value === 'string' && raw.value.length <= 4000
-      && (expected !== 'choice' || question?.choices?.includes(raw.value))) {
+    if (
+      (expected === 'text' || expected === 'find_mistake' || expected === 'choice') &&
+      typeof raw.value === 'string' &&
+      raw.value.length <= 4000 &&
+      (expected !== 'choice' || question?.choices?.includes(raw.value))
+    ) {
       result[key] = withLegacy({ type: expected, value: raw.value });
-    } else if (expected === 'true_false_why' && (raw.choice === undefined || raw.choice === 'true' || raw.choice === 'false')
-      && typeof raw.reason === 'string' && raw.reason.length <= 4000) {
+    } else if (
+      expected === 'true_false_why' &&
+      (raw.choice === undefined || raw.choice === 'true' || raw.choice === 'false') &&
+      typeof raw.reason === 'string' &&
+      raw.reason.length <= 4000
+    ) {
       result[key] = withLegacy({ type: 'true_false_why', ...(raw.choice ? { choice: raw.choice } : {}), reason: raw.reason });
     }
   }
@@ -141,13 +192,13 @@ export function normalizeWorkAnswers(
 
 export function workAnswerHasContent(answer: LessonWorkAnswer | undefined): boolean {
   if (!answer) return false;
-  return workAnswerHasCurrentContent(answer) || !!answer.legacyMathSteps?.some(step => !stepIsBlank(step));
+  return workAnswerHasCurrentContent(answer) || !!answer.legacyMathSteps?.some((step) => !stepIsBlank(step));
 }
 
 export function workAnswerHasCurrentContent(answer: LessonWorkAnswer | undefined): boolean {
   if (!answer) return false;
   return answer.type === 'math'
-    ? answer.steps.some(step => !stepIsBlank(step))
+    ? answer.steps.some((step) => !stepIsBlank(step))
     : answer.type === 'true_false_why'
       ? !!answer.choice || !!answer.reason.trim()
       : !!answer.value.trim();

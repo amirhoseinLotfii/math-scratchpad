@@ -16,7 +16,7 @@ test('wide lesson keeps its section header fixed while only the lesson content s
     await expect(content).toHaveAttribute('tabindex', '0');
 
     const headerTopBefore = (await header.boundingBox())?.y ?? -1;
-    await content.evaluate(element => {
+    await content.evaluate((element) => {
       const filler = document.createElement('div');
       filler.setAttribute('aria-hidden', 'true');
       filler.style.height = '1800px';
@@ -28,7 +28,7 @@ test('wide lesson keeps its section header fixed while only the lesson content s
     if (!contentBox) throw new Error('Lesson content region has no visible box.');
     await page.mouse.move(contentBox.x + contentBox.width / 2, contentBox.y + contentBox.height / 2);
     await page.mouse.wheel(0, 500);
-    await expect.poll(() => content.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
     const metrics = await page.evaluate(() => {
       const screen = document.querySelector<HTMLElement>('.lesson-screen')!;

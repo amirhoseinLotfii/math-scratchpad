@@ -1,23 +1,23 @@
 :root {
- /* Legacy MS tokens - now mapped to Design System tokens for backward compatibility */
- --background: var(--color-background, #151719);
- --foreground: var(--color-text-primary, #e7ebe8);
- --card: var(--color-surface, #202326);
- --card-foreground: var(--color-text-primary, #e7ebe8);
- --raised: var(--color-surface-elevated, #292d30);
- --primary: var(--color-primary, #86b99b);
- --primary-foreground: var(--color-primary-foreground, #101a14);
- --secondary: var(--color-surface-elevated, #292d30);
- --secondary-foreground: var(--color-text-primary, #e7ebe8);
- --muted: var(--color-surface, #24282b);
- --muted-foreground: var(--color-text-muted, #b2b9b5);
- --border: var(--color-border, #707a75);
- --ring: var(--color-ring, #8cbfff);
- --destructive: var(--color-error-400, #f87171);
- --ms-danger: var(--color-error, #b42318);
- --ms-on-danger: var(--color-error-foreground, #ffffff);
- --success: var(--color-success, #8fa89a);
- --warning: var(--color-warning, #e4b66b);
- --radius: var(--radius-lg, 0.625rem);
- --font-sans: var(--font-family-sans, 'Inter', system-ui, sans-serif);
+  /* Legacy MS tokens - now mapped to Design System tokens for backward compatibility */
+  --background: var(--color-background, #151719);
+  --foreground: var(--color-text-primary, #e7ebe8);
+  --card: var(--color-surface, #202326);
+  --card-foreground: var(--color-text-primary, #e7ebe8);
+  --raised: var(--color-surface-elevated, #292d30);
+  --primary: var(--color-primary, #86b99b);
+  --primary-foreground: var(--color-primary-foreground, #101a14);
+  --secondary: var(--color-surface-elevated, #292d30);
+  --secondary-foreground: var(--color-text-primary, #e7ebe8);
+  --muted: var(--color-surface, #24282b);
+  --muted-foreground: var(--color-text-muted, #b2b9b5);
+  --border: var(--color-border, #707a75);
+  --ring: var(--color-ring, #8cbfff);
+  --destructive: var(--color-error-400, #f87171);
+  --ms-danger: var(--color-error, #b42318);
+  --ms-on-danger: var(--color-error-foreground, #ffffff);
+  --success: var(--color-success, #8fa89a);
+  --warning: var(--color-warning, #e4b66b);
+  --radius: var(--radius-lg, 0.625rem);
+  --font-sans: var(--font-family-sans, 'Inter', system-ui, sans-serif);
 }

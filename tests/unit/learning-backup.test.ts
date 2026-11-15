@@ -11,15 +11,33 @@ import {
   storeServerEvents,
   writeLearningItem,
 } from '../../src/sync/browser-db';
-import { createFullLearningBackup, importFullLearningBackup, parseFullLearningBackup, previewFullLearningBackup, serializeFullLearningBackup } from '../../src/sync/learning-backup';
+import {
+  createFullLearningBackup,
+  importFullLearningBackup,
+  parseFullLearningBackup,
+  previewFullLearningBackup,
+  serializeFullLearningBackup,
+} from '../../src/sync/learning-backup';
 import type { LearnEvent } from '../../src/sync/events';
 import { initialState } from '../../src/store';
 
 function event(id = '00000000-0000-4000-8000-000000000001', userAnswer?: string): LearnEvent {
   return {
-    id, schema: 1, ts: '2026-11-02T00:00:00.000Z', deviceId: '11111111-1111-4111-8111-111111111111',
-    bankVersion: 'v21', session: 'backup-test', chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations',
-    type: 'check_answer', itemId: 'q-1', ...(userAnswer === undefined ? {} : { userAnswer }), verdict: 'submitted', verdictSource: 'none',
+    id,
+    schema: 1,
+    ts: '2026-11-02T00:00:00.000Z',
+    deviceId: '11111111-1111-4111-8111-111111111111',
+    bankVersion: 'v21',
+    session: 'backup-test',
+    chapter: 1,
+    lesson: '1.1',
+    section: '1.1-a',
+    concept: 'relations',
+    type: 'check_answer',
+    itemId: 'q-1',
+    ...(userAnswer === undefined ? {} : { userAnswer }),
+    verdict: 'submitted',
+    verdictSource: 'none',
   };
 }
 
@@ -30,8 +48,10 @@ function progress(value: string) {
 async function records() {
   const db = await getLearningDb();
   return {
-    cache: await db.getAll('cache'), outbox: await db.getAll('outbox'),
-    serverEvents: await db.getAll('serverEvents'), meta: await db.getAll('meta'),
+    cache: await db.getAll('cache'),
+    outbox: await db.getAll('outbox'),
+    serverEvents: await db.getAll('serverEvents'),
+    meta: await db.getAll('meta'),
   };
 }
 
@@ -61,10 +81,16 @@ describe('full learning backup', () => {
   it('exports, wipes, validates, and restores the exact cache, outbox, server events, and metadata', async () => {
     await writeLearningItem('math-scratchpad-lesson-progress-v1:bank-1:v21', progress('progress'));
     const session = initialState();
-    await writeLearningItem('math-scratchpad-session-v3', JSON.stringify({
-      version: 3,
-      state: { session: { doc: session.doc, prefs: session.prefs, keyboardOpen: session.keyboardOpen }, sync: { revision: 1, writerId: 'backup-test' } },
-    }));
+    await writeLearningItem(
+      'math-scratchpad-session-v3',
+      JSON.stringify({
+        version: 3,
+        state: {
+          session: { doc: session.doc, prefs: session.prefs, keyboardOpen: session.keyboardOpen },
+          sync: { revision: 1, writerId: 'backup-test' },
+        },
+      }),
+    );
     const queued = event('00000000-0000-4000-8000-000000000002', '{1,2}');
     const stored = event('00000000-0000-4000-8000-000000000003', '{3,4}');
     await queueLearnEvent(queued);
@@ -75,7 +101,12 @@ describe('full learning backup', () => {
 
     const text = await createFullLearningBackup(new Date('2026-11-02T01:00:00.000Z'));
     const parsed = await parseFullLearningBackup(text);
-    expect(parsed.stores).toMatchObject({ cache: expect.any(Array), outbox: expect.any(Array), serverEvents: expect.any(Array), meta: expect.any(Array) });
+    expect(parsed.stores).toMatchObject({
+      cache: expect.any(Array),
+      outbox: expect.any(Array),
+      serverEvents: expect.any(Array),
+      meta: expect.any(Array),
+    });
 
     await resetLearningDbForTests();
     localStorage.clear();
@@ -112,7 +143,9 @@ describe('full learning backup', () => {
     const preview = await previewFullLearningBackup(backup);
     expect(preview).toMatchObject({ canImport: true, preservedConflicts: { cache: 1 }, additions: { outbox: 1 } });
     await importFullLearningBackup(backup);
-    await expect((await getLearningDb()).get('cache', 'math-scratchpad-lesson-progress-v1:bank-1:v21')).resolves.toMatchObject({ value: progress('local-newer') });
+    await expect((await getLearningDb()).get('cache', 'math-scratchpad-lesson-progress-v1:bank-1:v21')).resolves.toMatchObject({
+      value: progress('local-newer'),
+    });
     expect(await readOutboxCount()).toBe(1);
   });
 

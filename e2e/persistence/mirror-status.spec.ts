@@ -8,11 +8,18 @@ const API = 'https://math-scratchpad-sync.math-scratchpad-redux.workers.dev';
 async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
   const calls: string[] = [];
   let drive = { status: 'pending', pendingCount: 2, lastSyncedAt: '2026-11-02T01:00:00.000Z', lastError: null as string | null };
-  let notion = { status: 'error', pendingCount: 1, lastSyncedAt: '2026-11-02T00:45:00.000Z', lastError: 'database_not_shared' as string | null };
+  let notion = {
+    status: 'error',
+    pendingCount: 1,
+    lastSyncedAt: '2026-11-02T00:45:00.000Z',
+    lastError: 'database_not_shared' as string | null,
+  };
 
   await installFakeGoogleAuth(page);
-  await page.route(`${API}/**`, async route => {
-    const request = route.request(), url = new URL(request.url()), method = request.method();
+  await page.route(`${API}/**`, async (route) => {
+    const request = route.request(),
+      url = new URL(request.url()),
+      method = request.method();
     calls.push(`${method} ${url.pathname}`);
     if (url.pathname === '/reset/status' && method === 'GET') {
       await route.fulfill({
@@ -23,7 +30,11 @@ async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
       return;
     }
     if (url.pathname === '/session' && method === 'POST') {
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }),
+      });
       return;
     }
     if (url.pathname === '/events' && method === 'POST') {
@@ -33,7 +44,11 @@ async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
       return;
     }
     if (url.pathname === '/snapshot' || url.pathname === '/sync') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false }),
+      });
       return;
     }
     if (url.pathname === '/drive/status') {
@@ -69,7 +84,7 @@ async function runMirrorStatusJourney(page: Page, testInfo: TestInfo) {
   await expect(notionGroup.getByText('1 رویداد در صف')).toBeVisible();
 
   const accessibility = await new AxeBuilder({ page }).include('section[aria-labelledby="sync-panel-title"]').analyze();
-  expect(accessibility.violations.filter(issue => issue.impact === 'critical' || issue.impact === 'serious')).toEqual([]);
+  expect(accessibility.violations.filter((issue) => issue.impact === 'critical' || issue.impact === 'serious')).toEqual([]);
 
   await page.getByText('جزئیات آخرین همگام‌سازی و خطاها').click();
   await expect(panel.getByText('دیتابیس‌های لازم با Integration به‌اشتراک گذاشته نشده‌اند.')).toBeVisible();
@@ -88,7 +103,11 @@ test('mobile 390 shows separate mirror states and allows safe manual sync', { ta
   await runMirrorStatusJourney(page, testInfo);
 });
 
-test('1280px desktop shows separate mirror states and allows safe manual sync', { tag: '@only-laptop-1440' }, async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await runMirrorStatusJourney(page, testInfo);
-});
+test(
+  '1280px desktop shows separate mirror states and allows safe manual sync',
+  { tag: '@only-laptop-1440' },
+  async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await runMirrorStatusJourney(page, testInfo);
+  },
+);

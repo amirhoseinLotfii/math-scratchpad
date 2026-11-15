@@ -19,32 +19,35 @@ describe('ReadingPositionProvider tracking callbacks', () => {
     let effectRuns = 0;
     const trackCallbacks = new Set<unknown>();
     const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <ReadingPositionProvider>{children}</ReadingPositionProvider>
+    const wrapper = ({ children }: { children: ReactNode }) => <ReadingPositionProvider>{children}</ReadingPositionProvider>;
+
+    const { result, unmount } = renderHook(
+      () => {
+        const context = useOptionalReadingPositionContext();
+        const trackPosition = context?.trackPosition;
+        if (trackPosition) trackCallbacks.add(trackPosition);
+
+        useEffect(() => {
+          if (!trackPosition) return;
+          effectRuns += 1;
+          void trackPosition({
+            chapterId: '2',
+            lessonId: '1.1',
+            sectionId: '1.1-a',
+            contentVersion: 'bank-v1',
+            lastActivity: 'reading',
+          });
+        }, [trackPosition]);
+
+        return context;
+      },
+      { wrapper },
     );
 
-    const { result, unmount } = renderHook(() => {
-      const context = useOptionalReadingPositionContext();
-      const trackPosition = context?.trackPosition;
-      if (trackPosition) trackCallbacks.add(trackPosition);
-
-      useEffect(() => {
-        if (!trackPosition) return;
-        effectRuns += 1;
-        void trackPosition({
-          chapterId: '2',
-          lessonId: '1.1',
-          sectionId: '1.1-a',
-          contentVersion: 'bank-v1',
-          lastActivity: 'reading',
-        });
-      }, [trackPosition]);
-
-      return context;
-    }, { wrapper });
-
     await waitFor(() => expect(result.current?.position?.lessonId).toBe('1.1'));
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     expect(effectRuns).toBe(1);
     expect(trackCallbacks.size).toBe(1);

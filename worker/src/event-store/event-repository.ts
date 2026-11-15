@@ -41,7 +41,12 @@ export function readEventsThrough(storage: DurableObjectStorage, through: number
       .exec<{
         seq: number;
         event_json: string;
-      }>('SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?', cursor, through, DRIVE_MIRROR_PAGE_SIZE)
+      }>(
+        'SELECT seq, event_json FROM learning_events WHERE seq > ? AND seq <= ? ORDER BY seq ASC LIMIT ?',
+        cursor,
+        through,
+        DRIVE_MIRROR_PAGE_SIZE,
+      )
       .toArray();
     if (page.length === 0) break;
     for (const row of page) events.push({ seq: Number(row.seq), event: JSON.parse(row.event_json) as LearnEvent });

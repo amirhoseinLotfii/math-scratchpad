@@ -19,5 +19,5 @@ test('wide lesson answer editor opens the shared extended math picker with slash
   await dialog.getByRole('button', { name: 'Fraction', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect.poll(() => mathValue(field)).toContain('\\frac');
-  await expect.poll(() => field.evaluate(element => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
+  await expect.poll(() => field.evaluate((element) => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
 });

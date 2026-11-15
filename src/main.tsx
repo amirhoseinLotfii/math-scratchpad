@@ -38,8 +38,8 @@ window.addEventListener(LEARNING_RESET_REQUIRED_EVENT, () => window.location.rel
 function flushAppDraft(): Promise<void> {
   return appRuntime?.flush() ?? Promise.resolve();
 }
-const isLocalTestOrDevelopment = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
-  && !new URLSearchParams(location.search).has('serverMode');
+const isLocalTestOrDevelopment =
+  ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) && !new URLSearchParams(location.search).has('serverMode');
 
 async function connectAuthenticatedStorage(token: string): Promise<void> {
   if (isLocalLearningResetPending() || !isServerResetStatusVerified()) {
@@ -74,10 +74,10 @@ async function connectAuthenticatedStorage(token: string): Promise<void> {
 function launchApp(showConnectionStatus = false) {
   root!.removeAttribute('role');
   root!.textContent = '';
-  
+
   // Initialize reading position sync
   initializeReadingPositionSync();
-  
+
   const app = (
     <ReadingPositionProvider>
       <Provider store={appRuntime!.store}>
@@ -85,14 +85,20 @@ function launchApp(showConnectionStatus = false) {
       </Provider>
     </ReadingPositionProvider>
   );
-  
-  createRoot(root!).render(showConnectionStatus
-    ? <ServerConnectionGate
+
+  createRoot(root!).render(
+    showConnectionStatus ? (
+      <ServerConnectionGate
         tokenProvider={() => getWorkerSession()?.token}
         onAuthenticated={connectAuthenticatedStorage}
         flushPendingDraft={flushAppDraft}
-      >{app}</ServerConnectionGate>
-    : app);
+      >
+        {app}
+      </ServerConnectionGate>
+    ) : (
+      app
+    ),
+  );
 }
 
 void (async () => {
@@ -116,8 +122,11 @@ void (async () => {
   if (sessionToken) {
     if (!isLocalLearningResetPending() && isServerResetStatusVerified()) {
       // Reconcile the server-issued reset generation before enabling any authenticated writes.
-      try { await syncRuntime.refreshServerResetEpoch(sessionToken); }
-      catch { /* Keep local editing available; sync stays retryable until the server can be checked. */ }
+      try {
+        await syncRuntime.refreshServerResetEpoch(sessionToken);
+      } catch {
+        /* Keep local editing available; sync stays retryable until the server can be checked. */
+      }
     }
     syncRuntime.setIdToken(sessionToken);
   }
@@ -125,12 +134,13 @@ void (async () => {
   // Render from local data immediately. Sign-in is only needed to sync the
   // local outbox and learner records; a failed server connection never blocks editing.
   launchApp(!isLocalTestOrDevelopment);
-})().catch(error => {
+})().catch((error) => {
   root!.setAttribute('role', 'alert');
-  root!.textContent = error instanceof Error
-    ? error.message
-    : 'Math Scratchpad could not restore its browser data.';
+  root!.textContent = error instanceof Error ? error.message : 'Math Scratchpad could not restore its browser data.';
 });
 
-if (import.meta.hot) import.meta.hot.dispose(() => { appRuntime?.dispose(); syncRuntime?.stop(); });
-
+if (import.meta.hot)
+  import.meta.hot.dispose(() => {
+    appRuntime?.dispose();
+    syncRuntime?.stop();
+  });

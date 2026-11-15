@@ -3,7 +3,7 @@ import type { Concept, Lesson, Stage } from './types';
 import type { LessonSection } from './lesson-sections';
 
 export function getLesson(bank: Pick<DriveBank, 'lessons'>, lessonId: string | undefined): Lesson | undefined {
-  return lessonId ? bank.lessons?.find(lesson => lesson.id === lessonId) : undefined;
+  return lessonId ? bank.lessons?.find((lesson) => lesson.id === lessonId) : undefined;
 }
 
 export function getQuestionStage(question: Pick<BankQuestion, 'stage'>): Stage {
@@ -12,7 +12,7 @@ export function getQuestionStage(question: Pick<BankQuestion, 'stage'>): Stage {
 
 function getConcept(bank: Pick<DriveBank, 'lessons'>, conceptId: string): Concept | undefined {
   for (const lesson of bank.lessons ?? []) {
-    const concept = lesson.concepts.find(candidate => candidate.id === conceptId);
+    const concept = lesson.concepts.find((candidate) => candidate.id === conceptId);
     if (concept) return concept;
   }
   return undefined;
@@ -21,18 +21,19 @@ function getConcept(bank: Pick<DriveBank, 'lessons'>, conceptId: string): Concep
 export function getLearnChecks(bank: Pick<DriveBank, 'questions' | 'lessons'>, conceptId: string): BankQuestion[] {
   const concept = getConcept(bank, conceptId);
   if (!concept) return [];
-  const questionsById = new Map(bank.questions.map(question => [question.id, question]));
+  const questionsById = new Map(bank.questions.map((question) => [question.id, question]));
   return concept.checkQuestionIds
-    .map(questionId => questionsById.get(questionId))
-    .filter((question): question is BankQuestion => !!question && getQuestionStage(question) === 'learn' && question.conceptId === conceptId);
+    .map((questionId) => questionsById.get(questionId))
+    .filter(
+      (question): question is BankQuestion => !!question && getQuestionStage(question) === 'learn' && question.conceptId === conceptId,
+    );
 }
 
 export function getPracticeQuestions(bank: Pick<DriveBank, 'questions'>, lessonId: string): BankQuestion[] {
   return bank.questions
     .map((question, index) => ({ question, index }))
     .filter(({ question }) => question.lessonId === lessonId && getQuestionStage(question) === 'practice')
-    .sort((a, b) => comparePracticeOrder(a.question, b.question, lessonId)
-      || a.index - b.index)
+    .sort((a, b) => comparePracticeOrder(a.question, b.question, lessonId) || a.index - b.index)
     .map(({ question }) => question);
 }
 
@@ -59,7 +60,8 @@ function textbookQuestionNumber(question: BankQuestion, lessonId: string): numbe
 function comparePracticeOrder(a: BankQuestion, b: BankQuestion, lessonId: string): number {
   const rankDifference = originRank(a, lessonId) - originRank(b, lessonId);
   if (rankDifference) return rankDifference;
-  const aNumber = textbookQuestionNumber(a, lessonId), bNumber = textbookQuestionNumber(b, lessonId);
+  const aNumber = textbookQuestionNumber(a, lessonId),
+    bNumber = textbookQuestionNumber(b, lessonId);
   if (aNumber !== undefined && bNumber !== undefined && aNumber !== bNumber) return aNumber - bNumber;
   return (a.difficulty ?? Number.POSITIVE_INFINITY) - (b.difficulty ?? Number.POSITIVE_INFINITY);
 }
@@ -101,11 +103,7 @@ function legacyTextbookConcept(
   return conceptId;
 }
 
-export function getPracticeQuestionConceptId(
-  question: BankQuestion,
-  lessonId: string,
-  conceptIds?: readonly string[],
-): string | undefined {
+export function getPracticeQuestionConceptId(question: BankQuestion, lessonId: string, conceptIds?: readonly string[]): string | undefined {
   return question.conceptId ?? legacyTextbookConcept(question, lessonId, conceptIds);
 }
 
@@ -117,21 +115,25 @@ export function getSectionLearnChecks(
 ): BankQuestion[] {
   const section = sections[sectionIndex];
   if (!section) return [];
-  const explicitSection = lesson.sections?.find(item => item.id === section.id);
+  const explicitSection = lesson.sections?.find((item) => item.id === section.id);
   if (explicitSection) {
-    const questionsById = new Map(bank.questions.map(question => [question.id, question]));
+    const questionsById = new Map(bank.questions.map((question) => [question.id, question]));
     return explicitSection.learnQuestionIds
-      .map(questionId => questionsById.get(questionId))
-      .filter((question): question is BankQuestion => !!question && getQuestionStage(question) === 'learn' && question.lessonId === lesson.id)
+      .map((questionId) => questionsById.get(questionId))
+      .filter(
+        (question): question is BankQuestion => !!question && getQuestionStage(question) === 'learn' && question.lessonId === lesson.id,
+      )
       .sort((a, b) => bank.questions.indexOf(a) - bank.questions.indexOf(b));
   }
   const result: BankQuestion[] = [];
   for (const { concept } of section.concepts) {
-    const appearances = sections.flatMap((item, index) => item.concepts.some(entry => entry.concept.id === concept.id) ? [index] : []);
+    const appearances = sections.flatMap((item, index) => (item.concepts.some((entry) => entry.concept.id === concept.id) ? [index] : []));
     const position = appearances.indexOf(sectionIndex);
     if (position < 0) continue;
     const checks = getLearnChecks(bank, concept.id);
-    const assigned = checks.filter((_, checkIndex) => Math.floor(checkIndex * appearances.length / Math.max(checks.length, 1)) === position);
+    const assigned = checks.filter(
+      (_, checkIndex) => Math.floor((checkIndex * appearances.length) / Math.max(checks.length, 1)) === position,
+    );
     result.push(...assigned);
   }
   return result;
@@ -146,12 +148,14 @@ export function getSectionPracticeQuestions(
 ): BankQuestion[] {
   const section = sections[sectionIndex];
   if (!section) return [];
-  const explicitSection = lesson.sections?.find(item => item.id === section.id);
+  const explicitSection = lesson.sections?.find((item) => item.id === section.id);
   if (explicitSection) {
-    const questionsById = new Map(bank.questions.map(question => [question.id, question]));
+    const questionsById = new Map(bank.questions.map((question) => [question.id, question]));
     return explicitSection.practiceQuestionIds
-      .map(questionId => questionsById.get(questionId))
-      .filter((question): question is BankQuestion => !!question && question.lessonId === lesson.id && getQuestionStage(question) === 'practice')
+      .map((questionId) => questionsById.get(questionId))
+      .filter(
+        (question): question is BankQuestion => !!question && question.lessonId === lesson.id && getQuestionStage(question) === 'practice',
+      )
       .sort((a, b) => comparePracticeOrder(a, b, lesson.id) || bank.questions.indexOf(a) - bank.questions.indexOf(b));
   }
   const lessonQuestions = bank.questions
@@ -163,7 +167,11 @@ export function getSectionPracticeQuestions(
 
   for (const item of lessonQuestions) {
     if (item.question.sectionId) continue;
-    const conceptId = getPracticeQuestionConceptId(item.question, lesson.id, lesson.concepts.map(concept => concept.id));
+    const conceptId = getPracticeQuestionConceptId(
+      item.question,
+      lesson.id,
+      lesson.concepts.map((concept) => concept.id),
+    );
     if (!conceptId) continue;
     const key = `${conceptId}:${getPracticeQuestionOrigin(item.question, lesson.id)}`;
     const group = byConceptAndOrigin.get(key) ?? { conceptId, items: [] };
@@ -172,19 +180,17 @@ export function getSectionPracticeQuestions(
   }
 
   for (const { conceptId, items } of byConceptAndOrigin.values()) {
-    items.sort((a, b) => comparePracticeOrder(a.question, b.question, lesson.id)
-      || a.index - b.index);
-    const appearances = sections.flatMap((item, index) => item.concepts.some(entry => entry.concept.id === conceptId) ? [index] : []);
+    items.sort((a, b) => comparePracticeOrder(a.question, b.question, lesson.id) || a.index - b.index);
+    const appearances = sections.flatMap((item, index) => (item.concepts.some((entry) => entry.concept.id === conceptId) ? [index] : []));
     if (!appearances.length) continue;
     for (const [position, item] of items.entries()) {
-      const unit = appearances[Math.min(appearances.length - 1, Math.floor(position * appearances.length / items.length))];
+      const unit = appearances[Math.min(appearances.length - 1, Math.floor((position * appearances.length) / items.length))];
       if (unit === sectionIndex) assigned.set(item.index, item.question);
     }
   }
 
   const selected = [...explicit, ...[...assigned].map(([index, question]) => ({ question, index }))];
   return selected
-    .sort((a, b) => comparePracticeOrder(a.question, b.question, lesson.id)
-      || a.index - b.index)
+    .sort((a, b) => comparePracticeOrder(a.question, b.question, lesson.id) || a.index - b.index)
     .map(({ question }) => question);
 }

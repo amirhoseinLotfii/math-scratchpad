@@ -21,21 +21,41 @@ export function readAuthRecord(key: string): string | null {
       try {
         localStorage.setItem(key, session);
         sessionStorage.removeItem(key);
-      } catch { /* Migrating an older tab-only session is best-effort. */ }
+      } catch {
+        /* Migrating an older tab-only session is best-effort. */
+      }
       return session;
     }
-  } catch { /* Storage may be blocked. */ }
+  } catch {
+    /* Storage may be blocked. */
+  }
   return null;
 }
 
 export function writeAuthRecord(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* The in-memory credential still works for this page. */ }
-  try { sessionStorage.removeItem(key); } catch { /* Older tab-only copies can stay if storage is blocked. */ }
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* The in-memory credential still works for this page. */
+  }
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* Older tab-only copies can stay if storage is blocked. */
+  }
 }
 
 export function clearAuthRecord(key: string): void {
-  try { localStorage.removeItem(key); } catch { /* Storage may be blocked. */ }
-  try { sessionStorage.removeItem(key); } catch { /* Storage may be blocked. */ }
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* Storage may be blocked. */
+  }
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* Storage may be blocked. */
+  }
 }
 
 if (typeof window !== 'undefined') {

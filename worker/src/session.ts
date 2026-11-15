@@ -34,7 +34,7 @@ export function generateSessionToken(): string {
 
 export async function hashSessionToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export const SESSION_HASH_PATTERN = /^[0-9a-f]{64}$/;

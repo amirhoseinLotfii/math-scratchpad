@@ -12,7 +12,9 @@ import {
 const CHUNK_BYTES = 6_000;
 const utf8 = new TextEncoder();
 
-function hex(bytes: Uint8Array): string { return [...bytes].map(value => value.toString(16).padStart(2, '0')).join(''); }
+function hex(bytes: Uint8Array): string {
+  return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
+}
 
 // Polyfill for Node.js environment
 // Always check for crypto at runtime to support tests that set globalThis.crypto after module load
@@ -48,7 +50,8 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 function fromBase64(value: string): Uint8Array {
-  const binary = atob(value), bytes = new Uint8Array(binary.length);
+  const binary = atob(value),
+    bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
@@ -56,14 +59,17 @@ function fromBase64(value: string): Uint8Array {
 function joinBytes(parts: Uint8Array[]): Uint8Array {
   const result = new Uint8Array(parts.reduce((size, part) => size + part.length, 0));
   let offset = 0;
-  for (const part of parts) { result.set(part, offset); offset += part.length; }
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
   return result;
 }
 
 function migrationEvents(migration: LegacyMigration): LearnEvent[] {
   const deviceId = getDeviceId();
   let eventIdIndex = 0;
-  return migration.entries.flatMap(entry => {
+  return migration.entries.flatMap((entry) => {
     const bytes = utf8.encode(entry.value);
     const count = Math.max(1, Math.ceil(bytes.length / CHUNK_BYTES));
     return Array.from({ length: count }, (_, index) => {
@@ -99,22 +105,24 @@ function migrationEvents(migration: LegacyMigration): LearnEvent[] {
 /** Materialize the durable migration manifest before queueing events, so retries keep stable IDs. */
 export async function queueLegacyMigration(): Promise<LegacyMigration | null> {
   return withLegacyMigrationLock(async () => {
-  const existing = await readLegacyMigration();
-  if (!existing || existing.status !== 'pending' || !existing.entries.length) return existing;
-  const entries = await Promise.all(existing.entries.map(async entry => ({
-    ...entry,
-    sha256: entry.sha256 || await sha256(utf8.encode(entry.value)),
-  })));
-  const chunksNeeded = entries.reduce((total, entry) => total + Math.max(1, Math.ceil(utf8.encode(entry.value).length / CHUNK_BYTES)), 0);
-  let migration: LegacyMigration = { ...existing, entries };
-  if (migration.eventIds.length === 0) {
-    migration = { ...migration, eventIds: Array.from({ length: chunksNeeded }, () => crypto.randomUUID()) };
-    await writeLegacyMigration(migration);
-  } else if (migration.eventIds.length !== chunksNeeded) {
-    throw new Error('The saved migration manifest does not match its data; legacy values remain untouched.');
-  }
-  const events = migrationEvents(migration);
-  for (const event of events) await queueLearnEvent(event, migration.id);
+    const existing = await readLegacyMigration();
+    if (!existing || existing.status !== 'pending' || !existing.entries.length) return existing;
+    const entries = await Promise.all(
+      existing.entries.map(async (entry) => ({
+        ...entry,
+        sha256: entry.sha256 || (await sha256(utf8.encode(entry.value))),
+      })),
+    );
+    const chunksNeeded = entries.reduce((total, entry) => total + Math.max(1, Math.ceil(utf8.encode(entry.value).length / CHUNK_BYTES)), 0);
+    let migration: LegacyMigration = { ...existing, entries };
+    if (migration.eventIds.length === 0) {
+      migration = { ...migration, eventIds: Array.from({ length: chunksNeeded }, () => crypto.randomUUID()) };
+      await writeLegacyMigration(migration);
+    } else if (migration.eventIds.length !== chunksNeeded) {
+      throw new Error('The saved migration manifest does not match its data; legacy values remain untouched.');
+    }
+    const events = migrationEvents(migration);
+    for (const event of events) await queueLearnEvent(event, migration.id);
     return migration;
   });
 }
@@ -122,30 +130,38 @@ export async function queueLegacyMigration(): Promise<LegacyMigration | null> {
 /** Confirm every submitted byte by reading the acknowledged events back from the server cache. */
 export async function verifyLegacyMigrationOnServer(): Promise<LegacyMigration> {
   return withLegacyMigrationLock(async () => {
-  const migration = await readLegacyMigration();
-  if (!migration || !migration.entries.length) throw new Error('There is no legacy learning data to migrate.');
-  if (migration.status === 'complete' || migration.status === 'drive-backed-up' || migration.status === 'server-verified') return migration;
-  const records = await readServerEventsByMigration(migration.id);
-  const expectedIds = new Set(migration.eventIds);
-  const received = records.filter(record => record.event.migrationChunk?.id === migration.id && expectedIds.has(record.event.id));
-  if (received.length !== migration.eventIds.length || new Set(received.map(record => record.event.id)).size !== migration.eventIds.length) {
-    throw new Error('The server has not confirmed every migration chunk yet. Legacy data remains in the browser.');
-  }
-  for (const entry of migration.entries) {
-    const parts = received
-      .map(record => record.event.migrationChunk!)
-      .filter(chunk => chunk.key === entry.key)
-      .sort((left, right) => left.index - right.index);
-    if (!parts.length || parts.length !== parts[0].count || parts.some((chunk, index) => chunk.index !== index || chunk.count !== parts.length || chunk.sha256 !== entry.sha256)) {
-      throw new Error(`The server copy for ${entry.key} is incomplete; legacy data remains in the browser.`);
+    const migration = await readLegacyMigration();
+    if (!migration || !migration.entries.length) throw new Error('There is no legacy learning data to migrate.');
+    if (migration.status === 'complete' || migration.status === 'drive-backed-up' || migration.status === 'server-verified')
+      return migration;
+    const records = await readServerEventsByMigration(migration.id);
+    const expectedIds = new Set(migration.eventIds);
+    const received = records.filter((record) => record.event.migrationChunk?.id === migration.id && expectedIds.has(record.event.id));
+    if (
+      received.length !== migration.eventIds.length ||
+      new Set(received.map((record) => record.event.id)).size !== migration.eventIds.length
+    ) {
+      throw new Error('The server has not confirmed every migration chunk yet. Legacy data remains in the browser.');
     }
-    const rebuilt = new TextDecoder('utf-8', { fatal: true }).decode(joinBytes(parts.map(part => fromBase64(part.data))));
-    if (rebuilt !== entry.value || await sha256(utf8.encode(rebuilt)) !== entry.sha256) {
-      throw new Error(`The server copy for ${entry.key} failed its SHA-256 check; legacy data remains in the browser.`);
+    for (const entry of migration.entries) {
+      const parts = received
+        .map((record) => record.event.migrationChunk!)
+        .filter((chunk) => chunk.key === entry.key)
+        .sort((left, right) => left.index - right.index);
+      if (
+        !parts.length ||
+        parts.length !== parts[0].count ||
+        parts.some((chunk, index) => chunk.index !== index || chunk.count !== parts.length || chunk.sha256 !== entry.sha256)
+      ) {
+        throw new Error(`The server copy for ${entry.key} is incomplete; legacy data remains in the browser.`);
+      }
+      const rebuilt = new TextDecoder('utf-8', { fatal: true }).decode(joinBytes(parts.map((part) => fromBase64(part.data))));
+      if (rebuilt !== entry.value || (await sha256(utf8.encode(rebuilt))) !== entry.sha256) {
+        throw new Error(`The server copy for ${entry.key} failed its SHA-256 check; legacy data remains in the browser.`);
+      }
     }
-  }
-  const verified: LegacyMigration = { ...migration, status: 'server-verified', serverVerifiedAt: new Date().toISOString() };
-  await writeLegacyMigration(verified);
+    const verified: LegacyMigration = { ...migration, status: 'server-verified', serverVerifiedAt: new Date().toISOString() };
+    await writeLegacyMigration(verified);
     return verified;
   });
 }
@@ -154,13 +170,17 @@ export function legacyMigrationBackupContents(migration: LegacyMigration): strin
   if (migration.status !== 'server-verified' && migration.status !== 'drive-backed-up' && migration.status !== 'complete') {
     throw new Error('Verify the server copy before creating the Drive backup.');
   }
-  return JSON.stringify({
-    format: 'math-scratchpad-learning-backup/v1',
-    migrationId: migration.id,
-    createdAt: migration.createdAt,
-    serverVerifiedAt: migration.serverVerifiedAt,
-    entries: migration.entries,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      format: 'math-scratchpad-learning-backup/v1',
+      migrationId: migration.id,
+      createdAt: migration.createdAt,
+      serverVerifiedAt: migration.serverVerifiedAt,
+      entries: migration.entries,
+    },
+    null,
+    2,
+  );
 }
 
 export type LegacyMigrationDriveFile = { id: string; name: string };
@@ -186,8 +206,10 @@ async function markLegacyMigrationDriveVerifiedUnlocked(
   if (current.status !== 'server-verified') {
     throw new Error('The server copy must still be verified before recording the Drive backup.');
   }
-  if (JSON.stringify(current.entries) !== JSON.stringify(migration.entries)
-      || JSON.stringify(current.eventIds) !== JSON.stringify(migration.eventIds)) {
+  if (
+    JSON.stringify(current.entries) !== JSON.stringify(migration.entries) ||
+    JSON.stringify(current.eventIds) !== JSON.stringify(migration.eventIds)
+  ) {
     throw new Error('The migration snapshot changed before the Drive backup was recorded; legacy browser data was not cleared.');
   }
   const updated: LegacyMigration = {
@@ -242,9 +264,8 @@ export async function backupAndFinishLegacyMigration(
       if (!current.backupFileId || !current.backupFileName || !current.backupVerifiedAt) {
         throw new Error('The saved Drive backup metadata is incomplete; no second backup was created.');
       }
-      const result = current.status === 'complete'
-        ? { migration: current, cleared: [] as string[] }
-        : await finishLegacyMigrationUnlocked();
+      const result =
+        current.status === 'complete' ? { migration: current, cleared: [] as string[] } : await finishLegacyMigrationUnlocked();
       return {
         migration: result.migration,
         file: { id: current.backupFileId, name: current.backupFileName },

@@ -2,7 +2,13 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { actions, initialState } from '../../../src/store';
 import { createPersistentStore, SESSION_KEY } from '../../../src/features/session/persistence/persistent-store';
-import { flushLearningStorage, getLearningDb, getLearningStorage, initializeLearningStorage, resetLearningDbForTests } from '../../../src/sync/browser-db';
+import {
+  flushLearningStorage,
+  getLearningDb,
+  getLearningStorage,
+  initializeLearningStorage,
+  resetLearningDbForTests,
+} from '../../../src/sync/browser-db';
 import type { ServerStorageChangeSource } from '../../../src/sync/server-storage';
 
 const seededState = initialState();
@@ -17,10 +23,12 @@ function edit(digit: string) {
 function deliver(source?: ServerStorageChangeSource, remove = false) {
   const event = new StorageEvent('storage', {
     key: SESSION_KEY,
-    newValue: remove ? null : JSON.stringify({
-      version: 3,
-      state: { session: testSession, sync: { revision: 2, writerId: 'other-tab' } },
-    }),
+    newValue: remove
+      ? null
+      : JSON.stringify({
+          version: 3,
+          state: { session: testSession, sync: { revision: 2, writerId: 'other-tab' } },
+        }),
   });
   Object.defineProperty(event, 'source', { value: source });
   window.dispatchEvent(event);
@@ -48,7 +56,13 @@ describe('IndexedDB autosave', () => {
     { path: 'remote merge', complete: () => deliver('server-merge') },
     { path: 'remote removal', complete: () => deliver('server-resolution-remote', true) },
     { path: 'local server resolution', complete: () => deliver('server-resolution-local') },
-    { path: 'local tab conflict resolution', complete: () => { deliver(); runtime.store.resolveConflict?.('local'); } },
+    {
+      path: 'local tab conflict resolution',
+      complete: () => {
+        deliver();
+        runtime.store.resolveConflict?.('local');
+      },
+    },
   ])('saves the next edit after $path on the 800 ms cadence', async ({ complete }) => {
     const db = await getLearningDb();
     const writes = vi.spyOn(getLearningStorage(), 'setItem');

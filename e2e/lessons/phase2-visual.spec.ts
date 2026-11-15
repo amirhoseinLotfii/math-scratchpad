@@ -46,7 +46,9 @@ test('renders the lesson concept and inline checks at mobile and tablet sizes', 
   await page.getByRole('button', { name: 'Next field' }).click();
   await page.getByRole('button', { name: '3', exact: true }).click();
   const lessonField = page.locator('.lesson-math-editor math-field[aria-label="Step 1 expression"]');
-  await expect.poll(() => lessonField.evaluate(element => (element as HTMLElement & { value: string }).value)).toMatch(/\\frac\{?8\}?\{?3\}?/);
+  await expect
+    .poll(() => lessonField.evaluate((element) => (element as HTMLElement & { value: string }).value))
+    .toMatch(/\\frac\{?8\}?\{?3\}?/);
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
 
   await page.setViewportSize({ width: 1024, height: 768 });
@@ -54,7 +56,10 @@ test('renders the lesson concept and inline checks at mobile and tablet sizes', 
   await expect(page.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
   await screenshot(page, 'artifacts/lessons/phase2-concept-example-tablet-1024.png');
 
-  for (const viewport of [{ width: 390, height: 640 }, { width: 1024, height: 768 }]) {
+  for (const viewport of [
+    { width: 390, height: 640 },
+    { width: 1024, height: 768 },
+  ]) {
     await page.setViewportSize(viewport);
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,

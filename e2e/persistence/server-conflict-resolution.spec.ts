@@ -28,15 +28,20 @@ type StateRecord = { value: string | null; revision: number; updatedAt: string }
 
 function initialSessionValue(): string {
   const state = initialState();
-  return JSON.stringify({ version: 3, state: {
-    session: { doc: state.doc, prefs: state.prefs, keyboardOpen: false },
-    sync: { revision: 1, writerId: 'seed-device' },
-  } });
+  return JSON.stringify({
+    version: 3,
+    state: {
+      session: { doc: state.doc, prefs: state.prefs, keyboardOpen: false },
+      sync: { revision: 1, writerId: 'seed-device' },
+    },
+  });
 }
 
 async function installConflictWorker(page: Page, records: Map<string, StateRecord>) {
-  await page.route(`${API}/**`, async route => {
-    const request = route.request(), url = new URL(request.url()), method = request.method();
+  await page.route(`${API}/**`, async (route) => {
+    const request = route.request(),
+      url = new URL(request.url()),
+      method = request.method();
     if (url.pathname === '/reset/status' && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -46,36 +51,64 @@ async function installConflictWorker(page: Page, records: Map<string, StateRecor
       return;
     }
     if (url.pathname === '/session' && method === 'POST') {
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }) });
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessionToken: `mss1.${'S'.repeat(43)}`, expiresAt: Date.now() + 7 * 24 * 60 * 60_000 }),
+      });
       return;
     }
     if (url.pathname === '/state' && method === 'GET') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [...records].map(([key, record]) => ({ key, ...record })), revision: records.size }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ records: [...records].map(([key, record]) => ({ key, ...record })), revision: records.size }),
+      });
       return;
     }
     if (url.pathname === '/state' && method === 'POST') {
       const input = request.postDataJSON() as { key: string; value: string | null; revision: number };
-      const current = records.get(input.key), revision = current?.revision ?? 0;
+      const current = records.get(input.key),
+        revision = current?.revision ?? 0;
       if (input.revision !== revision) {
         await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'state_conflict', revision }) });
         return;
       }
       const next = { value: input.value, revision: revision + 1, updatedAt: new Date().toISOString() };
       records.set(input.key, next);
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ key: input.key, revision: next.revision, updatedAt: next.updatedAt }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ key: input.key, revision: next.revision, updatedAt: next.updatedAt }),
+      });
       return;
     }
     if (url.pathname === '/events' && method === 'POST') {
       const events = (request.postDataJSON() as { events?: Array<{ id: string }> }).events ?? [];
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: events.length }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          events: events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })),
+          cursor: events.length,
+        }),
+      });
       return;
     }
     if (url.pathname === '/snapshot' || url.pathname === '/sync') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"events":[],"cursor":0,"through":0,"snapshotCursor":0,"hasMore":false}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{"events":[],"cursor":0,"through":0,"snapshotCursor":0,"hasMore":false}',
+      });
       return;
     }
     if (url.pathname === '/drive/status' || url.pathname === '/notion/status') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"not_configured","pendingCount":0,"lastSyncedAt":null,"lastError":null}' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{"status":"not_configured","pendingCount":0,"lastSyncedAt":null,"lastError":null}',
+      });
       return;
     }
     await route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
@@ -87,7 +120,7 @@ async function runOverlapJourney(page: Page) {
   const records = new Map<string, StateRecord>([[SESSION_KEY, { value: baseValue, revision: 1, updatedAt: new Date().toISOString() }]]);
   await installFakeGoogleAuth(page);
   await installConflictWorker(page, records);
-  await page.addInitScript(value => localStorage.setItem('math-scratchpad-session-v3', value), baseValue);
+  await page.addInitScript((value) => localStorage.setItem('math-scratchpad-session-v3', value), baseValue);
   await page.goto('/?serverMode=1');
 
   const connection = page.locator('aside[aria-label="وضعیت همگام‌سازی"]');

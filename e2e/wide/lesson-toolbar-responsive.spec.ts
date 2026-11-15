@@ -11,16 +11,21 @@ test('wide lesson work pane math tools have independent pointer hit targets', { 
         (element as HTMLElement).style.setProperty('--lesson-split', String(pct) + '%');
       }, ratio);
       const toolbar = page.locator('.lesson-split-work .math-tools-row');
-      const hitResults = await toolbar.evaluate(row => {
+      const hitResults = await toolbar.evaluate((row) => {
         const items = [...row.querySelectorAll<HTMLButtonElement>('button')];
-        return items.filter(button => button.getBoundingClientRect().width > 0).map(button => {
-          const rect = button.getBoundingClientRect();
-          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-          return { name: button.getAttribute('aria-label'), valid: hit === button || button.contains(hit) };
-        });
+        return items
+          .filter((button) => button.getBoundingClientRect().width > 0)
+          .map((button) => {
+            const rect = button.getBoundingClientRect();
+            const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            return { name: button.getAttribute('aria-label'), valid: hit === button || button.contains(hit) };
+          });
       });
-      expect(hitResults.filter(item => !item.valid), JSON.stringify({ width, ratio })).toEqual([]);
-      const horizontalOverflow = await page.locator('.lesson-split-work').evaluate(el => el.scrollWidth - el.clientWidth);
+      expect(
+        hitResults.filter((item) => !item.valid),
+        JSON.stringify({ width, ratio }),
+      ).toEqual([]);
+      const horizontalOverflow = await page.locator('.lesson-split-work').evaluate((el) => el.scrollWidth - el.clientWidth);
       expect(horizontalOverflow, JSON.stringify({ width, ratio })).toBeLessThanOrEqual(1);
     }
   }

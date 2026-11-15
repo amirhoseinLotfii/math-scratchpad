@@ -9,16 +9,41 @@ import { buildTutorExport, missingFinalAnswers } from '../../src/features/sessio
 import { initialState, makeStore, actions } from '../../src/store';
 import { serialize, validateSession } from '../../src/persistence';
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const bank = validateBank({
-  schema_version: 'math-scratchpad.bank/1.0', bank_id: 'answer-types', version: 'v1',
+  schema_version: 'math-scratchpad.bank/1.0',
+  bank_id: 'answer-types',
+  version: 'v1',
   questions: [
-    { id: 'TEXT-1', mode: 'text', source: String.raw`\{(1,4),\ (2,4),\ (3,5)\}`, prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟', answerType: 'text' },
+    {
+      id: 'TEXT-1',
+      mode: 'text',
+      source: String.raw`\{(1,4),\ (2,4),\ (3,5)\}`,
+      prompt: 'آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟',
+      answerType: 'text',
+    },
     { id: 'CHOICE-1', mode: 'math', source: 'x+1', prompt: 'Choose one.', answerType: 'choice', choices: ['<', '>'] },
     { id: 'MATH-1', mode: 'math', source: '2+3' },
-    { id: 'MATH-CHOICE-1', mode: 'math', source: 'x+1', prompt: 'یک عبارت هم‌ارز را انتخاب کنید.', answerType: 'choice', choices: [String.raw`x^2`, String.raw`\frac{1}{2}`] },
-    { id: 'TRUE-FALSE-WHY-1', mode: 'math', source: 'x^2 ≥ 0', prompt: 'برای همهٔ xها درست است؟', answerType: 'true_false_why', choices: ['not-used', 'not-used-either'] },
+    {
+      id: 'MATH-CHOICE-1',
+      mode: 'math',
+      source: 'x+1',
+      prompt: 'یک عبارت هم‌ارز را انتخاب کنید.',
+      answerType: 'choice',
+      choices: [String.raw`x^2`, String.raw`\frac{1}{2}`],
+    },
+    {
+      id: 'TRUE-FALSE-WHY-1',
+      mode: 'math',
+      source: 'x^2 ≥ 0',
+      prompt: 'برای همهٔ xها درست است؟',
+      answerType: 'true_false_why',
+      choices: ['not-used', 'not-used-either'],
+    },
     { id: 'FIND-MISTAKE-1', mode: 'text', source: 'یک خطای محاسباتی را پیدا کن و اصلاح کن.', answerType: 'find_mistake' },
   ],
 });
@@ -31,34 +56,61 @@ function mount() {
   doc.session!.energy = 3;
   state.doc = doc;
   const store = makeStore(state);
-  render(<div id="math-scratchpad-redux"><Provider store={store}><App initialBank={{ bank, version: VERSION }} /></Provider></div>);
+  render(
+    <div id="math-scratchpad-redux">
+      <Provider store={store}>
+        <App initialBank={{ bank, version: VERSION }} />
+      </Provider>
+    </div>,
+  );
   return store;
 }
 
 describe('Practice question answer types', () => {
   it('maps answer types and options into a backward-compatible session document', () => {
     const doc = bankDocument(bank, VERSION);
-    expect(doc.exercises.map(exercise => exercise.answerType)).toEqual(['text', 'choice', 'math', 'choice', 'true_false_why', 'find_mistake']);
+    expect(doc.exercises.map((exercise) => exercise.answerType)).toEqual([
+      'text',
+      'choice',
+      'math',
+      'choice',
+      'true_false_why',
+      'find_mistake',
+    ]);
     expect(doc.exercises[1].choices).toEqual(['<', '>']);
     expect(doc.exercises[4]).not.toHaveProperty('choices');
     expect(bank.parseWarnings?.join(' ')).toContain('true_false_why uses the built-in True/False options');
 
-    const legacy = validateBank({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'legacy-text', version: 'v1', questions: [{ id: 'OLD-1', mode: 'math', source: '1+2' }, { id: 'OLD-2', mode: 'text', source: 'Describe the pattern.' }] });
-    expect(bankDocument(legacy, 'legacy-v1').exercises.map(exercise => exercise.answerType)).toEqual(['math', 'text']);
+    const legacy = validateBank({
+      schema_version: 'math-scratchpad.bank/1.0',
+      bank_id: 'legacy-text',
+      version: 'v1',
+      questions: [
+        { id: 'OLD-1', mode: 'math', source: '1+2' },
+        { id: 'OLD-2', mode: 'text', source: 'Describe the pattern.' },
+      ],
+    });
+    expect(bankDocument(legacy, 'legacy-v1').exercises.map((exercise) => exercise.answerType)).toEqual(['math', 'text']);
   });
 
   it('shows both the prompt and the given relation for a text-answer question', () => {
     mount();
     const problem = screen.getByRole('region', { name: 'Current problem' });
     expect(within(problem).getByText('آیا این رابطه تابع است؟ اگر نه، کدام ورودی مشکل دارد؟')).toBeVisible();
-    expect(within(problem).getByRole('math', { name: 'Original question expression' })).toHaveTextContent(String.raw`\{(1,4),\ (2,4),\ (3,5)\}`);
+    expect(within(problem).getByRole('math', { name: 'Original question expression' })).toHaveTextContent(
+      String.raw`\{(1,4),\ (2,4),\ (3,5)\}`,
+    );
     expect(screen.getByRole('textbox', { name: 'Answer' })).toBeVisible();
   });
 
   it('renders mathematical answer choices as readable MathLive expressions', async () => {
     const user = userEvent.setup();
     const store = mount();
-    act(() => { store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.adjacentExercise(1)); store.dispatch(actions.adjacentExercise(1)); });
+    act(() => {
+      store.dispatch(actions.adjacentExercise(1));
+      store.dispatch(actions.adjacentExercise(1));
+      store.dispatch(actions.adjacentExercise(1));
+    });
     const first = screen.getByRole('math', { name: 'Mathematical answer choice 1' });
     const second = screen.getByRole('math', { name: 'Mathematical answer choice 2' });
     expect(first).toHaveTextContent('x^2');
@@ -104,7 +156,10 @@ describe('Practice question answer types', () => {
     act(() => store.dispatch(actions.switchExercise(store.getState().doc.exercises[5].id)));
     expect(screen.getByRole('textbox', { name: 'Your answer' })).toBeVisible();
     await user.type(screen.getByRole('textbox', { name: 'Your answer' }), 'علامت منفی در گام دوم اشتباه است.');
-    expect(store.getState().doc.exercises[5]).toMatchObject({ answerType: 'find_mistake', answerText: 'علامت منفی در گام دوم اشتباه است.' });
+    expect(store.getState().doc.exercises[5]).toMatchObject({
+      answerType: 'find_mistake',
+      answerText: 'علامت منفی در گام دوم اشتباه است.',
+    });
   });
 
   it('collects both parts of true_false_why and round-trips the combined response', async () => {
@@ -113,12 +168,24 @@ describe('Practice question answer types', () => {
     act(() => store.dispatch(actions.switchExercise(store.getState().doc.exercises[4].id)));
     await user.click(screen.getByRole('radio', { name: 'True' }));
     await user.type(screen.getByRole('textbox', { name: 'Reason for answer' }), 'زیرا مربع هر عدد نامنفی است.');
-    expect(store.getState().doc.exercises[4]).toMatchObject({ answerType: 'true_false_why', answerChoice: 'true', answerReason: 'زیرا مربع هر عدد نامنفی است.' });
+    expect(store.getState().doc.exercises[4]).toMatchObject({
+      answerType: 'true_false_why',
+      answerChoice: 'true',
+      answerReason: 'زیرا مربع هر عدد نامنفی است.',
+    });
 
     const restored = validateSession(JSON.parse(serialize(store.getState())));
-    expect(restored.doc.exercises[4]).toMatchObject({ answerType: 'true_false_why', answerChoice: 'true', answerReason: 'زیرا مربع هر عدد نامنفی است.' });
+    expect(restored.doc.exercises[4]).toMatchObject({
+      answerType: 'true_false_why',
+      answerChoice: 'true',
+      answerReason: 'زیرا مربع هر عدد نامنفی است.',
+    });
     const exported = buildTutorExport(restored.doc);
-    expect(exported.items[4]).toMatchObject({ student_answer: 'True — زیرا مربع هر عدد نامنفی است.', final_answer: 'True — زیرا مربع هر عدد نامنفی است.', steps: [] });
+    expect(exported.items[4]).toMatchObject({
+      student_answer: 'True — زیرا مربع هر عدد نامنفی است.',
+      final_answer: 'True — زیرا مربع هر عدد نامنفی است.',
+      steps: [],
+    });
     expect(missingFinalAnswers(restored.doc)).toEqual([]);
   });
 

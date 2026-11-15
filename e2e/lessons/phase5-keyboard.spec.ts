@@ -2,10 +2,10 @@ import { expect, test } from '@playwright/test';
 
 async function tabUntil(page: import('@playwright/test').Page, target: import('@playwright/test').Locator, limit = 40) {
   for (let index = 0; index < limit; index++) {
-    if (await target.evaluate(element => element === document.activeElement)) return;
+    if (await target.evaluate((element) => element === document.activeElement)) return;
     await page.keyboard.press('Tab');
   }
-  throw new Error(`Keyboard focus did not reach ${await target.getAttribute('aria-label') ?? await target.textContent() ?? 'target'}`);
+  throw new Error(`Keyboard focus did not reach ${(await target.getAttribute('aria-label')) ?? (await target.textContent()) ?? 'target'}`);
 }
 
 async function pressFocused(page: import('@playwright/test').Page, target: import('@playwright/test').Locator, key: 'Enter' | 'Space') {
@@ -31,7 +31,8 @@ test('keyboard-only route reaches Learn, summary, Practice and its lesson refere
   await pressFocused(page, menuButton, 'Enter');
   await page.keyboard.press('Home');
   const lessonsItem = page.getByRole('menuitem', { name: 'Lessons' });
-  for (let index = 0; index < 12 && !(await lessonsItem.evaluate(element => element === document.activeElement)); index++) await page.keyboard.press('ArrowDown');
+  for (let index = 0; index < 12 && !(await lessonsItem.evaluate((element) => element === document.activeElement)); index++)
+    await page.keyboard.press('ArrowDown');
   await expect(lessonsItem).toBeFocused();
   await pressFocused(page, lessonsItem, 'Enter');
 
@@ -56,7 +57,7 @@ test('keyboard-only route reaches Learn, summary, Practice and its lesson refere
   const mathField = editor.locator('math-field[aria-label="Step 1 expression"]');
   await tabUntil(page, mathField, 60);
   await page.keyboard.press('8');
-  await expect.poll(() => mathField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
+  await expect.poll(() => mathField.evaluate((element) => (element as HTMLElement & { value: string }).value)).toBe('8');
   await tabUntil(page, nextConcept, 60);
   await pressFocused(page, nextConcept, 'Enter');
   await expect(page.getByRole('heading', { name: 'Lesson summary' })).toBeFocused();

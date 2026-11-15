@@ -4,10 +4,15 @@ import { latex } from '../src/model';
 import { validateSession } from '../src/persistence';
 
 function fixture() {
-  return { version: 2, ix: 4, items: Array.from({ length: 30 }, () => ({
-    steps: [{ id: 1, final: true, tokens: [{ t: 'f', n: '375', d: '1000' }] }],
-    confidence: 'high', skip: false
-  })) };
+  return {
+    version: 2,
+    ix: 4,
+    items: Array.from({ length: 30 }, () => ({
+      steps: [{ id: 1, final: true, tokens: [{ t: 'f', n: '375', d: '1000' }] }],
+      confidence: 'high',
+      skip: false,
+    })),
+  };
 }
 describe('Legacy 30-question chat import', () => {
   it('converts all original answers into independent exercises with retained question identity', () => {

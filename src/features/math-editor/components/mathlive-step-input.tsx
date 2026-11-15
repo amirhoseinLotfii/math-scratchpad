@@ -63,7 +63,9 @@ export function MathLiveStepInput({
     // the page body receives early physical keystrokes instead of the field.
     // Capture only math keys when this field was the user's last click target.
     let pendingFocus = false;
-    const click = () => { pendingFocus = true; };
+    const click = () => {
+      pendingFocus = true;
+    };
     const outsidePointer = (event: PointerEvent) => {
       if (!field.contains(event.target as Node)) pendingFocus = false;
     };

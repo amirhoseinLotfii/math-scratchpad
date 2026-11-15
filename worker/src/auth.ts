@@ -22,14 +22,21 @@ export async function verifyGoogleIdToken(
     maxTokenAge: '1h',
   });
 
-  if ((payload.azp !== undefined && payload.azp !== clientId)
-    || (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== clientId)) {
+  if (
+    (payload.azp !== undefined && payload.azp !== clientId) ||
+    (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== clientId)
+  ) {
     throw new Error('Invalid Google ID token audience.');
   }
-  if (typeof payload.sub !== 'string' || payload.sub.length === 0 || payload.sub.length > 255
-    || typeof payload.email !== 'string' || payload.email.length > 320
-    || typeof payload.exp !== 'number'
-    || payload.email_verified !== true) {
+  if (
+    typeof payload.sub !== 'string' ||
+    payload.sub.length === 0 ||
+    payload.sub.length > 255 ||
+    typeof payload.email !== 'string' ||
+    payload.email.length > 320 ||
+    typeof payload.exp !== 'number' ||
+    payload.email_verified !== true
+  ) {
     throw new Error('Google ID token is missing verified account claims.');
   }
 

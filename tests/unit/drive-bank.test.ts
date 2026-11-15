@@ -1,28 +1,67 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { archiveSession, bankCacheStorageKey, bankDocument, metaFingerprint, parseBankText, EMPTY_BANK, readBankCache, readDriveMeta, readArchive, readPrivateBank, saveBankCache, snapshotVersion, validateBank } from '../../src/features/drive-bank/drive-bank';
+import {
+  archiveSession,
+  bankCacheStorageKey,
+  bankDocument,
+  metaFingerprint,
+  parseBankText,
+  EMPTY_BANK,
+  readBankCache,
+  readDriveMeta,
+  readArchive,
+  readPrivateBank,
+  saveBankCache,
+  snapshotVersion,
+  validateBank,
+} from '../../src/features/drive-bank/drive-bank';
 import { initialState } from '../../src/store';
 import { validateSession } from '../../src/persistence';
 import { buildTutorExport } from '../../src/features/session/export/tutor-export';
 
-const sample = { schema_version: 'math-scratchpad.bank/1.0', bank_id: 'S001', version: 'v1', questions: [{ id: 'Q01', mode: 'math', source: '1+2', prompt: 'حاصل را حساب کن.' }] };
-afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
+const sample = {
+  schema_version: 'math-scratchpad.bank/1.0',
+  bank_id: 'S001',
+  version: 'v1',
+  questions: [{ id: 'Q01', mode: 'math', source: '1+2', prompt: 'حاصل را حساب کن.' }],
+};
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 describe('Drive question bank', () => {
   it('retains bank and question IDs across local persistence and tutor export', async () => {
-    const bank = validateBank(sample), version = await snapshotVersion(bank), doc = bankDocument(bank, version);
+    const bank = validateBank(sample),
+      version = await snapshotVersion(bank),
+      doc = bankDocument(bank, version);
     const saved = validateSession({ version: 2, doc });
     const result = buildTutorExport(saved.doc);
-    expect(result.bank_id).toBe('S001'); expect(result.bank_version).toBe(version);
+    expect(result.bank_id).toBe('S001');
+    expect(result.bank_version).toBe(version);
     expect(result.items[0].question_id).toBe('Q01');
   });
   it('changes the snapshot version when content changes even with the same declared version', async () => {
-    expect(await snapshotVersion(validateBank(sample))).not.toBe(await snapshotVersion(validateBank({ ...sample, questions: [{ ...sample.questions[0], source: '1+3' }] })));
+    expect(await snapshotVersion(validateBank(sample))).not.toBe(
+      await snapshotVersion(validateBank({ ...sample, questions: [{ ...sample.questions[0], source: '1+3' }] })),
+    );
   });
   it('caches and verifies the complete selected bank locally for offline lesson access', async () => {
-    const bank = validateBank(sample), version = await snapshotVersion(bank), fingerprint = 'drive-meta-fingerprint';
+    const bank = validateBank(sample),
+      version = await snapshotVersion(bank),
+      fingerprint = 'drive-meta-fingerprint';
     expect(await saveBankCache('privateFileId123', bank, version, fingerprint)).toEqual({ saved: true, message: '' });
     expect(await readBankCache('privateFileId123')).toMatchObject({ fileId: 'privateFileId123', version, fingerprint, bank });
     const key = bankCacheStorageKey('privateFileId123');
-    localStorage.setItem(key, JSON.stringify({ schemaVersion: 1, fileId: 'privateFileId123', version: 'wrong', fingerprint, savedAt: new Date().toISOString(), bank }));
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        schemaVersion: 1,
+        fileId: 'privateFileId123',
+        version: 'wrong',
+        fingerprint,
+        savedAt: new Date().toISOString(),
+        bank,
+      }),
+    );
     await expect(readBankCache('privateFileId123')).resolves.toBeNull();
   });
   it('keeps the first duplicate ID and strips answer-like fields with warnings', () => {
@@ -34,23 +73,39 @@ describe('Drive question bank', () => {
     expect(sanitized.parseWarnings?.join(' ')).toContain('expected');
   });
   it('keeps earlier snapshots of the same session, and surfaces storage failures before switching', async () => {
-    const state = initialState(); await archiveSession(state); state.doc.exercises[0].source = '1+2'; await archiveSession(state);
+    const state = initialState();
+    await archiveSession(state);
+    state.doc.exercises[0].source = '1+2';
+    await archiveSession(state);
     expect(readArchive()).toHaveLength(2);
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw Error('quota'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw Error('quota');
+    });
     await expect(archiveSession(state)).rejects.toThrow('quota');
     expect(readArchive()).toHaveLength(2);
   });
   it('reads only the selected Drive file through an Authorization header', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(sample), { status: 200 }));
     await readPrivateBank('privateFileId123', 'temporary-token');
-    expect(fetchSpy).toHaveBeenCalledWith('https://www.googleapis.com/drive/v3/files/privateFileId123?alt=media', expect.objectContaining({ headers: { Authorization: 'Bearer temporary-token' }, cache: 'no-store' }));
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://www.googleapis.com/drive/v3/files/privateFileId123?alt=media',
+      expect.objectContaining({ headers: { Authorization: 'Bearer temporary-token' }, cache: 'no-store' }),
+    );
   });
   it('treats an empty Drive file as "no questions yet" and gives a clear English JSON error', () => {
-    expect(parseBankText('')).toBe(EMPTY_BANK); expect(parseBankText('\uFEFF  \n')).toBe(EMPTY_BANK);
+    expect(parseBankText('')).toBe(EMPTY_BANK);
+    expect(parseBankText('\uFEFF  \n')).toBe(EMPTY_BANK);
     expect(() => parseBankText('{oops')).toThrow('The bank file is not valid JSON. The current session was not changed.');
   });
   it('detects content change from Drive metadata without downloading', async () => {
-    const meta = { id: 'privateFileId123', name: 'MATH_QUESTION_BANK.json', mimeType: 'application/json', md5Checksum: 'a', headRevisionId: 'r1', version: '5' };
+    const meta = {
+      id: 'privateFileId123',
+      name: 'MATH_QUESTION_BANK.json',
+      mimeType: 'application/json',
+      md5Checksum: 'a',
+      headRevisionId: 'r1',
+      version: '5',
+    };
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(meta), { status: 200 }));
     const got = await readDriveMeta('privateFileId123', 'tok');
     expect(String(spy.mock.calls[0][0])).toContain('fields=');
@@ -62,7 +117,9 @@ describe('Drive question bank', () => {
     await expect(readDriveMeta('privateFileId123', 'tok')).rejects.toThrow('Choose it again.');
   });
   it('does not archive a session while storage is conflicted', async () => {
-    const state = initialState(); state.storageState = { kind: 'conflict', message: 'conflict' };
-    await expect(archiveSession(state)).rejects.toThrow(); expect(readArchive()).toEqual([]);
+    const state = initialState();
+    state.storageState = { kind: 'conflict', message: 'conflict' };
+    await expect(archiveSession(state)).rejects.toThrow();
+    expect(readArchive()).toEqual([]);
   });
 });

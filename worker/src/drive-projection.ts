@@ -28,9 +28,21 @@ export type DriveSyncManifest = {
 };
 
 const POSITION_EVENTS = new Set<LearnEvent['type']>([
-  'lesson_open', 'chunk_open', 'chunk_read', 'section_open', 'question_open', 'check_answer',
-  'example_attempt', 'tryit_attempt', 'exercise_attempt', 'mixed_review_attempt', 'section_complete',
-  'lesson_complete', 'gate_attempt', 'gate_passed', 'gate_failed',
+  'lesson_open',
+  'chunk_open',
+  'chunk_read',
+  'section_open',
+  'question_open',
+  'check_answer',
+  'example_attempt',
+  'tryit_attempt',
+  'exercise_attempt',
+  'mixed_review_attempt',
+  'section_complete',
+  'lesson_complete',
+  'gate_attempt',
+  'gate_passed',
+  'gate_failed',
 ]);
 
 /** One private Drive JSONL file per UTC month, ordered by the Durable Object sequence. */
@@ -49,13 +61,18 @@ export function groupEventsByUtcMonth(events: readonly SequencedLearnEvent[]): M
 
 export function serializeJsonlEvents(events: readonly SequencedLearnEvent[]): string {
   if (events.length === 0) return '';
-  return [...events].sort((a, b) => a.seq - b.seq).map(item => JSON.stringify(item.event)).join('\n') + '\n';
+  return (
+    [...events]
+      .sort((a, b) => a.seq - b.seq)
+      .map((item) => JSON.stringify(item.event))
+      .join('\n') + '\n'
+  );
 }
 
 export function mergeJsonlEventContent(remote: string, desired: string): string {
   // Older unclassified records are quarantined, even if a stale remote file contains them.
-  const remoteEvents = parseJsonlEvents(remote).filter(event => typeof event.isTest === 'boolean');
-  const desiredEvents = parseJsonlEvents(desired).filter(event => typeof event.isTest === 'boolean');
+  const remoteEvents = parseJsonlEvents(remote).filter((event) => typeof event.isTest === 'boolean');
+  const desiredEvents = parseJsonlEvents(desired).filter((event) => typeof event.isTest === 'boolean');
   const byId = new Map<string, LearnEvent>();
   const order: string[] = [];
   for (const event of remoteEvents) {
@@ -73,7 +90,7 @@ export function mergeJsonlEventContent(remote: string, desired: string): string 
     order.push(event.id);
     byId.set(event.id, event);
   }
-  return order.length === 0 ? '' : order.map(id => JSON.stringify(byId.get(id))).join('\n') + '\n';
+  return order.length === 0 ? '' : order.map((id) => JSON.stringify(byId.get(id))).join('\n') + '\n';
 }
 
 /** Commutative, idempotent union used by recovery and property tests. */
@@ -101,8 +118,12 @@ export function buildProgressProjection(events: readonly SequencedLearnEvent[], 
   for (const { event } of learningEvents) {
     const sectionKey = sectionKeyFor(event);
     if (sectionKey && POSITION_EVENTS.has(event.type)) {
-      if (!currentPosition || currentPosition.chapter !== event.chapter
-        || currentPosition.lesson !== event.lesson || currentPosition.section !== event.section) {
+      if (
+        !currentPosition ||
+        currentPosition.chapter !== event.chapter ||
+        currentPosition.lesson !== event.lesson ||
+        currentPosition.section !== event.section
+      ) {
         currentPosition = { chapter: event.chapter, lesson: event.lesson, section: event.section };
       }
       if (event.type === 'chunk_open' && event.itemId) currentPosition.chunkId = event.itemId;
@@ -136,7 +157,7 @@ export function buildProgressProjection(events: readonly SequencedLearnEvent[], 
 
 export async function sha256Hex(content: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export async function buildSyncManifest(input: {
@@ -147,8 +168,8 @@ export async function buildSyncManifest(input: {
 }): Promise<DriveSyncManifest> {
   const latest = [...input.events].sort((a, b) => a.seq - b.seq).at(-1);
   const files = await Promise.all([
-    ...input.eventFiles.map(async file => ({ path: file.path, sha256: await sha256Hex(file.content) })),
-    sha256Hex(input.progressContent).then(sha256 => ({ path: 'state/progress.json', sha256 })),
+    ...input.eventFiles.map(async (file) => ({ path: file.path, sha256: await sha256Hex(file.content) })),
+    sha256Hex(input.progressContent).then((sha256) => ({ path: 'state/progress.json', sha256 })),
   ]);
   const now = input.now ?? new Date();
   return {
@@ -173,7 +194,11 @@ function parseJsonlEvents(content: string): LearnEvent[] {
   for (const line of content.split(/\r?\n/)) {
     if (!line.trim()) continue;
     let raw: unknown;
-    try { raw = JSON.parse(line); } catch { throw new Error('invalid_jsonl'); }
+    try {
+      raw = JSON.parse(line);
+    } catch {
+      throw new Error('invalid_jsonl');
+    }
     const parsed = learnEventSchema.safeParse(raw);
     if (!parsed.success) throw new Error('invalid_jsonl_event');
     events.push(parsed.data);
@@ -185,17 +210,26 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
 
 export function formatTehran(date: Date): string {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    timeZone: 'Asia/Tehran',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
   }).formatToParts(date);
-  const value = (name: string) => parts.find(part => part.type === name)?.value ?? '';
+  const value = (name: string) => parts.find((part) => part.type === name)?.value ?? '';
   const year = value('year');
   const month = value('month');
   const day = value('day');

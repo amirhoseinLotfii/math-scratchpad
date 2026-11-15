@@ -20,7 +20,7 @@ async function expectKeyboardBelowActiveField(page: Page) {
   if (!field || !keypad) throw new Error('Expected the active math field and keyboard to have layout bounds');
   expect(keypad.y).toBeGreaterThanOrEqual(field.y + field.height - 2);
   expect(keypad.x).toBeGreaterThanOrEqual(0);
-  expect(keypad.x + keypad.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth) + 1);
+  expect(keypad.x + keypad.width).toBeLessThanOrEqual((await page.evaluate(() => innerWidth)) + 1);
 }
 
 test.describe('Math keyboard placement', () => {

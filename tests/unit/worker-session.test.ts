@@ -19,7 +19,10 @@ const SESSION_B = `mss1.${'B'.repeat(43)}`;
 const DAY = 24 * 60 * 60_000;
 
 function idToken(expSeconds = Math.floor(Date.now() / 1000) + 3600): string {
-  const payload = btoa(JSON.stringify({ exp: expSeconds, email: 'owner@example.com' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const payload = btoa(JSON.stringify({ exp: expSeconds, email: 'owner@example.com' }))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
   return `header.${payload}.signature`;
 }
 
@@ -36,7 +39,9 @@ function workerFetch(sessions: string[] = [SESSION_A], expiresAt = Date.now() + 
   return { fetcher, calls };
 }
 
-beforeEach(async () => { await resetWorkerSessionForTests(); });
+beforeEach(async () => {
+  await resetWorkerSessionForTests();
+});
 afterEach(async () => {
   clearGoogleIdToken();
   localStorage.clear();
@@ -99,7 +104,9 @@ describe('Worker session client', () => {
     // Less than a day left: a fresh GIS token mints a new session and revokes the old one.
     await exchangeIdTokenForWorkerSession(idToken());
     expect(getWorkerSession()?.token).toBe(SESSION_B);
-    await vi.waitFor(() => expect(calls.some(call => call.url.endsWith('/session/revoke') && call.auth === `Bearer ${SESSION_A}`)).toBe(true));
+    await vi.waitFor(() =>
+      expect(calls.some((call) => call.url.endsWith('/session/revoke') && call.auth === `Bearer ${SESSION_A}`)).toBe(true),
+    );
   });
 
   it('logout revokes the session on the Worker and removes it from IndexedDB', async () => {

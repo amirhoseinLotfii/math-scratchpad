@@ -11,11 +11,18 @@ import '../../src/styles.css';
 
 function EventProbe() {
   const [events, setEvents] = useState<LearnEvent[]>([]);
-  useEffect(() => subscribeToLearnEvents(event => setEvents(previous => [...previous, event])), []);
-  return <output aria-label="Observed learning events" data-testid="learn-event-probe">{JSON.stringify(events)}</output>;
+  useEffect(() => subscribeToLearnEvents((event) => setEvents((previous) => [...previous, event])), []);
+  return (
+    <output aria-label="Observed learning events" data-testid="learn-event-probe">
+      {JSON.stringify(events)}
+    </output>
+  );
 }
 
 const store = makeStore(initialState());
 createRoot(document.getElementById('math-scratchpad-redux')!).render(
-  <Provider store={store}><App /><EventProbe /></Provider>,
+  <Provider store={store}>
+    <App />
+    <EventProbe />
+  </Provider>,
 );

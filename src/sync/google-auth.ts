@@ -39,7 +39,7 @@ async function verifyDriveAccount(token: Token): Promise<{ token: Token; email: 
     });
     if (!response.ok) throw new GoogleAuthError('network_error', response.status);
     const profile: unknown = await response.json();
-    if (!await permittedAccount(profile)) throw new GoogleAuthError('account_mismatch');
+    if (!(await permittedAccount(profile))) throw new GoogleAuthError('account_mismatch');
     if (!profile || typeof profile !== 'object' || !('email' in profile) || typeof profile.email !== 'string') {
       throw new GoogleAuthError('account_mismatch');
     }
@@ -62,30 +62,36 @@ export function requestDriveAccessTokenFromGesture(): Promise<Token> {
   const idToken = getGoogleIdToken();
   const expectedEmail = idToken ? idTokenEmail(idToken) : undefined;
   if (!session || !idToken || !expectedEmail) {
-    throw new GoogleAuthError('session_rejected', undefined, 'ابتدا با دکمهٔ رسمی Google وارد شو و منتظر تأیید نشست سرور بمان؛ سپس دسترسی Drive را جداگانه بده.');
+    throw new GoogleAuthError(
+      'session_rejected',
+      undefined,
+      'ابتدا با دکمهٔ رسمی Google وارد شو و منتظر تأیید نشست سرور بمان؛ سپس دسترسی Drive را جداگانه بده.',
+    );
   }
   const saved = readDriveSessionToken();
   if (saved && saved.expiresAt > Date.now() + 60_000) return Promise.resolve(saved);
   if (!getConfig().clientId) throw new GoogleAuthError('prompt_unavailable');
 
   const tokenRequest = new Promise<Token>((resolve, reject) => {
-    requestToken(GOOGLE_CLIENT_ID, { prompt: '', hint: expectedEmail }, result => {
+    requestToken(GOOGLE_CLIENT_ID, { prompt: '', hint: expectedEmail }, (result) => {
       if (!result.token) {
         const code = result.errorCode ?? 'network_error';
         recordGoogleAuthDiagnostic(code);
         reject(new GoogleAuthError(code));
         return;
       }
-      void verifyDriveAccount(result.token).then(profile => {
-        if (profile.email !== expectedEmail) {
-          recordGoogleAuthDiagnostic('account_mismatch');
-          reject(new GoogleAuthError('account_mismatch'));
-          return;
-        }
-        saveDriveSessionToken(result.token!);
-        recordGoogleAuthDiagnostic('drive_authorized');
-        resolve(result.token!);
-      }).catch(reject);
+      void verifyDriveAccount(result.token)
+        .then((profile) => {
+          if (profile.email !== expectedEmail) {
+            recordGoogleAuthDiagnostic('account_mismatch');
+            reject(new GoogleAuthError('account_mismatch'));
+            return;
+          }
+          saveDriveSessionToken(result.token!);
+          recordGoogleAuthDiagnostic('drive_authorized');
+          resolve(result.token!);
+        })
+        .catch(reject);
     });
   });
   return tokenRequest;
@@ -93,8 +99,9 @@ export function requestDriveAccessTokenFromGesture(): Promise<Token> {
 
 /** Logout on this device: revoke the Worker session server-side and drop every saved Google credential. */
 export async function signOutGoogle(): Promise<void> {
-  try { await revokeWorkerSession(); }
-  finally {
+  try {
+    await revokeWorkerSession();
+  } finally {
     clearGoogleIdToken();
     clearDriveSessionToken();
   }

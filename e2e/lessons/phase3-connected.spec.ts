@@ -29,7 +29,10 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
       await page.getByRole('button', { name: 'Show Keyboard' }).click();
     }
     await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
-    const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+    }));
     expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
 
     const lessonButton = page.getByRole('button', { name: 'Lesson', exact: true });
@@ -38,11 +41,13 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
     const reference = page.getByRole('dialog', { name: 'Sample lesson' });
     await expect(reference).toBeVisible();
     if (viewport.width === 390 && viewport.height === 844) {
-      await expect.poll(() => reference.evaluate(dialog => dialog.contains(document.activeElement))).toBe(true);
+      await expect.poll(() => reference.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
     }
     await expect(reference).toHaveAttribute('lang', 'en');
     await expect(reference).toHaveAttribute('dir', 'ltr');
-    await expect(reference.locator('.lesson-reference-content .lesson-block-paragraph[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
+    await expect(reference.locator('.lesson-reference-content .lesson-block-paragraph[lang="fa"][dir="rtl"]')).toContainText(
+      'این متن فارسیِ آزمایشی',
+    );
     await expect(reference.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
     await expect(reference.getByText('Another sample concept')).toHaveCount(0);
     const infoToggle = reference.getByRole('button', { name: 'Lesson information' });
@@ -54,12 +59,19 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
     await reference.getByRole('button', { name: 'Hide lesson information' }).click();
     await expect(metadata).toBeHidden();
     const referenceContent = reference.locator('.lesson-reference-content');
-    await referenceContent.evaluate(element => { element.style.flex = 'none'; element.style.height = '80px'; element.scrollTop = element.scrollHeight; });
-    await expect.poll(() => referenceContent.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await referenceContent.evaluate((element) => {
+      element.style.flex = 'none';
+      element.style.height = '80px';
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect.poll(() => referenceContent.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     await reference.getByRole('button', { name: 'Next section →' }).click();
     await expect(reference.getByRole('heading', { name: 'Another sample concept' })).toBeVisible();
-    await expect.poll(() => referenceContent.evaluate(element => element.scrollTop)).toBe(0);
-    await referenceContent.evaluate(element => { element.style.removeProperty('flex'); element.style.removeProperty('height'); });
+    await expect.poll(() => referenceContent.evaluate((element) => element.scrollTop)).toBe(0);
+    await referenceContent.evaluate((element) => {
+      element.style.removeProperty('flex');
+      element.style.removeProperty('height');
+    });
     await reference.getByRole('button', { name: '← Previous section' }).click();
     await expect(reference.getByRole('radio')).toHaveCount(0);
     if (viewport.width === 390 && viewport.height === 844) {
@@ -68,10 +80,10 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
       await expect(firstNavigationButton).toBeFocused();
       for (let tab = 0; tab < 5; tab++) {
         await page.keyboard.press('Tab');
-        await expect.poll(() => reference.evaluate(dialog => dialog.contains(document.activeElement))).toBe(true);
+        await expect.poll(() => reference.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
       }
       const referenceA11y = await new AxeBuilder({ page }).include('.lesson-reference-dialog').analyze();
-      expect(referenceA11y.violations.filter(item => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
+      expect(referenceA11y.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
     }
     if (viewport.width >= 1024) {
       const panel = await reference.boundingBox();
@@ -85,7 +97,10 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
 
     await page.getByRole('button', { name: 'Exercise menu' }).click();
     await page.getByRole('menuitem', { name: 'Lessons' }).click();
-    await page.getByRole('dialog', { name: 'Lessons' }).getByRole('button', { name: /Sample lesson.*Not started/ }).click();
+    await page
+      .getByRole('dialog', { name: 'Lessons' })
+      .getByRole('button', { name: /Sample lesson.*Not started/ })
+      .click();
     const learn = page.locator('.lesson-screen');
     await expect(learn.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
     const lessonInfo = learn.getByRole('button', { name: 'Lesson information' });
@@ -98,7 +113,10 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
     await expect(lessonMetadata).toBeVisible();
     await learn.getByRole('button', { name: 'Hide lesson information' }).click();
     await expect(lessonMetadata).toBeHidden();
-    const learnDimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
+    const learnDimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+    }));
     expect(learnDimensions.document).toBeLessThanOrEqual(learnDimensions.viewport);
     await page.screenshot({ path: `/tmp/math-scratchpad-phase4-learn-${viewport.width}x${viewport.height}.png`, fullPage: true });
     await page.getByRole('button', { name: 'Back to question' }).click();
@@ -115,7 +133,7 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
   await page.keyboard.press('Enter');
   await page.keyboard.press('Home');
   const lessonsMenuItem = page.getByRole('menuitem', { name: 'Lessons' });
-  for (let item = 0; item < 10 && !(await lessonsMenuItem.evaluate(element => element === document.activeElement)); item++) {
+  for (let item = 0; item < 10 && !(await lessonsMenuItem.evaluate((element) => element === document.activeElement)); item++) {
     await page.keyboard.press('ArrowDown');
   }
   await expect(lessonsMenuItem).toBeFocused();
@@ -129,7 +147,7 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
   await expect(learn.getByRole('heading', { name: 'First sample concept' })).toBeVisible();
   await expect(learn.locator('.lesson-block-paragraph[lang="fa"][dir="rtl"]')).toContainText('این متن فارسیِ آزمایشی');
   const learnA11y = await new AxeBuilder({ page }).include('.lesson-screen').analyze();
-  expect(learnA11y.violations.filter(item => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
+  expect(learnA11y.violations.filter((item) => ['critical', 'serious'].includes(item.impact ?? ''))).toEqual([]);
   await page.screenshot({ path: '/tmp/math-scratchpad-phase3-learn-mobile-390x640.png', fullPage: true });
 
   await learn.getByRole('radio', { name: 'Option A' }).click();
@@ -139,9 +157,9 @@ test('connected Learn flow, reference panel and responsive layouts', { tag: '@on
   const answerField = mathEditor.locator('math-field[aria-label="Step 1 expression"]');
   await mathEditor.getByRole('button', { name: 'Show Keyboard' }).click();
   await mathEditor.getByRole('group', { name: 'Numeric keys' }).getByRole('button', { name: '8', exact: true }).click();
-  await expect.poll(() => answerField.evaluate(element => (element as HTMLElement & { value: string }).value)).toBe('8');
+  await expect.poll(() => answerField.evaluate((element) => (element as HTMLElement & { value: string }).value)).toBe('8');
   await expect(answerField).toBeInViewport();
-  await expect.poll(() => answerField.evaluate(element => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
+  await expect.poll(() => answerField.evaluate((element) => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
   await expect(page.getByRole('group', { name: 'Numeric keys' })).toBeVisible();
   const pinnedExpression = learn.getByRole('group', { name: 'Question expression' });
   await expect(pinnedExpression).toHaveCSS('position', 'sticky');

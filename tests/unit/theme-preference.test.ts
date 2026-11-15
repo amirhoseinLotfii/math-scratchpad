@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyThemePreference, initializeThemePreference, readThemePreference, THEME_STORAGE_KEY, writeThemePreference } from '../../src/shared/lib/ui-prefs';
+import {
+  applyThemePreference,
+  initializeThemePreference,
+  readThemePreference,
+  THEME_STORAGE_KEY,
+  writeThemePreference,
+} from '../../src/shared/lib/ui-prefs';
 
 describe('theme preference', () => {
   beforeEach(() => {

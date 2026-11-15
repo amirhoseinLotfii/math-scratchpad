@@ -1,8 +1,13 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  flushLearningStorage, getAuthenticatedServerStorage, getLearningDb, getLearningStorage,
-  initializeAuthenticatedServerStorage, initializeLearningStorage, resetLearningDbForTests,
+  flushLearningStorage,
+  getAuthenticatedServerStorage,
+  getLearningDb,
+  getLearningStorage,
+  initializeAuthenticatedServerStorage,
+  initializeLearningStorage,
+  resetLearningDbForTests,
 } from '../../../src/sync/browser-db';
 
 const key = 'math-scratchpad-session-v3';
@@ -20,11 +25,14 @@ afterEach(async () => {
 describe('cloud state size budget', () => {
   it('posts a 900 KB value', async () => {
     const writes: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
-      if (init?.method !== 'POST') return Response.json({ records: [], revision: 0 });
-      writes.push(JSON.parse(String(init.body)).value);
-      return Response.json({ key, revision: 1 });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method !== 'POST') return Response.json({ records: [], revision: 0 });
+        writes.push(JSON.parse(String(init.body)).value);
+        return Response.json({ key, revision: 1 });
+      }),
+    );
     await initializeAuthenticatedServerStorage('owner-token');
     const value = content(450_000);
     getLearningStorage().setItem(key, value);
@@ -33,9 +41,11 @@ describe('cloud state size budget', () => {
   });
 
   it('keeps a 1.1 MB value byte-identical on disk and does not retry it on reconnect', async () => {
-    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
-      ? Response.json({ error: 'payload_too_large' }, { status: 413 })
-      : Response.json({ records: [], revision: 0 }));
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? Response.json({ error: 'payload_too_large' }, { status: 413 })
+        : Response.json({ records: [], revision: 0 }),
+    );
     vi.stubGlobal('fetch', fetcher);
     await initializeAuthenticatedServerStorage('owner-token');
     const value = content(550_000);

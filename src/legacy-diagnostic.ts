@@ -7,7 +7,9 @@ function object(x: unknown): Bag {
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw Error('Legacy session contains invalid objects.');
   return x as Bag;
 }
-function text(x: unknown) { return typeof x === 'string' ? ascii(x).trim() : ''; }
+function text(x: unknown) {
+  return typeof x === 'string' ? ascii(x).trim() : '';
+}
 function mathField(value: string, warnings: string[], label: string): Sequence {
   const s = value.replace(/[−–]/g, '-');
   if (!s) return seq();
@@ -50,11 +52,13 @@ export function migrateChatDiagnosticSession(input: unknown): { doc: Document } 
   if (raw.version !== 2 || !('items' in raw)) return null;
   if (!Array.isArray(raw.items) || raw.items.length !== 30) throw Error('Expected 30 legacy responses.');
   const exercises: Exercise[] = raw.items.map((entry, i) => {
-    const record = object(entry), notes: string[] = [];
+    const record = object(entry),
+      notes: string[] = [];
     const oldSteps = record.steps;
     if (!Array.isArray(oldSteps) || !oldSteps.length || oldSteps.length > 40) throw Error('Invalid legacy steps.');
     const steps = oldSteps.map((old, j) => {
-      const st = object(old), step = blankStep();
+      const st = object(old),
+        step = blankStep();
       step.expression = tokensToSequence(st.tokens, notes, 'Step ' + (j + 1));
       step.final = st.final === true;
       return step;
@@ -66,17 +70,33 @@ export function migrateChatDiagnosticSession(input: unknown): { doc: Document } 
     }
     const q = diagnosticQuestions[i];
     return {
-      id: uid(), source: q.source, mode: 'math', prompt: q.stem,
-      diagnosticId: q.id, confidence: ['high','medium','low'].includes(String(record.confidence))
-        ? record.confidence as Exercise['confidence'] : undefined,
-      skipped: record.skip === true, steps,
-      ...(notes.length ? { migrationNotes: notes.join('\n').slice(0, 5000) } : {})
+      id: uid(),
+      source: q.source,
+      mode: 'math',
+      prompt: q.stem,
+      diagnosticId: q.id,
+      confidence: ['high', 'medium', 'low'].includes(String(record.confidence)) ? (record.confidence as Exercise['confidence']) : undefined,
+      skipped: record.skip === true,
+      steps,
+      ...(notes.length ? { migrationNotes: notes.join('\n').slice(0, 5000) } : {}),
     };
   });
-  const current = Number(raw.ix), index = Number.isInteger(current) ? Math.max(0, Math.min(29, current)) : 0;
-  const ex = exercises[index], step = ex.steps.at(-1)!, leaf = leaves(step.expression)[0]?.node;
-  const doc: Document = { exercises, exerciseId: ex.id, cursor: {
-    stepId: step.id, nodeId: leaf?.id || null, sequenceId: null, index: 0, offset: 0, selected: null
-  } };
+  const current = Number(raw.ix),
+    index = Number.isInteger(current) ? Math.max(0, Math.min(29, current)) : 0;
+  const ex = exercises[index],
+    step = ex.steps.at(-1)!,
+    leaf = leaves(step.expression)[0]?.node;
+  const doc: Document = {
+    exercises,
+    exerciseId: ex.id,
+    cursor: {
+      stepId: step.id,
+      nodeId: leaf?.id || null,
+      sequenceId: null,
+      index: 0,
+      offset: 0,
+      selected: null,
+    },
+  };
   return { doc };
 }

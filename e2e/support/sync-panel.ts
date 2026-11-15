@@ -7,7 +7,9 @@ export async function installFakeGoogleAuth(page: Page): Promise<void> {
     const handlers: { signIn?: (credential: { credential: string }) => void } = {};
     const testEmail = 'qa-fixture@example.test';
     const encoded = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: testEmail }))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
     const fakeToken = `head.${encoded}.signature`;
     const allowlistedTestHash = '5722e9ceb3077a549643b3e349b6b44058f422818edfddec115e9703a07fc024';
     const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
@@ -15,7 +17,7 @@ export async function installFakeGoogleAuth(page: Page): Promise<void> {
       configurable: true,
       value: (algorithm: AlgorithmIdentifier, data: BufferSource) => {
         if (algorithm === 'SHA-256' && new TextDecoder().decode(data) === testEmail) {
-          return Promise.resolve(Uint8Array.from(allowlistedTestHash.match(/../g)!, byte => Number.parseInt(byte, 16)).buffer);
+          return Promise.resolve(Uint8Array.from(allowlistedTestHash.match(/../g)!, (byte) => Number.parseInt(byte, 16)).buffer);
         }
         return originalDigest(algorithm, data);
       },
@@ -31,7 +33,9 @@ export async function installFakeGoogleAuth(page: Page): Promise<void> {
             hasGrantedAllScopes: () => true,
           },
           id: {
-            initialize: (options: { callback: typeof handlers.signIn }) => { handlers.signIn = options.callback; },
+            initialize: (options: { callback: typeof handlers.signIn }) => {
+              handlers.signIn = options.callback;
+            },
             prompt: () => handlers.signIn?.({ credential: fakeToken }),
             renderButton: (element: HTMLElement) => {
               const button = document.createElement('button');
@@ -46,12 +50,14 @@ export async function installFakeGoogleAuth(page: Page): Promise<void> {
       },
     });
   });
-  await page.route('https://www.googleapis.com/oauth2/v3/userinfo', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    headers: { 'access-control-allow-origin': '*' },
-    body: JSON.stringify({ email: 'qa-fixture@example.test', email_verified: true }),
-  }));
+  await page.route('https://www.googleapis.com/oauth2/v3/userinfo', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ email: 'qa-fixture@example.test', email_verified: true }),
+    }),
+  );
 }
 
 export async function openSyncPanel(page: Page) {

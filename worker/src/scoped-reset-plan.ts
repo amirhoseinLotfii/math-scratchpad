@@ -16,20 +16,28 @@ export function parseScopedLearningResetScope(input: unknown): ScopedLearningRes
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined;
   const candidate = input as Record<string, unknown>;
   const bankVersion = candidate.bankVersion;
-  if (typeof bankVersion !== 'string' || bankVersion.trim() !== bankVersion
-    || bankVersion.length < 1 || bankVersion.length > 50) return undefined;
+  if (typeof bankVersion !== 'string' || bankVersion.trim() !== bankVersion || bankVersion.length < 1 || bankVersion.length > 50)
+    return undefined;
 
   if (candidate.type === 'chapter') {
-    if (Object.keys(candidate).some(key => !['type', 'id', 'bankVersion'].includes(key))) return undefined;
+    if (Object.keys(candidate).some((key) => !['type', 'id', 'bankVersion'].includes(key))) return undefined;
     const id = candidate.id;
     if (typeof id !== 'string' || !/^(?:0|[1-9][0-9]?)$/.test(id)) return undefined;
     return { type: 'chapter', id, bankVersion };
   }
   if (candidate.type === 'lesson') {
-    if (Object.keys(candidate).some(key => !['type', 'id', 'chapter', 'bankVersion'].includes(key))) return undefined;
+    if (Object.keys(candidate).some((key) => !['type', 'id', 'chapter', 'bankVersion'].includes(key))) return undefined;
     const { id, chapter } = candidate;
-    if (typeof id !== 'string' || id.trim() !== id || id.length < 1 || id.length > 100
-      || !Number.isInteger(chapter) || Number(chapter) < 0 || Number(chapter) > 99) return undefined;
+    if (
+      typeof id !== 'string' ||
+      id.trim() !== id ||
+      id.length < 1 ||
+      id.length > 100 ||
+      !Number.isInteger(chapter) ||
+      Number(chapter) < 0 ||
+      Number(chapter) > 99
+    )
+      return undefined;
     return { type: 'lesson', id, chapter: Number(chapter), bankVersion };
   }
   return undefined;
@@ -55,7 +63,7 @@ export function classifyScopedLearningEvent(
   if (scope.type === 'lesson' && event.type === 'chapter_snapshot') return 'rebuild';
   if (scope.type === 'lesson' && event.lesson !== scope.id) return 'preserve';
 
-  if (event.type === 'session_start' || event.type === 'session_end'
-    || event.type === 'session_reset' || event.type === 'report_generated') return 'rebuild';
+  if (event.type === 'session_start' || event.type === 'session_end' || event.type === 'session_reset' || event.type === 'report_generated')
+    return 'rebuild';
   return 'remove';
 }
