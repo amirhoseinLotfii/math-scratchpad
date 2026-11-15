@@ -1,3 +1,4 @@
+import { NETWORK_SYNC_DEBOUNCE_MS, NETWORK_SYNC_MAX_WAIT_MS } from '../../shared/contracts/sync-timing';
 import type { LearnEvent } from './events';
 import { subscribeToLearnEvents } from './events';
 import {
@@ -44,8 +45,6 @@ const MAX_PULL_PAGES_PER_RUN = 100;
 const MAX_BATCH_BYTES = 190_000;
 const MAX_BATCH_EVENTS = 50;
 const MAX_KEEPALIVE_BATCH_BYTES = 60_000;
-const EVENT_DEBOUNCE_MS = 5_000;
-const EVENT_MAX_WAIT_MS = 30_000;
 
 export type SyncPhase = 'idle' | 'needs-auth' | 'queued' | 'syncing' | 'synced' | 'retrying' | 'error';
 export type MirrorPhase = 'not_configured' | 'pending' | 'syncing' | 'synced' | 'error';
@@ -362,6 +361,7 @@ export class BrowserSyncRuntime {
 
   /** Push/pull local events, then ask each configured private mirror to sync now. */
   async syncAllNow(): Promise<void> {
+    await getAuthenticatedServerStorage()?.flush();
     await this.syncNow();
     if (!this.started || !this.token) return;
     await this.refreshMirrorStatuses();
@@ -488,14 +488,14 @@ export class BrowserSyncRuntime {
     this.debounceTimer = this.scheduleTimeout(() => {
       this.debounceTimer = undefined;
       void this.syncNow();
-    }, EVENT_DEBOUNCE_MS);
+    }, NETWORK_SYNC_DEBOUNCE_MS);
     if (!this.maxWaitTimer) {
       this.maxWaitTimer = this.scheduleTimeout(() => {
         this.maxWaitTimer = undefined;
         if (this.debounceTimer) this.cancelTimeout(this.debounceTimer);
         this.debounceTimer = undefined;
         void this.syncNow();
-      }, EVENT_MAX_WAIT_MS);
+      }, NETWORK_SYNC_MAX_WAIT_MS);
     }
   }
 

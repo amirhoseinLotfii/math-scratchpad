@@ -78,6 +78,7 @@ export function ServerConnectionGate({ children, tokenProvider, onAuthenticated,
       await getAuthenticatedServerStorage()?.flush();
       if (id !== epoch.current || isLocalOnlyMode()) return;
       await verifyOwnerServerConnection(token, controller.signal);
+      getAuthenticatedServerStorage()?.flushPendingWrites();
       if (id === epoch.current) setState({ kind: 'online', message: '' });
     } catch (problem) {
       if (id === epoch.current) {

@@ -22,7 +22,7 @@ import { MathLiveStepInput } from './features/math-editor/components/mathlive-st
 export { INSERT_VISIBLE } from './features/math-editor/components/math-insert-dialog';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
-import { clearAppStorage, getSessionSyncBytes } from './features/session/persistence/persistent-store';
+import { clearAppStorage, flushPersistedSession, getSessionSyncBytes } from './features/session/persistence/persistent-store';
 import { isoLocal } from './model';
 import { archiveSession, bankDocument, type BankQuestion, type DriveBank } from './features/drive-bank/drive-bank';
 import { getConfig as getDriveConfig } from './features/drive-bank/google';
@@ -293,6 +293,10 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
   }
  }
  function openLesson(lesson: Lesson) {
+  const previousChapter = (lessonScreen?.section ?? store.getState().doc.session?.chapter?.toString())?.split('.')[0];
+  if (previousChapter && previousChapter !== lesson.section.split('.')[0]) {
+   void flushPersistedSession().then(() => getAuthenticatedServerStorage()?.flush()).catch(() => {});
+  }
   setRestoreTarget(null);
   const before = lessonProgressById[lesson.id];
   if (!before) rememberLessonProgress({ lessonId: lesson.id, status: 'learning', currentConceptIndex: 0, currentSectionIndex: 0, completedSectionIds: [], completedConceptIds: [], answeredCheckIds: [], skippedChecks: [], summaryOpen: false, revealedSteps: {}, learnStartedAt: new Date().toISOString() });

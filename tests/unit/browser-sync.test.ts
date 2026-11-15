@@ -637,7 +637,7 @@ describe('browser sync runtime', () => {
     await vi.waitFor(async () => expect(await readOutboxCount()).toBe(10));
 
     expect(posted).toHaveLength(0);
-    clock.advance(4_999);
+    clock.advance(3_399);
     expect(posted).toHaveLength(0);
     clock.advance(1);
     await vi.waitFor(() => expect(posted).toHaveLength(1));
@@ -669,15 +669,17 @@ describe('browser sync runtime', () => {
     runtime.setIdToken('owner-id-token');
     await vi.waitFor(() => expect(runtime.getSnapshot().phase).toBe('synced'));
 
-    for (let index = 0; index < 8; index += 1) {
-      if (index > 0) clock.advance(4_000);
+    for (let index = 0; index < 10; index += 1) {
+      if (index > 0) clock.advance(3_200);
       emitLearnEvent({ bankVersion: 'v21', session: `max-wait-${index}`, chapter: 1, lesson: '1.1', section: '1.1-a', concept: 'relations' }, { type: 'lesson_open' });
       await vi.waitFor(async () => expect(await readOutboxCount()).toBe(index + 1));
     }
     expect(posted).toHaveLength(0);
-    clock.advance(2_000);
+    clock.advance(1_199);
+    expect(posted).toHaveLength(0);
+    clock.advance(1);
     await vi.waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toHaveLength(8);
+    expect(posted[0]).toHaveLength(10);
     expect(await readOutboxCount()).toBe(0);
     runtime.stop();
   });

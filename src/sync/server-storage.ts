@@ -1,3 +1,4 @@
+import { StateWriteCoalescer } from './state-write-coalescer';
 /**
  * Authenticated server mirror for learner state.
  *
@@ -84,6 +85,7 @@ export class ServerBackedStorage implements Storage {
   private oversizedState = new Map<string, OversizedState>();
   private readonly conflicts = new Map<string, ServerStorageConflict>();
   private queued = 0;
+  private readonly coalescer = new StateWriteCoalescer((key, value, keepalive) => this.enqueue(key, value, keepalive));
   private readonly onChange?: (key: string, value: string | null, source?: ServerStorageChangeSource) => void;
 
   constructor(records: ServerStateRecord[], token: string, onChange?: (key: string, value: string | null, source?: ServerStorageChangeSource) => void) {
@@ -99,7 +101,8 @@ export class ServerBackedStorage implements Storage {
   setToken(token: string) {
     this.token = token;
     // A re-authenticated owner can resume writes that failed with HTTP 401.
-    for (const [key, value] of [...this.failedWrites]) this.enqueue(key, value);
+    this.flushPendingWrites();
+    this.retryFailedWrites();
   }
   get length() { return this.values.size; }
   key(index: number): string | null { return [...this.values.keys()][index] ?? null; }
@@ -112,13 +115,13 @@ export class ServerBackedStorage implements Storage {
     this.values.set(key, stringValue);
     const conflict = this.conflicts.get(key);
     if (conflict) this.conflicts.set(key, { ...conflict, localValue: stringValue });
-    this.enqueue(key, stringValue);
+    this.stage(key, stringValue);
   }
 
   removeItem(key: string): void {
     if (!this.values.has(key)) return;
     this.values.delete(key);
-    this.enqueue(key, null);
+    this.stage(key, null);
   }
 
   clear(): void {
@@ -140,7 +143,31 @@ export class ServerBackedStorage implements Storage {
     if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new Event(SERVER_STORAGE_BUDGET_EVENT));
   }
 
-  private enqueue(key: string, value: string | null) {
+  private stage(key: string, value: string | null) {
+    this.failedWrites.delete(key);
+    if (this.failedWrites.size === 0) this.error = null;
+    const bytes = value === null ? 0 : utf8Bytes(value);
+    if (bytes > SYNC_STATE_BUDGET_BYTES) {
+      this.coalescer.cancel(key);
+      this.setOversizedState(key, bytes);
+      return;
+    }
+    this.setOversizedState(key);
+    this.coalescer.set(key, value);
+  }
+
+  flushPendingWrites(keepalive = false) {
+    this.coalescer.flush(keepalive);
+  }
+
+  private retryFailedWrites() {
+    for (const [key, value] of this.failedWrites) {
+      this.failedWrites.delete(key);
+      this.enqueue(key, value);
+    }
+  }
+
+  private enqueue(key: string, value: string | null, keepalive = false) {
     const bytes = value === null ? 0 : utf8Bytes(value);
     if (bytes > SYNC_STATE_BUDGET_BYTES) {
       this.setOversizedState(key, bytes);
@@ -158,6 +185,7 @@ export class ServerBackedStorage implements Storage {
         if (!canWriteToServer()) throw new ServerWriteBlockedError();
         const revision = this.revisions.get(key) ?? 0;
         try {
+          const body = JSON.stringify({ key, value: desiredValue, revision });
           response = await fetchWithServerWriteGuard(fetch, `${SYNC_API_ORIGIN}/state`, {
             method: 'POST', cache: 'no-store',
             headers: {
@@ -165,7 +193,8 @@ export class ServerBackedStorage implements Storage {
               Authorization: `Bearer ${this.token}`,
               [LEARNING_RESET_EPOCH_HEADER]: getLearningResetRequestEpoch(),
             },
-            body: JSON.stringify({ key, value: desiredValue, revision }),
+            body,
+            ...(keepalive && utf8Bytes(body) <= 60_000 ? { keepalive: true } : {}),
           });
           if (response.status === 426) {
             const body: unknown = await response.clone().json().catch(() => null);
@@ -176,11 +205,14 @@ export class ServerBackedStorage implements Storage {
             markLocalLearningResetPending();
           }
           if (response.status === 409) {
+            this.coalescer.cancel(key);
+            this.flushPendingWrites();
             const snapshot = await readServerSnapshot(this.token);
             if (this.oversizedState.has(key)) return;
             const remote = snapshot.records.find(record => record.key === key);
             const remoteValue = remote?.value ?? null;
             const remoteRevision = remote?.revision ?? 0;
+            this.coalescer.cancel(key);
             const localValue = this.latestLocalValue(key, this.values.get(key) ?? null);
             const baseValue = this.baseValues.get(key) ?? null;
             const merge = mergeServerStateValues(key, baseValue, localValue, remoteValue);
@@ -244,11 +276,11 @@ export class ServerBackedStorage implements Storage {
       this.revisions.set(key, Number((result as { revision: number }).revision));
       this.baseValues.set(key, desiredValue);
       const latestValue = this.values.has(key) ? this.values.get(key)! : null;
-      if (latestValue === desiredValue || this.oversizedState.has(key)) this.failedWrites.delete(key);
+      if (latestValue === desiredValue || this.oversizedState.has(key) || this.coalescer.has(key)) this.failedWrites.delete(key);
       else this.failedWrites.set(key, latestValue);
       if (this.failedWrites.size === 0) this.error = null;
     }).catch(error => {
-      if (this.oversizedState.has(key)) return;
+      if (this.oversizedState.has(key) || this.coalescer.has(key)) return;
       // A later edit may already be queued; keep only the latest desired value.
       const latestValue = this.values.has(key) ? this.values.get(key)! : null;
       this.failedWrites.set(key, latestValue);
@@ -261,15 +293,25 @@ export class ServerBackedStorage implements Storage {
   }
 
   async flush(): Promise<void> {
-    await this.tail;
+    this.flushPendingWrites();
+    let tail: Promise<void>;
+    do {
+      tail = this.tail;
+      await tail;
+    } while (this.tail !== tail);
     if (this.failedWrites.size && navigator.onLine !== false) {
-      for (const [key, value] of [...this.failedWrites]) this.enqueue(key, value);
-      await this.tail;
+      this.retryFailedWrites();
+      do {
+        tail = this.tail;
+        await tail;
+      } while (this.tail !== tail);
     }
     if (this.error) throw this.error;
   }
 
-  get hasPendingWrites() { return this.queued > 0; }
+  get hasPendingWrites() { return this.queued > 0 || this.coalescer.size > 0; }
+
+  get pendingKeyCount() { return this.coalescer.size; }
 
   getConflicts(): ServerStorageConflict[] { return [...this.conflicts.values()]; }
 
@@ -277,6 +319,7 @@ export class ServerBackedStorage implements Storage {
     const conflict = this.conflicts.get(key);
     if (!conflict) return;
     this.conflicts.delete(key);
+    this.coalescer.cancel(key);
     this.failedWrites.delete(key);
     this.revisions.set(key, conflict.remoteRevision);
     this.baseValues.set(key, conflict.remoteValue);

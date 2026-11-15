@@ -6,7 +6,7 @@ import { makeStore, initialState, type PersistedSession, type ScratchState, type
 import { restoreState, validateSession } from '../../../persistence';
 import { clampRestoredTimers } from '../timer-continuity';
 import type { PersistOptions } from 'zustand/middleware';
-import { flushLearningStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from '../../../sync/browser-db';
+import { flushLearningStorage, getAuthenticatedServerStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from '../../../sync/browser-db';
 import { SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, type ServerStorageSnapshotRequest } from '../../../sync/server-storage';
 export const SESSION_KEY = 'math-scratchpad-session-v3';
 const envelopeSchema = z.object({
@@ -284,8 +284,11 @@ export function createPersistentStore() {
  };
  activeSessionFlush = flush;
  // Start the IndexedDB transaction before the browser suspends or tears down this page.
- const pagehide = () => { void flush(); };
- const visibilitychange = () => { if (document.visibilityState === 'hidden') void flush(); };
+ const pagehide = () => {
+  void flush();
+  getAuthenticatedServerStorage()?.flushPendingWrites(true);
+ };
+ const visibilitychange = () => { if (document.visibilityState === 'hidden') pagehide(); };
  const unsubscribeLearningStorage = subscribeLearningStorage(storageEvent);
  const nativeStorageEvent = (event: StorageEvent) => storageEvent(event);
  window.addEventListener(SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, serverSnapshotRequest);

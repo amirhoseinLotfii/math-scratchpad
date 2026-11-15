@@ -84,6 +84,8 @@ describe('server-only editor persistence', () => {
     }));
     const storage = new ServerBackedStorage([], 'owner-token');
     storage.setItem('math-scratchpad-session-v3', '{"step":1}');
+    storage.flushPendingWrites();
+    await vi.waitFor(() => expect(writes).toHaveLength(1));
     storage.setItem('math-scratchpad-session-v3', '{"step":2}');
 
     await storage.flush();

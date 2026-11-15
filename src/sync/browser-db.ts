@@ -217,6 +217,11 @@ export async function initializeAuthenticatedServerStorage(token: string): Promi
     throw new Error('ذخیره‌سازی پایدار این مرورگر آماده نیست؛ اتصال سرور به‌تنهایی برای ویرایش کافی نیست.');
   }
 
+  // Settle scheduled writes before rebuilding the mirror from the latest durable records.
+  if (serverStorage) {
+    serverStorage.setToken(token);
+    await serverStorage.flush().catch(() => {});
+  }
   const snapshot = await readServerSnapshot(token);
   const remoteRecords = snapshot.records.filter(record => isLearningStorageKey(record.key));
   const db = await database();
