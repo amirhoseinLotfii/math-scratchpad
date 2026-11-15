@@ -1,3 +1,16 @@
+import { latestLocalValue, dispatchConflict } from './state-mirror/state-events';
+import { sendStateWrite } from './state-mirror/send-state-write';
+import { mergeStateSnapshot } from './state-mirror/merge-state-snapshot';
+import {
+  readServerSnapshot,
+  SERVER_STORAGE_BUDGET_EVENT,
+  type OversizedState,
+  type ServerStateRecord,
+  type ServerStorageChangeSource,
+  type ServerStorageConflict,
+  type ServerStorageConflictChoice,
+} from './state-mirror/state-api';
+export * from './state-mirror/state-api';
 import { StateWriteCoalescer } from './state-write-coalescer';
 /**
  * Authenticated server mirror for learner state.
@@ -6,73 +19,7 @@ import { StateWriteCoalescer } from './state-write-coalescer';
  * learning records through the authenticated Worker endpoint.
  */
 import { SYNC_STATE_BUDGET_BYTES, utf8Bytes } from '../../shared/contracts/limits';
-import { SYNC_API_ORIGIN } from './sync-config';
-import { reportApiUnauthorized } from './api-unauthorized';
-import { keepLocalServerConflictValue, mergeServerStateValues } from './server-conflict-merge';
-import {
-  canWriteToServer,
-  fetchWithServerWriteGuard,
-  getLearningResetRequestEpoch,
-  LEARNING_RESET_EPOCH_HEADER,
-  markLocalLearningResetPending,
-  setLocalPendingResetEpoch,
-  ServerWriteBlockedError,
-  isValidLearningResetEpoch,
-} from './learning-reset-epoch';
-
-export type ServerStateRecord = { key: string; value: string | null; revision: number; updatedAt?: string };
-type ServerSnapshot = { records: ServerStateRecord[]; revision: number };
-
-export const SERVER_STORAGE_BUDGET_EVENT = 'math-scratchpad:server-storage-budget';
-export type OversizedState = { status: 'too_large'; bytes: number };
-
-export const SERVER_STORAGE_CONFLICT_EVENT = 'math-scratchpad:server-conflict';
-export const SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT = 'math-scratchpad:server-snapshot-request';
-
-export type ServerStorageConflict = {
-  key: string;
-  localValue: string | null;
-  remoteValue: string | null;
-  remoteRevision: number;
-};
-export type ServerStorageConflictChoice = 'local' | 'remote';
-export type ServerStorageChangeSource = 'server-merge' | 'server-resolution-local' | 'server-resolution-remote';
-export type ServerStorageSnapshotRequest = { key: string; value: string | null; provided: boolean };
-
-function isSnapshot(value: unknown): value is ServerSnapshot {
-  if (!value || typeof value !== 'object') return false;
-  const row = value as Record<string, unknown>;
-  return Array.isArray(row.records) && Number.isSafeInteger(row.revision)
-    && row.records.every(x => !!x && typeof x.key === 'string' && x.key.startsWith('math-scratchpad')
-      && (typeof x.value === 'string' || x.value === null) && Number.isSafeInteger(x.revision)
-      && (x.updatedAt === undefined || typeof x.updatedAt === 'string'));
-}
-
-export async function readServerSnapshot(token: string, signal?: AbortSignal): Promise<ServerSnapshot> {
-  const response = await fetch(`${SYNC_API_ORIGIN}/state`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-    ...(signal ? { signal } : {}),
-  });
-  if (response.status === 401) reportApiUnauthorized(token);
-  if (!response.ok) throw new Error(response.status === 401
-    ? 'برای خواندن اطلاعات از سرور باید دوباره با Google وارد شوی.'
-    : `دریافت وضعیت ذخیره‌شدهٔ سرور ناموفق بود (HTTP ${response.status}).`);
-  const value: unknown = await response.json();
-  if (!isSnapshot(value)) throw new Error('پاسخ وضعیت یادگیری از سرور معتبر نیست.');
-  return value;
-}
-
-/** Tiny owner-authenticated heartbeat; it avoids downloading the learning snapshot. */
-export async function verifyOwnerServerConnection(token: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`${SYNC_API_ORIGIN}/drive/status`, {
-    headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', ...(signal ? { signal } : {}),
-  });
-  if (response.status === 401) reportApiUnauthorized(token);
-  if (!response.ok) throw new Error(response.status === 401
-    ? 'ورود Google منقضی شده است؛ برای ادامه دوباره وارد شو.'
-    : `دسترسی احراز هویت‌شده به سرور تأیید نشد (HTTP ${response.status}).`);
-}
+import { keepLocalServerConflictValue } from './server-conflict-merge';
 
 export class ServerBackedStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -88,7 +35,11 @@ export class ServerBackedStorage implements Storage {
   private readonly coalescer = new StateWriteCoalescer((key, value, keepalive) => this.enqueue(key, value, keepalive));
   private readonly onChange?: (key: string, value: string | null, source?: ServerStorageChangeSource) => void;
 
-  constructor(records: ServerStateRecord[], token: string, onChange?: (key: string, value: string | null, source?: ServerStorageChangeSource) => void) {
+  constructor(
+    records: ServerStateRecord[],
+    token: string,
+    onChange?: (key: string, value: string | null, source?: ServerStorageChangeSource) => void,
+  ) {
     this.token = token;
     this.onChange = onChange;
     for (const row of records) {
@@ -104,9 +55,15 @@ export class ServerBackedStorage implements Storage {
     this.flushPendingWrites();
     this.retryFailedWrites();
   }
-  get length() { return this.values.size; }
-  key(index: number): string | null { return [...this.values.keys()][index] ?? null; }
-  getItem(key: string): string | null { return this.values.get(key) ?? null; }
+  get length() {
+    return this.values.size;
+  }
+  key(index: number): string | null {
+    return [...this.values.keys()][index] ?? null;
+  }
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
 
   setItem(key: string, value: string): void {
     if (!key.startsWith('math-scratchpad')) throw new Error('Storage key is not owned by Math Scratchpad.');
@@ -128,7 +85,9 @@ export class ServerBackedStorage implements Storage {
     for (const key of [...this.values.keys()]) this.removeItem(key);
   }
 
-  getOversizedState(): ReadonlyMap<string, OversizedState> { return this.oversizedState; }
+  getOversizedState(): ReadonlyMap<string, OversizedState> {
+    return this.oversizedState;
+  }
 
   private setOversizedState(key: string, bytes?: number) {
     const current = this.oversizedState.get(key);
@@ -167,6 +126,43 @@ export class ServerBackedStorage implements Storage {
     }
   }
 
+  private async mergeConflict(key: string): Promise<{ done: true } | { done: false; value: string | null }> {
+    this.coalescer.cancel(key);
+    this.flushPendingWrites();
+    const snapshot = await readServerSnapshot(this.token);
+    if (this.oversizedState.has(key)) return { done: true };
+    this.coalescer.cancel(key);
+    const localValue = latestLocalValue(key, this.values.get(key) ?? null);
+    const { remoteValue, remoteRevision, merge } = mergeStateSnapshot(snapshot, key, this.baseValues.get(key) ?? null, localValue);
+    this.revisions.set(key, remoteRevision);
+    this.baseValues.set(key, remoteValue);
+
+    if (!merge.ok) {
+      const conflict = { key, localValue, remoteValue, remoteRevision } satisfies ServerStorageConflict;
+      this.setValue(key, localValue);
+      this.conflicts.set(key, conflict);
+      this.failedWrites.delete(key);
+      if (this.failedWrites.size === 0) this.error = null;
+      dispatchConflict(conflict);
+      return { done: true };
+    }
+
+    const desiredValue = merge.value;
+    this.setValue(key, desiredValue);
+    if (desiredValue !== localValue) this.onChange?.(key, desiredValue, 'server-merge');
+    if (desiredValue === remoteValue) {
+      this.failedWrites.delete(key);
+      if (this.failedWrites.size === 0) this.error = null;
+      return { done: true };
+    }
+    const mergedBytes = desiredValue === null ? 0 : utf8Bytes(desiredValue);
+    if (mergedBytes > SYNC_STATE_BUDGET_BYTES) {
+      this.setOversizedState(key, mergedBytes);
+      return { done: true };
+    }
+    return { done: false, value: desiredValue };
+  }
+
   private enqueue(key: string, value: string | null, keepalive = false) {
     const bytes = value === null ? 0 : utf8Bytes(value);
     if (bytes > SYNC_STATE_BUDGET_BYTES) {
@@ -175,120 +171,41 @@ export class ServerBackedStorage implements Storage {
     }
     this.setOversizedState(key);
     this.queued += 1;
-    const operation = this.tail.then(async () => {
-      if (this.conflicts.has(key) || this.oversizedState.has(key)) return;
-      let response: Response | undefined;
-      let lastNetworkError: Error | undefined;
-      let desiredValue = value;
-      // Fast, bounded retries for transient Cloudflare/network errors and stale revisions.
-      for (let attempt = 0; attempt < 4; attempt++) {
-        if (!canWriteToServer()) throw new ServerWriteBlockedError();
-        const revision = this.revisions.get(key) ?? 0;
-        try {
-          const body = JSON.stringify({ key, value: desiredValue, revision });
-          response = await fetchWithServerWriteGuard(fetch, `${SYNC_API_ORIGIN}/state`, {
-            method: 'POST', cache: 'no-store',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${this.token}`,
-              [LEARNING_RESET_EPOCH_HEADER]: getLearningResetRequestEpoch(),
-            },
-            body,
-            ...(keepalive && utf8Bytes(body) <= 60_000 ? { keepalive: true } : {}),
-          });
-          if (response.status === 426) {
-            const body: unknown = await response.clone().json().catch(() => null);
-            const requiredEpoch = body && typeof body === 'object' && 'requiredEpoch' in body
-              ? (body as { requiredEpoch?: unknown }).requiredEpoch
-              : undefined;
-            if (isValidLearningResetEpoch(requiredEpoch)) setLocalPendingResetEpoch(requiredEpoch);
-            markLocalLearningResetPending();
-          }
-          if (response.status === 409) {
-            this.coalescer.cancel(key);
-            this.flushPendingWrites();
-            const snapshot = await readServerSnapshot(this.token);
-            if (this.oversizedState.has(key)) return;
-            const remote = snapshot.records.find(record => record.key === key);
-            const remoteValue = remote?.value ?? null;
-            const remoteRevision = remote?.revision ?? 0;
-            this.coalescer.cancel(key);
-            const localValue = this.latestLocalValue(key, this.values.get(key) ?? null);
-            const baseValue = this.baseValues.get(key) ?? null;
-            const merge = mergeServerStateValues(key, baseValue, localValue, remoteValue);
-            this.revisions.set(key, remoteRevision);
-            this.baseValues.set(key, remoteValue);
-
-            if (!merge.ok) {
-              const conflict = { key, localValue, remoteValue, remoteRevision } satisfies ServerStorageConflict;
-              this.setValue(key, localValue);
-              this.conflicts.set(key, conflict);
-              this.failedWrites.delete(key);
-              if (this.failedWrites.size === 0) this.error = null;
-              this.dispatchConflict(conflict);
-              return;
-            }
-
-            desiredValue = merge.value;
-            this.setValue(key, desiredValue);
-            if (desiredValue !== localValue) this.onChange?.(key, desiredValue, 'server-merge');
-            if (desiredValue === remoteValue) {
-              this.failedWrites.delete(key);
-              if (this.failedWrites.size === 0) this.error = null;
-              return;
-            }
-            const mergedBytes = desiredValue === null ? 0 : utf8Bytes(desiredValue);
-            if (mergedBytes > SYNC_STATE_BUDGET_BYTES) {
-              this.setOversizedState(key, mergedBytes);
-              return;
-            }
-            if (attempt < 3) continue;
-            throw new Error('Server state kept changing while merging this saved item. Try again.');
-          }
-          if (response.status !== 429 && response.status < 500) break;
-        } catch (error) {
-          if (error instanceof ServerWriteBlockedError) throw error;
-          lastNetworkError = error instanceof Error ? error : new Error('Network request failed.');
-        }
-        if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 250 * (2 ** attempt)));
-      }
-      if (!response) throw lastNetworkError ?? new Error('دسترسی به سرور ذخیره‌سازی برقرار نشد.');
-      if (response.status === 401) reportApiUnauthorized(this.token);
-      if (response.status === 413) {
-        const limit = await response.json().catch(() => null);
-        if (limit && typeof limit === 'object' && 'error' in limit && limit.error === 'state_value_too_large') {
-          if ((this.values.get(key) ?? null) === desiredValue) {
-            const rejectedBytes = 'bytes' in limit && typeof limit.bytes === 'number' ? limit.bytes : bytes;
-            this.setOversizedState(key, rejectedBytes);
-          }
-          return;
-        }
-      }
-      if (!response.ok) throw new Error(response.status === 409
-        ? 'این داده در دستگاه دیگری تغییر کرده است؛ پیش از ادامه صفحه را دوباره بارگذاری کن.'
-        : response.status === 401
-          ? 'ورود Google منقضی شده است؛ ذخیرهٔ روی سرور تأیید نشد.'
-          : `ذخیرهٔ سروری ${key} ناموفق بود (HTTP ${response.status}).`);
-      const result: unknown = await response.json();
-      if (!canWriteToServer()) throw new ServerWriteBlockedError();
-      if (!result || typeof result !== 'object' || !Number.isSafeInteger((result as { revision?: unknown }).revision))
-        throw new Error('تأیید ذخیرهٔ سروری معتبر نبود.');
-      this.revisions.set(key, Number((result as { revision: number }).revision));
-      this.baseValues.set(key, desiredValue);
-      const latestValue = this.values.has(key) ? this.values.get(key)! : null;
-      if (latestValue === desiredValue || this.oversizedState.has(key) || this.coalescer.has(key)) this.failedWrites.delete(key);
-      else this.failedWrites.set(key, latestValue);
-      if (this.failedWrites.size === 0) this.error = null;
-    }).catch(error => {
-      if (this.oversizedState.has(key) || this.coalescer.has(key)) return;
-      // A later edit may already be queued; keep only the latest desired value.
-      const latestValue = this.values.has(key) ? this.values.get(key)! : null;
-      this.failedWrites.set(key, latestValue);
-      this.error = error instanceof Error ? error : new Error('Server storage write failed.');
-      if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new CustomEvent('math-scratchpad:storage-error', {
-        detail: this.error.message,
-      }));
-    }).finally(() => { this.queued = Math.max(0, this.queued - 1); });
+    const operation = this.tail
+      .then(async () => {
+        if (this.conflicts.has(key) || this.oversizedState.has(key)) return;
+        const result = await sendStateWrite(key, value, bytes, keepalive, {
+          token: () => this.token,
+          revision: () => this.revisions.get(key) ?? 0,
+          mergeConflict: () => this.mergeConflict(key),
+          currentValue: () => this.getItem(key),
+          markOversized: (rejectedBytes) => this.setOversizedState(key, rejectedBytes),
+        });
+        if (!result) return;
+        const { revision, desiredValue } = result;
+        this.revisions.set(key, revision);
+        this.baseValues.set(key, desiredValue);
+        const latestValue = this.values.has(key) ? this.values.get(key)! : null;
+        if (latestValue === desiredValue || this.oversizedState.has(key) || this.coalescer.has(key)) this.failedWrites.delete(key);
+        else this.failedWrites.set(key, latestValue);
+        if (this.failedWrites.size === 0) this.error = null;
+      })
+      .catch((error) => {
+        if (this.oversizedState.has(key) || this.coalescer.has(key)) return;
+        // A later edit may already be queued; keep only the latest desired value.
+        const latestValue = this.values.has(key) ? this.values.get(key)! : null;
+        this.failedWrites.set(key, latestValue);
+        this.error = error instanceof Error ? error : new Error('Server storage write failed.');
+        if (typeof globalThis.dispatchEvent === 'function')
+          globalThis.dispatchEvent(
+            new CustomEvent('math-scratchpad:storage-error', {
+              detail: this.error.message,
+            }),
+          );
+      })
+      .finally(() => {
+        this.queued = Math.max(0, this.queued - 1);
+      });
     this.tail = operation;
   }
 
@@ -309,11 +226,17 @@ export class ServerBackedStorage implements Storage {
     if (this.error) throw this.error;
   }
 
-  get hasPendingWrites() { return this.queued > 0 || this.coalescer.size > 0; }
+  get hasPendingWrites() {
+    return this.queued > 0 || this.coalescer.size > 0;
+  }
 
-  get pendingKeyCount() { return this.coalescer.size; }
+  get pendingKeyCount() {
+    return this.coalescer.size;
+  }
 
-  getConflicts(): ServerStorageConflict[] { return [...this.conflicts.values()]; }
+  getConflicts(): ServerStorageConflict[] {
+    return [...this.conflicts.values()];
+  }
 
   async resolveConflict(key: string, choice: ServerStorageConflictChoice): Promise<void> {
     const conflict = this.conflicts.get(key);
@@ -332,7 +255,7 @@ export class ServerBackedStorage implements Storage {
       return;
     }
 
-    const latestLocal = this.latestLocalValue(key, this.values.get(key) ?? null);
+    const latestLocal = latestLocalValue(key, this.values.get(key) ?? null);
     const localValue = keepLocalServerConflictValue(key, latestLocal, conflict.remoteValue);
     this.setValue(key, localValue);
     this.onChange?.(key, localValue, 'server-resolution-local');
@@ -350,7 +273,7 @@ export class ServerBackedStorage implements Storage {
   /** A newer server record is adopted only when local writes have completed. */
   applyRemote(records: ServerStateRecord[]) {
     if (this.hasPendingWrites || this.error || this.conflicts.size) return;
-    const incoming = new Map(records.map(record => [record.key, record]));
+    const incoming = new Map(records.map((record) => [record.key, record]));
     for (const key of new Set([...this.values.keys(), ...incoming.keys()])) {
       if (this.oversizedState.has(key)) continue;
       const remote = incoming.get(key);
@@ -373,18 +296,5 @@ export class ServerBackedStorage implements Storage {
   private setValue(key: string, value: string | null) {
     if (value === null) this.values.delete(key);
     else this.values.set(key, value);
-  }
-
-  private latestLocalValue(key: string, fallback: string | null): string | null {
-    if (typeof globalThis.dispatchEvent !== 'function' || typeof CustomEvent === 'undefined') return fallback;
-    const detail: ServerStorageSnapshotRequest = { key, value: fallback, provided: false };
-    try { globalThis.dispatchEvent(new CustomEvent(SERVER_STORAGE_SNAPSHOT_REQUEST_EVENT, { detail })); }
-    catch { return fallback; }
-    return detail.provided && (typeof detail.value === 'string' || detail.value === null) ? detail.value : fallback;
-  }
-
-  private dispatchConflict(conflict: ServerStorageConflict) {
-    if (typeof globalThis.dispatchEvent !== 'function' || typeof CustomEvent === 'undefined') return;
-    globalThis.dispatchEvent(new CustomEvent(SERVER_STORAGE_CONFLICT_EVENT, { detail: conflict }));
   }
 }

@@ -1,187 +1,30 @@
+import { isIndexedDbCacheKey } from './idb/cache-keys';
+import { connectStateMirror } from './state-mirror/connect';
+import { localStorageIfAvailable } from './idb/local-storage';
+import { withLegacyMigrationLock } from './idb/legacy-storage';
+export * from './idb/legacy-storage';
+export * from './reset-gate/local-reset';
+import { database, dbInstance, closeLearningDatabase } from './idb/database';
+import {
+  LEARNING_DB_NAME,
+  LEARNING_CACHE_STORE,
+  LEARNING_META_STORE,
+  LEGACY_MIGRATION_META_KEY,
+  type CacheRecord,
+  type MetaRecord,
+  type OutboxRecord,
+  type ServerEventRecord,
+  type LegacyLearningEntry,
+  type LegacyMigration,
+  type LearningDb,
+} from './idb/schema';
+export * from './idb/schema';
+export * from './idb/outbox';
 import { isLearningStorageKey } from '../../shared/contracts/storage-keys';
 export { isLearningStorageKey } from '../../shared/contracts/storage-keys';
-import { SYNC_STATE_BUDGET_BYTES, utf8Bytes } from '../../shared/contracts/limits';
-import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { LearnEvent } from './events';
-import {
-  LEARNING_RESET_EPOCH,
-  LOCAL_RESET_PENDING_KEY,
-  LOCAL_SERVER_RESET_EPOCH_KEY,
-  isValidLearningResetEpoch,
-  isServerResetStatusVerified,
-  getLocalPendingResetCreationEpoch,
-  getLearningResetRequestEpoch,
-  LOCAL_PENDING_EPOCH_PREFIX,
-  LOCAL_PENDING_RESET_EPOCH_KEY,
-  LOCAL_PENDING_RESET_SCOPE_KEY,
-  clearLocalPendingResetMetadata,
-  markLocalLearningResetPending,
-  notifyServerWriteGuardReleased,
-  setLocalPendingResetEpoch,
-} from './learning-reset-epoch';
-import { ServerBackedStorage, readServerSnapshot, SERVER_STORAGE_BUDGET_EVENT, type ServerStorageChangeSource } from './server-storage';
+import { deleteDB, type IDBPDatabase } from 'idb';
+import { ServerBackedStorage, type ServerStorageChangeSource } from './server-storage';
 
-export const LEARNING_DB_NAME = 'math-scratchpad-sync-v2';
-export const LEARNING_DB_VERSION = 2;
-const LEGACY_LEARNING_DB_NAMES = ['math-scratchpad-sync-v1'] as const;
-export const LEARNING_CACHE_STORE = 'cache';
-export const LEARNING_OUTBOX_STORE = 'outbox';
-export const LEARNING_SERVER_EVENTS_STORE = 'serverEvents';
-export const LEARNING_META_STORE = 'meta';
-export const LEARNING_QUARANTINE_STORE = 'quarantine';
-export const LEGACY_MIGRATION_META_KEY = 'legacy-migration-v1';
-const LOCAL_RESET_EPOCH_KEY = 'math-scratchpad-local-learning-reset-epoch-v1';
-const LOCAL_RESET_EPOCH = LEARNING_RESET_EPOCH;
-const LEGACY_MIGRATION_LOCK_NAME = 'math-scratchpad-legacy-migration-v1';
-const LEGACY_MIGRATION_LOCK_KEY = 'legacy-migration-lock-v1';
-const LEGACY_MIGRATION_LOCK_LEASE_MS = 120_000;
-const LEGACY_MIGRATION_LOCK_TIMEOUT_MS = 15_000;
-
-export type OutboxRecord = { id: string; event: LearnEvent; queuedAt: string; creationEpoch?: string; migrationId?: string };
-export type QuarantinedOutboxRecord = OutboxRecord & {
-  quarantineId: string;
-  quarantinedAt: string;
-  requiredEpoch: string;
-  reason: 'stale_epoch';
-};
-export type ServerEventRecord = { seq: number; event: LearnEvent };
-export type LegacyLearningEntry = { key: string; value: string; sha256: string };
-export type LegacyMigration = {
-  id: string;
-  createdAt: string;
-  entries: LegacyLearningEntry[];
-  eventIds: string[];
-  status: 'pending' | 'server-verified' | 'drive-backed-up' | 'complete';
-  serverVerifiedAt?: string;
-  backupFileId?: string;
-  backupFileName?: string;
-  backupVerifiedAt?: string;
-};
-export type MetaRecord = { key: string; value: unknown };
-export type CacheRecord = { key: string; value: string; updatedAt: string };
-
-interface LearningDb extends DBSchema {
-  cache: { key: string; value: CacheRecord };
-  outbox: {
-    key: string;
-    value: OutboxRecord;
-    indexes: { 'by-queued-at': string; 'by-migration-id': string };
-  };
-  serverEvents: {
-    key: number;
-    value: ServerEventRecord;
-    indexes: { 'by-event-id': string; 'by-migration-id': string };
-  };
-  quarantine: { key: string; value: QuarantinedOutboxRecord };
-  meta: { key: string; value: MetaRecord };
-}
-
-const DEVICE_ID_KEY = 'math-scratchpad-device-id-v1';
-const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1:';
-
-function isIndexedDbCacheKey(key: string): boolean {
-  return isLearningStorageKey(key) || key === DEVICE_ID_KEY || key.startsWith(BANK_CACHE_PREFIX);
-}
-
-/** True after this browser has cleared learning data and is waiting for the cloud copy to be cleared. */
-export function isLocalLearningResetPending(): boolean {
-  try { return localStorageIfAvailable()?.getItem(LOCAL_RESET_PENDING_KEY) === '1'; }
-  catch { return true; }
-}
-
-/** Record the current client build without removing any learning data or blocking local work. */
-export async function prepareLocalLearningReset(): Promise<boolean> {
-  const storage = localStorageIfAvailable();
-  if (!storage) throw new Error('Local browser storage is unavailable; old learning data was left untouched and sync is paused.');
-  return withLegacyMigrationLock(async () => {
-    if (storage.getItem(LOCAL_RESET_EPOCH_KEY) !== LOCAL_RESET_EPOCH) storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
-    return isLocalLearningResetPending();
-  });
-}
-
-/** Reconcile browser learning data against a server-issued reset generation before sync. */
-export async function reconcileServerLearningResetEpoch(epoch: string): Promise<boolean> {
-  if (!isValidLearningResetEpoch(epoch)) throw new Error('The server reset epoch is invalid; sync remains paused.');
-  const storage = localStorageIfAvailable();
-  if (!storage) throw new Error('Local browser storage is unavailable; old learning data was left untouched and sync is paused.');
-  return withLegacyMigrationLock(async () => {
-    const current = storage.getItem(LOCAL_SERVER_RESET_EPOCH_KEY);
-    if (current === epoch && !isLocalLearningResetPending()) return false;
-    if (!current && epoch === LEARNING_RESET_EPOCH && !isLocalLearningResetPending()) {
-      storage.setItem(LOCAL_SERVER_RESET_EPOCH_KEY, epoch);
-      return false;
-    }
-
-    // Set the guard before touching data so concurrent sync paths cannot send old work.
-    markLocalLearningResetPending();
-    if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== '1') {
-      throw new Error('The local reset guard could not be set; sync remains paused.');
-    }
-    setLocalPendingResetEpoch(epoch);
-    await completeLocalLearningReset(epoch);
-    return true;
-  });
-}
-
-/** Quarantine stale outbox items, adopt a server-confirmed epoch, and release sync without clearing work. */
-export async function completeLocalLearningReset(epoch: string): Promise<void> {
-  if (!isValidLearningResetEpoch(epoch)) throw new Error('The server reset epoch is invalid; sync remains paused.');
-  const storage = localStorageIfAvailable();
-  if (!storage) throw new Error('Local browser storage is unavailable; sync remains paused.');
-  await reconcileOutboxEpoch(epoch);
-  storage.setItem(LOCAL_SERVER_RESET_EPOCH_KEY, epoch);
-  storage.setItem(LOCAL_RESET_EPOCH_KEY, LOCAL_RESET_EPOCH);
-  clearLocalPendingResetMetadata();
-  storage.removeItem(LOCAL_RESET_PENDING_KEY);
-  if (storage.getItem(LOCAL_RESET_PENDING_KEY) !== null) throw new Error('The local reset guard could not be cleared; sync remains paused.');
-  notifyServerWriteGuardReleased();
-}
-
-async function reconcileOutboxEpoch(epoch: string): Promise<void> {
-  const db = await database();
-  const storage = localStorageIfAvailable();
-  const previousEpoch = storage?.getItem(LOCAL_SERVER_RESET_EPOCH_KEY) || LEARNING_RESET_EPOCH;
-  const pendingCandidate = storage?.getItem(LOCAL_PENDING_RESET_EPOCH_KEY);
-  const pendingScope = storage?.getItem(LOCAL_PENDING_RESET_SCOPE_KEY);
-  const pendingMarker = pendingScope ? `${LOCAL_PENDING_EPOCH_PREFIX}${pendingScope}` : null;
-  const pendingCandidateIsForRelease = pendingCandidate === epoch;
-  const tx = db.transaction([LEARNING_OUTBOX_STORE, LEARNING_QUARANTINE_STORE], 'readwrite');
-  const rows = await tx.objectStore(LEARNING_OUTBOX_STORE).getAll();
-  const quarantinedAt = new Date().toISOString();
-  for (const row of rows) {
-    const creationEpoch = row.creationEpoch ?? previousEpoch;
-    if (creationEpoch === epoch) {
-      if (!row.creationEpoch) await tx.objectStore(LEARNING_OUTBOX_STORE).put({ ...row, creationEpoch: epoch });
-      continue;
-    }
-    if ((pendingCandidateIsForRelease && creationEpoch === pendingCandidate)
-      || (pendingMarker && creationEpoch === pendingMarker)) {
-      await tx.objectStore(LEARNING_OUTBOX_STORE).put({ ...row, creationEpoch: epoch });
-      continue;
-    }
-    const quarantineId = `${row.id}:${encodeURIComponent(creationEpoch)}`;
-    await tx.objectStore(LEARNING_QUARANTINE_STORE).put({
-      ...row, creationEpoch, quarantineId, quarantinedAt, requiredEpoch: epoch, reason: 'stale_epoch',
-    });
-    await tx.objectStore(LEARNING_OUTBOX_STORE).delete(row.id);
-  }
-  await tx.done;
-}
-
-function deleteIndexedDbDatabase(name: string): Promise<void> {
-  if (typeof indexedDB === 'undefined') return Promise.reject(new Error('IndexedDB is unavailable; old local data could not be deleted.'));
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(name);
-    const timeout = setTimeout(() => reject(new Error('An older tab is still using the previous browser database; close it and reload this page.')), 15_000);
-    request.onsuccess = () => { clearTimeout(timeout); resolve(); };
-    request.onerror = () => { clearTimeout(timeout); reject(request.error ?? new Error('The previous browser database could not be deleted.')); };
-    // Existing tabs receive versionchange and close their DB. Keep waiting for the delete to finish.
-    request.onblocked = () => undefined;
-  });
-}
-
-let dbPromise: Promise<IDBPDatabase<LearningDb>> | undefined;
-let dbInstance: IDBPDatabase<LearningDb> | undefined;
 let storageWritable = false;
 let values = new Map<string, string>();
 let activeStorage: Storage | undefined;
@@ -194,8 +37,12 @@ const memoryOutbox = new Map<string, OutboxRecord>();
 const memoryServerEvents = new Map<number, ServerEventRecord>();
 const memoryMeta = new Map<string, unknown>();
 
-export function isServerStorageActive(): boolean { return !!serverStorage; }
-export function getAuthenticatedServerStorage(): ServerBackedStorage | undefined { return serverStorage; }
+export function isServerStorageActive(): boolean {
+  return !!serverStorage;
+}
+export function getAuthenticatedServerStorage(): ServerBackedStorage | undefined {
+  return serverStorage;
+}
 
 /** Connect an optional server mirror without replacing the durable browser store. */
 export async function initializeAuthenticatedServerStorage(token: string): Promise<void> {
@@ -205,59 +52,23 @@ export async function initializeAuthenticatedServerStorage(token: string): Promi
     throw new Error('ذخیره‌سازی پایدار این مرورگر آماده نیست؛ اتصال سرور به‌تنهایی برای ویرایش کافی نیست.');
   }
 
-  // Settle scheduled writes before rebuilding the mirror from the latest durable records.
-  if (serverStorage) {
-    serverStorage.setToken(token);
-    await serverStorage.flush().catch(() => {});
-  }
-  const snapshot = await readServerSnapshot(token);
-  const remoteRecords = snapshot.records.filter(record => isLearningStorageKey(record.key));
-  const db = await database();
-  const localRecords = await db.getAll(LEARNING_CACHE_STORE);
-  const localByKey = new Map(localRecords.filter(record => isLearningStorageKey(record.key)).map(record => [record.key, record]));
-  const remoteByKey = new Map(remoteRecords.map(record => [record.key, record]));
-
-  const mirror = new ServerBackedStorage(remoteRecords, token, (key, value, source) => {
-    if (isLearningStorageKey(key)) {
-      if (value === null) localStorageFacade.removeItem(key);
-      else localStorageFacade.setItem(key, value);
-    }
-    for (const listener of storageListeners) listener({ key, newValue: value, ...(source ? { source } : {}) });
-  });
-  serverStorage = mirror;
-
-  const keys = new Set([...localByKey.keys(), ...remoteByKey.keys()]);
-  for (const key of keys) {
-    const local = localByKey.get(key);
-    const remote = remoteByKey.get(key);
-    if (!local) {
-      if (remote?.value !== null && remote?.value !== undefined) localStorageFacade.setItem(key, remote.value);
-      continue;
-    }
-    if (!remote) {
-      mirror.setItem(key, local.value);
-      continue;
-    }
-    if (local.value === remote.value) continue;
-    if (utf8Bytes(local.value) > SYNC_STATE_BUDGET_BYTES) {
-      mirror.setItem(key, local.value);
-      continue;
-    }
-    const localTime = Date.parse(local.updatedAt) || 0;
-    const remoteTime = typeof remote.updatedAt === 'string' ? Date.parse(remote.updatedAt) || 0 : 0;
-    if (remoteTime > localTime) {
-      if (remote.value === null) localStorageFacade.removeItem(key);
-      else localStorageFacade.setItem(key, remote.value);
-    } else {
-      // Local data wins ties and records from older Workers without timestamps.
-      mirror.setItem(key, local.value);
-    }
-  }
-  if (typeof globalThis.dispatchEvent === 'function') globalThis.dispatchEvent(new Event(SERVER_STORAGE_BUDGET_EVENT));
+  await connectStateMirror(
+    token,
+    localStorageFacade,
+    serverStorage,
+    (mirror) => {
+      serverStorage = mirror;
+    },
+    (change) => {
+      for (const listener of storageListeners) listener(change);
+    },
+  );
   await flushLearningStorage();
 }
 
-export function updateAuthenticatedServerToken(token: string) { serverStorage?.setToken(token); }
+export function updateAuthenticatedServerToken(token: string) {
+  serverStorage?.setToken(token);
+}
 
 export async function refreshAuthenticatedServerStorage(token: string): Promise<void> {
   await initializeAuthenticatedServerStorage(token);
@@ -270,120 +81,7 @@ export function memoryServerEventRecords(): ServerEventRecord[] {
   return [...memoryServerEvents.values()].sort((a, b) => a.seq - b.seq);
 }
 export function serverLearningStateRecords(): CacheRecord[] {
-  return serverStorage?.exportRecords().map(row => ({ key: row.key, value: row.value, updatedAt: new Date().toISOString() })) ?? [];
-}
-
-/** Explicit owner-authorized transition: remove older local copies on this device. */
-export async function clearLegacyBrowserLearningData(): Promise<void> {
-  try {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('math-scratchpad')) localStorage.removeItem(key);
-    }
-  } catch { /* May be disabled by browser privacy settings. */ }
-  try {
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const key = sessionStorage.key(i);
-      if (key?.startsWith('math-scratchpad')) sessionStorage.removeItem(key);
-    }
-  } catch { /* May be disabled by browser privacy settings. */ }
-  for (const name of [LEARNING_DB_NAME, ...LEGACY_LEARNING_DB_NAMES]) {
-    try { await deleteIndexedDbDatabase(name); }
-    catch { /* A blocked browser database remains a failed best-effort legacy cleanup. */ }
-  }
-}
-
-
-function database(): Promise<IDBPDatabase<LearningDb>> {
-  if (!dbPromise) {
-    dbPromise = openDB<LearningDb>(LEARNING_DB_NAME, LEARNING_DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains(LEARNING_CACHE_STORE)) db.createObjectStore(LEARNING_CACHE_STORE, { keyPath: 'key' });
-        if (!db.objectStoreNames.contains(LEARNING_OUTBOX_STORE)) {
-          const store = db.createObjectStore(LEARNING_OUTBOX_STORE, { keyPath: 'id' });
-          store.createIndex('by-queued-at', 'queuedAt');
-          store.createIndex('by-migration-id', 'migrationId');
-        }
-        if (!db.objectStoreNames.contains(LEARNING_SERVER_EVENTS_STORE)) {
-          const store = db.createObjectStore(LEARNING_SERVER_EVENTS_STORE, { keyPath: 'seq' });
-          store.createIndex('by-event-id', 'event.id', { unique: true });
-          store.createIndex('by-migration-id', 'event.migrationChunk.id');
-        }
-        if (!db.objectStoreNames.contains(LEARNING_QUARANTINE_STORE)) {
-          db.createObjectStore(LEARNING_QUARANTINE_STORE, { keyPath: 'quarantineId' });
-        }
-        if (!db.objectStoreNames.contains(LEARNING_META_STORE)) db.createObjectStore(LEARNING_META_STORE, { keyPath: 'key' });
-      },
-      blocked() {
-        // A second tab may hold an old database connection; it will close on versionchange.
-      },
-    }).then(opened => {
-      dbInstance = opened;
-      opened.onversionchange = () => { opened.close(); dbInstance = undefined; dbPromise = undefined; };
-      return opened;
-    });
-  }
-  return dbPromise;
-}
-
-async function withIndexedDbMigrationLease<T>(db: IDBPDatabase<LearningDb>, operation: () => Promise<T>): Promise<T> {
-  const owner = crypto.randomUUID();
-  const startedAt = Date.now();
-  while (true) {
-    const tx = db.transaction(LEARNING_META_STORE, 'readwrite');
-    const record = await tx.store.get(LEGACY_MIGRATION_LOCK_KEY);
-    const lease = record?.value as { owner?: unknown; expiresAt?: unknown } | undefined;
-    if (!lease || typeof lease.owner !== 'string' || typeof lease.expiresAt !== 'number' || lease.expiresAt <= Date.now()) {
-      await tx.store.put({ key: LEGACY_MIGRATION_LOCK_KEY, value: { owner, expiresAt: Date.now() + LEGACY_MIGRATION_LOCK_LEASE_MS } });
-      await tx.done;
-      break;
-    }
-    await tx.done;
-    if (Date.now() - startedAt >= LEGACY_MIGRATION_LOCK_TIMEOUT_MS) {
-      throw new Error('Another tab is completing the data migration. Try again; legacy data was left untouched.');
-    }
-    await new Promise(resolve => setTimeout(resolve, 40));
-  }
-
-  let renewal = Promise.resolve();
-  const timer = setInterval(() => {
-    renewal = renewal.then(async () => {
-      const tx = db.transaction(LEARNING_META_STORE, 'readwrite');
-      const record = await tx.store.get(LEGACY_MIGRATION_LOCK_KEY);
-      const lease = record?.value as { owner?: unknown } | undefined;
-      if (lease?.owner === owner) {
-        await tx.store.put({ key: LEGACY_MIGRATION_LOCK_KEY, value: { owner, expiresAt: Date.now() + LEGACY_MIGRATION_LOCK_LEASE_MS } });
-      }
-      await tx.done;
-    }).catch(() => undefined);
-  }, 20_000);
-
-  try {
-    return await operation();
-  } finally {
-    clearInterval(timer);
-    await renewal;
-    try {
-      const tx = db.transaction(LEARNING_META_STORE, 'readwrite');
-      const record = await tx.store.get(LEGACY_MIGRATION_LOCK_KEY);
-      const lease = record?.value as { owner?: unknown } | undefined;
-      if (lease?.owner === owner) await tx.store.delete(LEGACY_MIGRATION_LOCK_KEY);
-      await tx.done;
-    } catch { /* An expired lease is safe; the next tab can acquire it. */ }
-  }
-}
-
-/** Serialize migration work across tabs; Web Locks is preferred, with an IndexedDB lease fallback. */
-export async function withLegacyMigrationLock<T>(operation: () => Promise<T>): Promise<T> {
-  const lockManager = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-  if (typeof lockManager?.request === 'function') {
-    return lockManager.request(LEGACY_MIGRATION_LOCK_NAME, { mode: 'exclusive' }, operation);
-  }
-  return withIndexedDbMigrationLease(await database(), operation);
-}
-
-function localStorageIfAvailable(): Storage | undefined {
-  try { return globalThis.localStorage; } catch { return undefined; }
+  return serverStorage?.exportRecords().map((row) => ({ key: row.key, value: row.value, updatedAt: new Date().toISOString() })) ?? [];
 }
 
 function trackWrite<T>(promise: Promise<T>): Promise<T> {
@@ -394,11 +92,17 @@ function trackWrite<T>(promise: Promise<T>): Promise<T> {
 
 function notifyTabs(key: string, value: string | null) {
   // BroadcastChannel reaches other tabs; the writing tab already applied this change locally.
-  try { channel?.postMessage({ key, value, updatedAt: new Date().toISOString() }); } catch { /* Optional cross-tab hint. */ }
+  try {
+    channel?.postMessage({ key, value, updatedAt: new Date().toISOString() });
+  } catch {
+    /* Optional cross-tab hint. */
+  }
 }
 
 class IndexedDbStorage implements Storage {
-  get length(): number { return values.size; }
+  get length(): number {
+    return values.size;
+  }
   clear(): void {
     if (!storageWritable || !dbInstance) throw new Error('IndexedDB is not available; stored learning data was left untouched.');
     const removed = [...values.keys()];
@@ -406,8 +110,12 @@ class IndexedDbStorage implements Storage {
     trackWrite(dbInstance.clear(LEARNING_CACHE_STORE));
     for (const key of removed) notifyTabs(key, null);
   }
-  getItem(key: string): string | null { return values.get(String(key)) ?? null; }
-  key(index: number): string | null { return [...values.keys()].sort()[index] ?? null; }
+  getItem(key: string): string | null {
+    return values.get(String(key)) ?? null;
+  }
+  key(index: number): string | null {
+    return [...values.keys()].sort()[index] ?? null;
+  }
   removeItem(key: string): void {
     if (!storageWritable || !dbInstance) throw new Error('IndexedDB is not available; stored learning data was left untouched.');
     const normalized = String(key);
@@ -417,8 +125,10 @@ class IndexedDbStorage implements Storage {
     if (serverStorage && isLearningStorageKey(normalized)) serverStorage.removeItem(normalized);
   }
   setItem(key: string, value: string): void {
-    const normalized = String(key), text = String(value);
-    if (!storageWritable || !dbInstance) throw new Error('IndexedDB is not available; the draft remains in memory and was not written to localStorage.');
+    const normalized = String(key),
+      text = String(value);
+    if (!storageWritable || !dbInstance)
+      throw new Error('IndexedDB is not available; the draft remains in memory and was not written to localStorage.');
     values.set(normalized, text);
     trackWrite(dbInstance.put(LEARNING_CACHE_STORE, { key: normalized, value: text, updatedAt: new Date().toISOString() }));
     notifyTabs(normalized, text);
@@ -443,11 +153,11 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
     try {
       const db = await database();
       const cached = await db.getAll(LEARNING_CACHE_STORE);
-      values = new Map(cached.map(item => [item.key, item.value]));
+      values = new Map(cached.map((item) => [item.key, item.value]));
 
       const legacyStorage = localStorageIfAvailable();
       const migration = await withLegacyMigrationLock(async (): Promise<LegacyMigration | null> => {
-        const migrationRecord = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
+        const migrationRecord = (await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY)) as MetaRecord | undefined;
         let migration = (migrationRecord?.value as LegacyMigration | undefined) ?? null;
         if (!migration && legacyStorage) {
           const entries: LegacyLearningEntry[] = [];
@@ -466,7 +176,11 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
           }
           if (entries.length) {
             migration = {
-              id: crypto.randomUUID(), createdAt: new Date().toISOString(), entries, eventIds: [], status: 'pending',
+              id: crypto.randomUUID(),
+              createdAt: new Date().toISOString(),
+              entries,
+              eventIds: [],
+              status: 'pending',
             };
             await db.put(LEARNING_META_STORE, { key: LEGACY_MIGRATION_META_KEY, value: migration });
           }
@@ -479,7 +193,7 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
       });
       // Refresh after acquiring the lock so a second tab sees the first tab's durable copy.
       const cachedAfterMigration = await db.getAll(LEARNING_CACHE_STORE);
-      values = new Map(cachedAfterMigration.map(item => [item.key, item.value]));
+      values = new Map(cachedAfterMigration.map((item) => [item.key, item.value]));
       if (migration) {
         // The original localStorage snapshot remains authoritative for the one-time migration.
         // It may intentionally differ from the newer IndexedDB cache after this page has resumed.
@@ -492,7 +206,7 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
       try {
         if (!channel && typeof BroadcastChannel !== 'undefined') {
           channel = new BroadcastChannel('math-scratchpad-learning-cache-v1');
-          channel.onmessage = event => {
+          channel.onmessage = (event) => {
             const record = event.data as { key?: unknown; value?: unknown } | null;
             if (!record || typeof record.key !== 'string') return;
             if (record.value === null) values.delete(record.key);
@@ -501,26 +215,32 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
             for (const listener of storageListeners) listener({ key: record.key, newValue });
           };
         }
-      } catch { /* IndexedDB remains the durable source when BroadcastChannel is unavailable. */ }
+      } catch {
+        /* IndexedDB remains the durable source when BroadcastChannel is unavailable. */
+      }
       storageWritable = true;
       return { storage: activeStorage, dbAvailable: true, migration: migration ?? null, warning: '' };
     } catch {
       // Keep old data readable but never write new learning state back to localStorage.
       storageWritable = false;
-      dbInstance?.close();
-      dbInstance = undefined;
-      dbPromise = undefined;
+      closeLearningDatabase();
       const legacyStorage = localStorageIfAvailable();
       values = new Map();
-      if (legacyStorage) for (let index = 0; index < legacyStorage.length; index++) {
-        const key = legacyStorage.key(index);
-        if (key && isIndexedDbCacheKey(key)) {
-          const value = legacyStorage.getItem(key);
-          if (value !== null) values.set(key, value);
+      if (legacyStorage)
+        for (let index = 0; index < legacyStorage.length; index++) {
+          const key = legacyStorage.key(index);
+          if (key && isIndexedDbCacheKey(key)) {
+            const value = legacyStorage.getItem(key);
+            if (value !== null) values.set(key, value);
+          }
         }
-      }
       activeStorage = new IndexedDbStorage();
-      return { storage: activeStorage, dbAvailable: false, migration: null, warning: 'ذخیره‌سازی پایدار مرورگر در دسترس نیست؛ داده‌های قدیمی دست‌نخورده مانده‌اند.' };
+      return {
+        storage: activeStorage,
+        dbAvailable: false,
+        migration: null,
+        warning: 'ذخیره‌سازی پایدار مرورگر در دسترس نیست؛ داده‌های قدیمی دست‌نخورده مانده‌اند.',
+      };
     }
   })();
   return bootstrapPromise;
@@ -531,15 +251,19 @@ export function getLearningStorage(): Storage {
   return activeStorage ?? localStorageIfAvailable() ?? new IndexedDbStorage();
 }
 
-export function subscribeLearningStorage(listener: (change: { key: string; newValue: string | null; source?: ServerStorageChangeSource }) => void): () => void {
+export function subscribeLearningStorage(
+  listener: (change: { key: string; newValue: string | null; source?: ServerStorageChangeSource }) => void,
+): () => void {
   storageListeners.add(listener);
   return () => storageListeners.delete(listener);
 }
 
-export function getLearningDb(): Promise<IDBPDatabase<LearningDb>> { return database(); }
+export function getLearningDb(): Promise<IDBPDatabase<LearningDb>> {
+  return database();
+}
 
 export function refreshLearningStorageValues(records: CacheRecord[]): void {
-  values = new Map(records.map(record => [record.key, record.value]));
+  values = new Map(records.map((record) => [record.key, record.value]));
 }
 
 export async function flushLearningStorage(): Promise<void> {
@@ -551,117 +275,23 @@ export async function writeLearningItem(key: string, value: string): Promise<voi
   await flushLearningStorage();
 }
 
-export async function readLegacyMigration(): Promise<LegacyMigration | null> {
-  const db = await database();
-  const record = await db.get(LEARNING_META_STORE, LEGACY_MIGRATION_META_KEY) as MetaRecord | undefined;
-  return (record?.value as LegacyMigration | undefined) ?? null;
-}
-
-export async function writeLegacyMigration(migration: LegacyMigration): Promise<void> {
-  const db = await database();
-  await db.put(LEARNING_META_STORE, { key: LEGACY_MIGRATION_META_KEY, value: migration });
-}
-
-/** Delete only the exact legacy values that were copied and verified; changed keys are preserved. */
-export async function clearVerifiedLegacyKeys(migration: LegacyMigration): Promise<{ cleared: string[]; changed: string[] }> {
-  const storage = localStorageIfAvailable();
-  if (!storage) throw new Error('Legacy browser storage is unavailable; no legacy values were removed.');
-  const canResumeVerifiedCleanup = migration.status === 'drive-backed-up'
-    && Boolean(migration.backupFileId && migration.backupVerifiedAt);
-  const expectedKeys = new Set(migration.entries.map(entry => entry.key));
-  const addedKeys: string[] = [];
-  for (let index = 0; index < storage.length; index++) {
-    const key = storage.key(index);
-    if (key && isLearningStorageKey(key) && !expectedKeys.has(key)) addedKeys.push(key);
-  }
-  const changedKeys = migration.entries.filter(entry => {
-    const current = storage.getItem(entry.key);
-    return current !== entry.value && !(canResumeVerifiedCleanup && current === null);
-  }).map(entry => entry.key);
-  const changed = [...new Set([...changedKeys, ...addedKeys])].sort();
-  if (changed.length) return { cleared: [], changed };
-
-  const cleared: string[] = [];
-  for (const entry of migration.entries) {
-    const current = storage.getItem(entry.key);
-    if (current === entry.value) {
-      storage.removeItem(entry.key);
-      if (storage.getItem(entry.key) !== null) throw new Error(`Legacy key ${entry.key} could not be cleared safely.`);
-    } else if (!(canResumeVerifiedCleanup && current === null)) {
-      return { cleared: [], changed: [entry.key] };
-    }
-    // A missing key is an already-completed deletion only after a verified Drive backup.
-    cleared.push(entry.key);
-  }
-  return { cleared, changed: [] };
-}
-
 export async function resetLearningDbForTests(): Promise<void> {
-  dbInstance?.close();
-  dbInstance = undefined; dbPromise = undefined; bootstrapPromise = undefined; activeStorage = undefined;
+  closeLearningDatabase();
+  bootstrapPromise = undefined;
+  activeStorage = undefined;
   serverStorage = undefined;
-  values = new Map(); pendingWrites = new Set(); channel?.close(); channel = undefined; storageListeners.clear();
-  memoryOutbox.clear(); memoryServerEvents.clear(); memoryMeta.clear();
+  values = new Map();
+  pendingWrites = new Set();
+  channel?.close();
+  channel = undefined;
+  storageListeners.clear();
+  memoryOutbox.clear();
+  memoryServerEvents.clear();
+  memoryMeta.clear();
   storageWritable = false;
   await deleteDB(LEARNING_DB_NAME);
 }
 
 export function learningDbWriteError(): string {
   return storageWritable && dbInstance ? '' : 'IndexedDB is not initialized.';
-}
-
-export async function queueLearnEvent(event: LearnEvent, migrationId?: string): Promise<void> {
-  const db = await database();
-  const existing = await db.get(LEARNING_OUTBOX_STORE, event.id);
-  const serialized = JSON.stringify(event);
-  if (existing && JSON.stringify(existing.event) !== serialized) throw new Error('An event id was reused with different content.');
-  if (!existing) {
-    const creationEpoch = isLocalLearningResetPending() || !isServerResetStatusVerified()
-      ? getLocalPendingResetCreationEpoch()
-      : getLearningResetRequestEpoch();
-    await db.put(LEARNING_OUTBOX_STORE, { id: event.id, event, queuedAt: event.ts, creationEpoch, ...(migrationId ? { migrationId } : {}) });
-  }
-}
-
-export async function readOutboxBatch(maxItems = 50): Promise<OutboxRecord[]> {
-  const db = await database();
-  return db.getAllFromIndex(LEARNING_OUTBOX_STORE, 'by-queued-at', undefined, Math.max(1, Math.min(50, maxItems)));
-}
-
-export async function readOutboxCount(): Promise<number> {
-  return (await database()).count(LEARNING_OUTBOX_STORE);
-}
-
-export async function readQuarantineCount(): Promise<number> {
-  return (await database()).count(LEARNING_QUARANTINE_STORE);
-}
-
-export async function acknowledgeOutbox(ids: string[]): Promise<void> {
-  if (!ids.length) return;
-  const db = await database();
-  const tx = db.transaction(LEARNING_OUTBOX_STORE, 'readwrite');
-  await Promise.all(ids.map(id => tx.store.delete(id)));
-  await tx.done;
-}
-
-export async function storeServerEvents(events: ServerEventRecord[]): Promise<void> {
-  if (!events.length) return;
-  const db = await database();
-  const tx = db.transaction(LEARNING_SERVER_EVENTS_STORE, 'readwrite');
-  await Promise.all(events.map(item => tx.store.put(item)));
-  await tx.done;
-}
-
-export async function readServerEventsByMigration(migrationId: string): Promise<ServerEventRecord[]> {
-  const db = await database();
-  return db.getAllFromIndex(LEARNING_SERVER_EVENTS_STORE, 'by-migration-id', migrationId);
-}
-
-export async function getSyncMeta<T>(key: string): Promise<T | undefined> {
-  const value = await (await database()).get(LEARNING_META_STORE, key) as MetaRecord | undefined;
-  return value?.value as T | undefined;
-}
-
-export async function setSyncMeta(key: string, value: unknown): Promise<void> {
-  await (await database()).put(LEARNING_META_STORE, { key, value });
 }
