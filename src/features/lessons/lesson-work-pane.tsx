@@ -4,7 +4,7 @@ import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
 import { stepIsBlank, stepLatex, type Step } from '../../model';
 import { LessonMathCheck } from './lesson-math-check';
-import { MathDisplay } from '../../MathDisplay';
+import { MathDisplay } from '../math-editor/components/math-display';
 import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
 import { workAnswerHasContent, type LessonWorkItem, type LessonWorkKind } from './lesson-work-items';
 import { LessonAnswerFields } from './lesson-check';

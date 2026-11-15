@@ -6,12 +6,12 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from '../../src/app/store-provider';
 import { initialState, makeStore } from '../../src/store';
 import { bankDocument, validateBank, type BankQuestion, type DriveBank } from '../../src/features/drive-bank/drive-bank';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { LessonScreen } from '../../src/features/lessons/lesson-screen';
 import { LessonPicker } from '../../src/features/lessons/lesson-picker';
 import { displayEducationalHeading, isMathQuestionSource, LessonBlockView, LessonSourceAttribution, QuestionChoice, QuestionSource } from '../../src/features/lessons/lesson-content';
 import { LessonReferenceDialog } from '../../src/features/lessons/lesson-reference-dialog';
-import { MathDisplay } from '../../src/MathDisplay';
+import { MathDisplay } from '../../src/features/math-editor/components/math-display';
 import type { LessonProgress } from '../../src/features/lessons/types';
 import { subscribeToLearnEvents, type LearnEvent } from '../../src/sync/events';
 

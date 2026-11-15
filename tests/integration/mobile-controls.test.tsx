@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Provider } from '../../src/app/store-provider';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { actions, exerciseOf, initialState, makeStore } from '../../src/store';
 import { latex } from '../../src/model';
 import { submenuAction } from '../support/menu-actions';

@@ -1,7 +1,7 @@
 import { initialKeyboardOpen } from './shared/lib/ui-prefs';
 import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
-import { App } from './App';
+import { App } from './app/app';
 import { makeStore, actions, initialState } from './store';
 import { serialize, validateSession } from './persistence';
 import { getLearningStorage, initializeLearningStorage, flushLearningStorage } from './sync/browser-db';

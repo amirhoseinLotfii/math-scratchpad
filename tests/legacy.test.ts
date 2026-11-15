@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migrateChatDiagnosticSession } from '../src/legacyDiagnostic';
+import { migrateChatDiagnosticSession } from '../src/legacy-diagnostic';
 import { latex } from '../src/model';
 import { validateSession } from '../src/persistence';
 

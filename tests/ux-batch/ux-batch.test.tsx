@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Provider } from '../../src/app/store-provider';
-import { App, INSERT_VISIBLE } from '../../src/App';
+import { App, INSERT_VISIBLE } from '../../src/app/app';
 import { actions, exerciseOf, initialState, makeStore } from '../../src/store';
 import { latex } from '../../src/model';
 import { parse } from '../../src/parser';

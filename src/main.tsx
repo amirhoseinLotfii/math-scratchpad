@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { Provider } from './app/store-provider';
-import { App } from './App';
+import { App } from './app/app';
 import { createPersistentStore } from './features/session/persistence/persistent-store';
 import {
   initializeLearningStorage,

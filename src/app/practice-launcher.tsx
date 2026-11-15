@@ -7,7 +7,7 @@ import { ascii, example } from '../model';
 import { parse } from '../parser';
 import { writeClipboard } from '../review';
 import { validateSession } from '../persistence';
-import { migrateChatDiagnosticSession } from '../legacyDiagnostic';
+import { migrateChatDiagnosticSession } from '../legacy-diagnostic';
 import { Button } from '../shared/ui/button';
 import { problemSchema, jsonInputSchema } from '../features/session/schemas/session-schema';
 

@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from '../../hooks';
 import { Provider } from '../../app/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
 import { MathInsertDialog } from '../math-editor/components/math-insert-dialog';
-import { Keyboard } from '../../Keyboard';
+import { Keyboard } from '../math-editor/components/keyboard';
 import { actions, exerciseOf, initialState, makeStore } from '../../store';
 import { blankStep, leaves, stepIsBlank, stepLatex, uid, type Step } from '../../model';
 import { Button } from '../../shared/ui/button';

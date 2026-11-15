@@ -1,5 +1,5 @@
 import { Fragment, useId, useMemo, useState } from 'react';
-import { MathDisplay } from '../../MathDisplay';
+import { MathDisplay } from '../math-editor/components/math-display';
 import { Button } from '../../shared/ui/button';
 import { parseLessonTable } from './lesson-table';
 import { splitLessonText } from './lesson-notation';

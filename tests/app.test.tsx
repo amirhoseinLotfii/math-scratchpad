@@ -2,7 +2,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Provider } from '../src/app/store-provider';
-import { App } from '../src/App';
+import { App } from '../src/app/app';
 import { submenuAction } from './support/menu-actions';
 import { actions, exerciseOf, initialState, makeStore, stepOf } from '../src/store';
 import { leaves, latex, stepLatex } from '../src/model';

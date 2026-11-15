@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { Provider } from '../../src/app/store-provider';
 import { bankDocument, readArchive, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { actions, initialState, makeStore } from '../../src/store';

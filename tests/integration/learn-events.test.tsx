@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { Provider } from '../../src/app/store-provider';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { initialState, makeStore } from '../../src/store';
 import { resetLearnEventRuntimeForTests, subscribeToLearnEvents } from '../../src/sync/events';
 import { ActivityTracker } from '../../src/sync/activity-tracker';

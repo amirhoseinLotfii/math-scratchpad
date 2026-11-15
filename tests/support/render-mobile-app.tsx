@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../src/app/store-provider';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { actions, initialState, makeStore } from '../../src/store';
 
 // Current production adapter only. Replace this adapter when the Zustand UI is implemented;

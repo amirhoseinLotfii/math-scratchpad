@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import '@testing-library/jest-dom/vitest';
 import { Provider } from '../../src/app/store-provider';
 import { QuestionNavigator } from '../../src/features/workspace/components/question-navigator';
-import { QuestionTimer } from '../../src/QuestionTimer';
+import { QuestionTimer } from '../../src/features/session/components/question-timer';
 import { DriveBankPanel, POLL_MS } from '../../src/features/drive-bank/drive-bank-panel';
 import { actions, initialState, makeStore } from '../../src/store';
 import { bankDocument, validateBank } from '../../src/features/drive-bank/drive-bank';

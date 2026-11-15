@@ -2,7 +2,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Provider } from '../../src/app/store-provider';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { actions, initialState, makeStore } from '../../src/store';
 afterEach(cleanup);
 function mount() { const s = makeStore(initialState()); s.dispatch(actions.startFractionRound()); render(<Provider store={s}><App /></Provider>); return s; }

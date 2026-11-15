@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { Provider } from '../../src/app/store-provider';
 import { bankDocument, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { buildTutorExport, missingFinalAnswers } from '../../src/features/session/export/tutor-export';

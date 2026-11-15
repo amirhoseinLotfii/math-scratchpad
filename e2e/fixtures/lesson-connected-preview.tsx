@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { Provider } from '../../src/app/store-provider';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { bankDocument, type DriveBank } from '../../src/features/drive-bank/drive-bank';
 import { actions, initialState, makeStore } from '../../src/store';
 import { initializeLearningStorage } from '../../src/sync/browser-db';

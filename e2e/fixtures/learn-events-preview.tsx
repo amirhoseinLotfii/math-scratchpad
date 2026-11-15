@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Provider } from '../../src/app/store-provider';
-import { App } from '../../src/App';
+import { App } from '../../src/app/app';
 import { initialState, makeStore } from '../../src/store';
 import { subscribeToLearnEvents, type LearnEvent } from '../../src/sync/events';
 import '../../src/fonts.css';

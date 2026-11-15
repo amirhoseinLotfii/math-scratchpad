@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Provider } from '../../src/app/store-provider';
-import { QuestionTimer } from '../../src/QuestionTimer';
+import { QuestionTimer } from '../../src/features/session/components/question-timer';
 import { actions, initialState, makeStore } from '../../src/store';
 import { elapsedAt } from '../../src/model';
 import { serialize, validateSession } from '../../src/persistence';
