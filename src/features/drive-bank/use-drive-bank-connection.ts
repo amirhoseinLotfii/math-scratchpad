@@ -3,19 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { GOOGLE_AUTH_STATE_EVENT } from '../../sync/google-auth-state';
 import {
   EMPTY_BANK,
-  bankCacheStorageKey,
   metaFingerprint,
   parseBankText,
-  readBankCache,
   readDriveMeta,
   readPrivateBankText,
-  saveBankCache,
   snapshotVersion,
   type DriveBank,
   type DriveMeta,
 } from './drive-bank';
 import {
-  DRIVE_CONFIG_KEY,
   clearDriveSessionToken,
   getConfig,
   loadIdentity,
@@ -30,6 +26,8 @@ import {
 } from './google';
 import { permittedAccount } from './identity';
 import { readBankViaWorker } from './worker-bank';
+import { saveVerifiedBank } from './save-verified-bank';
+import { requestPersistentStorageOnce } from '../../pwa/storage-persistence';
 
 import type { ScratchStore } from '../../store';
 type Options = {
@@ -40,13 +38,15 @@ type Options = {
   onResumeBank?: (bank: DriveBank, version: string) => void;
 };
 import { useBankPolling } from './use-bank-polling';
+import { useDriveBankOfflineEvents } from './use-drive-bank-offline-events';
 export { POLL_MS } from './use-bank-polling';
 export function useDriveBankConnection({ open, store, onAvailable, onBankReady, onResumeBank }: Options) {
   const [config, setConfig] = useState<DriveConfig>(getConfig),
     [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Connect Google Drive to begin.'),
     [busy, setBusy] = useState(false),
-    [ready, setReady] = useState(false);
+    [ready, setReady] = useState(false),
+    [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [available, setAvailable] = useState<{ bank: DriveBank; version: string } | null>(null);
   const [checkedAt, setCheckedAt] = useState('');
   const token = useRef<Token | null>(null),
@@ -55,55 +55,32 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     syncing = useRef(false),
     selectedFileByUser = useRef(false);
   const onBankReadyRef = useRef(onBankReady),
-    onAvailableRef = useRef(onAvailable);
+    onAvailableRef = useRef(onAvailable),
+    onResumeBankRef = useRef(onResumeBank);
   onBankReadyRef.current = onBankReady;
   onAvailableRef.current = onAvailable;
+  onResumeBankRef.current = onResumeBank;
   const cfg = useRef(config);
   cfg.current = config;
-  async function restoreCachedBank(fileId: string) {
-    if (!fileId) return;
-    try {
-      const cached = await readBankCache(fileId);
-      if (!active.current || cfg.current.fileId !== fileId || !cached) return;
-      fingerprint.current = cached.fingerprint;
-      setAvailable({ bank: cached.bank, version: cached.version });
-      const session = store.getState().doc.session;
-      onAvailableRef.current(
-        cached.bank.questions.length > 0 && !(session?.bankId === cached.bank.bank_id && session.bankVersion === cached.version),
-      );
-      onBankReadyRef.current?.(cached.bank, cached.version);
-      setMessage(
-        `Restored the verified local bank ${cached.bank.bank_id} (${cached.bank.version}); ` +
-          'it will be checked against Drive after reconnecting.',
-      );
-    } catch {
-      // A corrupt cache is left untouched; a fresh verified Drive download can replace it.
-    }
-  }
+  useDriveBankOfflineEvents({
+    config: cfg,
+    fingerprint,
+    active,
+    store,
+    onAvailable: onAvailableRef,
+    onBankReady: onBankReadyRef,
+    onResumeBank: onResumeBankRef,
+    setAvailable,
+    setConfig,
+    setMessage,
+    setOnline,
+  });
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
       token.current = null;
     };
-  }, []);
-  useEffect(() => {
-    void restoreCachedBank(cfg.current.fileId);
-  }, []);
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === DRIVE_CONFIG_KEY) {
-        const next = getConfig();
-        cfg.current = next;
-        setConfig(next);
-        fingerprint.current = '';
-        void restoreCachedBank(next.fileId);
-      } else if (event.key === bankCacheStorageKey(cfg.current.fileId)) {
-        void restoreCachedBank(cfg.current.fileId);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
   }, []);
   useEffect(() => {
     const onGoogleAuthChanged = () => {
@@ -127,7 +104,11 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
   }, [open]);
   useEffect(() => {
     if (!open || ready) return;
-    void Promise.all([loadIdentity(), loadPicker().catch(() => undefined)])
+    if (!online) {
+      setMessage('برای ورود Google، دریافت بانک از Drive و بررسی به‌روزرسانی بانک به اینترنت نیاز است.');
+      return;
+    }
+    void Promise.all([loadIdentity(), loadPicker()])
       .then(() => {
         if (!active.current) return;
         setReady(true);
@@ -142,7 +123,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       .catch((e) => {
         if (active.current) setMessage(e instanceof Error ? e.message : 'Google services are unavailable.');
       });
-  }, [open, ready]);
+  }, [open, ready, online]);
   function expire(text: string) {
     token.current = null;
     clearDriveSessionToken();
@@ -227,7 +208,8 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       return;
     }
     const version = await snapshotVersion(parsed);
-    const cache = await saveBankCache(fileId, parsed, version, fp);
+    const { legacyCache, offlineWarning } = await saveVerifiedBank(fileId, parsed, version, fp);
+    void requestPersistentStorageOnce();
     setAvailable({ bank: parsed, version });
     announce(parsed, version);
     onBankReady?.(parsed, version);
@@ -238,7 +220,7 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
       onResumeBank?.(parsed, version);
     }
     const current = store.getState().doc.session;
-    setMessage(bankReadyMessage(parsed, version, cache, current));
+    setMessage([bankReadyMessage(parsed, version, legacyCache, current), offlineWarning].filter(Boolean).join(' '));
   }
   useBankPolling(connected && open, sync);
   function afterToken(t: Token, accountVerified = false) {
@@ -293,5 +275,21 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
     });
   }
 
-  return { config, connected, message, busy, ready, available, checkedAt, token, setBusy, setMessage, announce, afterToken, choose, sync };
+  return {
+    config,
+    connected,
+    message,
+    busy,
+    ready,
+    online,
+    available,
+    checkedAt,
+    token,
+    setBusy,
+    setMessage,
+    announce,
+    afterToken,
+    choose,
+    sync,
+  };
 }

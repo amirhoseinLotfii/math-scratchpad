@@ -1,9 +1,11 @@
 import { Button } from '../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { type ArchivedSession } from './drive-bank';
+import type { CachedOfflineBank } from '../../pwa/offline-bank-cache';
 
 import type { RefObject } from 'react';
-export type BankConfirmation = { kind: 'batch' } | { kind: 'restore'; saved: ArchivedSession };
+export type BankConfirmation =
+  { kind: 'batch' } | { kind: 'restore'; saved: ArchivedSession } | { kind: 'offline-bank'; bank: CachedOfflineBank };
 
 export function BankSessionConfirmation({
   confirmation,
@@ -40,18 +42,26 @@ export function BankSessionConfirmation({
           else panel.current?.focus({ preventScroll: true });
         }}
       >
-        <DialogTitle>{confirmation?.kind === 'batch' ? 'Open a new question batch?' : 'Restore this saved session?'}</DialogTitle>
+        <DialogTitle>
+          {confirmation?.kind === 'batch'
+            ? 'Open a new question batch?'
+            : confirmation?.kind === 'offline-bank'
+              ? 'Open a cached offline bank?'
+              : 'Restore this saved session?'}
+        </DialogTitle>
         <DialogDescription id="drive-session-confirmation-description">
           {confirmation?.kind === 'batch'
             ? 'The current session will be saved in this browser and can be restored from Saved sessions.'
-            : 'The current session will also be saved.'}
+            : confirmation?.kind === 'offline-bank'
+              ? 'The current session will be saved locally before the cached bank opens.'
+              : 'The current session will also be saved.'}
         </DialogDescription>
         <div className="dialog-actions">
           <Button ref={cancelConfirmation} onClick={() => setConfirmation(null)}>
             Cancel
           </Button>
           <Button variant="default" onClick={confirmRequestedAction}>
-            {confirmation?.kind === 'batch' ? 'Open batch' : 'Restore session'}
+            {confirmation?.kind === 'batch' ? 'Open batch' : confirmation?.kind === 'offline-bank' ? 'Open bank' : 'Restore session'}
           </Button>
         </div>
       </DialogContent>

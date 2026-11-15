@@ -1,7 +1,8 @@
+import { InstallApp } from '../pwa/install-app';
 import { SyncStatusDetails } from './sync-status-details';
 import { LegacyMigrationStatus } from './legacy-migration-status';
 import { OversizedStateWarning } from './state-sync-budget-ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { GoogleLoginButton } from './google-login-button';
 import { getDefaultSyncRuntime } from './runtime';
@@ -13,6 +14,7 @@ import { useSyncPanelModal } from './use-sync-panel-modal';
 export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const runtime = getDefaultSyncRuntime();
   const [busy, setBusy] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -22,6 +24,16 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
   const backup = useLearningBackupActions(feedback);
   const { downloadFullBackup } = backup;
   const { modal, closeRef, isClosable } = useSyncPanelModal(onClose);
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
   return (
     <>
       {isClosable && <div className="sync-panel-backdrop" aria-hidden="true" onClick={() => closeRef.current?.()} />}
@@ -45,10 +57,16 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
             </button>
           )}
         </div>
+        <InstallApp />
         <OversizedStateWarning onBackup={() => void downloadFullBackup('local')} />
         <SyncStatusDetails status={status} />
+        {!online && (
+          <p role="status" className="mt-2">
+            برای ورود Google، همگام‌سازی سرور و بررسی Drive / Notion به اینترنت نیاز است.
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <GoogleLoginButton disabled={busy || status.phase === 'syncing'} showPrepareError={false} />
+          <GoogleLoginButton disabled={!online || busy || status.phase === 'syncing'} showPrepareError={false} />
           <button
             type="button"
             className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50"
@@ -60,7 +78,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
           <button
             type="button"
             className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50"
-            disabled={busy || status.phase === 'syncing'}
+            disabled={!online || busy || status.phase === 'syncing'}
             onClick={() => void syncNow()}
           >
             همگام‌سازی الان
@@ -68,7 +86,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
           <button
             type="button"
             className="rounded-lg border border-white/25 px-3 py-2 text-sm disabled:opacity-50"
-            disabled={busy}
+            disabled={!online || busy}
             onClick={() => void refreshMirrorHealth()}
           >
             بررسی اتصال و خطای Drive / Notion
@@ -77,6 +95,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
             type="button"
             className="rounded-lg border border-emerald-300/40 px-3 py-2 text-sm disabled:opacity-50"
             disabled={
+              !online ||
               busy ||
               status.phase !== 'synced' ||
               status.driveMirror?.status !== 'synced' ||
@@ -93,6 +112,7 @@ export function SyncPanel({ onClose }: { onClose?: () => void }) {
           migration={migration}
           busy={busy}
           phase={status.phase}
+          online={online}
           syncLegacy={syncLegacy}
           backUpAndClear={backUpAndClear}
           clearAfterVerifiedBackup={clearAfterVerifiedBackup}

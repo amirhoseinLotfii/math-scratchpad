@@ -3,6 +3,7 @@ import { Keyboard as KeyboardIcon } from 'lucide-react';
 import { Button } from '../shared/ui/button';
 import type { ScratchState } from '../store';
 import type { SyncStatus } from '../sync/runtime';
+import { StatusChip } from '../pwa/status-chip';
 
 /** App title bar: batch progress, save/sync indicator, keyboard toggle and the exercise menu (passed as `children`). */
 export function AppHeader({
@@ -16,6 +17,7 @@ export function AppHeader({
   showKeyboardToggle,
   keyboardOpen,
   onToggleKeyboard,
+  onOpenSyncPanel,
   children,
 }: {
   batch: boolean;
@@ -28,6 +30,7 @@ export function AppHeader({
   showKeyboardToggle: boolean;
   keyboardOpen: boolean;
   onToggleKeyboard: () => void;
+  onOpenSyncPanel: () => void;
   children: ReactNode;
 }) {
   return (
@@ -80,6 +83,7 @@ export function AppHeader({
                     ? 'Browser cache'
                     : 'Waiting for sync'}
         </span>
+        <StatusChip onOpenSyncPanel={onOpenSyncPanel} />
         {showKeyboardToggle && (
           <Button
             className="keyboard-toggle"

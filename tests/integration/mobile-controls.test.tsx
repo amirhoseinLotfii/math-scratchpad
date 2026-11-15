@@ -129,15 +129,20 @@ describe('Quick tools and numeric keypad', () => {
     expect(store.getState().doc.cursor).toEqual(before);
   });
 });
-describe('English interface, question RTL and single-question mode', () => {
-  it('keeps only question prose RTL/Persian', () => {
+describe('English interface, localized status chip, question RTL and single-question mode', () => {
+  it('keeps app controls English while marking Persian content with its own direction', () => {
     mount();
     const main = document.querySelector('main')!;
     expect(main.lang).toBe('en');
     const prompt = document.querySelector('.question-statement')!;
     expect(prompt.getAttribute('lang')).toBe('fa');
     expect(prompt.getAttribute('dir')).toBe('rtl');
-    const ui = [...main.querySelectorAll('button, label, legend, [role="status"]')];
+    const statusChip = main.querySelector('.pwa-status-chip');
+    expect(statusChip?.getAttribute('lang')).toBe('fa');
+    expect(statusChip?.getAttribute('dir')).toBe('rtl');
+    const ui = [...main.querySelectorAll('button, label, legend, [role="status"]')].filter(
+      (element) => !element.matches('.pwa-status-chip'),
+    );
     expect(ui.filter((x) => /[\u0600-\u06ff]/.test(x.textContent ?? ''))).toEqual([]);
   });
   it('single-question mode keeps primary review on the page and does not display batch navigation', () => {

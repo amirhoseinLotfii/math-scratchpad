@@ -7,6 +7,8 @@ import { permittedAccount } from '../../src/features/drive-bank/identity';
 import {
   clearDriveSessionToken,
   ensureDriveSessionToken,
+  loadIdentity,
+  loadPicker,
   readDriveSessionToken,
   refreshDriveSessionTokenSilently,
 } from '../../src/features/drive-bank/google';
@@ -56,9 +58,18 @@ afterEach(async () => {
   delete (window as Window & { google?: unknown }).google;
   localStorage.clear();
   sessionStorage.clear();
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
 });
 
 describe('split Google identity and Drive authorization', () => {
+  it('does not request Google scripts while offline', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+
+    expect(() => loadIdentity()).toThrow(/به اینترنت نیاز است/);
+    await expect(loadPicker()).rejects.toThrow(/به اینترنت نیاز است/);
+    expect([...document.scripts].map((element) => element.src).filter((src) => /google\.com/.test(src))).toEqual([]);
+  });
+
   it('creates the Worker session from the ID token and requires HTTP 201', async () => {
     const idToken = credential(Math.floor(Date.now() / 1000) + 3600);
     const fetcher = vi.fn(async () =>

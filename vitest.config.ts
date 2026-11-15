@@ -14,7 +14,9 @@ if (typeof global.crypto === 'undefined') {
   } as any;
 }
 
-export default defineConfig({ test: {
+const testBuildSha = process.env.VITE_BUILD_SHA || process.env.GITHUB_SHA || 'test';
+
+export default defineConfig({ define: { __APP_BUILD_SHA__: JSON.stringify(testBuildSha) }, test: {
  environment: 'jsdom',
  setupFiles: ['tests/support/setup.ts'],
  include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],

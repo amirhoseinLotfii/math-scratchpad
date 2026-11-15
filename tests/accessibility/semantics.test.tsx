@@ -50,7 +50,7 @@ describe('A11Y-SEM: document, controls and language', () => {
     const { container } = renderMobileApp();
     expect(container.querySelectorAll('button button, button a[href], a[href] button, button input').length).toBe(0);
   });
-  it('isolates Persian question language from English interface and LTR formula', () => {
+  it('isolates Persian question language and status chip from English interface and LTR formula', () => {
     renderMobileApp();
     const main = screen.getByRole('main');
     expect(main).toHaveAttribute('lang', 'en');
@@ -60,8 +60,14 @@ describe('A11Y-SEM: document, controls and language', () => {
     const formula = within(main).getByLabelText('Step 1 expression');
     expect(formula).toHaveAttribute('dir', 'ltr');
     expect(formula).toHaveAttribute('lang', 'en');
+    const statusChip = main.querySelector('.pwa-status-chip');
+    expect(statusChip).toHaveAttribute('lang', 'fa');
+    expect(statusChip).toHaveAttribute('dir', 'rtl');
+    expect(statusChip).toHaveAccessibleName(/وضعیت اتصال و آفلاین/);
     expect(
-      [...main.querySelectorAll('button, label, legend, [role="status"]')].filter((x) => /[\u0600-\u06ff]/.test(x.textContent ?? '')),
+      [...main.querySelectorAll('button, label, legend, [role="status"]')]
+        .filter((x) => !x.matches('.pwa-status-chip'))
+        .filter((x) => /[\u0600-\u06ff]/.test(x.textContent ?? '')),
     ).toEqual([]);
   });
   it('MathLive exposes one labeled LTR editing control rather than boxing each formula token', () => {

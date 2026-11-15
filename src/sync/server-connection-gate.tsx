@@ -5,9 +5,10 @@ import { ensureWorkerSession } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';
 import { verifyOwnerServerConnection } from './server-storage';
 import { isServerResetStatusVerified, LOCAL_RESET_STATE_CHANGED_EVENT } from './learning-reset-epoch';
+import { GATE_STATUS_EVENT, type GateReason } from '../pwa/connectivity-store';
 
-type GateState = { kind: 'checking' | 'online' | 'blocked'; message: string };
-const INITIAL: GateState = { kind: 'checking', message: 'در حال بررسی همگام‌سازی…' };
+type GateState = { kind: 'checking' | 'online' | 'blocked'; reason: GateReason; message: string };
+const INITIAL: GateState = { kind: 'checking', reason: 'checking', message: 'در حال بررسی همگام‌سازی…' };
 const TIMEOUT_MS = 7_000;
 const PING_INTERVAL_MS = 30_000;
 
@@ -38,6 +39,7 @@ export function ServerConnectionGate({
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [resetPending, setResetPending] = useState(isLocalOnlyMode());
   const [quarantinedCount, setQuarantinedCount] = useState(0);
+  const gateTitle = resetPending ? 'حالت محلی فعال است' : state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است';
   const checking = useRef(false);
   const rerunAfterCheck = useRef(false);
   const mounted = useRef(false);
@@ -51,6 +53,7 @@ export function ServerConnectionGate({
       setResetPending(true);
       setState({
         kind: 'blocked',
+        reason: 'local_only',
         message: 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.',
       });
       return;
@@ -64,7 +67,7 @@ export function ServerConnectionGate({
     }
     const id = ++epoch.current;
     if (navigator.onLine === false) {
-      setState({ kind: 'blocked', message: `اینترنت قطع است؛ ${localStorageMessage()}` });
+      setState({ kind: 'blocked', reason: 'offline', message: `اینترنت قطع است؛ ${localStorageMessage()}` });
       return;
     }
     checking.current = true;
@@ -76,7 +79,11 @@ export function ServerConnectionGate({
       if (id !== epoch.current || isLocalOnlyMode()) return;
       const token = tokenProvider() ?? session?.token;
       if (!token) {
-        setState({ kind: 'blocked', message: `برای همگام‌سازی امن با سرور، از دکمهٔ Google وارد شو. ${localStorageMessage()}` });
+        setState({
+          kind: 'blocked',
+          reason: 'needs_login',
+          message: `برای همگام‌سازی امن با سرور، از دکمهٔ Google وارد شو. ${localStorageMessage()}`,
+        });
         return;
       }
       await flushPendingDraft();
@@ -87,11 +94,15 @@ export function ServerConnectionGate({
       if (id !== epoch.current || isLocalOnlyMode()) return;
       await verifyOwnerServerConnection(token, controller.signal);
       getAuthenticatedServerStorage()?.flushPendingWrites();
-      if (id === epoch.current) setState({ kind: 'online', message: '' });
+      if (id === epoch.current) setState({ kind: 'online', reason: 'online', message: '' });
     } catch (problem) {
       if (id === epoch.current) {
         const message = problem instanceof Error && problem.name !== 'AbortError' ? problem.message : 'پاسخ سرور در زمان مجاز دریافت نشد.';
-        setState({ kind: 'blocked', message: `همگام‌سازی سرور موقتاً برقرار نیست: ${message} ${localStorageMessage()}` });
+        setState({
+          kind: 'blocked',
+          reason: 'error',
+          message: `همگام‌سازی سرور موقتاً برقرار نیست: ${message} ${localStorageMessage()}`,
+        });
       }
     } finally {
       checking.current = false;
@@ -114,6 +125,7 @@ export function ServerConnectionGate({
         activeCheck.current?.abort();
         setState({
           kind: 'blocked',
+          reason: 'local_only',
           message: 'حالت محلی فعال است؛ پاسخ‌ها روی همین دستگاه ذخیره می‌شوند و پس از تأیید سرور همگام خواهند شد.',
         });
       } else if (mounted.current) void check();
@@ -135,6 +147,7 @@ export function ServerConnectionGate({
       const message = (event as CustomEvent<string>).detail;
       setState({
         kind: 'blocked',
+        reason: 'error',
         message: `همگام‌سازی سرور ناموفق بود: ${message || 'خطای ارتباط'}. تمرین‌ها روی این دستگاه ذخیره می‌شوند.`,
       });
     };
@@ -162,6 +175,10 @@ export function ServerConnectionGate({
     };
   }, [check]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(GATE_STATUS_EVENT, { detail: { kind: state.kind, reason: state.reason } }));
+  }, [state.kind, state.reason]);
+
   return (
     <ServerConnectionOverlayContext.Provider value={setOverlayOpen}>
       <div data-server-editor data-connection-state={resetPending ? 'local' : state.kind}>
@@ -170,9 +187,7 @@ export function ServerConnectionGate({
       {(state.kind !== 'online' || resetPending || hasOversizedState) && (!overlayOpen || resetPending) && (
         <aside role="status" aria-live="polite" aria-label="وضعیت همگام‌سازی" className="server-connection-gate" dir="rtl">
           <div className="server-connection-gate-header">
-            <strong>
-              {resetPending ? 'حالت محلی فعال است' : state.kind === 'checking' ? 'در حال همگام‌سازی' : 'ذخیرهٔ محلی فعال است'}
-            </strong>
+            <strong>{gateTitle}</strong>
             {!resetPending && (
               <button
                 type="button"

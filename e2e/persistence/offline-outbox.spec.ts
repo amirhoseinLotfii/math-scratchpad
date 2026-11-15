@@ -110,6 +110,9 @@ async function runOfflineAnswerJourney(page: Page, testInfo: TestInfo) {
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect.poll(() => readOutboxCount(page), { timeout: 10_000 }).toBe(0);
   expect(posted.some((event) => event.type === 'step_edited' && String(event.steps ?? '').includes('5'))).toBe(true);
+  const postedIds = posted.map((event) => String(event.id));
+  expect(postedIds.length).toBeGreaterThan(0);
+  expect(new Set(postedIds).size).toBe(postedIds.length);
   await expect(syncPanel.getByText(/همگام‌شده با سرور/)).toBeVisible();
 }
 

@@ -51,6 +51,7 @@ export function GoogleLoginButton({
   const container = useRef<HTMLDivElement>(null);
   const onCompleteRef = useRef(onComplete);
   const [ready, setReady] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -58,10 +59,13 @@ export function GoogleLoginButton({
 
   useEffect(() => {
     let active = true;
+    let preparing = false;
+    let mounted = false;
+    let retryAfterLoad = false;
     let unmount: (() => void) | undefined;
     const element = container.current;
     if (!element) return;
-    void mountGoogleIdButton(element, (token) => {
+    const onCredential = (token: string) => {
       setError('');
       setMessage('');
       setBusy(true);
@@ -77,21 +81,59 @@ export function GoogleLoginButton({
         .finally(() => {
           if (active) setBusy(false);
         });
-    })
-      .then((remove) => {
-        if (!active) remove();
-        else {
-          unmount = remove;
-          setReady(true);
+    };
+    const prepare = async () => {
+      if (!active || !navigator.onLine) {
+        setOnline(false);
+        setReady(false);
+        return;
+      }
+      setOnline(true);
+      if (mounted) return;
+      if (preparing) {
+        retryAfterLoad = true;
+        return;
+      }
+      preparing = true;
+      try {
+        const remove = await mountGoogleIdButton(element, onCredential);
+        if (!active || !navigator.onLine) {
+          remove();
+          element.replaceChildren();
+          return;
         }
-      })
-      .catch((problem) => {
+        unmount = remove;
+        mounted = true;
+        setReady(true);
+        setError('');
+      } catch (problem) {
         if (active && showPrepareError)
           setError(problem instanceof GoogleAuthError ? problem.message : googleAuthFailureMessage('prompt_unavailable'));
-      });
+      } finally {
+        preparing = false;
+        if (retryAfterLoad && active && navigator.onLine) {
+          retryAfterLoad = false;
+          void prepare();
+        }
+      }
+    };
+    const onOnline = () => void prepare();
+    const onOffline = () => {
+      setOnline(false);
+      setReady(false);
+      unmount?.();
+      unmount = undefined;
+      mounted = false;
+      element.replaceChildren();
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    void prepare();
     return () => {
       active = false;
       unmount?.();
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
     };
   }, [showPrepareError]);
 
@@ -107,9 +149,10 @@ export function GoogleLoginButton({
         className="inline-flex min-h-11 min-w-48 items-center"
         tabIndex={-1}
         aria-label={label}
-        aria-disabled={disabled || busy || !ready}
-        inert={disabled || busy || !ready}
+        aria-disabled={disabled || busy || !ready || !online}
+        inert={disabled || busy || !ready || !online}
       />
+      {!online && <p role="status">برای ورود با Google به اینترنت نیاز است.</p>}
       {busy && (
         <p role="status" aria-live="polite">
           در حال تأیید نشست Google در سرور…
@@ -135,20 +178,34 @@ export function GoogleDriveAccessButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [sessionReady, setSessionReady] = useState(() => !!getWorkerSession());
 
   useEffect(() => {
     const refresh = () => setSessionReady(!!getWorkerSession());
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
     window.addEventListener(WORKER_SESSION_EVENT, refresh);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
     refresh();
-    return () => window.removeEventListener(WORKER_SESSION_EVENT, refresh);
+    return () => {
+      window.removeEventListener(WORKER_SESSION_EVENT, refresh);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
   }, []);
 
   function connect(): void {
+    if (!navigator.onLine) {
+      setError('برای اتصال Google Drive به اینترنت نیاز است.');
+      return;
+    }
     setError('');
     setMessage('');
     let request: Promise<Token>;
     try {
+      if (!navigator.onLine) throw new Error('برای اتصال Google Drive به اینترنت نیاز است.');
       // Keep this call synchronous in the click stack so Android Chrome retains user activation.
       request = requestDriveAccessTokenFromGesture();
     } catch (problem) {
@@ -167,9 +224,10 @@ export function GoogleDriveAccessButton({
 
   return (
     <div className="google-drive-access-control">
-      <Button type="button" disabled={disabled || busy || !sessionReady} onClick={connect}>
+      <Button type="button" disabled={disabled || busy || !sessionReady || !online} onClick={connect}>
         {busy ? 'در حال اتصال به Drive…' : label}
       </Button>
+      {!online && <p role="status">برای اتصال Google Drive به اینترنت نیاز است.</p>}
       {!sessionReady && <p className="text-xs">ابتدا ورود Google را کامل کن؛ دسترسی Drive بعد از تأیید نشست سرور فعال می‌شود.</p>}
       {error && <p role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}

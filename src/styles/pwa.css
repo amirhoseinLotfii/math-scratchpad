@@ -1,0 +1,103 @@
+#math-scratchpad-redux .pwa-status-chip {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--primary) 36%, transparent);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+#math-scratchpad-redux .header-actions .pwa-status-chip {
+  min-height: 48px;
+}
+#math-scratchpad-redux .pwa-status-chip:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+#math-scratchpad-redux .pwa-status-chip-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+#math-scratchpad-redux .pwa-status-chip-offline .pwa-status-chip-dot,
+#math-scratchpad-redux .pwa-status-chip-error .pwa-status-chip-dot {
+  background: var(--destructive);
+}
+#math-scratchpad-redux .pwa-status-chip-queued .pwa-status-chip-dot,
+#math-scratchpad-redux .pwa-status-chip-needs_login .pwa-status-chip-dot,
+#math-scratchpad-redux .pwa-status-chip-update_ready .pwa-status-chip-dot {
+  background: var(--warning);
+}
+#math-scratchpad-redux .pwa-ready-indicator {
+  border-inline-start: 1px solid currentColor;
+  padding-inline-start: 7px;
+  color: var(--success);
+}
+.pwa-status-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(84dvh, 720px);
+  overflow: auto;
+}
+.pwa-update-prompt {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 42%, transparent);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--warning) 8%, var(--background));
+}
+.pwa-update-prompt p {
+  margin: 0;
+}
+.pwa-status-details {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.pwa-status-details > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  padding-bottom: 7px;
+}
+.pwa-status-details dt {
+  color: var(--muted-foreground);
+}
+.pwa-status-details dd {
+  margin: 0;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+.pwa-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pwa-status-actions button {
+  min-height: 48px;
+}
+@container (max-width: 410px) {
+  #math-scratchpad-redux .header-actions .pwa-status-chip {
+    min-width: 44px;
+    max-width: 100%;
+    min-height: 48px;
+    padding-inline: 8px;
+  }
+  #math-scratchpad-redux .pwa-ready-indicator {
+    display: none;
+  }
+}

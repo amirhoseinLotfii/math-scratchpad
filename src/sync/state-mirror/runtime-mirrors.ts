@@ -49,7 +49,7 @@ export abstract class RuntimeMirrors {
 
   /** Refresh the separately reported server-side Drive and Notion mirror states. */
   async refreshMirrorStatuses(): Promise<void> {
-    if (!this.started || !this.token) return;
+    if (!this.started || !this.token || navigator.onLine === false) return;
     await Promise.all([this.refreshMirrorStatus('drive'), this.refreshMirrorStatus('notion')]);
   }
 

@@ -37,6 +37,9 @@ declare global {
   }
 }
 const loaded = new Map<string, Promise<void>>();
+function requireOnline(): void {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) throw Error('برای استفاده از Google و Google Drive به اینترنت نیاز است.');
+}
 function script(src: string, ready: () => boolean): Promise<void> {
   if (ready()) return Promise.resolve();
   if (!loaded.has(src))
@@ -56,8 +59,14 @@ function script(src: string, ready: () => boolean): Promise<void> {
     );
   return loaded.get(src)!;
 }
-export const loadIdentity = () => script('https://accounts.google.com/gsi/client', () => !!window.google?.accounts?.oauth2);
+export const loadIdentity = () => {
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+  requireOnline();
+  return script('https://accounts.google.com/gsi/client', () => !!window.google?.accounts?.oauth2);
+};
 export async function loadPicker(): Promise<void> {
+  if (window.google?.picker) return;
+  requireOnline();
   await script('https://apis.google.com/js/api.js', () => !!window.gapi);
   if (window.google?.picker) return;
   await new Promise<void>((resolve, reject) =>

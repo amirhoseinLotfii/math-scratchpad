@@ -34,16 +34,27 @@ export function useSyncPanelRuntime({ setBusy, setError, setMessage }: SyncPanel
   useEffect(() => {
     let active = true;
     let unsubscribe: (() => void) | undefined;
-    void subscribeApiToken((token) => runtime?.setIdToken(token))
-      .then((removeListener) => {
-        if (!active) removeListener();
-        else unsubscribe = removeListener;
-      })
-      .catch((problem) => {
-        if (active) setError(problem instanceof Error ? problem.message : 'ورود گوگل بارگیری نشد.');
-      });
+    let loading = false;
+    const subscribe = () => {
+      if (!active || !navigator.onLine || loading || unsubscribe) return;
+      loading = true;
+      void subscribeApiToken((token) => runtime?.setIdToken(token))
+        .then((removeListener) => {
+          if (!active) removeListener();
+          else unsubscribe = removeListener;
+        })
+        .catch((problem) => {
+          if (active && navigator.onLine) setError(problem instanceof Error ? problem.message : 'ورود گوگل بارگیری نشد.');
+        })
+        .finally(() => {
+          loading = false;
+        });
+    };
+    window.addEventListener('online', subscribe);
+    subscribe();
     return () => {
       active = false;
+      window.removeEventListener('online', subscribe);
       unsubscribe?.();
     };
   }, [runtime]);

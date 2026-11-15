@@ -5,7 +5,7 @@
 
 **Write the math. Show your reasoning. Master fractions without answer hints.** A responsive, keyboard-first math notebook with direct structural editing, a 30-question diagnostic, and exact-rational feedback.
 
-[راهنمای فارسی](README.fa.md) · [Architecture](docs/architecture.md) · [Design system](docs/design-system.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
+[راهنمای فارسی](README.fa.md) · [Architecture](docs/architecture.md) · [Design system](docs/design-system.md) · [Offline updates and emergency controls](docs/offline.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
 Project: [amirhoseinLotfii/math-scratchpad](https://github.com/amirhoseinLotfii/math-scratchpad) · [Release updates](https://github.com/amirhoseinLotfii/math-scratchpad/releases)
 
