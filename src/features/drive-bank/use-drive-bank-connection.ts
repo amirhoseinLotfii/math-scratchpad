@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { GOOGLE_AUTH_STATE_EVENT } from '../../sync/google-auth-state';
 import {
   EMPTY_BANK,
-  bankCacheStorageKey,
   metaFingerprint,
   parseBankText,
   readDriveMeta,
@@ -13,7 +12,6 @@ import {
   type DriveMeta,
 } from './drive-bank';
 import {
-  DRIVE_CONFIG_KEY,
   clearDriveSessionToken,
   getConfig,
   loadIdentity,
@@ -28,7 +26,6 @@ import {
 } from './google';
 import { permittedAccount } from './identity';
 import { readBankViaWorker } from './worker-bank';
-import { findRestorableBank } from './offline-bank-restore';
 import { saveVerifiedBank } from './save-verified-bank';
 import { requestPersistentStorageOnce } from '../../pwa/storage-persistence';
 
@@ -41,6 +38,7 @@ type Options = {
   onResumeBank?: (bank: DriveBank, version: string) => void;
 };
 import { useBankPolling } from './use-bank-polling';
+import { useDriveBankOfflineEvents } from './use-drive-bank-offline-events';
 export { POLL_MS } from './use-bank-polling';
 export function useDriveBankConnection({ open, store, onAvailable, onBankReady, onResumeBank }: Options) {
   const [config, setConfig] = useState<DriveConfig>(getConfig),
@@ -64,64 +62,25 @@ export function useDriveBankConnection({ open, store, onAvailable, onBankReady, 
   onResumeBankRef.current = onResumeBank;
   const cfg = useRef(config);
   cfg.current = config;
-  async function restoreCachedBank(fileId: string) {
-    try {
-      const cached = await findRestorableBank(fileId, store.getState().doc.session);
-      if (!active.current || cfg.current.fileId !== fileId || !cached) return;
-      void requestPersistentStorageOnce();
-      fingerprint.current = cached.fingerprint;
-      setAvailable({ bank: cached.bank, version: cached.version });
-      onAvailableRef.current(
-        cached.bank.questions.length > 0 &&
-          !(store.getState().doc.session?.bankId === cached.bank.bank_id && store.getState().doc.session?.bankVersion === cached.version),
-      );
-      onBankReadyRef.current?.(cached.bank, cached.version);
-      if (cached.resume) onResumeBankRef.current?.(cached.bank, cached.version);
-      setMessage(
-        `Restored the verified local bank ${cached.bank.bank_id} (${cached.bank.version}); ` +
-          (navigator.onLine ? 'it will be checked against Drive.' : 'it is ready to use offline.'),
-      );
-    } catch {
-      // A corrupt cache is left untouched; a fresh verified Drive download can replace it.
-    }
-  }
+  useDriveBankOfflineEvents({
+    config: cfg,
+    fingerprint,
+    active,
+    store,
+    onAvailable: onAvailableRef,
+    onBankReady: onBankReadyRef,
+    onResumeBank: onResumeBankRef,
+    setAvailable,
+    setConfig,
+    setMessage,
+    setOnline,
+  });
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
       token.current = null;
     };
-  }, []);
-  useEffect(() => {
-    const onOnline = () => setOnline(true);
-    const onOffline = () => {
-      setOnline(false);
-      setMessage('برای ورود Google، دریافت بانک از Drive و بررسی به‌روزرسانی بانک به اینترنت نیاز است.');
-    };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-    };
-  }, []);
-  useEffect(() => {
-    void restoreCachedBank(cfg.current.fileId);
-  }, []);
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === DRIVE_CONFIG_KEY) {
-        const next = getConfig();
-        cfg.current = next;
-        setConfig(next);
-        fingerprint.current = '';
-        void restoreCachedBank(next.fileId);
-      } else if (event.key === bankCacheStorageKey(cfg.current.fileId)) {
-        void restoreCachedBank(cfg.current.fileId);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
   }, []);
   useEffect(() => {
     const onGoogleAuthChanged = () => {

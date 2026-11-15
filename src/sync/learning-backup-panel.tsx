@@ -86,8 +86,8 @@ export function LearningBackupPanel({
     <div className="mt-4 rounded-lg border border-white/15 p-3" role="group" aria-label="پشتیبان کامل داده‌های یادگیری">
       <h3 className="font-medium">پشتیبان کامل و بازیابی</h3>
       <p className="mt-1 text-sm opacity-80">
-        خروجی شامل پیشرفت مرورگر، صف آفلاین، رویدادهای سرور و فراداده است. بازیابی ابتدا اعتبار و پیش‌نمایش را نشان می‌دهد؛ دادهٔ محلیِ متعارض
-        حفظ می‌شود.
+        خروجی شامل پیشرفت مرورگر، صف آفلاین، رویدادهای سرور و فراداده است.
+        بازیابی ابتدا اعتبار و پیش‌نمایش را نشان می‌دهد؛ دادهٔ محلیِ متعارض حفظ می‌شود.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
