@@ -1,3 +1,4 @@
+import { performNotionSync, type StoredNotionMirrorState } from './event-store/notion-mirror-service';
 import { isScopedResetSharedStateKey } from '../../shared/contracts/storage-keys';
 import { performDriveSync, type DriveSnapshotWrite } from './event-store/drive-mirror-service';
 import type { DriveMirrorState, DriveMirrorStatus } from './event-store/drive-mirror-state';
@@ -11,7 +12,7 @@ import { json } from './event-store/response';
 import { handleSession } from './event-store/session-service';
 import { readBank, registerBankSource } from './event-store/bank-source-service';
 import { appStateRevision as readAppStateRevision, readAppState, writeAppState } from './event-store/state-repository';
-import { NOTION_RESET_RECONCILIATION_PER_CALL, RATE_WINDOW_MS, DRIVE_STATE_KEY, DRIVE_DEBOUNCE_MS, DRIVE_RETRY_MS, WEEKLY_BACKUP_RETRY_MS, NOTION_PROJECTION_PAGE_SIZE, NOTION_EVENTS_PER_RUN, NOTION_STATE_KEYS_PER_RUN, NOTION_DEBOUNCE_MS, NOTION_RETRY_MS, MAX_MIRROR_SUBREQUESTS, NOTION_MIRROR_STATE_KEY, LEARNING_RESET_TABLE, SCOPED_RESET_OPERATIONS_TABLE, MAX_SCOPED_RESET_BODY_BYTES, MAX_SCOPED_RESET_REBUILD_EVENTS, SCOPED_RESET_REVIEW_CONFIRMATION, SCOPED_RESET_DELETE_CONFIRMATION, LEARNING_RESET_TRASH_PER_CALL } from './event-store/limits';
+import { NOTION_RESET_RECONCILIATION_PER_CALL, RATE_WINDOW_MS, DRIVE_STATE_KEY, DRIVE_DEBOUNCE_MS, DRIVE_RETRY_MS, WEEKLY_BACKUP_RETRY_MS, NOTION_PROJECTION_PAGE_SIZE, NOTION_DEBOUNCE_MS, MAX_MIRROR_SUBREQUESTS, NOTION_MIRROR_STATE_KEY, LEARNING_RESET_TABLE, SCOPED_RESET_OPERATIONS_TABLE, MAX_SCOPED_RESET_BODY_BYTES, MAX_SCOPED_RESET_REBUILD_EVENTS, SCOPED_RESET_REVIEW_CONFIRMATION, SCOPED_RESET_DELETE_CONFIRMATION, LEARNING_RESET_TRASH_PER_CALL } from './event-store/limits';
 import { DurableObject } from 'cloudflare:workers';
 import { learnEventSchema, type LearnEvent } from '../../shared/contracts/learn-event';
 import { readBoundedBody } from './body';
@@ -39,8 +40,6 @@ import {
   notionDataSourcesFromEnv,
   notionErrorCode,
   NotionRequestQueue,
-  syncNotionAppState,
-  syncNotionEvent,
   type MistakeReviewState,
   type NotionClientPort,
   type NotionEventContext,
@@ -57,15 +56,6 @@ import {
   type SequencedLearnEvent,
 } from './drive-projection';
 
-type StoredNotionMirrorState = {
-  status: 'pending' | 'syncing' | 'synced' | 'error';
-  lastSeq: number;
-  pendingCount: number;
-  quarantinedCount?: number;
-  lastSyncedAt?: string;
-  lastError?: NotionErrorCode;
-};
-type PendingNotionState = { key: string; revision: number };
 type MirrorSubrequestBudget = { used: number; limit: number };
 type ScopedResetOperationRow = {
   operation_id: string;
@@ -1272,132 +1262,23 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     return this.notionSyncPromise;
   }
 
-  private async performNotionSync(): Promise<NotionMirrorStatus> {
-    const dataSources = notionDataSourcesFromEnv(this.env);
-    if (!dataSources || !this.env.NOTION_API_KEY) return this.getNotionStatus();
-    const state = await this.readNotionState();
-    const through = await maxSequence(this.ctx.storage);
-    if (through === state.lastSeq && this.notionStateQueueCount() === 0 && state.status === 'synced') {
-      // Backfill the SQL health dashboard for mirrors synced before the table existed.
-      await this.saveNotionState({ ...state, pendingCount: 0 });
-      return this.getNotionStatus();
-    }
-    await this.saveNotionState({
-      ...state,
-      status: 'syncing',
-      pendingCount: this.notionPendingCount(through, state.lastSeq),
-      lastError: undefined,
+  private performNotionSync(): Promise<NotionMirrorStatus> {
+    return performNotionSync({
+      env: this.env,
+      storage: this.ctx.storage,
+      ensureClient: apiKey => { this.notionClient ??= createNotionClient(apiKey, this.budgetedFetch); },
+      getNotionStatus: () => this.getNotionStatus(),
+      readNotionState: () => this.readNotionState(),
+      notionStateQueueCount: () => this.notionStateQueueCount(),
+      saveNotionState: state => this.saveNotionState(state),
+      notionPendingCount: (maxSeq, lastSeq) => this.notionPendingCount(maxSeq, lastSeq),
+      repairNotionProjections: through => this.repairNotionProjections(through),
+      scheduleAlarmIn: delay => this.scheduleAlarmIn(delay),
+      toNotionStatus: (state, maxSeq) => this.toNotionStatus(state, maxSeq),
+      readNotionProjection: <T>(kind: string, key: string) => this.readNotionProjection<T>(kind, key),
+      createNotionContext: (sources, now) => this.createNotionContext(sources, now),
+      recordDiagnostic: (destination, stage, code) => this.recordDiagnostic(destination, stage, code),
     });
-
-    try {
-      const projectionsReady = await this.repairNotionProjections(through);
-      if (!projectionsReady) {
-        const rebuilding: StoredNotionMirrorState = {
-          ...state,
-          status: 'pending',
-          pendingCount: this.notionPendingCount(through, state.lastSeq),
-          lastError: undefined,
-        };
-        await this.saveNotionState(rebuilding);
-        await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
-        return this.toNotionStatus(rebuilding, through);
-      }
-
-      this.notionClient ??= createNotionClient(this.env.NOTION_API_KEY, this.budgetedFetch);
-      const events = readEventsAfter(this.ctx.storage, state.lastSeq, through, NOTION_EVENTS_PER_RUN);
-      let lastSeq = state.lastSeq;
-      let lastSyncedAt = state.lastSyncedAt;
-      let quarantinedCount = state.quarantinedCount ?? 0;
-      for (const stored of events) {
-        const event = stored.event;
-        if (typeof event.isTest !== 'boolean') {
-          quarantinedCount += 1;
-          lastSeq = stored.seq;
-          await this.saveNotionState({
-            status: 'pending',
-            lastSeq,
-            pendingCount: this.notionPendingCount(through, lastSeq),
-            quarantinedCount,
-            ...(lastSyncedAt ? { lastSyncedAt } : {}),
-          });
-          continue;
-        }
-        const session = this.readNotionProjection<SessionProjection>('session', event.session)
-          ?? applySessionEvent(undefined, event);
-        const daily = event.isTest ? undefined : this.readNotionProjection<DailyProjection>('daily', tehranDayKey(event.ts));
-        const conceptKey = [event.chapter, event.lesson, event.concept].join(':');
-        const hasConceptUpdate = isAttemptLikeEvent(event) || event.type === 'mastery_changed' || event.type === 'gate_passed';
-        const concept = event.isTest || !hasConceptUpdate ? undefined : this.readNotionProjection<ConceptProjection>('concept', conceptKey);
-        const context = this.createNotionContext(dataSources, new Date().toISOString());
-        await syncNotionEvent(context, { event, session, daily, concept });
-        lastSeq = stored.seq;
-        lastSyncedAt = new Date().toISOString();
-        await this.saveNotionState({
-          status: 'pending',
-          lastSeq,
-          pendingCount: this.notionPendingCount(through, lastSeq),
-          quarantinedCount,
-          lastSyncedAt,
-        });
-      }
-
-      const queuedStateRows = this.ctx.storage.sql.exec<PendingNotionState>(
-        'SELECT key, revision FROM notion_state_queue ORDER BY key LIMIT ?', NOTION_STATE_KEYS_PER_RUN,
-      ).toArray();
-      for (const queued of queuedStateRows) {
-        const current = this.ctx.storage.sql.exec<{
-          value: string | null;
-          revision: number;
-          updated_at: string;
-        }>('SELECT value, revision, updated_at FROM app_state WHERE key = ?', queued.key).toArray()[0];
-        const revision = current ? Number(current.revision) : Number(queued.revision);
-        const context = this.createNotionContext(dataSources, new Date().toISOString());
-        await syncNotionAppState(context, {
-          key: queued.key,
-          value: current?.value ?? null,
-          revision,
-          updatedAt: current?.updated_at ?? new Date().toISOString(),
-        });
-        this.ctx.storage.sql.exec(
-          'DELETE FROM notion_state_queue WHERE key = ? AND revision <= ?', queued.key, revision,
-        );
-        lastSyncedAt = new Date().toISOString();
-        const currentMax = await maxSequence(this.ctx.storage);
-        await this.saveNotionState({
-          status: 'pending',
-          lastSeq,
-          pendingCount: this.notionPendingCount(currentMax, lastSeq),
-          quarantinedCount,
-          lastSyncedAt,
-        });
-      }
-
-      const currentMax = await maxSequence(this.ctx.storage);
-      const pendingCount = this.notionPendingCount(currentMax, lastSeq);
-      const completed: StoredNotionMirrorState = {
-        status: pendingCount === 0 ? 'synced' : 'pending',
-        lastSeq,
-        pendingCount,
-        quarantinedCount,
-        lastSyncedAt: lastSyncedAt ?? new Date().toISOString(),
-      };
-      await this.saveNotionState(completed);
-      if (pendingCount > 0) await this.scheduleAlarmIn(NOTION_DEBOUNCE_MS);
-      return this.toNotionStatus(completed, currentMax);
-    } catch (error) {
-      const currentMax = await maxSequence(this.ctx.storage);
-      const currentState = await this.readNotionState();
-      const failed: StoredNotionMirrorState = {
-        ...currentState,
-        status: 'error',
-        pendingCount: this.notionPendingCount(currentMax, currentState.lastSeq),
-        lastError: notionErrorCode(error),
-      };
-      await this.saveNotionState(failed);
-      this.recordDiagnostic('notion', 'notion_event_sync', failed.lastError ?? 'unknown');
-      await this.scheduleAlarmIn(NOTION_RETRY_MS);
-      return this.toNotionStatus(failed, currentMax);
-    }
   }
 
   private toNotionStatus(state: StoredNotionMirrorState, maxSeq: number): NotionMirrorStatus {
