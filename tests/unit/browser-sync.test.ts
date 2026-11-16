@@ -23,10 +23,12 @@ import {
   initializeLearningStorage,
   initializeAuthenticatedServerStorage,
   flushLearningStorage,
+  prepareLocalLearningReset,
   queueLearnEvent,
   readLegacyMigration,
   readOutboxCount,
   resetLearningDbForTests,
+  subscribeLearningStorage,
   storeServerEvents,
   withLegacyMigrationLock,
   writeLearningItem,
@@ -137,6 +139,23 @@ afterEach(async () => {
 });
 
 describe('IndexedDB learning cache and legacy migration', () => {
+  it('preserves learning records until the storage bootstrap can migrate them', async () => {
+    const malformedCurrent = '{broken-json';
+    localStorage.setItem('math-scratchpad-redux-v2', OLD_SESSION);
+    localStorage.setItem(SESSION_KEY, malformedCurrent);
+    localStorage.setItem('math-scratchpad-ui-v1:questions', '0');
+
+    await expect(prepareLocalLearningReset()).resolves.toBe(true);
+
+    expect(localStorage.getItem('math-scratchpad-redux-v2')).toBe(OLD_SESSION);
+    expect(localStorage.getItem(SESSION_KEY)).toBe(malformedCurrent);
+    expect(localStorage.getItem('math-scratchpad-ui-v1:questions')).toBeNull();
+
+    await initializeLearningStorage();
+    expect(getLearningStorage().getItem('math-scratchpad-redux-v2')).toBe(OLD_SESSION);
+    expect(getLearningStorage().getItem(SESSION_KEY)).toBe(malformedCurrent);
+  });
+
   it('copies learning records and safe caches into IndexedDB, retaining legacy progress until verification', async () => {
     seedLegacy();
     const bootstrap = await initializeLearningStorage();
@@ -180,6 +199,38 @@ describe('IndexedDB learning cache and legacy migration', () => {
     await db.get('cache', SESSION_KEY);
     expect((await db.get('cache', SESSION_KEY))?.value).toBe('{"new":"work"}');
     expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+  it('applies a valid BroadcastChannel update from another tab and notifies subscribers', async () => {
+    const channels = new Map<string, Set<FakeBroadcastChannel>>();
+    class FakeBroadcastChannel {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      constructor(public readonly name: string) {
+        const peers = channels.get(name) ?? new Set<FakeBroadcastChannel>();
+        peers.add(this);
+        channels.set(name, peers);
+      }
+      postMessage(data: unknown) {
+        for (const peer of channels.get(this.name) ?? []) {
+          if (peer !== this) peer.onmessage?.({ data } as MessageEvent);
+        }
+      }
+      close() { channels.get(this.name)?.delete(this); }
+    }
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+
+    await initializeLearningStorage();
+    const changes: Array<{ key: string; newValue: string | null }> = [];
+    const unsubscribe = subscribeLearningStorage(change => changes.push({ key: change.key, newValue: change.newValue }));
+    const otherTab = new FakeBroadcastChannel('math-scratchpad-learning-cache-v1');
+    otherTab.postMessage({ key: SESSION_KEY, value: '{"from":"other-tab"}', updatedAt: '2026-11-16T00:00:00.000Z' });
+    expect(getLearningStorage().getItem(SESSION_KEY)).toBe('{"from":"other-tab"}');
+    expect(changes).toEqual([{ key: SESSION_KEY, newValue: '{"from":"other-tab"}' }]);
+    otherTab.postMessage({ key: SESSION_KEY, value: null, updatedAt: '2026-11-16T00:00:01.000Z' });
+    expect(getLearningStorage().getItem(SESSION_KEY)).toBeNull();
+    expect(changes.at(-1)).toEqual({ key: SESSION_KEY, newValue: null });
+    unsubscribe();
+    otherTab.close();
   });
 
 

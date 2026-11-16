@@ -70,6 +70,27 @@ async function installConflictWorker(page: Page, records: Map<string, StateRecor
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: events.map((event, index) => ({ id: event.id, seq: index + 1, duplicate: false })), cursor: events.length }) });
       return;
     }
+    if (url.pathname === '/reset/preview' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          readOnly: true,
+          canExecute: false,
+          scope: 'all',
+          matchingEvents: 0,
+          totalEvents: 0,
+          lastSeq: 0,
+          appStateRevision: 0,
+          protectedBankAndIdentityStateKeys: 0,
+          sharedStateKeysRequiringSelectiveMerge: 0,
+          notionPageReferencesRequiringReconciliation: 0,
+          requiresCloudReconciliation: true,
+          warning: 'Preview only. No reset or deletion endpoint is enabled.',
+        }),
+      });
+      return;
+    }
     if (url.pathname === '/snapshot' || url.pathname === '/sync') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{"events":[],"cursor":0,"through":0,"snapshotCursor":0,"hasMore":false}' });
       return;
@@ -84,7 +105,7 @@ async function installConflictWorker(page: Page, records: Map<string, StateRecor
 
 async function runOverlapJourney(page: Page) {
   const baseValue = initialSessionValue();
-  const records = new Map<string, StateRecord>([[SESSION_KEY, { value: baseValue, revision: 1, updatedAt: new Date().toISOString() }]]);
+  const records = new Map<string, StateRecord>();
   await installFakeGoogleAuth(page);
   await installConflictWorker(page, records);
   await page.addInitScript(value => localStorage.setItem('math-scratchpad-session-v3', value), baseValue);

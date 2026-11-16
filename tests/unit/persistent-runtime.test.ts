@@ -63,8 +63,21 @@ describe('production persistent runtime', () => {
  it('migrates legacy data without removing the original backup', () => {
   const original = serialize(initialState()); localStorage.setItem('math-scratchpad-redux-v2', original);
   mount(); vi.advanceTimersByTime(800);
-  expect(JSON.parse(localStorage.getItem(SESSION_KEY)!).version).toBe(3);
+ expect(JSON.parse(localStorage.getItem(SESSION_KEY)!).version).toBe(3);
   expect(localStorage.getItem('math-scratchpad-redux-v2')).toBe(original);
+ });
+ it('recovers a valid pending journal and clears it after the durable flush', async () => {
+  const recovered = envelope(0, 'journal-tab');
+  recovered.state.session.doc.exercises[0].prompt = 'Recovered draft';
+  sessionStorage.setItem('math-scratchpad-draft-tab-v1', 'test-tab');
+  localStorage.setItem('math-scratchpad-pending-draft-v1:test-tab', JSON.stringify({ version: 1, baseRevision: 0, snapshot: recovered }));
+
+  const runtime = mount();
+  expect(runtime.store.getState().doc.exercises[0].prompt).toBe('Recovered draft');
+  await runtime.flush();
+
+  expect(JSON.parse(localStorage.getItem(SESSION_KEY)!).state.session.doc.exercises[0].prompt).toBe('Recovered draft');
+  expect(localStorage.getItem('math-scratchpad-pending-draft-v1:test-tab')).toBeNull();
  });
  it('applies newer remote work in a clean tab and ignores stale and malformed events', () => {
   const saved = seed(); const runtime = mount(); const remote = structuredClone(saved);

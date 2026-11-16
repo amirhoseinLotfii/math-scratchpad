@@ -513,4 +513,13 @@ describe('lesson learning screen', () => {
     expect(displayEducationalHeading('رابطهٔ زوج مرتب (x, y)', 'fa')).toBe('رابطهٔ زوج مرتب (x, y)');
     expect(displayEducationalHeading('Functions and Function Notation', 'en')).toBe('Functions and Function Notation');
   });
+
+  it('characterization: preserves Persian ZWNJ text and isolates an embedded Latin phrase', () => {
+    const text = 'تعریف تابع‌نما در Functions and Function Notation';
+    const { container } = render(<LessonBlockView block={{ type: 'paragraph', lang: 'fa', text }} blockKey="characterization" revealed={0} onReveal={() => undefined} />);
+    const paragraph = container.querySelector('p')!;
+    expect(paragraph).toHaveAttribute('dir', 'rtl');
+    expect(paragraph.textContent).toBe(text);
+    expect([...paragraph.querySelectorAll('bdi[lang="en"][dir="ltr"]')].map(run => run.textContent)).toEqual(['Functions and Function Notation']);
+  });
 });
