@@ -22,6 +22,18 @@ import { writeAppState } from './state-repository';
 import type { WorkerEnv } from '../env';
 import { GoogleDriveClient } from '../google-drive';
 import { notionDataSourcesFromEnv } from '../notion-mirror';
+import { readBoundedBody } from '../body';
+import {
+  closeWebSocketsForSession,
+  handleWebSocketMessage,
+  openWebSocket,
+  revalidateWebSockets,
+  type WebSocketStorePorts,
+} from './websocket';
+import { isValidSessionHash, issueWebSocketTicketFromInternalRequest } from './websocket-ticket';
+import { json } from './response';
+
+const WEBSOCKET_REVALIDATION_INTERVAL_MS = 10 * 60_000;
 
 /** One owner-scoped, append-only SQLite event log. */
 export class LearningEventStore extends EventStoreMirrors {
@@ -38,7 +50,11 @@ export class LearningEventStore extends EventStoreMirrors {
     initializeStoreSchema(ctx, env);
   }
 
-  fetch(request: Request): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/ws' && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+      return openWebSocket(this.webSocketPorts(), request);
+    }
     return routeStoreRequest(request, {
       storage: this.ctx.storage,
       activeLearningResetId: this.activeLearningResetId,
@@ -86,7 +102,72 @@ export class LearningEventStore extends EventStoreMirrors {
             },
           ),
         ),
+      issueWebSocketTicket: (req) => issueWebSocketTicketFromInternalRequest(this.ctx.storage, req),
+      revokeWebSockets: (req) => this.revokeWebSockets(req),
     });
+  }
+
+  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
+    this.ctx.waitUntil(handleWebSocketMessage(this.webSocketPorts(), socket, message));
+  }
+
+  async alarm(): Promise<void> {
+    await super.alarm();
+    revalidateWebSockets(this.webSocketPorts());
+    const nextRevalidation = Date.now() + WEBSOCKET_REVALIDATION_INTERVAL_MS;
+    const existingAlarm = await this.ctx.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > nextRevalidation) await this.ctx.storage.setAlarm(nextRevalidation);
+  }
+
+  private webSocketPorts(): WebSocketStorePorts {
+    return {
+      ctx: this.ctx,
+      env: this.env,
+      appendEvents: (req) =>
+        this.trackLearningMutation(() =>
+          appendEvents(
+            this.ctx.storage,
+            req,
+            () => isLearningResetLocked(this.ctx.storage),
+            (seq, event) => {
+              const projectedThrough = projectionSequence(this.ctx.storage);
+              if (projectedThrough === seq - 1) {
+                applyNotionProjection(this.ctx.storage, event);
+                setProjectionSequence(this.ctx.storage, seq);
+              }
+            },
+            async (cursor) => {
+              await this.queueDriveMirror(cursor);
+              await queueNotionMirror(this.notionQueueDependencies(), cursor);
+            },
+          ),
+        ),
+      writeState: (req) =>
+        this.trackLearningMutation(() =>
+          writeAppState(
+            this.ctx.storage,
+            req,
+            () => isLearningResetLocked(this.ctx.storage),
+            (key, revision) => this.mirrorStateChange(key, revision),
+          ),
+        ),
+      requiredEpoch: () => requiredLearningClientEpoch(this.ctx.storage),
+      resetLocked: () => isLearningResetLocked(this.ctx.storage),
+    };
+  }
+
+  private async revokeWebSockets(request: Request): Promise<Response> {
+    const body = await readBoundedBody(request, 4_096);
+    if (!body) return json({ error: 'payload_too_large' }, 413);
+    let input: { sessionHash?: unknown; all?: unknown };
+    try {
+      input = JSON.parse(new TextDecoder().decode(body)) ?? {};
+    } catch {
+      return json({ error: 'invalid_websocket_revoke' }, 400);
+    }
+    const sessionHash = isValidSessionHash(input.sessionHash) ? input.sessionHash : undefined;
+    if (input.all !== true && !sessionHash) return json({ error: 'invalid_websocket_revoke' }, 400);
+    return json({ closed: closeWebSocketsForSession(this.ctx, input.all === true ? undefined : sessionHash) });
   }
 
   private executeLearningReset(request: Request): Promise<Response> {

@@ -41,9 +41,7 @@ test('records mobile-390 recovery journal time under 4× CPU throttling', { tag:
   await expect(page.locator('.exercise-bar select').first()).toBeAttached();
   await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   await field.click();
-  await expect
-    .poll(() => field.evaluate((element) => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus()))
-    .toBe(true);
+  await expect.poll(() => field.evaluate((element) => (element as HTMLElement & { hasFocus: () => boolean }).hasFocus())).toBe(true);
   await page.evaluate(() => {
     const profile = (window as Window & { journalProfile?: { writes: number[]; tasks: number[]; serialization: number[] } })
       .journalProfile!;
@@ -54,7 +52,7 @@ test('records mobile-390 recovery journal time under 4× CPU throttling', { tag:
   await page.keyboard.press('Control+A');
   await page.keyboard.type('1234567890'.repeat(10));
   await expect
-    .poll(() => field.evaluate((element) => (element as HTMLElement & { value: string }).value))
+    .poll(() => field.evaluate((element) => (element as HTMLElement & { value: string }).value), { timeout: 15_000 })
     .toContain('1234567890');
   const profile = await page.evaluate(
     () => (window as Window & { journalProfile?: { writes: number[]; tasks: number[]; serialization: number[] } }).journalProfile!,

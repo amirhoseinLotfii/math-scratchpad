@@ -87,6 +87,10 @@ export function initializeStoreSchema(ctx: DurableObjectState, env: WorkerEnv): 
       'sub TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at ' +
       'INTEGER)',
   );
+  ctx.storage.sql.exec(
+    'CREATE TABLE IF NOT EXISTS ws_tickets (ticket_hash TEXT PRIMARY KEY, session_hash TEXT NOT NULL, ' +
+      'device_id TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)',
+  );
   // The question-bank file the owner picked once with Google Picker (drive.file grant for this OAuth app).
   ctx.storage.sql.exec(
     'CREATE TABLE IF NOT EXISTS bank_source (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), ' +

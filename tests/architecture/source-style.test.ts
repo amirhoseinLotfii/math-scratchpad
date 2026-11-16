@@ -19,6 +19,10 @@ function sourcePaths(directory: string): string[] {
   });
 }
 
+function assertionPath(file: string): string {
+  return file.replaceAll('\\', '/');
+}
+
 function lexicalSyntax(path: string) {
   return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
 }
@@ -44,10 +48,15 @@ describe('ARCH: naming and size limits', () => {
 
   it('uses kebab-case paths and PascalCase exported React components', () => {
     const paths = roots.flatMap(sourcePaths);
-    const invalid = paths.filter((file) => !file.split('/').every((part) => kebabCase.test(part.split('.')[0])));
+    const invalid = paths.filter(
+      (file) =>
+        !assertionPath(file)
+          .split('/')
+          .every((part) => kebabCase.test(part.split('.')[0])),
+    );
     expect(invalid).toEqual([]);
     const badExports = paths
-      .filter((file) => file.startsWith('src/') && file.endsWith('.tsx'))
+      .filter((file) => assertionPath(file).startsWith('src/') && assertionPath(file).endsWith('.tsx'))
       .flatMap((file) => {
         const source = lexicalSyntax(file);
         return source.statements.flatMap((statement) => {
@@ -60,7 +69,9 @@ describe('ARCH: naming and size limits', () => {
               : [];
           return components.flatMap((component) => {
             const name = component.name?.getText(source);
-            return name && !/^use[A-Z]/.test(name) && hasJsx(component) && !/^[A-Z][A-Za-z0-9]*$/.test(name) ? [`${file}: ${name}`] : [];
+            return name && !/^use[A-Z]/.test(name) && hasJsx(component) && !/^[A-Z][A-Za-z0-9]*$/.test(name)
+              ? [`${assertionPath(file)}: ${name}`]
+              : [];
           });
         });
       });

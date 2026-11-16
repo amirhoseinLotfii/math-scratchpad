@@ -6,6 +6,13 @@ export function appStateRevision(storage: DurableObjectStorage): number {
   return Number(storage.sql.exec<{ revision: number }>('SELECT revision FROM app_state_meta WHERE singleton = 1').one().revision);
 }
 
+export function readAppStateRecord(storage: DurableObjectStorage, key: string): { value: string | null; revision: number } | undefined {
+  const row = storage.sql
+    .exec<{ value: string | null; revision: number }>('SELECT value, revision FROM app_state WHERE key = ?', key)
+    .toArray()[0];
+  return row ? { value: row.value, revision: Number(row.revision) } : undefined;
+}
+
 export function readAppState(storage: DurableObjectStorage): Response {
   const rows = storage.sql
     .exec<{

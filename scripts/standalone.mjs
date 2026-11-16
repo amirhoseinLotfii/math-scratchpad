@@ -1,6 +1,18 @@
 import { build } from 'esbuild';
+import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
+
+function appBuildSha() {
+  const configured = process.env.VITE_BUILD_SHA || process.env.GITHUB_SHA;
+  if (configured) return configured;
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return 'dev';
+  }
+}
+
 // IIFE output has no import.meta; replace every environment value read by the app.
 const result = await build({
   entryPoints: [process.argv[2] ?? 'src/main.tsx'],
@@ -14,6 +26,7 @@ const result = await build({
     'import.meta.env.DEV': 'false',
     'import.meta.env.PROD': 'true',
     'import.meta.env.VITE_SYNC_API_ORIGIN': 'undefined',
+    __APP_BUILD_SHA__: JSON.stringify(appBuildSha()),
   },
   loader: { '.css': 'empty' },
 });

@@ -32,12 +32,16 @@ type EventStoreRouterPorts = {
   scopedResetDependencies: () => ScopedResetDependencies;
   writeState: (request: Request) => Promise<Response>;
   appendEvents: (request: Request) => Promise<Response>;
+  issueWebSocketTicket: (request: Request) => Promise<Response>;
+  revokeWebSockets: (request: Request) => Promise<Response>;
 };
 
 export async function routeStoreRequest(request: Request, ports: EventStoreRouterPorts): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === 'POST' && url.pathname === '/internal/learning-reset') return ports.executeLearningReset(request);
   if (request.method === 'POST' && url.pathname === '/internal/learning-reset/release') return ports.releaseLearningReset(request);
+  if (request.method === 'POST' && url.pathname === '/internal/ws/ticket') return ports.issueWebSocketTicket(request);
+  if (request.method === 'POST' && url.pathname === '/internal/ws/revoke') return ports.revokeWebSockets(request);
   if (request.method === 'GET' && url.pathname === '/internal/learning-reset/status')
     return learningResetStatus(ports.storage, ports.activeLearningResetId !== undefined);
   if (request.method === 'GET' && url.pathname === '/internal/learning-reset/client-status')

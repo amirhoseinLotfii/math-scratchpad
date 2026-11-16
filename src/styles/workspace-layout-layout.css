@@ -3,7 +3,7 @@
     max-width: 1800px;
   }
   #math-scratchpad-redux .scratchpad {
-    padding: 24px;
+    padding: 24px 24px 20px;
   }
   #math-scratchpad-redux .app-content {
     min-height: calc(100dvh - 48px);

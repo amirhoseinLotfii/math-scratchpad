@@ -1,6 +1,22 @@
 import { readBoundedBody } from '../body';
 import { MAX_ACTIVE_SESSIONS, SESSION_HASH_PATTERN, SESSION_TTL_MS } from '../session';
 import { json } from './response';
+
+export type StoredSession = { email: string; sub: string; expiresAt: number };
+
+export function readValidSession(storage: DurableObjectStorage, tokenHash: string, now = Date.now()): StoredSession | undefined {
+  const row = storage.sql
+    .exec<{
+      email: string;
+      sub: string;
+      expires_at: number;
+      revoked_at: number | null;
+    }>('SELECT email, sub, expires_at, revoked_at FROM auth_sessions WHERE token_hash = ?', tokenHash)
+    .toArray()[0];
+  if (!row || row.revoked_at !== null || Number(row.expires_at) <= now) return undefined;
+  return { email: row.email, sub: row.sub, expiresAt: Number(row.expires_at) };
+}
+
 /** Internal session bookkeeping; reachable only through the Worker's stub, never from the public router. */
 export async function handleSession(
   storage: DurableObjectStorage,
@@ -60,16 +76,9 @@ export async function handleSession(
 
   if (pathname === '/internal/session/verify') {
     if (!tokenHash) return json({ error: 'session_invalid' }, 401);
-    const row = storage.sql
-      .exec<{
-        email: string;
-        sub: string;
-        expires_at: number;
-        revoked_at: number | null;
-      }>('SELECT email, sub, expires_at, revoked_at FROM auth_sessions WHERE token_hash = ?', tokenHash)
-      .toArray()[0];
-    if (!row || row.revoked_at !== null || Number(row.expires_at) <= now) return json({ error: 'session_invalid' }, 401);
-    return json({ email: row.email, sub: row.sub, expiresAt: Number(row.expires_at) });
+    const session = readValidSession(storage, tokenHash, now);
+    if (!session) return json({ error: 'session_invalid' }, 401);
+    return json({ email: session.email, sub: session.sub, expiresAt: session.expiresAt });
   }
 
   if (pathname === '/internal/session/revoke') {

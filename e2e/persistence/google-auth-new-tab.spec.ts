@@ -7,7 +7,7 @@ const AUTH_ID_HINT_KEY = 'math-scratchpad-google-id-session-v1';
 const AUTH_DRIVE_TOKEN_KEY = 'math-scratchpad-drive-token-v1';
 
 /** Same GIS + Drive fixture as server-first, installed on the browser context so a second tab inherits it. */
-async function installGoogleAuthFixture(context: BrowserContext) {
+async function installGoogleAuthFixture(context: BrowserContext, calls: string[] = []) {
   await context.addInitScript(() => {
     const handlers: { signIn?: (credential: { credential: string }) => void } = {};
     const testEmail = 'qa-fixture@example.test';
@@ -59,6 +59,7 @@ async function installGoogleAuthFixture(context: BrowserContext) {
   await context.route('https://math-scratchpad-sync.math-scratchpad-redux.workers.dev/**', async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
+    calls.push(`${request.method()} ${pathname}`);
     if (pathname === '/reset/status' && request.method() === 'GET') {
       return route.fulfill({
         status: 200,
@@ -169,4 +170,48 @@ test('Google identity session persists in a new tab without signing in again', a
   expect(secondTabAuth.driveToken).toBeNull();
 
   await other.close();
+});
+
+test('Google and Worker sessions survive a closed browser context and reopen without minting a new session', async ({
+  page,
+  context,
+  browser,
+}) => {
+  const reopenedCalls: string[] = [];
+  await installGoogleAuthFixture(context);
+
+  await page.goto('/?serverMode=1');
+  await expect(page.getByText('Math Scratchpad', { exact: true })).toBeVisible();
+  await signInGoogleIdentity(page);
+
+  // The short-lived Drive credential is separate from the long-lived Worker session.
+  // Store a synthetic granted credential so the reopened context must preserve both layers.
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'math-scratchpad-drive-token-v1',
+      JSON.stringify({ accessToken: 'reopened-drive-token', expiresAt: Date.now() + 60 * 60_000 }),
+    );
+    localStorage.setItem('math-scratchpad-drive-consent-v1', '1');
+  });
+  const persistedBrowserState = await context.storageState({ indexedDB: true });
+  await page.close();
+
+  const reopened = await browser.newContext({ storageState: persistedBrowserState });
+  try {
+    await installGoogleAuthFixture(reopened, reopenedCalls);
+    const reopenedPage = await reopened.newPage();
+    await reopenedPage.goto('/?serverMode=1');
+    await expect(reopenedPage.getByText('Math Scratchpad', { exact: true })).toBeVisible();
+    await expect(reopenedPage.locator('[data-server-editor]')).toHaveAttribute('data-connection-state', 'online');
+    await expect(reopenedPage.getByRole('button', { name: 'Sign in with Google' })).toHaveCount(0);
+
+    const auth = await readAuthKeys(reopenedPage);
+    expect(auth.idToken).toBeTruthy();
+    expect(auth.idHint).toBe('1');
+    expect(auth.driveToken).toContain('reopened-drive-token');
+    expect(reopenedCalls).not.toContain('POST /session');
+    await reopenedPage.close();
+  } finally {
+    await reopened.close();
+  }
 });

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import ts from 'typescript';
 import { expect, it } from 'vitest';
 
-it('preserves the twelve Durable Object concurrency boundaries', () => {
+it('preserves the Durable Object concurrency boundaries, including one-time WebSocket ticket consumption', () => {
   const root = 'worker/src/event-store';
   const modules = readdirSync(root).filter((filename) => filename.endsWith('.ts'));
   const filenames = [root + '.ts', ...modules.map((filename) => root + '/' + filename)];
@@ -21,5 +21,5 @@ it('preserves the twelve Durable Object concurrency boundaries', () => {
     }
     count(source);
   }
-  expect(boundaries).toBe(12);
+  expect(boundaries).toBe(13);
 });

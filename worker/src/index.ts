@@ -11,6 +11,7 @@ import { readBoundedBody } from './body';
 import type { GoogleIdentity, WorkerEnv } from './env';
 import { generateSessionToken, hashSessionToken, isSessionToken, isWellFormedSessionToken } from './session';
 import { isValidLearningResetEpoch, LEARNING_RESET_EPOCH_HEADER } from '../../shared/contracts/reset-epoch';
+import { isValidWebSocketDeviceId } from './event-store/websocket-ticket';
 
 const MAX_BODY_BYTES = 250_000;
 const MAX_SCOPED_RESET_BODY_BYTES = 16_384;
@@ -175,7 +176,32 @@ export function createApp(verifyToken: IdTokenVerifier = verifyGoogleIdToken) {
     const tokenHash = c.get('sessionHash');
     if (!all && !tokenHash) return finalizeResponse(Response.json({ revoked: 0 }), c);
     const response = await internalJson('/internal/session/revoke', all ? { all: true } : { tokenHash }, c.env);
+    if (response.ok) await internalJson('/internal/ws/revoke', all ? { all: true } : { sessionHash: tokenHash }, c.env);
     return finalizeResponse(response, c);
+  });
+
+  app.post('/ws/ticket', authorize, async (c) => {
+    const sessionHash = c.get('sessionHash');
+    if (!sessionHash) return finalizeResponse(jsonError('unauthorized', 401), c);
+    const body = await readBoundedBody(c.req.raw, 4_096);
+    if (!body) return finalizeResponse(jsonError('payload_too_large', 413), c);
+    let input: { deviceId?: unknown };
+    try {
+      input = JSON.parse(new TextDecoder().decode(body)) ?? {};
+    } catch {
+      return finalizeResponse(jsonError('invalid_websocket_ticket', 400), c);
+    }
+    if (!isValidWebSocketDeviceId(input.deviceId)) return finalizeResponse(jsonError('invalid_websocket_ticket', 400), c);
+    const response = await internalJson('/internal/ws/ticket', { sessionHash, deviceId: input.deviceId }, c.env);
+    return finalizeResponse(response, c);
+  });
+
+  app.get('/ws', async (c) => {
+    if (c.req.header('Origin') !== (c.env.ALLOWED_ORIGIN || PAGES_ORIGIN)) return jsonError('origin_not_allowed', 403);
+    if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') return jsonError('upgrade_required', 426);
+    const url = new URL(c.req.url);
+    if (!url.searchParams.get('ticket') || !url.searchParams.get('device')) return jsonError('unauthorized', 401);
+    return ownerStub(c.env).fetch(c.req.raw);
   });
 
   // This destructive maintenance route is unavailable unless a temporary

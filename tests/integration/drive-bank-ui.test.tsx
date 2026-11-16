@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
@@ -17,6 +17,15 @@ const bank = (source: string, version = 'v1') => ({
     { id: 'Q02', mode: 'math', source: '2+2' },
   ],
 });
+
+function setOnline(value: boolean): void {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value });
+}
+
+beforeEach(() => {
+  setOnline(true);
+});
+
 afterEach(async () => {
   cleanup();
   localStorage.clear();
@@ -27,6 +36,7 @@ afterEach(async () => {
   requestAccessTokenSpy.mockClear();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  setOnline(true);
   delete window.google;
   delete window.gapi;
 });

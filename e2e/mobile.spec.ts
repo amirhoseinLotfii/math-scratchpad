@@ -53,11 +53,14 @@ test('full session export is reachable during editing', async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Data', exact: true }).hover();
   await expect(page.getByRole('menuitem', { name: /^Copy full session JSON/ })).toBeVisible();
 });
-test('only question prose is Persian and the app interface stays English', async ({ page }) => {
+test('localized status controls are explicit while the app interface stays English', async ({ page }) => {
   const main = page.locator('main');
   await expect(main).toHaveAttribute('lang', 'en');
+  const statusChip = main.locator('button.pwa-status-chip');
+  await expect(statusChip).toHaveAttribute('lang', 'fa');
+  await expect(statusChip).toHaveAttribute('dir', 'rtl');
   const foreignUI = await main
-    .locator('button, legend, label, [role="status"]')
+    .locator('button:not(.pwa-status-chip), legend, label, [role="status"]')
     .evaluateAll((nodes) => nodes.filter((n) => /[\u0600-\u06ff]/.test(n.textContent ?? '')).map((n) => n.textContent));
   expect(foreignUI).toEqual([]);
 });
