@@ -125,6 +125,13 @@ describe('Worker sessions', () => {
     expect((await call('/drive/status', { token: other.sessionToken })).status).toBe(200);
   });
 
+  it('rejects a revoked session before reset preview reaches the Durable Object', async () => {
+    const { sessionToken } = await issueSession();
+    const revoke = await call('/session/revoke', { method: 'POST', token: sessionToken });
+    expect(revoke.status).toBe(200);
+    expect((await call('/reset/preview?scope=all', { token: sessionToken })).status).toBe(401);
+  });
+
   it('revokes every owner session with ?all=1', async () => {
     const first = await issueSession();
     const second = await issueSession();

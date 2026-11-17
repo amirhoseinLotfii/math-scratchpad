@@ -388,6 +388,11 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
       });
       return json({ ...result.value, subrequestsUsed: result.used, subrequestLimit: result.limit });
     }
+    if (url.pathname === '/reset/preview') {
+      const rate = this.checkRateLimit();
+      if (rate) return rate;
+      return this.resetPreview(url);
+    }
     const rate = this.consumeRateLimit();
     if (rate) return rate;
 
@@ -1443,6 +1448,19 @@ export class LearningEventStore extends DurableObject<WorkerEnv> {
     });
 
     if (count <= this.rateLimit) return null;
+    const retryAfter = Math.max(1, Math.ceil((windowStart + RATE_WINDOW_MS - now) / 1_000));
+    return json({ error: 'rate_limited', retryAfterSeconds: retryAfter }, 429, { 'Retry-After': String(retryAfter) });
+  }
+
+  /** Read the current window without creating, deleting or incrementing any row. */
+  private checkRateLimit(): Response | null {
+    const now = Date.now();
+    const windowStart = Math.floor(now / RATE_WINDOW_MS) * RATE_WINDOW_MS;
+    const row = this.ctx.storage.sql.exec<{ request_count: number }>(
+      'SELECT request_count FROM rate_windows WHERE window_start = ?', windowStart,
+    ).toArray()[0];
+    const count = Number(row?.request_count ?? 0);
+    if (count < this.rateLimit) return null;
     const retryAfter = Math.max(1, Math.ceil((windowStart + RATE_WINDOW_MS - now) / 1_000));
     return json({ error: 'rate_limited', retryAfterSeconds: retryAfter }, 429, { 'Retry-After': String(retryAfter) });
   }

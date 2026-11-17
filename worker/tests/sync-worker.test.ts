@@ -257,6 +257,41 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(400);
   });
 
+  it('does not consume the event rate-limit window for the read-only reset preflight', async () => {
+    const app = createApp(validVerifier);
+    expect((await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' })).status).toBe(200);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      expect((await call(app, '/sync', { token: 'valid-test-token' })).status).toBe(attempt < 5 ? 200 : 429);
+    }
+  });
+
+  it('does not bypass an exhausted rate window while checking reset preview read-only', async () => {
+    const app = createApp(validVerifier);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await call(app, '/sync', { token: 'valid-test-token' })).status).toBe(200);
+    }
+    const preview = await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' });
+    expect(preview.status).toBe(429);
+    const next = await call(app, '/sync', { token: 'valid-test-token' });
+    expect(next.status).toBe(429);
+  });
+
+  it('keeps repeated reset previews free of table, rate-counter and alarm mutations', async () => {
+    const app = createApp(validVerifier);
+    const readState = () => runInDurableObject(testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase())), async (_instance, state) => ({
+      events: state.storage.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM learning_events').one().count,
+      appState: state.storage.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM app_state').one().count,
+      rateWindows: state.storage.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM rate_windows').one().count,
+      alarm: await state.storage.getAlarm(),
+    }));
+    const before = await readState();
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect((await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' })).status).toBe(200);
+    }
+    const after = await readState();
+    expect(after).toEqual(before);
+  });
+
   it('shows all-data reset impact but preserves the question bank config and server state', async () => {
     const app = createApp(validVerifier);
     await call(app, '/events', { token: 'valid-test-token', body: { events: [makeEvent()] } });

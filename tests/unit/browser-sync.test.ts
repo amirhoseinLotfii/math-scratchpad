@@ -1084,6 +1084,40 @@ describe('browser sync runtime', () => {
     runtime.stop();
   });
 
+  it('uses injected time and schedules the first retry with the deterministic backoff', async () => {
+    await initializeLearningStorage();
+    await queueLearnEvent(fixtureEvent(104));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let attempts = 0;
+    const fixedNow = () => 1_735_689_600_000;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError('offline');
+      const path = new URL(String(input)).pathname;
+      if (path === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        return Response.json({ events: body.events.map(event => ({ id: event.id, seq: 1, duplicate: false })), cursor: 1 });
+      }
+      if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ events: [], cursor: 1, through: 1, hasMore: false });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0, now: fixedNow });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    expect(runtime.getSnapshot()).toMatchObject({ phase: 'retrying', pending: 1 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(749);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await runtime.syncNow();
+    expect(runtime.getSnapshot().phase).toBe('synced');
+    expect(runtime.getSnapshot().lastSyncedAt).toBe(new Date(fixedNow()).toISOString());
+    expect(await readOutboxCount()).toBe(0);
+    runtime.stop();
+  });
+
   it('retains every event when the server omits an acknowledgement ID', async () => {
     await initializeLearningStorage();
     await queueLearnEvent(fixtureEvent(101));
