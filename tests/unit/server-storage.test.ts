@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readServerSnapshot, ServerBackedStorage } from '../../src/sync/server-storage';
+import { readServerSnapshot, ServerBackedStorage, verifyOwnerServerConnection } from '../../src/sync/server-storage';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -22,6 +22,26 @@ describe('server-only editor persistence', () => {
     expect(storage.getItem('math-scratchpad-session-v3')).toBe('{"a":1}');
   });
 
+  it('rejects unauthorized and malformed server snapshots without accepting remote data', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({ error: 'unauthorized' }, { status: 401 }))
+      .mockResolvedValueOnce(Response.json({ records: [{ key: 'other-app-key', value: 'x', revision: 1 }], revision: 1 }));
+    vi.stubGlobal('fetch', fetcher);
+
+    await expect(readServerSnapshot('owner-token')).rejects.toThrow('دوباره با Google وارد شوی');
+    await expect(readServerSnapshot('owner-token')).rejects.toThrow('پاسخ وضعیت یادگیری از سرور معتبر نیست');
+  });
+
+  it('reports heartbeat authentication and server failures with safe status messages', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({ error: 'unavailable' }, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ error: 'unauthorized' }, { status: 401 }));
+    vi.stubGlobal('fetch', fetcher);
+
+    await expect(verifyOwnerServerConnection('owner-token')).rejects.toThrow('HTTP 503');
+    await expect(verifyOwnerServerConnection('owner-token')).rejects.toThrow('دوباره وارد شو');
+  });
+
   it('writes and removes the editor state directly through the owner Worker', async () => {
     const writes: Array<{ key: string; value: string | null; revision: number }> = [];
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
@@ -39,6 +59,16 @@ describe('server-only editor persistence', () => {
     expect(writes.map(x => x.revision)).toEqual([0, 1, 2]);
     expect(writes.map(x => x.value)).toEqual(['{"step":"1/2"}', null, '{"step":"2/3"}']);
     expect(storage.getItem('math-scratchpad-session-v3')).toBe('{"step":"2/3"}');
+  });
+
+  it('rejects foreign keys and applies an idle remote tombstone', () => {
+    const storage = new ServerBackedStorage([
+      { key: 'math-scratchpad-session-v3', value: '{"step":1}', revision: 1 },
+    ], 'owner-token');
+
+    expect(() => storage.setItem('other-app-key', 'x')).toThrow('not owned by Math Scratchpad');
+    storage.applyRemote([{ key: 'math-scratchpad-session-v3', value: null, revision: 2 }]);
+    expect(storage.getItem('math-scratchpad-session-v3')).toBeNull();
   });
 
   it('automatically retries transient failures and version conflicts', async () => {
