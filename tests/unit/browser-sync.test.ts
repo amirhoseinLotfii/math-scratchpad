@@ -23,7 +23,6 @@ import {
   initializeLearningStorage,
   initializeAuthenticatedServerStorage,
   flushLearningStorage,
-  prepareLocalLearningReset,
   queueLearnEvent,
   readLegacyMigration,
   readOutboxCount,
@@ -53,9 +52,11 @@ const OLD_LESSON = JSON.stringify({ schemaVersion: 1, bankId: 'bank/1', bankVers
 
 function withIdleResetStatus(fetcher: typeof fetch): typeof fetch {
   return async (input, init) => {
-    if (new URL(String(input)).pathname === '/reset/status') {
+    const path = new URL(String(input)).pathname;
+    if (path === '/reset/status') {
       return Response.json({ status: 'idle', epoch: LEARNING_RESET_EPOCH });
     }
+    if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
     return fetcher(input, init);
   };
 }
@@ -139,23 +140,6 @@ afterEach(async () => {
 });
 
 describe('IndexedDB learning cache and legacy migration', () => {
-  it('preserves learning records until the storage bootstrap can migrate them', async () => {
-    const malformedCurrent = '{broken-json';
-    localStorage.setItem('math-scratchpad-redux-v2', OLD_SESSION);
-    localStorage.setItem(SESSION_KEY, malformedCurrent);
-    localStorage.setItem('math-scratchpad-ui-v1:questions', '0');
-
-    await expect(prepareLocalLearningReset()).resolves.toBe(true);
-
-    expect(localStorage.getItem('math-scratchpad-redux-v2')).toBe(OLD_SESSION);
-    expect(localStorage.getItem(SESSION_KEY)).toBe(malformedCurrent);
-    expect(localStorage.getItem('math-scratchpad-ui-v1:questions')).toBeNull();
-
-    await initializeLearningStorage();
-    expect(getLearningStorage().getItem('math-scratchpad-redux-v2')).toBe(OLD_SESSION);
-    expect(getLearningStorage().getItem(SESSION_KEY)).toBe(malformedCurrent);
-  });
-
   it('copies learning records and safe caches into IndexedDB, retaining legacy progress until verification', async () => {
     seedLegacy();
     const bootstrap = await initializeLearningStorage();
@@ -1101,7 +1085,7 @@ describe('browser sync runtime', () => {
       if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
       return Response.json({ events: [], cursor: 1, through: 1, hasMore: false });
     });
-    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher, random: () => 0, now: fixedNow });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0, now: fixedNow });
     await runtime.start();
     runtime.setIdToken('owner-id-token');
     await runtime.syncNow();
