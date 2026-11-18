@@ -128,6 +128,9 @@ test('batch and saved-session replacement use accessible in-app confirmations', 
 });
 
 test('Drive bank inspector traps keyboard focus and Escape restores workspace access', { tag: '@only-mobile-390' }, async ({ page }) => {
+  // Keep the focus-order check hermetic: the real Google Identity button loads from the
+  // network and inserts a focusable iframe at an unpredictable moment mid-sequence on CI.
+  await page.route(/^https:\/\/(accounts|apis)\.google\.com\//, route => route.abort());
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   const menu = page.getByRole('button', { name: 'Exercise menu' });
