@@ -1,5 +1,18 @@
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+const windowsCandidates = [
+ process.env.PROGRAMFILES && resolve(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+ process.env['PROGRAMFILES(X86)'] && resolve(process.env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
+ process.env.LOCALAPPDATA && resolve(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+ process.env.PROGRAMFILES && resolve(process.env.PROGRAMFILES, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+ process.env['PROGRAMFILES(X86)'] && resolve(process.env['PROGRAMFILES(X86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+ process.env.LOCALAPPDATA && resolve(process.env.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+].filter((candidate): candidate is string => Boolean(candidate));
+const systemChromium = process.platform === 'win32' ? windowsCandidates.find(candidate => existsSync(candidate)) : undefined;
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+ || systemChromium
+ || (process.platform !== 'win32' && existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined);
 const singleProjectTags = ['@only-mobile-390', '@only-mobile-320-or-390', '@only-laptop-1024', '@only-laptop-1440'] as const;
 const excludedTagsFor = (projectName: string) => {
  const excluded = singleProjectTags.filter(tag => {
@@ -17,7 +30,7 @@ export default defineConfig({
  outputDir: 'test-results/browser-artifacts',
  updateSnapshots: 'none',
  reporter: [['list'], ['json', { outputFile: 'test-results/playwright.json' }]],
- use: { baseURL: 'http://127.0.0.1:5173', launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (existsSync('/tmp/math-chromium') ? '/tmp/math-chromium' : undefined), args: ['--no-sandbox', '--disable-gpu'] }, trace: 'retain-on-failure', screenshot: 'only-on-failure', colorScheme: 'dark', locale: 'en-GB' },
+ use: { baseURL: 'http://127.0.0.1:5173', launchOptions: { executablePath, args: ['--no-sandbox', '--disable-gpu'] }, trace: 'retain-on-failure', screenshot: 'only-on-failure', colorScheme: 'dark', locale: 'en-GB' },
  webServer: { command: 'npm run dev -- --host 127.0.0.1', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI },
  projects: [
  ...[320, 390, 430].map(width => { const name = `mobile-${width}`; return { name, grepInvert: excludedTagsFor(name), testIgnore: ['**/wide/**', '**/audit/exit-flush.local-worker.spec.ts'], use: { ...devices['Pixel 7'], viewport: { width, height: 844 } } }; }),

@@ -66,6 +66,20 @@ describe('namespaced Learn progress storage', () => {
     expect(restored.progressById['SAMPLE-1.1']).toMatchObject({ completedPracticeQuestionIds: ['SAMPLE-1.1-P02'], activePracticeQuestionIds: ['SAMPLE-1.1-P01'] });
   });
 
+  it('skips rewriting unchanged progress so open tabs do not echo saves forever', () => {
+    const source = bank(), initial = emptyLessonProgressState(source.bank_id, VERSION);
+    initial.progressById['SAMPLE-1.1'] = progress();
+    expect(saveLessonProgress(source, VERSION, initial)).toEqual({ saved: true, message: '' });
+    const key = lessonProgressStorageKey(source.bank_id, VERSION);
+    const first = localStorage.getItem(key);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    expect(saveLessonProgress(source, VERSION, initial)).toEqual({ saved: true, message: '' });
+    expect(setItem).not.toHaveBeenCalled();
+    expect(localStorage.getItem(key)).toBe(first);
+    const changed = { ...initial, progressById: { 'SAMPLE-1.1': { ...progress(), currentSectionIndex: 0 } } };
+    expect(saveLessonProgress(source, VERSION, changed)).toEqual({ saved: true, message: '' });
+    expect(setItem).toHaveBeenCalledTimes(1);
+  });
   it('persists complete true/false-with-reason answers and keeps partial drafts incomplete', () => {
     const source = bank(), check = source.questions.find(question => question.id === 'SAMPLE-1.1-L01')!;
     check.answerType = 'true_false_why';

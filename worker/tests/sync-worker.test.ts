@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { env, reset } from 'cloudflare:test';
+import { env, reset, runInDurableObject } from 'cloudflare:test';
 import { generateKeyPair, SignJWT } from 'jose';
 import type { JWTVerifyGetKey } from 'jose';
 import { verifyGoogleIdToken } from '../src/auth';
@@ -51,6 +51,18 @@ function call(
   }), testEnv);
 }
 
+function eventBodyAtBytes(target: number) {
+  const events = Array.from({ length: 50 }, () => ({ ...makeEvent(), questionText: 'x'.repeat(4_800) }));
+  events[0] = { ...events[0], questionText: '' };
+  const baseLength = new TextEncoder().encode(JSON.stringify({ events })).byteLength;
+  const firstQuestionLength = target - baseLength;
+  if (firstQuestionLength < 0 || firstQuestionLength > 8_000) throw new Error(`Cannot build a valid ${target}-byte event body.`);
+  events[0] = { ...events[0], questionText: 'x'.repeat(firstQuestionLength) };
+  const body = { events };
+  if (new TextEncoder().encode(JSON.stringify(body)).byteLength !== target) throw new Error('Event body size calibration failed.');
+  return body;
+}
+
 describe('Google ID token verification', () => {
   let privateKey: CryptoKey;
   let publicKey: CryptoKey;
@@ -84,6 +96,19 @@ describe('Google ID token verification', () => {
     ['expired token', { expires: 946684800 }],
   ])('rejects a token with %s', async (_reason, options) => {
     await expect(verifyGoogleIdToken(await token({}, options), CLIENT_ID, resolver)).rejects.toThrow();
+  });
+
+  it('rejects an authorized-party claim that does not match the configured client', async () => {
+    await expect(verifyGoogleIdToken(
+      await token({ azp: 'another-client.apps.googleusercontent.com' }, { audience: [CLIENT_ID, 'another-client.apps.googleusercontent.com'] }),
+      CLIENT_ID,
+      resolver,
+    )).rejects.toThrow();
+  });
+
+  it('rejects malformed and oversized compact tokens before verification', async () => {
+    await expect(verifyGoogleIdToken('not.a.jwt', CLIENT_ID, resolver)).rejects.toThrow();
+    await expect(verifyGoogleIdToken('x'.repeat(10_001), CLIENT_ID, resolver)).rejects.toThrow();
   });
 
   it('rejects a token without Google verified-email claims', async () => {
@@ -230,6 +255,41 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect((await call(app, '/reset/preview?scope=all&session=x', { token: 'valid-test-token' })).status).toBe(400);
     expect((await call(app, '/reset/preview?scope=session&session=x&lesson=ignored', { token: 'valid-test-token' })).status).toBe(400);
     expect((await call(app, '/reset/execute', { token: 'valid-test-token', body: {} })).status).toBe(400);
+  });
+
+  it('does not consume the event rate-limit window for the read-only reset preflight', async () => {
+    const app = createApp(validVerifier);
+    expect((await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' })).status).toBe(200);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      expect((await call(app, '/sync', { token: 'valid-test-token' })).status).toBe(attempt < 5 ? 200 : 429);
+    }
+  });
+
+  it('does not bypass an exhausted rate window while checking reset preview read-only', async () => {
+    const app = createApp(validVerifier);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await call(app, '/sync', { token: 'valid-test-token' })).status).toBe(200);
+    }
+    const preview = await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' });
+    expect(preview.status).toBe(429);
+    const next = await call(app, '/sync', { token: 'valid-test-token' });
+    expect(next.status).toBe(429);
+  });
+
+  it('keeps repeated reset previews free of table, rate-counter and alarm mutations', async () => {
+    const app = createApp(validVerifier);
+    const readState = () => runInDurableObject(testEnv.EVENT_STORE.get(testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase())), async (_instance, state) => ({
+      events: state.storage.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM learning_events').one().count,
+      appState: state.storage.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM app_state').one().count,
+      rateWindows: state.storage.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM rate_windows').one().count,
+      alarm: await state.storage.getAlarm(),
+    }));
+    const before = await readState();
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect((await call(app, '/reset/preview?scope=all', { token: 'valid-test-token' })).status).toBe(200);
+    }
+    const after = await readState();
+    expect(after).toEqual(before);
   });
 
   it('shows all-data reset impact but preserves the question bank config and server state', async () => {
@@ -781,6 +841,38 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect(await snapshot.json()).toMatchObject({ events: [], cursor: 0, through: 0 });
   });
 
+  it('enforces empty and over-limit event batches while accepting exactly fifty events', async () => {
+    const app = createApp(validVerifier);
+    const empty = await call(app, '/events', { token: 'valid-test-token', body: { events: [] } });
+    expect(empty.status).toBe(400);
+    expect(await empty.json()).toMatchObject({ error: 'invalid_batch_size' });
+
+    const accepted = await call(app, '/events', {
+      token: 'valid-test-token', body: { events: Array.from({ length: 50 }, () => makeEvent()) },
+    });
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json() as { events: unknown[] }).events).toHaveLength(50);
+
+    const overLimit = await call(app, '/events', {
+      token: 'valid-test-token', body: { events: Array.from({ length: 51 }, () => makeEvent()) },
+    });
+    expect(overLimit.status).toBe(400);
+    expect(await overLimit.json()).toMatchObject({ error: 'invalid_batch_size' });
+  });
+
+  it('rejects the first byte over the event-body limit but accepts the exact boundary', async () => {
+    const app = createApp(validVerifier);
+    const exact = eventBodyAtBytes(250_000);
+    const accepted = await call(app, '/events', { token: 'valid-test-token', body: exact });
+    expect(accepted.status).toBe(200);
+
+    const over = { events: exact.events.map((event, index) => index === 0 ? { ...event, questionText: `${event.questionText}x` } : event) };
+    expect(new TextEncoder().encode(JSON.stringify(over)).byteLength).toBe(250_001);
+    const rejected = await call(app, '/events', { token: 'valid-test-token', body: over });
+    expect(rejected.status).toBe(413);
+    expect(await rejected.json()).toMatchObject({ error: 'payload_too_large' });
+  });
+
   it('accepts bounded legacy migration chunks and returns them in the private replay snapshot', async () => {
     const app = createApp(validVerifier);
     const migrationId = crypto.randomUUID();
@@ -829,6 +921,17 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     expect((await snapshot.json() as { events: unknown[] }).events).toHaveLength(1);
   });
 
+  it('allows only one of two concurrent state writers using the same revision', async () => {
+    const app = createApp(validVerifier);
+    const results = await Promise.all([
+      call(app, '/state', { token: 'valid-test-token', body: { key: 'math-scratchpad-session-v3', value: '{"writer":1}', revision: 0 } }),
+      call(app, '/state', { token: 'valid-test-token', body: { key: 'math-scratchpad-session-v3', value: '{"writer":2}', revision: 0 } }),
+    ]);
+    expect(results.map(response => response.status).sort()).toEqual([200, 409]);
+    const saved = await (await call(app, '/state', { token: 'valid-test-token' })).json() as { records: unknown[] };
+    expect(saved.records).toHaveLength(1);
+  });
+
   it('keeps a conflicting batch atomic', async () => {
     const app = createApp(validVerifier);
     const first = makeEvent();
@@ -867,8 +970,11 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
 
   it('rejects malformed cursors', async () => {
     const app = createApp(validVerifier);
-    expect((await call(app, '/sync?cursor=-1', { token: 'valid-test-token' })).status).toBe(400);
-    expect((await call(app, '/sync?limit=101', { token: 'valid-test-token' })).status).toBe(400);
+    for (const query of ['cursor=-1', 'cursor=abc', 'limit=0', 'limit=101', 'cursor=1&through=0']) {
+      const response = await call(app, `/sync?${query}`, { token: 'valid-test-token' });
+      expect(response.status, query).toBe(400);
+      expect(await response.json(), query).toMatchObject({ error: 'invalid_cursor_or_limit' });
+    }
   });
 
   it('enforces the configured per-owner request limit', async () => {
@@ -879,7 +985,22 @@ describe('Math Scratchpad sync Worker API and SQLite Durable Object', () => {
     }
     const limited = await call(app, '/sync', { token: 'valid-test-token' });
     expect(limited.status).toBe(429);
-    expect(limited.headers.has('Retry-After')).toBe(true);
+    const body = await limited.json() as { error: string; retryAfterSeconds: number };
+    expect(body.error).toBe('rate_limited');
+    expect(body.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(limited.headers.get('Retry-After')).toBe(String(body.retryAfterSeconds));
+  });
+
+  it('starts a fresh rate-limit window after expiring the previous local window', async () => {
+    const app = createApp(validVerifier);
+    for (let index = 0; index < 5; index += 1) await call(app, '/sync', { token: 'valid-test-token' });
+    const id = testEnv.EVENT_STORE.idFromName(OWNER_EMAIL.toLowerCase());
+    await runInDurableObject(testEnv.EVENT_STORE.get(id), (_instance, state) => {
+      state.storage.sql.exec('UPDATE rate_windows SET window_start = window_start - 120000');
+    });
+
+    const nextWindow = await call(app, '/sync', { token: 'valid-test-token' });
+    expect(nextWindow.status).toBe(200);
   });
 });
 

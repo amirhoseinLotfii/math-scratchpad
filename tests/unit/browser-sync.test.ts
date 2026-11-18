@@ -27,6 +27,7 @@ import {
   readLegacyMigration,
   readOutboxCount,
   resetLearningDbForTests,
+  subscribeLearningStorage,
   storeServerEvents,
   withLegacyMigrationLock,
   writeLearningItem,
@@ -51,9 +52,11 @@ const OLD_LESSON = JSON.stringify({ schemaVersion: 1, bankId: 'bank/1', bankVers
 
 function withIdleResetStatus(fetcher: typeof fetch): typeof fetch {
   return async (input, init) => {
-    if (new URL(String(input)).pathname === '/reset/status') {
+    const path = new URL(String(input)).pathname;
+    if (path === '/reset/status') {
       return Response.json({ status: 'idle', epoch: LEARNING_RESET_EPOCH });
     }
+    if (path === '/reset/epoch') return Response.json({ epoch: LEARNING_RESET_EPOCH });
     return fetcher(input, init);
   };
 }
@@ -180,6 +183,38 @@ describe('IndexedDB learning cache and legacy migration', () => {
     await db.get('cache', SESSION_KEY);
     expect((await db.get('cache', SESSION_KEY))?.value).toBe('{"new":"work"}');
     expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+  it('applies a valid BroadcastChannel update from another tab and notifies subscribers', async () => {
+    const channels = new Map<string, Set<FakeBroadcastChannel>>();
+    class FakeBroadcastChannel {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      constructor(public readonly name: string) {
+        const peers = channels.get(name) ?? new Set<FakeBroadcastChannel>();
+        peers.add(this);
+        channels.set(name, peers);
+      }
+      postMessage(data: unknown) {
+        for (const peer of channels.get(this.name) ?? []) {
+          if (peer !== this) peer.onmessage?.({ data } as MessageEvent);
+        }
+      }
+      close() { channels.get(this.name)?.delete(this); }
+    }
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+
+    await initializeLearningStorage();
+    const changes: Array<{ key: string; newValue: string | null }> = [];
+    const unsubscribe = subscribeLearningStorage(change => changes.push({ key: change.key, newValue: change.newValue }));
+    const otherTab = new FakeBroadcastChannel('math-scratchpad-learning-cache-v1');
+    otherTab.postMessage({ key: SESSION_KEY, value: '{"from":"other-tab"}', updatedAt: '2026-11-16T00:00:00.000Z' });
+    expect(getLearningStorage().getItem(SESSION_KEY)).toBe('{"from":"other-tab"}');
+    expect(changes).toEqual([{ key: SESSION_KEY, newValue: '{"from":"other-tab"}' }]);
+    otherTab.postMessage({ key: SESSION_KEY, value: null, updatedAt: '2026-11-16T00:00:01.000Z' });
+    expect(getLearningStorage().getItem(SESSION_KEY)).toBeNull();
+    expect(changes.at(-1)).toEqual({ key: SESSION_KEY, newValue: null });
+    unsubscribe();
+    otherTab.close();
   });
 
 
@@ -1029,6 +1064,40 @@ describe('browser sync runtime', () => {
     online = true;
     window.dispatchEvent(new Event('online'));
     await vi.waitFor(async () => expect(runtime.getSnapshot().phase).toBe('synced'));
+    expect(await readOutboxCount()).toBe(0);
+    runtime.stop();
+  });
+
+  it('uses injected time and schedules the first retry with the deterministic backoff', async () => {
+    await initializeLearningStorage();
+    await queueLearnEvent(fixtureEvent(104));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let attempts = 0;
+    const fixedNow = () => 1_735_689_600_000;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError('offline');
+      const path = new URL(String(input)).pathname;
+      if (path === '/events') {
+        const body = JSON.parse(String(init?.body)) as { events: LearnEvent[] };
+        return Response.json({ events: body.events.map(event => ({ id: event.id, seq: 1, duplicate: false })), cursor: 1 });
+      }
+      if (path === '/snapshot') return Response.json({ events: [], cursor: 0, through: 0, snapshotCursor: 0, hasMore: false });
+      return Response.json({ events: [], cursor: 1, through: 1, hasMore: false });
+    });
+    const runtime = new BrowserSyncRuntime({ apiOrigin: 'https://sync.example', fetcher: withIdleResetStatus(fetcher), random: () => 0, now: fixedNow });
+    await runtime.start();
+    runtime.setIdToken('owner-id-token');
+    await runtime.syncNow();
+    expect(runtime.getSnapshot()).toMatchObject({ phase: 'retrying', pending: 1 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(749);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await runtime.syncNow();
+    expect(runtime.getSnapshot().phase).toBe('synced');
+    expect(runtime.getSnapshot().lastSyncedAt).toBe(new Date(fixedNow()).toISOString());
     expect(await readOutboxCount()).toBe(0);
     runtime.stop();
   });

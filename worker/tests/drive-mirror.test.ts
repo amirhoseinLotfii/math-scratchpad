@@ -16,7 +16,7 @@ import {
 import { mergeWeeklyBackupContent } from '../src/event-store';
 import { DriveMirrorError, GoogleDriveClient } from '../src/google-drive';
 import { snapshotName } from '../src/immutable-snapshot';
-import { createApp, requestWeeklyDriveBackup, type IdTokenVerifier } from '../src/index';
+import worker, { createApp, requestWeeklyDriveBackup, type IdTokenVerifier } from '../src/index';
 import type { GoogleIdentity, WorkerEnv } from '../src/env';
 
 const OWNER_EMAIL = 'amirhoseinlotfalizadeprogramer@gmail.com';
@@ -866,5 +866,32 @@ describe('scheduled weekly backup trigger', () => {
     expect(requests[0].owner).toBe(OWNER_EMAIL.toLowerCase());
     expect(new URL(requests[0].url).searchParams.get('scheduledTime')).toBe(String(scheduledTime));
     expect(requests[0].method).toBe('POST');
+  });
+
+  it('routes both configured cron schedules through waitUntil without making a network call', async () => {
+    const requests: Array<{ url: string; method: string }> = [];
+    const fakeNamespace = {
+      idFromName(ownerId: string) { return ownerId; },
+      get() {
+        return { fetch: async (request: Request) => {
+          requests.push({ url: request.url, method: request.method });
+          return Response.json({ drive: { status: 'synced' }, notion: { status: 'synced' } });
+        } };
+      },
+    };
+    const waits: Promise<unknown>[] = [];
+    const execution = { waitUntil(value: Promise<unknown>) { waits.push(value); } } as unknown as ExecutionContext;
+    const scheduleEnv = { OWNER_EMAIL, EVENT_STORE: fakeNamespace } as unknown as WorkerEnv;
+    const scheduledTime = Date.UTC(2026, 10, 16, 2);
+
+    worker.scheduled!({ cron: '*/5 * * * *', scheduledTime } as ScheduledController, scheduleEnv, execution);
+    await Promise.all(waits.splice(0));
+    worker.scheduled!({ cron: '0 2 * * 1', scheduledTime } as ScheduledController, scheduleEnv, execution);
+    await Promise.all(waits.splice(0));
+
+    expect(requests).toEqual([
+      { url: 'https://event-store.internal/internal/sync-all', method: 'POST' },
+      { url: `https://event-store.internal/internal/weekly-backup?scheduledTime=${scheduledTime}`, method: 'POST' },
+    ]);
   });
 });

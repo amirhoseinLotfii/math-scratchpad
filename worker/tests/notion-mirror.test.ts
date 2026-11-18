@@ -9,12 +9,15 @@ import {
   buildConceptProperties,
   buildDailyReportProperties,
   confidenceCalibration,
+  richText,
   tehranDateTime,
   tehranDayKey,
   type ConceptProjection,
 } from '../src/notion-projection';
 import {
+  NOTION_RETRY_LIMIT,
   NotionRequestQueue,
+  retryDelayMs,
   syncNotionEvent,
   type NotionClientPort,
   type NotionDataSources,
@@ -420,6 +423,31 @@ describe('Notion API mirroring', () => {
     expect(attempts).toBe(2);
     expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(350);
     expect(waits).toContain(500);
+  });
+
+  it('retries 5xx responses only to the configured limit and honors Retry-After', async () => {
+    const waits: number[] = [];
+    const queue = new NotionRequestQueue(0, async milliseconds => { waits.push(milliseconds); });
+    let attempts = 0;
+    await expect(queue.run(async () => {
+      attempts += 1;
+      throw Object.assign(new Error('server failure'), { status: 503 });
+    })).rejects.toThrow('server failure');
+    expect(attempts).toBe(NOTION_RETRY_LIMIT + 1);
+    expect(waits).toEqual([500, 1_000]);
+    expect(retryDelayMs({ status: 429, headers: { 'Retry-After': '2' } }, 0)).toBe(2_000);
+    expect(retryDelayMs({ status: 400 }, 0)).toBeNull();
+  });
+
+  it('keeps Persian, ZWNJ and emoji text intact while chunking by Unicode code points', () => {
+    const value = 'الف‌🙂'.repeat(361);
+    const chunks = richText(value);
+    expect(chunks.map(chunk => chunk.text.content).join('')).toBe(value);
+    expect(chunks).toHaveLength(2);
+    expect(chunks.every(chunk => Array.from(chunk.text.content).length <= 1_800)).toBe(true);
+    expect(Array.from(chunks[0]!.text.content).length).toBe(1_800);
+    expect(richText('x'.repeat(1_800))).toHaveLength(1);
+    expect(richText('')).toEqual([]);
   });
 });
 

@@ -1,15 +1,18 @@
 import type { Page } from '@playwright/test';
 
-const DB_NAME = 'math-scratchpad-sync-v2';
+const DB_NAMES = ['math-scratchpad-sync-v2', 'math-scratchpad-sync-v1'] as const;
+const DB_NAME = DB_NAMES[0];
 const CACHE_STORE = 'cache';
 
 export async function resetLearningDatabase(page: Page): Promise<void> {
-  await page.evaluate(async dbName => new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(dbName);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error('A browser tab kept the test IndexedDB open during reset.'));
-  }), DB_NAME);
+  for (const dbName of DB_NAMES) {
+    await page.evaluate(async name => new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error(`A browser tab kept test IndexedDB ${name} open during reset.`));
+    }), dbName);
+  }
 }
 
 export async function readLearningCache(page: Page, key: string): Promise<string | null> {
