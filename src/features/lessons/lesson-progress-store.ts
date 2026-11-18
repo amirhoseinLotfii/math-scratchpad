@@ -241,6 +241,17 @@ export function readLessonProgress(bank: DriveBank, bankVersion: string, storage
   return state;
 }
 
+function sameProgressPayload(existing: string | null, payload: { updatedAt: string }): boolean {
+  if (!existing) return false;
+  try {
+    const parsed = JSON.parse(existing) as Record<string, unknown>;
+    if (!record(parsed)) return false;
+    const { updatedAt: _previous, ...rest } = parsed;
+    const { updatedAt: _next, ...next } = payload;
+    return JSON.stringify(rest) === JSON.stringify(next);
+  } catch { return false; }
+}
+
 export function saveLessonProgress(bank: DriveBank, bankVersion: string, state: LessonProgressState, storage?: Storage): { saved: boolean; message: string } {
   if (state.persistenceBlocked) return { saved: false, message: state.warning || 'Saved Learn progress is protected and was not overwritten.' };
   const target = availableStorage(storage);
@@ -271,6 +282,9 @@ export function saveLessonProgress(bank: DriveBank, bankVersion: string, state: 
   if (serialized.length > MAX_RECORD_LENGTH) return { saved: false, message: 'Learn progress is too large to save; it remains available in memory.' };
   try {
     const key = lessonProgressStorageKey(bank.bank_id, bankVersion);
+    // Skip no-op saves: rewriting identical progress with only a fresh updatedAt
+    // makes two open tabs echo the same record back and forth forever.
+    if (sameProgressPayload(target.getItem(key), payload)) return { saved: true, message: '' };
     target.setItem(key, serialized);
     if (target.getItem(key) !== serialized) throw Error('Storage did not preserve the saved value.');
     return { saved: true, message: '' };
