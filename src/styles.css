@@ -1693,3 +1693,87 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
   margin-bottom: 2px;
 }
 
+/* Phase 3: Save Status Pill */
+.save-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.save-status-pill .pill-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.save-status-pill.status-saved-local {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.save-status-pill.status-saved-drive {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+.save-status-pill.status-queued {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.save-status-pill.status-syncing {
+  background: #e0f2fe;
+  color: #0284c7;
+  border-color: #7dd3fc;
+}
+
+.save-status-pill.status-error {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+/* Phase 3: Storage Eviction Banner */
+.storage-eviction-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fef3c7;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.storage-eviction-banner .banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.storage-eviction-banner .banner-icon {
+  width: 20px;
+  height: 20px;
+  color: #d97706;
+  flex-shrink: 0;
+}
+
+.storage-eviction-banner .banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
