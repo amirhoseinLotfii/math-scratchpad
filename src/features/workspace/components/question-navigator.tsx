@@ -1,7 +1,7 @@
 import { useId, type KeyboardEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePanelOpen } from '../../../shared/lib/ui-prefs';
-import type { Document } from '../../../model';
+import type { Document } from '../../math-editor/model/model';
 import { Button } from '../../../shared/ui/button';
 import { questionStatus } from '../model/workspace-layout';
 export function QuestionNavigator({ doc, onSelect }: { doc: Document; onSelect: (id: string) => void }) {

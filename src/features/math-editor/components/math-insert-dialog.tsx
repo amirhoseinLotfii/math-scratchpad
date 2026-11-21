@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type KeyboardEvent } from 'react';
-import { symbolList } from '../../../model';
+import { symbolList } from '../model/model';
 import { Button } from '../../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../shared/ui/dialog';
 

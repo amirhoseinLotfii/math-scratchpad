@@ -1,5 +1,5 @@
-import { ascii, elapsedAt, isoLocal, validScale, stepLatex, type Document, type Exercise } from '../../../model';
-import { APP_VERSION } from '../../../version';
+import { ascii, elapsedAt, isoLocal, validScale, stepLatex, type Document, type Exercise } from '../../math-editor/model/model';
+import { APP_VERSION } from '../../../shared/lib/version';
 import { questionStatus } from '../../workspace/model/workspace-layout';
 import type { LessonExportData } from '../../lessons/lesson-progress-store';
 

@@ -1,4 +1,4 @@
-import { stepIsBlank, type Exercise } from '../../../model';
+import { stepIsBlank, type Exercise } from '../../math-editor/model/model';
 import { BREAKPOINTS, type WorkspaceLayout } from '../../../shared/lib/breakpoints';
 export type { WorkspaceLayout };
 export function layoutAtWidth(width: number): WorkspaceLayout { return width >= BREAKPOINTS.wide ? 'desktop' : width >= BREAKPOINTS.workspace ? 'laptop' : 'phone'; }

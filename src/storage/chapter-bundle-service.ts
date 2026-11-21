@@ -82,7 +82,7 @@ export class ChapterBundleService {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const bundle = ChapterBundleSchema.parse(parsed);
 
-    const chapterId = bundle.chapterId || bundle.bank.chapterId;
+    const chapterId = bundle.bank.chapterId;
 
     return await db.transaction(
       'rw',

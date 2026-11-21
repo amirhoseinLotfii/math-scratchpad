@@ -1,6 +1,6 @@
 import { useId, useRef, type KeyboardEvent } from 'react';
 import { usePanelOpen } from '../../../shared/lib/ui-prefs';
-import type { Exercise, SessionMeta } from '../../../model';
+import type { Exercise, SessionMeta } from '../../math-editor/model/model';
 const scale = [1, 2, 3, 4, 5];
 export function SessionPanel({ meta, exercise, onEditScales }: {
  meta?: SessionMeta; exercise: Exercise;

@@ -76,7 +76,7 @@ export function StorageEvictionBanner({
         {onExportBackup && (
           <Button
             size="sm"
-            variant="secondary"
+            variant="outline"
             className="backup-btn"
             onClick={onExportBackup}
           >

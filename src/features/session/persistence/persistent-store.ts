@@ -1,8 +1,8 @@
 import { initialKeyboardOpen } from '../../../shared/lib/ui-prefs';
 import * as z from 'zod/mini';
-import { example, isoLocal, stepLatex, uid } from '../../../model';
-import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../../store';
-import { restoreState, validateSession } from '../../../persistence';
+import { example, isoLocal, stepLatex, uid } from '../../math-editor/model/model';
+import { makeStore, initialState, type PersistedSession, type ScratchState, type ScratchStore } from '../../math-editor/store/editor-store';
+import { restoreState, validateSession } from './session-validator';
 import { clampRestoredTimers } from '../timer-continuity';
 import type { PersistOptions } from 'zustand/middleware';
 import { flushLearningStorage, getLearningStorage, isServerStorageActive, subscribeLearningStorage } from '../../../sync/browser-db';

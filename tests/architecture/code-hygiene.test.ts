@@ -12,9 +12,6 @@ const MAX_PHYSICAL_LINES = 300;
  * Phases B–F systematically remove entries until this set is completely empty.
  */
 const MAX_LINES_ALLOWLIST = new Set<string>([
-  // Phase C: app shell & math-editor store
-  'src/App.tsx',
-  'src/features/math-editor/store/editor-store.ts',
   // Phase D: lessons & drive-bank
   'src/features/lessons/lesson-screen.tsx',
   'src/features/lessons/lesson-progress-store.ts',

@@ -7,22 +7,20 @@ export interface GoogleCodeClientConfig {
   onError?: (err: unknown) => void;
 }
 
-declare global {
-  interface Window {
-    google?: {
-      accounts?: {
-        oauth2?: {
-          initCodeClient: (options: {
-            client_id: string;
-            scope: string;
-            ux_mode: 'popup' | 'redirect';
-            callback: (response: { code?: string; error?: string }) => void;
-            error_callback?: (err: unknown) => void;
-          }) => { requestCode: () => void };
-        };
-      };
-    };
-  }
+interface GisOauth2Client {
+  initCodeClient: (options: {
+    client_id: string;
+    scope: string;
+    ux_mode: 'popup' | 'redirect';
+    callback: (response: { code?: string; error?: string }) => void;
+    error_callback?: (err: unknown) => void;
+  }) => { requestCode: () => void };
+}
+
+function getGisOauth2(): GisOauth2Client | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (window as unknown as { google?: { accounts?: { oauth2?: GisOauth2Client } } }).google
+    ?.accounts?.oauth2;
 }
 
 /**
@@ -41,18 +39,16 @@ export class GoogleCodeClient {
   init(): boolean {
     assertNetworkAllowed('google-accounts-oauth2');
 
-    if (
-      typeof window === 'undefined' ||
-      !window.google?.accounts?.oauth2?.initCodeClient
-    ) {
+    const oauth2 = getGisOauth2();
+    if (!oauth2?.initCodeClient) {
       return false;
     }
 
-    this.client = window.google.accounts.oauth2.initCodeClient({
+    this.client = oauth2.initCodeClient({
       client_id: this.config.clientId,
       scope: this.config.scope || 'https://www.googleapis.com/auth/drive.file',
       ux_mode: 'popup',
-      callback: response => {
+      callback: (response: { code?: string; error?: string }) => {
         if (response.code) {
           this.config.onCodeReceived(response.code).catch(err => {
             this.config.onError?.(err);
@@ -61,7 +57,7 @@ export class GoogleCodeClient {
           this.config.onError?.(new Error(`OAuth error: ${response.error}`));
         }
       },
-      error_callback: err => {
+      error_callback: (err: unknown) => {
         this.config.onError?.(err);
       }
     });

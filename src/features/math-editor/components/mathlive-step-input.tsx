@@ -1,7 +1,7 @@
 import { createElement, useLayoutEffect, useRef } from 'react';
 import { MathfieldElement } from 'mathlive';
 import { insertMathSymbol, mathfieldForStep, mathLatexForSymbol, registerMathfield } from '../mathlive-adapter';
-import { configureMathField, type ConfigureMathFieldOptions } from '../../../editor/configure-math-field';
+import { configureMathField, type ConfigureMathFieldOptions } from '../configure-math-field';
 
 // The Node test resolver selects MathLive's SSR entry, which intentionally does
 // not export the browser custom-element class. The browser build does.

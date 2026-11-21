@@ -64,7 +64,9 @@ export function StyledWorkPicker({
               onClick={() => {
                 onSelect(item.key);
                 // Also trigger scroll to corresponding question in lesson pane per AC-P2
-                const targetEl = document.getElementById(`lesson-question-${item.question?.id || item.key}`);
+                const targetId =
+                  item.kind === 'check' || item.kind === 'exercise' ? item.question.id : item.key;
+                const targetEl = document.getElementById(`lesson-question-${targetId}`);
                 if (targetEl) {
                   targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 }
