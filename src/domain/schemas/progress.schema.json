@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://math-scratchpad.app/schemas/v1/progress.schema.json",
+  "title": "ChapterProgress",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "chapterId", "bankVersion", "updatedHlc", "items"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "chapter_progress" },
+    "chapterId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+    },
+    "bankVersion": { "type": "string" },
+    "updatedHlc": {
+      "type": "string",
+      "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+    },
+    "items": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status", "statusHlc", "attemptCount", "steps"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["not_started", "in_progress", "solved"]
+          },
+          "statusHlc": {
+            "type": "string",
+            "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+          },
+          "attemptCount": { "type": "integer", "minimum": 0 },
+          "steps": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["stepId", "orderKey", "branchId", "updatedHlc", "deleted", "segments"],
+              "properties": {
+                "stepId": { "type": "string" },
+                "orderKey": { "type": "string" },
+                "branchId": { "type": "string" },
+                "parentStepId": { "type": "string" },
+                "branchSign": { "type": "string", "enum": ["plus", "minus", "case", ""] },
+                "updatedHlc": {
+                  "type": "string",
+                  "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+                },
+                "deleted": { "type": "boolean" },
+                "segments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["type", "content"],
+                    "properties": {
+                      "type": { "type": "string", "enum": ["persian_text", "ltr_text", "math"] },
+                      "content": { "type": "string" }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "combinedLatex": { "type": "string" },
+                "isPrefilledFromQuestion": { "type": "boolean" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "finalAnswer": { "type": "object", "additionalProperties": true },
+          "finalSubmittedAt": { "type": "string" },
+          "finalSubmitHlc": {
+            "type": "string",
+            "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+          },
+          "editedAfterSubmit": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "resumeState": {
+      "type": "object",
+      "properties": {
+        "lastVisitedItemId": { "type": "string" },
+        "recentItemIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "orphanedItems": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

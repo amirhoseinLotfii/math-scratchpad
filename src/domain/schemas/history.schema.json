@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://math-scratchpad.app/schemas/v1/history.schema.json",
+  "title": "HistoryChunk",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "chunkId", "chapterId", "deviceId", "records"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "history_chunk" },
+    "chunkId": { "type": "string" },
+    "chapterId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+    },
+    "deviceId": { "type": "string" },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["recordId", "recordType", "itemId", "bankVersion", "createdHlc", "createdAtIso", "snapshot"],
+        "properties": {
+          "recordId": { "type": "string" },
+          "recordType": {
+            "type": "string",
+            "enum": ["step_version", "final_submit_attempt", "post_submit_revision"]
+          },
+          "itemId": { "type": "string" },
+          "bankVersion": { "type": "string" },
+          "createdHlc": {
+            "type": "string",
+            "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+          },
+          "createdAtIso": { "type": "string" },
+          "snapshot": {
+            "type": "object",
+            "required": ["steps"],
+            "properties": {
+              "steps": { "type": "object", "additionalProperties": true },
+              "finalAnswer": { "type": "object", "additionalProperties": true }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

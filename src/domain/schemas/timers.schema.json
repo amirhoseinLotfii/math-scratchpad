@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://math-scratchpad.app/schemas/v1/timers.schema.json",
+  "title": "TimerLog",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "updatedHlc", "sessions"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "timer_log" },
+    "updatedHlc": {
+      "type": "string",
+      "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "mode",
+          "startedAtIso",
+          "activeDurationSeconds",
+          "status",
+          "updatedHlc",
+          "notionSyncState"
+        ],
+        "properties": {
+          "sessionId": { "type": "string" },
+          "mode": {
+            "type": "string",
+            "enum": ["lesson", "session", "pomodoro_work", "pomodoro_break"]
+          },
+          "startedAtIso": { "type": "string" },
+          "endedAtIso": { "type": "string" },
+          "activeDurationSeconds": { "type": "integer", "minimum": 0 },
+          "status": {
+            "type": "string",
+            "enum": ["running", "paused", "completed", "aborted"]
+          },
+          "updatedHlc": {
+            "type": "string",
+            "pattern": "^[0-9]{13}:[0-9]{4}:[A-Za-z0-9._-]+$"
+          },
+          "notionSyncState": {
+            "type": "string",
+            "enum": ["pending", "synced", "disabled", "failed"]
+          },
+          "chapterId": { "type": "string" },
+          "itemId": { "type": "string" },
+          "pomodoroCycleIndex": { "type": "integer", "minimum": 0 },
+          "notionPageId": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

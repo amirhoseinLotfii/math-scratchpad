@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://math-scratchpad.app/schemas/v1/chapter-bundle.schema.json",
+  "title": "ChapterBundle",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "exportedAtIso", "bank", "progress", "historyChunks"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "chapter_bundle" },
+    "exportedAtIso": { "type": "string" },
+    "bank": {
+      "type": "object",
+      "required": ["schemaVersion", "kind", "bankVersion", "chapterId", "title", "items"],
+      "additionalProperties": true
+    },
+    "progress": {
+      "type": "object",
+      "required": ["schemaVersion", "kind", "chapterId", "bankVersion", "updatedHlc", "items"],
+      "additionalProperties": true
+    },
+    "historyChunks": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "timers": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "type": "string" },
+        "kind": { "const": "timer_log" },
+        "updatedHlc": { "type": "string" },
+        "sessions": { "type": "object" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

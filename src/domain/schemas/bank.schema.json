@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://math-scratchpad.app/schemas/v1/bank.schema.json",
+  "title": "BankChapter",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "bankVersion", "chapterId", "title", "items"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "kind": { "const": "bank_chapter" },
+    "bankVersion": { "type": "string" },
+    "chapterId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+    },
+    "title": {
+      "type": "object",
+      "required": ["fa"],
+      "properties": {
+        "fa": { "type": "string" },
+        "en": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "description": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "orderIndex", "itemType", "requiredForCompletion", "prompt"],
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+          },
+          "orderIndex": { "type": "integer", "minimum": 0 },
+          "itemType": {
+            "type": "string",
+            "enum": [
+              "worked_example",
+              "guided_example",
+              "yes_no_function",
+              "domain_range",
+              "table",
+              "set",
+              "math",
+              "persian_text",
+              "choice",
+              "true_false_why",
+              "find_mistake",
+              "section_exercise"
+            ]
+          },
+          "requiredForCompletion": { "type": "boolean" },
+          "prompt": {
+            "type": "object",
+            "required": ["segments"],
+            "properties": {
+              "segments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["type", "content"],
+                  "properties": {
+                    "type": { "type": "string", "enum": ["persian_text", "ltr_text", "math"] },
+                    "content": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "prefillStep1": {
+            "type": "object",
+            "properties": {
+              "latex": { "type": "string" },
+              "segments": { "type": "array" }
+            },
+            "additionalProperties": true
+          },
+          "typeConfig": { "type": "object", "additionalProperties": true },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["book"],
+              "properties": {
+                "book": { "type": "string" },
+                "page": { "type": ["string", "number"] },
+                "section": { "type": "string" },
+                "note": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "isCustomImport": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
