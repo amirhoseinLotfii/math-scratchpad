@@ -1,4 +1,6 @@
 /** Canonical viewport thresholds shared by CSS tokens and browser behavior. */
+export type WorkspaceLayout = 'phone' | 'laptop' | 'desktop';
+
 export const BREAKPOINTS = {
   tinyPhone: 360,
   phone: 480,

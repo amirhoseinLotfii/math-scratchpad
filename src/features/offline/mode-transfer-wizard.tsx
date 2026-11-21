@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../shared/ui/dialog';
 import { Button } from '../../shared/ui/button';
-import { StorageMode, setStorageMode } from '../../sync/mode-gate';
+import { StorageMode, setStorageMode } from '../../shared/lib/mode-gate';
 import { ArrowLeftRight, CloudUpload, Download, CheckCircle2 } from 'lucide-react';
 
 export type TransferStrategy = 'move_local_to_drive' | 'overwrite_local_from_drive' | 'switch_only';

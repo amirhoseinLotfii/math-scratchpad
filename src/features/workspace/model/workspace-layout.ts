@@ -1,6 +1,7 @@
 import { stepIsBlank, type Exercise } from '../../../model';
-export type WorkspaceLayout = 'phone' | 'laptop' | 'desktop';
-export function layoutAtWidth(width: number): WorkspaceLayout { return width >= 1600 ? 'desktop' : width >= 900 ? 'laptop' : 'phone'; }
+import { BREAKPOINTS, type WorkspaceLayout } from '../../../shared/lib/breakpoints';
+export type { WorkspaceLayout };
+export function layoutAtWidth(width: number): WorkspaceLayout { return width >= BREAKPOINTS.wide ? 'desktop' : width >= BREAKPOINTS.workspace ? 'laptop' : 'phone'; }
 export function questionStatus(exercise: Exercise): 'Skipped' | 'Answered' | 'Draft' | 'Not started' {
  if (exercise.skipped) return 'Skipped';
  const trueFalseWhy = exercise.answerType === 'true_false_why';

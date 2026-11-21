@@ -1,5 +1,5 @@
 import { getDriveAccessToken } from '../auth/token-manager';
-import { assertNetworkAllowed } from './mode-gate';
+import { assertNetworkAllowed } from '../shared/lib/mode-gate';
 import { db } from '../storage/scratchpad-db';
 import { ChapterProgress } from '../domain/entities/chapter-progress.types';
 import { mergeChapterProgress } from '../domain/sync/lww-merge';

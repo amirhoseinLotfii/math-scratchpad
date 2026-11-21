@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { WorkspaceLayout } from '../../features/workspace/model/workspace-layout';
-import { BREAKPOINT_MEDIA } from '../lib/breakpoints';
+import { BREAKPOINT_MEDIA, type WorkspaceLayout } from '../lib/breakpoints';
 const queries = [BREAKPOINT_MEDIA.workspace, BREAKPOINT_MEDIA.wide];
 function snapshot(): WorkspaceLayout {
  if (typeof window.matchMedia !== 'function') return 'phone';

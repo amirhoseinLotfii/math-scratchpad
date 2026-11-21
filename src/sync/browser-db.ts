@@ -1,4 +1,5 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { setActiveLearningStorage } from '../shared/lib/learning-storage-provider';
 import type { LearnEvent } from './events';
 import {
   LEARNING_RESET_EPOCH,
@@ -490,6 +491,7 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
       }
 
       activeStorage = new IndexedDbStorage();
+      setActiveLearningStorage(activeStorage);
       try {
         if (!channel && typeof BroadcastChannel !== 'undefined') {
           channel = new BroadcastChannel('math-scratchpad-learning-cache-v1');
@@ -521,7 +523,8 @@ export function initializeLearningStorage(): Promise<LearningStorageBootstrap> {
         }
       }
       activeStorage = new IndexedDbStorage();
-      return { storage: activeStorage, dbAvailable: false, migration: null, warning: 'ذخیره‌سازی پایدار مرورگر در دسترس نیست؛ داده‌های قدیمی دست‌نخورده مانده‌اند.' };
+      setActiveLearningStorage(activeStorage);
+      return { storage: activeStorage, dbAvailable: false, warning: 'ذخیره‌سازی پایدار مرورگر در دسترس نیست؛ داده‌های قدیمی دست‌نخورده مانده‌اند.', migration: null };
     }
   })();
   return bootstrapPromise;
@@ -599,7 +602,7 @@ export async function clearVerifiedLegacyKeys(migration: LegacyMigration): Promi
 
 export async function resetLearningDbForTests(): Promise<void> {
   dbInstance?.close();
-  dbInstance = undefined; dbPromise = undefined; bootstrapPromise = undefined; activeStorage = undefined;
+  dbInstance = undefined; dbPromise = undefined; bootstrapPromise = undefined; activeStorage = undefined; setActiveLearningStorage(undefined);
   serverStorage = undefined;
   values = new Map(); pendingWrites = new Set(); channel?.close(); channel = undefined; storageListeners.clear();
   memoryOutbox.clear(); memoryServerEvents.clear(); memoryMeta.clear();

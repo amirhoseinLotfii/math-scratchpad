@@ -1,4 +1,4 @@
-import { assertNetworkAllowed } from '../sync/mode-gate';
+import { assertNetworkAllowed } from '../shared/lib/mode-gate';
 
 export interface GoogleCodeClientConfig {
   clientId: string;
