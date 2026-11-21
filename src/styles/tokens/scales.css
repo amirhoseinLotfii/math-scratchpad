@@ -1,0 +1,197 @@
+/* ============================================================================
+   SPACING SYSTEM
+   ============================================================================ */
+
+:root {
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  --space-20: 5rem;     /* 80px */
+}
+
+/* ============================================================================
+   BORDER RADIUS SYSTEM
+   ============================================================================ */
+
+:root {
+  --radius-sm: 0.25rem;   /* 4px */
+  --radius-md: 0.375rem;  /* 6px */
+  --radius-lg: 0.5rem;    /* 8px */
+  --radius-xl: 0.75rem;   /* 12px */
+  --radius-2xl: 1rem;     /* 16px */
+  --radius-full: 9999px; /* Circle */
+}
+
+/* ============================================================================
+   TYPOGRAPHY SYSTEM
+   ============================================================================ */
+
+:root {
+  /* Font Families */
+  --font-family-sans: 'Inter', 'Vazirmatn', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-family-math: 'Cambria Math', 'STIX Two Math', Georgia, serif;
+  
+  /* Font Sizes */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px */
+  --text-3xl: 2rem;      /* 32px */
+  --text-4xl: 2.5rem;    /* 40px */
+  
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* Line Heights */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* Letter Spacing */
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.025em;
+}
+
+/* ============================================================================
+   ELEVATION SYSTEM (Box Shadows)
+   ============================================================================ */
+
+:root {
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --shadow-glow: 0 0 20px rgba(52, 211, 153, 0.3);
+  --shadow-glow-lg: 0 0 40px rgba(52, 211, 153, 0.2);
+}
+
+/* ============================================================================
+   TRANSITIONS & ANIMATIONS
+   ============================================================================ */
+
+:root {
+  /* Transition Timing */
+  --transition-fast: 150ms;
+  --transition-normal: 250ms;
+  --transition-slow: 350ms;
+  --transition-slower: 500ms;
+  
+  /* Transition Functions */
+  --easing-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --easing-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --easing-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Common Transitions */
+  --transition-all: all var(--transition-normal) var(--easing-ease);
+  --transition-colors: color var(--transition-fast) var(--easing-ease);
+  --transition-opacity: opacity var(--transition-fast) var(--easing-ease);
+  --transition-transform: transform var(--transition-normal) var(--easing-ease);
+  --transition-background: background var(--transition-normal) var(--easing-ease);
+  --transition-border: border-color var(--transition-normal) var(--easing-ease);
+  --transition-shadow: box-shadow var(--transition-normal) var(--easing-ease);
+}
+
+/* ============================================================================
+   Z-INDEX SCALE
+   ============================================================================ */
+
+:root {
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
+  --z-max: 9999;
+}
+
+/* ============================================================================
+   BORDER WIDTHS
+   ============================================================================ */
+
+:root {
+  --border-sm: 1px;
+  --border-md: 2px;
+  --border-lg: 3px;
+  --border-xl: 4px;
+}
+
+/* ============================================================================
+   OPACITY VALUES
+   ============================================================================ */
+
+:root {
+  --opacity-disabled: 0.5;
+  --opacity-muted: 0.7;
+  --opacity-hover: 0.9;
+  --opacity-active: 0.8;
+  --opacity-focus: 1;
+}
+
+/* ============================================================================
+   SIZES
+   ============================================================================ */
+
+:root {
+  /* Common heights */
+  --height-sm: 32px;
+  --height-md: 40px;
+  --height-lg: 48px;
+  --height-xl: 56px;
+  --height-2xl: 64px;
+  
+  /* Min widths */
+  --min-width-sm: 32px;
+  --min-width-md: 40px;
+  --min-width-lg: 48px;
+  --min-width-xl: 56px;
+  
+  /* Max widths */
+  --max-width-xs: 320px;
+  --max-width-sm: 480px;
+  --max-width-md: 768px;
+  --max-width-lg: 1024px;
+  --max-width-xl: 1280px;
+  --max-width-2xl: 1536px;
+  
+  /* Content widths */
+  --content-width-narrow: 480px;
+  --content-width-medium: 768px;
+  --content-width-wide: 1200px;
+}
+
+/* ============================================================================
+   BREAKPOINTS
+   ============================================================================ */
+
+:root {
+  /* Canonical viewport thresholds; CSS media queries use the same values. */
+  --breakpoint-tiny-phone: 360px;
+  --breakpoint-phone: 480px;
+  --breakpoint-compact: 600px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-workspace: 900px;
+  --breakpoint-desktop-input: 1024px;
+  --breakpoint-split: 1100px;
+  --breakpoint-wide: 1600px;
+  /* Compatibility alias used by the app root's max-width rule. */
+  --breakpoint-desktop: var(--breakpoint-split);
+}
