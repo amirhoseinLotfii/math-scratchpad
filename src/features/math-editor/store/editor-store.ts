@@ -3,8 +3,9 @@ import { createStore } from 'zustand/vanilla';
 import { persist, type PersistOptions } from 'zustand/middleware';
 type PayloadAction<T> = { payload: T };
 import { validScale } from '../model/model';
-import { blank, blankStep, clone, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, MAX_SESSION_EXERCISES, nodes, num, op, seq, stepLatex, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal, elapsedAt } from '../../../model';
+import { blank, blankStep, clone, defaultStepSegments, example, fields, findSequence, freshNode, ident, latex, leaves, makeStructure, MAX_SESSION_EXERCISES, nodes, num, op, seq, stepIsBlank, stepLatex, uid, type Cursor, type Document, type Exercise, type MathNode, type Preferences, type Sequence, type SessionMeta, isoLocal, elapsedAt } from '../../../model';
 import { parse } from '../../../parser';
+import { generateOrderKey } from '../model/order-key';
 import { diagnosticQuestions } from '../../../diagnostic';
 import { fractionRoundOne } from '../../../fractionRoundOne';
 
@@ -66,7 +67,10 @@ function invalidate(doc: Document, from: number) {
 }
 export type Command =
   | { type: 'digit' | 'operator' | 'identifier' | 'insert'; value: string }
-  | { type: 'insertBlankNumber' | 'deleteForward' | 'backspace' | 'clear' | 'newStep' | 'deleteStep' | 'final' | 'duplicate' | 'cut' | 'paste' | 'deleteStructure' }
+  | { type: 'insertBlankNumber' | 'deleteForward' | 'backspace' | 'clear' | 'deleteStep' | 'final' | 'duplicate' | 'cut' | 'paste' | 'deleteStructure' }
+  | { type: 'newStep'; copyPrevious?: boolean }
+  | { type: 'insertStepBetween'; prevStepId: string; nextStepId?: string }
+  | { type: 'splitBranch'; stepId: string }
   | { type: 'newProblem' }
   | { type: 'newExercise'; source: string; mode: 'math' | 'text'; expression?: Sequence };
 function applyCommand(state: ScratchState, cmd: Command) {
@@ -154,7 +158,76 @@ function applyCommand(state: ScratchState, cmd: Command) {
   } else if (cmd.type === 'clear') { current.expression = blank(); focusFirst(d, current.expression); }
   else if (cmd.type === 'newStep') {
     if (ex.steps.length >= 40) throw Error('Maximum 40 steps per exercise.');
-    const step = blankStep(); ex.steps.push(step); c.stepId = step.id; focusFirst(d, step.expression);
+    const lastStep = ex.steps[ex.steps.length - 1];
+    if (lastStep && !lastStep.orderKey) lastStep.orderKey = 'a0';
+    const nextOrderKey = generateOrderKey(lastStep?.orderKey);
+    const step = blankStep(nextOrderKey, current?.branchId ?? 'main');
+    if (cmd.copyPrevious && current && !stepIsBlank(current)) {
+      step.expression = clone(current.expression);
+      if (current.mathLatex) step.mathLatex = current.mathLatex;
+      step.segments = [
+        { segmentId: uid(), type: 'persian_text', content: '' },
+        { segmentId: uid(), type: 'math', content: stepLatex(current) },
+      ];
+    }
+    ex.steps.push(step); c.stepId = step.id; focusFirst(d, step.expression);
+  } else if (cmd.type === 'insertStepBetween') {
+    if (ex.steps.length >= 40) throw Error('Maximum 40 steps per exercise.');
+    const prevIdx = ex.steps.findIndex(s => s.id === cmd.prevStepId);
+    if (prevIdx < 0) return;
+    const prevStep = ex.steps[prevIdx];
+    if (!prevStep.orderKey) prevStep.orderKey = 'a0';
+    const nextStep = cmd.nextStepId ? ex.steps.find(s => s.id === cmd.nextStepId) : ex.steps[prevIdx + 1];
+    if (nextStep && !nextStep.orderKey) nextStep.orderKey = generateOrderKey(prevStep.orderKey);
+    const orderKey = generateOrderKey(prevStep.orderKey, nextStep?.orderKey);
+    const step = blankStep(orderKey, prevStep.branchId ?? 'main');
+    if (!stepIsBlank(prevStep)) {
+      step.expression = clone(prevStep.expression);
+      if (prevStep.mathLatex) step.mathLatex = prevStep.mathLatex;
+      step.segments = [
+        { segmentId: uid(), type: 'persian_text', content: '' },
+        { segmentId: uid(), type: 'math', content: stepLatex(prevStep) },
+      ];
+    }
+    ex.steps.splice(prevIdx + 1, 0, step);
+    c.stepId = step.id;
+    focusFirst(d, step.expression);
+  } else if (cmd.type === 'splitBranch') {
+    if (ex.steps.length + 2 > 40) throw Error('Maximum 40 steps per exercise.');
+    const targetIdx = ex.steps.findIndex(s => s.id === cmd.stepId);
+    if (targetIdx < 0) return;
+    const target = ex.steps[targetIdx];
+    const math = stepLatex(target);
+    const plusMath = math.replace(/\\pm|±/g, '+').replace(/\\mp|∓/g, '-');
+    const minusMath = math.replace(/\\pm|±/g, '-').replace(/\\mp|∓/g, '+');
+
+    const branchBaseId = uid();
+    const plusOrderKey = generateOrderKey(target.orderKey);
+    const plusStep = blankStep(plusOrderKey, `${branchBaseId}-plus`);
+    plusStep.parentStepId = target.id;
+    plusStep.branchSign = 'plus';
+    plusStep.mathLatex = plusMath;
+    try { plusStep.expression = parse(plusMath); } catch { plusStep.expression = clone(target.expression); }
+    plusStep.segments = [
+      { segmentId: uid(), type: 'persian_text', content: '' },
+      { segmentId: uid(), type: 'math', content: plusMath },
+    ];
+
+    const nextStep = ex.steps[targetIdx + 1];
+    const minusOrderKey = generateOrderKey(plusOrderKey, nextStep?.orderKey);
+    const minusStep = blankStep(minusOrderKey, `${branchBaseId}-minus`);
+    minusStep.parentStepId = target.id;
+    minusStep.branchSign = 'minus';
+    minusStep.mathLatex = minusMath;
+    try { minusStep.expression = parse(minusMath); } catch { minusStep.expression = clone(target.expression); }
+    minusStep.segments = [
+      { segmentId: uid(), type: 'persian_text', content: '' },
+      { segmentId: uid(), type: 'math', content: minusMath },
+    ];
+
+    ex.steps.splice(targetIdx + 1, 0, plusStep, minusStep);
+    c.stepId = plusStep.id;
+    focusFirst(d, plusStep.expression);
   } else if (cmd.type === 'deleteStep') {
     if (ex.steps[0].id === current.id) return;
     else {
@@ -214,6 +287,13 @@ const handlers = {
       const value = action.payload.value || String.raw`\placeholder{}`;
       if (step.mathLatex === value) return;
       step.mathLatex = value;
+      if (!step.segments) {
+        step.segments = defaultStepSegments(value);
+      } else {
+        const mathSegment = step.segments.find(s => s.type === 'math');
+        if (mathSegment) mathSegment.content = value;
+        else step.segments.push({ segmentId: uid(), type: 'math', content: value });
+      }
       const blankValue = /^\s*(?:\\placeholder(?:\[[^\]]*\])?\{\}\s*)+$/.test(value);
       if (blankValue) step.expression = blank();
       else {
@@ -225,6 +305,45 @@ const handlers = {
       state.future = state.future.filter(snapshot => snapshot.exerciseId !== exercise.id);
       const first = leaves(step.expression)[0]?.node;
       state.doc.cursor = { stepId: step.id, nodeId: first?.id ?? null, sequenceId: null, index: 0, offset: 0, selected: null };
+      state.notice = '';
+    },
+    updateStepText(state: ScratchState, action: PayloadAction<{ stepId: string; text: string }>) {
+      const exercise = exerciseOf(state.doc);
+      const step = exercise.steps.find(s => s.id === action.payload.stepId);
+      if (!step || action.payload.text.length > 4000) return;
+      if (!step.segments) {
+        step.segments = defaultStepSegments(stepLatex(step));
+      }
+      let textSegment = step.segments.find(s => s.type === 'persian_text');
+      if (!textSegment) {
+        textSegment = { segmentId: uid(), type: 'persian_text', content: '' };
+        step.segments.unshift(textSegment);
+      }
+      if (textSegment.content === action.payload.text) return;
+      textSegment.content = action.payload.text;
+      step.edited = true;
+      if (!exercise.startedAt) exercise.startedAt = isoLocal();
+    },
+    insertStepBetween(state: ScratchState, action: PayloadAction<{ prevStepId: string; nextStepId?: string }>) {
+      const before = clone(state.doc), exId = state.doc.exerciseId;
+      applyCommand(state, { type: 'insertStepBetween', ...action.payload });
+      if (JSON.stringify(before.exercises) === JSON.stringify(state.doc.exercises)) return;
+      const touched = exerciseOf(state.doc);
+      if (!touched.startedAt) touched.startedAt = isoLocal();
+      state.past.push(before);
+      if (state.past.length > 80) state.past.shift();
+      state.future = state.future.filter(x => x.exerciseId !== exId);
+      state.notice = '';
+    },
+    splitBranch(state: ScratchState, action: PayloadAction<{ stepId: string }>) {
+      const before = clone(state.doc), exId = state.doc.exerciseId;
+      applyCommand(state, { type: 'splitBranch', ...action.payload });
+      if (JSON.stringify(before.exercises) === JSON.stringify(state.doc.exercises)) return;
+      const touched = exerciseOf(state.doc);
+      if (!touched.startedAt) touched.startedAt = isoLocal();
+      state.past.push(before);
+      if (state.past.length > 80) state.past.shift();
+      state.future = state.future.filter(x => x.exerciseId !== exId);
       state.notice = '';
     },
     command(state: ScratchState, action: PayloadAction<Command>) {

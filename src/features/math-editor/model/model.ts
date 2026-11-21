@@ -8,8 +8,34 @@ export type Structure =
   | { id: string; type: 'matrix'; size: number; cells: Sequence[] }
   | { id: string; type: 'template'; kind: string; args: Sequence[] };
 export type MathNode = Leaf | Structure;
-/** Optional lossless LaTeX snapshot for compatibility with newer math editor data. */
-export type Step = { id: string; expression: Sequence; final: boolean; status: 'unchecked' | 'needs-review'; edited?: boolean; mathLatex?: string };
+
+export type StepSegmentType = 'persian_text' | 'ltr_text' | 'math';
+
+export type StepSegment = {
+  segmentId: string;
+  type: StepSegmentType;
+  content: string;
+  mathJson?: unknown;
+};
+
+export type BranchSign = 'main' | 'plus' | 'minus' | 'case';
+
+/** Optional lossless LaTeX snapshot and segmented content for bilingual math editing. */
+export type Step = {
+  id: string;
+  expression: Sequence;
+  final: boolean;
+  status: 'unchecked' | 'needs-review';
+  edited?: boolean;
+  mathLatex?: string;
+  orderKey?: string;
+  branchId?: string;
+  parentStepId?: string | null;
+  branchSign?: BranchSign;
+  isPrefilledFromQuestion?: boolean;
+  segments?: StepSegment[];
+  combinedLatex?: string;
+};
 export type AnswerType = 'math' | 'text' | 'choice' | 'true_false_why' | 'find_mistake';
 export type TrueFalseChoice = 'true' | 'false';
 export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; answerType?: AnswerType; choices?: string[]; answerText?: string; answerChoice?: TrueFalseChoice; answerReason?: string; diagnosticId?: number; bankQuestionId?: string; /** Optional bank lesson metadata. Older session JSON remains valid without it. */ stage?: 'learn' | 'practice'; conceptId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
@@ -33,7 +59,19 @@ export const seq = (children: MathNode[] = [num()]): Sequence => ({ id: uid(), t
 export const blank = () => seq();
 export const frac = (numerator = blank(), denominator = blank()): Structure => ({ id: uid(), type: 'fraction', numerator, denominator });
 export const template = (kind: string, args: Sequence[]): Structure => ({ id: uid(), type: 'template', kind, args });
-export const blankStep = (): Step => ({ id: uid(), expression: blank(), final: false, status: 'unchecked' });
+export const defaultStepSegments = (mathLatex = ''): StepSegment[] => [
+  { segmentId: uid(), type: 'persian_text', content: '' },
+  { segmentId: uid(), type: 'math', content: mathLatex }
+];
+
+export const blankStep = (orderKey?: string, branchId?: string): Step => ({
+  id: uid(),
+  expression: blank(),
+  final: false,
+  status: 'unchecked',
+  ...(orderKey ? { orderKey } : {}),
+  ...(branchId ? { branchId } : {})
+});
 export const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 /** Bound both bank batches and their archived practice sessions. Existing smaller sessions remain unchanged. */
 export const MAX_SESSION_EXERCISES = 100;

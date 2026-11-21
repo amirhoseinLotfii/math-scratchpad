@@ -13,7 +13,9 @@ import type { BankQuestion } from '../drive-bank/drive-bank';
 import type { ScratchStore } from '../../store';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from '../math-editor/mathlive-adapter';
 import { MathLiveStepInput } from '../math-editor/components/mathlive-step-input';
-import { localizeLessonDigits } from './lesson-content';
+import { SegmentedStepCard } from '../math-editor/components/segmented-step-card';
+import { isMathQuestionSource, localizeLessonDigits } from './lesson-content';
+import { parse } from '../../parser';
 
 /** Coordinates the inline math keyboards across a single lesson.
  * Stores remain independent so switching exercises cannot discard answers. */
@@ -25,6 +27,26 @@ export const LessonKeyboardContext = createContext<{
 export function createLessonMathStore(question: BankQuestion, phone: boolean, savedSteps?: Step[]): ScratchStore {
   const state = initialState(), previous = state.doc.exercises[0], step = blankStep();
   const steps = savedSteps?.length ? JSON.parse(JSON.stringify(savedSteps)) as Step[] : [step];
+
+  // AC-F5: Prefill Step 1 with question math expression when starting from empty
+  const prefill = (question as { prefillStep1?: { latex?: string } })?.prefillStep1?.latex;
+  if (!savedSteps?.length && prefill) {
+    const trimmed = prefill.trim();
+    if (trimmed) {
+      step.mathLatex = trimmed;
+      step.isPrefilledFromQuestion = true;
+      try {
+        step.expression = parse(trimmed);
+      } catch {
+        // preserve mathLatex
+      }
+      step.segments = [
+        { segmentId: uid(), type: 'persian_text', content: '' },
+        { segmentId: uid(), type: 'math', content: trimmed },
+      ];
+    }
+  }
+
   const exercise = { ...previous, id: uid(), bankQuestionId: question.id, source: question.source, mode: 'math' as const, prompt: question.prompt, steps };
   state.doc.exercises = [exercise];
   state.doc.exerciseId = exercise.id;
@@ -54,7 +76,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
   const dispatch = useAppDispatch();
   const exercise = exerciseOf(state.doc);
   const currentStepIndex = exercise.steps.findIndex(step => step.id === state.doc.cursor.stepId);
-  const answered = exercise.steps.some(step => !stepIsBlank(step));
+  const answered = exercise.steps.some(step => !stepIsBlank(step) && (!step.isPrefilledFromQuestion || step.edited || step.final || exercise.steps.length > 1));
 
   // Only one inline exercise keyboard at a time. Never reset the math store.
   useEffect(() => {
@@ -146,7 +168,7 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
         if (insertMathSymbol(step.id, normalized)) { event.preventDefault(); return; }
       }
       if (event.altKey && key === 'Enter') { event.preventDefault(); dispatch(actions.command({ type: 'final' })); }
-      else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); dispatch(actions.command({ type: 'newStep' })); focusEditor(); }
+      else if (key === 'Enter' && !event.shiftKey) { event.preventDefault(); dispatch(actions.command({ type: 'newStep', copyPrevious: true })); focusEditor(); }
       else if (key === '/') { event.preventDefault(); openInsertDialog(target); }
       return;
     }
@@ -189,16 +211,67 @@ function Editor({ question, store, onAnswered, uiLang }: { question: BankQuestio
       <div className="lesson-answer-heading"><h4>{fa ? 'راه‌حل را گام‌به‌گام بنویسید' : 'Write each step'}</h4><Button className="lesson-keyboard-toggle" aria-label={state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')} aria-expanded={state.keyboardOpen} onClick={() => { const open = !state.keyboardOpen; dispatch(actions.keyboard(open)); keyboardOwner?.setActiveId(open ? question.id : null); if (open) focusEditor(); }}>{state.keyboardOpen ? (fa ? 'بستن صفحه‌کلید' : 'Hide Keyboard') : (fa ? 'بازکردن صفحه‌کلید' : 'Show Keyboard')}</Button></div>
       {wide && tools}
       <section className="lesson-answer-steps" aria-label={`${fa ? 'گام‌های پاسخ تمرین' : 'Steps for check'} ${question.id}`}>
-        {exercise.steps.map((step, index) => <Fragment key={step.id}><article className={`lesson-answer-step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id}>
-          <header><Button variant="ghost" className="lesson-step-title" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>{fa ? 'گام' : 'Step'} {localizeLessonDigits(index + 1, uiLang)}</Button>
-            <span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? (fa ? 'نیازمند بازبینی' : 'Needs review') : step.edited ? (fa ? 'ویرایش‌شده' : 'Edited') : ''}</span>
-            {index > 0 && <Button variant="ghost" size="icon" className="lesson-step-delete" title={fa ? `حذف گام ${localizeLessonDigits(index + 1, uiLang)}` : `Delete Step ${index + 1}`} aria-label={fa ? `حذف گام ${localizeLessonDigits(index + 1, uiLang)}` : `Delete Step ${index + 1}`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'deleteStep' })); requestAnimationFrame(focusEditor); }}><Trash2 aria-hidden="true" /></Button>}
-            <Button className="final-marker" aria-pressed={step.final} aria-label={fa ? `پاسخ نهایی، گام ${localizeLessonDigits(index + 1, uiLang)}` : `Final answer, Step ${index + 1}`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusEditor(); }}>{fa ? 'پاسخ نهایی' : 'Final answer'}{step.final ? ' ✓' : ''}</Button>
-          </header>
-          <div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={fa ? `عبارت گام ${localizeLessonDigits(index + 1, uiLang)}` : `Step ${index + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
-        </article>{state.keyboardOpen && step.id === state.doc.cursor.stepId && <div className="lesson-active-step-keyboard"><Keyboard onFocusEditor={focusEditor} /></div>}</Fragment>)}
+        {exercise.steps.map((step, index) => (
+          <Fragment key={step.id}>
+            <SegmentedStepCard
+              step={step}
+              stepIndex={index}
+              isCurrent={step.id === state.doc.cursor.stepId}
+              uiLang={uiLang}
+              canDelete={index > 0}
+              onSelectStep={() => dispatch(actions.select({ stepId: step.id }))}
+              onFocusStep={focusEditor}
+              onUpdateMath={(value) => dispatch(actions.mathLiveInput({ stepId: step.id, value }))}
+              onUpdateText={(text) => dispatch(actions.updateStepText({ stepId: step.id, text }))}
+              onToggleFinal={() => {
+                dispatch(actions.select({ stepId: step.id }));
+                dispatch(actions.command({ type: 'final' }));
+                focusEditor();
+              }}
+              finalLabel={fa ? 'پاسخ نهایی' : 'Final answer'}
+              finalAriaLabel={fa ? `پاسخ نهایی، گام ${localizeLessonDigits(index + 1, uiLang)}` : `Final answer, Step ${index + 1}`}
+              onDeleteStep={index > 0 ? () => {
+                dispatch(actions.select({ stepId: step.id }));
+                dispatch(actions.command({ type: 'deleteStep' }));
+                requestAnimationFrame(focusEditor);
+              } : undefined}
+              onResetStep={() => {
+                dispatch(actions.select({ stepId: step.id }));
+                dispatch(actions.command({ type: 'clear' }));
+                focusEditor();
+              }}
+              onSplitBranch={() => {
+                dispatch(actions.splitBranch({ stepId: step.id }));
+                focusEditor();
+              }}
+              onInsertBetween={index < exercise.steps.length - 1 ? () => {
+                dispatch(actions.insertStepBetween({ prevStepId: step.id }));
+                focusEditor();
+              } : undefined}
+              onSingleSlash={() => {
+                const el = document.querySelector<HTMLElement>(`[data-step-id="${step.id}"] math-field`);
+                if (el) openInsertDialog(el);
+                else if (root.current) openInsertDialog(root.current);
+              }}
+              onDoubleSlash={() => {
+                if (!state.keyboardOpen) {
+                  dispatch(actions.keyboard(true));
+                  keyboardOwner?.setActiveId(question.id);
+                }
+                if (!state.symbolsOpen) {
+                  dispatch(actions.symbols());
+                }
+              }}
+            />
+            {state.keyboardOpen && step.id === state.doc.cursor.stepId && (
+              <div className="lesson-active-step-keyboard">
+                <Keyboard onFocusEditor={focusEditor} />
+              </div>
+            )}
+          </Fragment>
+        ))}
       </section>
-      <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep' })); focusEditor(); }}>{fa ? 'افزودن گام' : 'Add step'}</Button>
+      <Button className="add-step" onClick={() => { dispatch(actions.command({ type: 'newStep', copyPrevious: true })); focusEditor(); }}>{fa ? 'افزودن گام' : 'Add step'}</Button>
       {!wide && tools}
       <MathInsertDialog open={insertOpen} onOpenChange={setInsertOpen} wide={wide} onInsert={insertFromDialog} onCloseAutoFocus={restoreInsertFocus} />
     </section>;

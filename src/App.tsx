@@ -19,6 +19,7 @@ import { MathTools } from './features/workspace/components/math-tools';
 import { readWorkspaceTemplate, writeWorkspaceTemplate, type WorkspaceTemplate, workspaceTemplateStorageKey } from './features/workspace/model/workspace-templates';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from './features/math-editor/mathlive-adapter';
 import { MathLiveStepInput } from './features/math-editor/components/mathlive-step-input';
+import { SegmentedStepCard } from './features/math-editor/components/segmented-step-card';
 export { INSERT_VISIBLE } from './features/math-editor/components/math-insert-dialog';
 import { questionStatus } from './features/workspace/model/workspace-layout';
 import { buildTutorExport, downloadText, missingFinalAnswers } from './features/session/export/tutor-export';
@@ -765,12 +766,40 @@ export function App({ initialBank }: { initialBank?: { bank: DriveBank; version:
     {wide && isMathAnswer && mathTools}
     {wide && <div className="work-heading"><h2>{isMathAnswer ? 'Your work' : 'Your response'}</h2>{isMathAnswer && <p className="small">Write each step. Review when you're ready.</p>}</div>}
 
-    {isMathAnswer ? <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => <article className={`step ${step.id === state.doc.cursor.stepId ? 'current-step' : ''}`} key={step.id} data-step-id={step.id}>
-     <header className="step-header"><Button className="step-title" variant="ghost" onClick={() => { dispatch(actions.select({ stepId: step.id })); focusEditor(); }}>Step {i + 1}</Button><span className={`step-state ${step.status === 'needs-review' ? 'needs-review' : step.edited ? 'edited' : ''}`}>{step.status === 'needs-review' ? 'Needs review' : step.edited ? 'Edited' : ''}</span>
-      <Button className="final-marker" aria-pressed={step.final} aria-label={`Mark Step ${i + 1} as final`} onClick={() => { dispatch(actions.select({ stepId: step.id })); dispatch(actions.command({ type: 'final' })); focusCurrentMathControl(); }}>Final{step.final ? ' ✓' : ''}</Button>
-      <Button size="icon" variant="ghost" aria-label={`Reset Step ${i + 1}`} title={`Reset Step ${i + 1}`} onClick={() => resetStep(step.id)}><RotateCcw aria-hidden="true" /></Button><Button size="icon" variant="ghost" disabled={i === 0} aria-label={`Delete Step ${i + 1}`} title={i === 0 ? 'The first step cannot be deleted' : `Delete Step ${i + 1}`} onClick={() => deleteStep(step.id)}><Trash2 aria-hidden="true" /></Button>
-     </header><div className="expression" data-step-id={step.id}><MathLiveStepInput stepId={step.id} value={stepLatex(step)} label={`Step ${i + 1} expression`} onInput={value => dispatch(actions.mathLiveInput({ stepId: step.id, value }))} onFocusStep={() => dispatch(actions.select({ stepId: step.id }))} /></div>
-    </article>)}</section> : answerType === 'text' || answerType === 'find_mistake' ? <div className="lesson-check-text-answer practice-response">
+    {isMathAnswer ? <section className="steps" aria-label="Solution steps">{ex.steps.map((step, i) => (
+      <SegmentedStepCard
+        key={step.id}
+        step={step}
+        stepIndex={i}
+        isCurrent={step.id === state.doc.cursor.stepId}
+        uiLang="en"
+        canDelete={i > 0}
+        onSelectStep={() => dispatch(actions.select({ stepId: step.id }))}
+        onFocusStep={focusEditor}
+        onUpdateMath={(value) => dispatch(actions.mathLiveInput({ stepId: step.id, value }))}
+        onUpdateText={(text) => dispatch(actions.updateStepText({ stepId: step.id, text }))}
+        onToggleFinal={() => {
+          dispatch(actions.select({ stepId: step.id }));
+          dispatch(actions.command({ type: 'final' }));
+          focusCurrentMathControl();
+        }}
+        onResetStep={() => resetStep(step.id)}
+        onDeleteStep={() => deleteStep(step.id)}
+        onSplitBranch={() => {
+          dispatch(actions.splitBranch({ stepId: step.id }));
+          focusCurrentMathControl();
+        }}
+        onInsertBetween={i < ex.steps.length - 1 ? () => {
+          dispatch(actions.insertStepBetween({ prevStepId: step.id }));
+          focusCurrentMathControl();
+        } : undefined}
+        onSingleSlash={openInsert}
+        onDoubleSlash={() => {
+          if (!state.keyboardOpen) dispatch(actions.keyboard(true));
+          if (!state.symbolsOpen) dispatch(actions.symbols());
+        }}
+      />
+    ))}</section> : answerType === 'text' || answerType === 'find_mistake' ? <div className="lesson-check-text-answer practice-response">
      <label htmlFor={`practice-answer-${ex.id}`}>{answerType === 'find_mistake' ? 'Your answer' : 'Answer'}</label>
      <textarea id={`practice-answer-${ex.id}`} aria-label={answerType === 'find_mistake' ? 'Your answer' : 'Answer'} dir="auto" maxLength={4000} value={ex.answerText ?? ''} onChange={event => dispatch(actions.setAnswerText({ value: event.target.value, answerType }))} />
     </div> : answerType === 'true_false_why' ? <div className="practice-response">

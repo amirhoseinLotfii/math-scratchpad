@@ -1,6 +1,7 @@
 import { createElement, useLayoutEffect, useRef } from 'react';
 import { MathfieldElement } from 'mathlive';
 import { insertMathSymbol, mathfieldForStep, mathLatexForSymbol, registerMathfield } from '../mathlive-adapter';
+import { configureMathField, type ConfigureMathFieldOptions } from '../../../editor/configure-math-field';
 
 // The Node test resolver selects MathLive's SSR entry, which intentionally does
 // not export the browser custom-element class. The browser build does.
@@ -14,35 +15,55 @@ function fieldValue(value: string) {
   return value.replaceAll(String.raw`\square`, String.raw`\placeholder{}`);
 }
 
+export type MathLiveStepInputProps = {
+  stepId: string;
+  value: string;
+  label: string;
+  onInput: (value: string) => void;
+  onFocusStep: () => void;
+  uiLang?: 'fa' | 'en';
+  onDoubleSlash?: () => void;
+  onSingleSlash?: () => void;
+  onShiftEnter?: (mf: MathfieldElement) => void;
+};
+
 export function MathLiveStepInput({
   stepId,
   value,
   label,
   onInput,
   onFocusStep,
-}: {
-  stepId: string;
-  value: string;
-  label: string;
-  onInput: (value: string) => void;
-  onFocusStep: () => void;
-}) {
+  uiLang = 'en',
+  onDoubleSlash,
+  onSingleSlash,
+  onShiftEnter,
+}: MathLiveStepInputProps) {
   const ref = useRef<MathfieldElement>(null);
   const onInputRef = useRef(onInput);
   const onFocusRef = useRef(onFocusStep);
   const valueRef = useRef(value);
+  const configOptionsRef = useRef<ConfigureMathFieldOptions>({
+    uiLang,
+    onDoubleSlash,
+    onSingleSlash,
+    onShiftEnter,
+  });
+
   onInputRef.current = onInput;
   onFocusRef.current = onFocusStep;
   valueRef.current = value;
+  configOptionsRef.current = { uiLang, onDoubleSlash, onSingleSlash, onShiftEnter };
 
   useLayoutEffect(() => {
     const field = ref.current;
     if (!field) return;
     let disposed = false;
     let attached = false;
+    let cleanupConfig: (() => void) | undefined;
     const pendingInitialKeys: string[] = [];
     const input = () => onInputRef.current(field.value);
     const focus = () => onFocusRef.current();
+
     const keydown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const currentValue = typeof field.value === 'string' && field.value !== '' ? field.value : fieldValue(valueRef.current);
@@ -58,6 +79,7 @@ export function MathLiveStepInput({
       }
       insertMathSymbol(stepId, event.key);
     };
+
     // A newly switched question can accept a pointer click before MathLive
     // finishes connecting its focusable surface. During that brief interval
     // the page body receives early physical keystrokes instead of the field.
@@ -75,21 +97,27 @@ export function MathLiveStepInput({
       if (attached) insertMathSymbol(stepId, event.key);
       else pendingInitialKeys.push(event.key);
     };
+
     field.addEventListener('click', click, true);
     document.addEventListener('pointerdown', outsidePointer, true);
     document.addEventListener('keydown', earlyGlobalKeydown, true);
     // Listen before awaiting custom-element upgrade so a fast first keystroke
     // cannot disappear in the gap between React rendering and MathLive setup.
     field.addEventListener('keydown', keydown, true);
+
     const attach = () => {
       if (disposed || typeof field.executeCommand !== 'function') return;
       attached = true;
       registerMathfield(stepId, field);
-      field.defaultMode = 'math';
-      field.smartMode = false;
-      // Keep MathLive's own floating keyboard opt-in. The app's existing keyboard
-      // remains under the user's Show Keyboard control.
-      field.mathVirtualKeyboardPolicy = 'manual';
+
+      // Apply standard configuration (mathModeSpace, farsi locale, focus mitigation, Shift+Enter, double /)
+      cleanupConfig = configureMathField(field, {
+        uiLang: configOptionsRef.current.uiLang,
+        onDoubleSlash: () => configOptionsRef.current.onDoubleSlash?.(),
+        onSingleSlash: () => configOptionsRef.current.onSingleSlash?.(),
+        onShiftEnter: (mf) => configOptionsRef.current.onShiftEnter?.(mf),
+      });
+
       field.value = fieldValue(valueRef.current);
       if (field.value.includes('\\placeholder')) field.executeCommand('moveToNextPlaceholder');
       field.addEventListener('input', input);
@@ -105,6 +133,7 @@ export function MathLiveStepInput({
 
     return () => {
       disposed = true;
+      cleanupConfig?.();
       if (attached) {
         field.removeEventListener('input', input);
         field.removeEventListener('focus', focus);

@@ -1394,3 +1394,159 @@ body:has(#math-scratchpad-redux .sync-panel-floating[role="dialog"])
 }
 
 #math-scratchpad-redux [data-server-editor] { display: contents; }
+
+/* Phase 1: Segmented Bilingual Step Card & Compact Actions */
+#math-scratchpad-redux .segmented-step-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  transition: border-color 0.15s ease;
+}
+
+#math-scratchpad-redux .segmented-step-card .step-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+#math-scratchpad-redux .segmented-step-card .step-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
+#math-scratchpad-redux .step-segments-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+#math-scratchpad-redux .step-text-segment {
+  width: 100%;
+}
+
+#math-scratchpad-redux .step-persian-input {
+  display: block;
+  width: 100%;
+  font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--foreground);
+  resize: vertical;
+  min-height: 36px;
+  box-sizing: border-box;
+  margin: 0;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+#math-scratchpad-redux .step-persian-input:hover {
+  border-color: var(--border);
+}
+
+#math-scratchpad-redux .step-persian-input:focus,
+#math-scratchpad-redux .step-persian-input:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--card, rgba(0, 0, 0, 0.02));
+}
+
+#math-scratchpad-redux .step-persian-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+#math-scratchpad-redux .step-math-segment {
+  width: 100%;
+  min-width: 0;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+#math-scratchpad-redux .branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+#math-scratchpad-redux .branch-badge.branch-sign-minus {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+#math-scratchpad-redux .branch-split-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  height: 32px;
+  padding: 0 8px;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+#math-scratchpad-redux .insert-between-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 20px;
+  margin-top: 4px;
+  margin-bottom: -4px;
+  z-index: 2;
+}
+
+#math-scratchpad-redux .insert-step-between-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 10px;
+  font-size: 11px;
+  border-radius: 11px;
+  border: 1px dashed var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0.45;
+  transition: all 0.2s ease;
+}
+
+#math-scratchpad-redux .insert-step-between-btn:hover,
+#math-scratchpad-redux .insert-step-between-btn:focus {
+  opacity: 1;
+  border-style: solid;
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: scale(1.04);
+}
+
+@media (hover: hover) {
+  #math-scratchpad-redux .segmented-step-card .step-actions {
+    opacity: 0.8;
+    transition: opacity 0.15s ease;
+  }
+  #math-scratchpad-redux .segmented-step-card:hover .step-actions,
+  #math-scratchpad-redux .segmented-step-card:focus-within .step-actions {
+    opacity: 1;
+  }
+}

@@ -47,7 +47,7 @@ export type LessonCheckAnswer =
 export type LessonWorkAnswer = LessonCheckAnswer & { legacyMathSteps?: Step[] };
 export function lessonCheckAnswerComplete(answer: LessonCheckAnswer | undefined): boolean {
   if (!answer) return false;
-  if (answer.type === 'math') return answer.steps.some(step => !stepIsBlank(step));
+  if (answer.type === 'math') return answer.steps.some(step => !stepIsBlank(step) && (!step.isPrefilledFromQuestion || step.edited || step.final || answer.steps.length > 1));
   if (answer.type === 'true_false_why') return !!answer.choice && !!answer.reason.trim();
   return !!answer.value.trim();
 }
