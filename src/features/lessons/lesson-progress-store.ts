@@ -1,3 +1,4 @@
+import { dualWriteToDexie } from '../../storage/dual-write-bridge';
 import { allowedWorkKeys, normalizeWorkAnswers, questionWorkKey } from './lesson-work-items';
 import { validateSession } from '../../persistence';
 import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
@@ -286,6 +287,7 @@ export function saveLessonProgress(bank: DriveBank, bankVersion: string, state: 
     // makes two open tabs echo the same record back and forth forever.
     if (sameProgressPayload(target.getItem(key), payload)) return { saved: true, message: '' };
     target.setItem(key, serialized);
+    dualWriteToDexie(key, serialized).catch(() => {});
     if (target.getItem(key) !== serialized) throw Error('Storage did not preserve the saved value.');
     return { saved: true, message: '' };
   } catch {
