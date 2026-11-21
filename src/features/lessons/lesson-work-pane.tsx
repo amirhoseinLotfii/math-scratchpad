@@ -9,6 +9,9 @@ import { contentDirection, languageForText, LessonText, localizeLessonDigits, Qu
 import { workAnswerHasContent, type LessonWorkItem, type LessonWorkKind } from './lesson-work-items';
 import { LessonAnswerFields } from './lesson-check';
 import type { LessonWorkAnswer } from './types';
+import { StyledWorkPicker } from './styled-work-picker';
+import { SourcesDisclosure } from './sources-disclosure';
+import type { ItemStatus } from '../../domain/entities/chapter-progress.types';
 
 const KIND_LABEL: Record<LessonWorkKind, { fa: string; en: string }> = {
   example: { fa: 'مثال حل‌شده', en: 'Worked example' },
@@ -72,12 +75,31 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
     if (focusedItem.current === item.key) onBlurItem?.(item);
     focusedItem.current = null;
   }
+  const getItemStatus = (key: string): { status: ItemStatus; isEditedAfterSubmit?: boolean } => {
+    const ans = savedAnswer(key);
+    const st = savedSteps(key);
+    if (ans && (ans.type !== 'math' ? workAnswerHasContent(ans) : (st && st.some(s => s.final)))) {
+      return { status: 'solved', isEditedAfterSubmit: false };
+    }
+    if (st && st.some(s => !stepIsBlank(s))) {
+      return { status: 'in_progress', isEditedAfterSubmit: false };
+    }
+    return { status: 'not_started', isEditedAfterSubmit: false };
+  };
+
   return <aside className="lesson-work-pane" aria-label={fa ? 'کار من' : 'Your work'} onFocusCapture={handleFocus} onBlurCapture={handleBlur}>
     <h2 className="lesson-work-title">{fa ? 'کار من' : 'Your work'}</h2>
-    <label className="lesson-work-select-label" htmlFor={selectId}>{fa ? 'روی کدام مورد این بخش کار می‌کنی؟' : 'What are you working on?'}</label>
-    <select id={selectId} className="lesson-work-select" dir={fa ? 'rtl' : 'ltr'} value={item.key} onChange={event => onSelect(event.currentTarget.value)}>
+    <label className="lesson-work-select-label sr-only" htmlFor={selectId}>{fa ? 'روی کدام مورد این بخش کار می‌کنی؟' : 'What are you working on?'}</label>
+    <select id={selectId} className="lesson-work-select sr-only" dir={fa ? 'rtl' : 'ltr'} value={item.key} onChange={event => onSelect(event.currentTarget.value)}>
       {items.map((entry, index) => <option key={entry.key} value={entry.key}>{workItemLabel(entry, index, uiLang)}</option>)}
     </select>
+    <StyledWorkPicker
+      items={items}
+      selectedKey={item.key}
+      onSelect={onSelect}
+      uiLang={uiLang}
+      getStatus={getItemStatus}
+    />
     <div className="lesson-work-item" data-work-kind={item.kind} key={item.key}>
       <p className="lesson-work-kind">{KIND_LABEL[item.kind][uiLang]}</p>
       {item.kind === 'check' ? renderCheck(item.question) : <>
@@ -85,11 +107,13 @@ export function LessonWorkPane({ items, selected, onSelect, uiLang, getWorkStore
           ? <div className="lesson-work-question">
               {item.question.prompt && <p lang={languageForText(item.question.prompt)} dir={contentDirection(item.question.prompt)}><LessonText text={item.question.prompt} /></p>}
               <QuestionSource source={item.question.source} mode={item.question.mode} label={fa ? 'عبارت سؤال' : 'Question expression'} mathLabel={fa ? 'عبارت ریاضی سؤال' : 'Question math expression'} textClassName="lesson-check-source-text" mathClassName="lesson-check-source" />
+              {item.question.prompt && <SourcesDisclosure rawPrompt={item.question.prompt} uiLang={uiLang} />}
             </div>
           : <div className="lesson-work-question">
               <p lang={languageForText(item.title)} dir={contentDirection(item.title)}><LessonText text={item.title} /></p>
               {block?.type === 'example' && block.text && block.text !== item.title && <p lang={languageForText(block.text)} dir={contentDirection(block.text)}><LessonText text={block.text} /></p>}
               {block?.type === 'example' && block.latex && <bdi dir="ltr" className="lesson-formula"><MathDisplay latex={block.latex} label={fa ? 'عبارت مثال' : 'Example expression'} display /></bdi>}
+              {block?.type === 'example' && block.text && <SourcesDisclosure rawPrompt={block.text} uiLang={uiLang} />}
             </div>}
         {item.kind === 'exercise' && (item.workQuestion.answerType ?? (item.workQuestion.mode === 'text' ? 'text' : 'math')) !== 'math'
           ? <>
