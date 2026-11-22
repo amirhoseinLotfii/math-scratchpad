@@ -172,7 +172,7 @@ export function useLessonTelemetry({
     focusedWorkScope.current = null;
   }, [activityTracker, lesson.id]);
 
-  return {
+  return useMemo(() => ({
     lessonEventContext,
     makeEventContext,
     nextAttemptNo,
@@ -184,5 +184,14 @@ export function useLessonTelemetry({
     leaveCheck,
     engageWorkItem,
     leaveWorkItem,
-  };
+  }), [
+    engageCheck,
+    engageWorkItem,
+    leaveCheck,
+    leaveWorkItem,
+    lessonEventContext,
+    makeEventContext,
+    markSectionGateAttempt,
+    nextAttemptNo,
+  ]);
 }
