@@ -1,8 +1,26 @@
 import type { BankQuestion } from '../../domain/entities/drive-bank.types';
-import { stepIsBlank, type AnswerType, type Step } from '../math-editor/model/model';
-import type { LessonSection } from './lesson-sections';
-import type { Lesson, LessonBlock, LessonWorkAnswer } from './types';
+import type { LessonWorkAnswers } from '../../domain/entities/lesson-progress.types';
+import {
+  allowedWorkKeys,
+  exampleWorkKey,
+  normalizeWorkAnswers,
+  questionWorkKey,
+  workAnswerHasContent,
+  workAnswerHasCurrentContent,
+} from '../../domain/validation/lesson-work-answers';
 import { BREAKPOINT_MEDIA } from '../../shared/lib/breakpoints';
+import type { LessonSection } from './lesson-sections';
+import type { LessonBlock } from './types';
+
+export {
+  allowedWorkKeys,
+  exampleWorkKey,
+  normalizeWorkAnswers,
+  questionWorkKey,
+  workAnswerHasContent,
+  workAnswerHasCurrentContent,
+  type LessonWorkAnswers,
+};
 
 /** One thing in the current lesson section the learner can work on beside the lesson text. */
 export type LessonWorkItem = (
@@ -16,9 +34,6 @@ export type LessonWorkItem = (
 export type LessonWorkKind = LessonWorkItem['kind'];
 export type LessonPaneMode = 'split' | 'tabs';
 
-/** Learn-only scratch work keyed by work item; never part of practice sessions or exports. */
-export type LessonWorkAnswers = Record<string, LessonWorkAnswer>;
-
 export const SPLIT_MIN = 30;
 export const SPLIT_MAX = 70;
 export const SPLIT_DEFAULT = 50;
@@ -27,9 +42,6 @@ export const SPLIT_RATIO_STORAGE_KEY = 'math-scratchpad:lesson-split-ratio';
 
 const GUIDED = /^\s*مثال\s+هدایت|^\s*guided\s+example/i;
 const HOW_TO_OR_METHOD = /How\s*To|^\s*روش\s|کادر\s*«?چگونه/i;
-
-export function exampleWorkKey(conceptId: string, blockIndex: number) { return `ex:${conceptId}:${blockIndex}`; }
-export function questionWorkKey(questionId: string) { return `q:${questionId}`; }
 
 /** Wide screens get a docked lesson + work split; narrower screens switch with tabs. */
 export function lessonPaneMode(splitMatches: boolean): LessonPaneMode { return splitMatches ? 'split' : 'tabs'; }
@@ -80,75 +92,4 @@ export function buildSectionWorkItems(section: LessonSection | undefined, checks
 /** Keeps the selection when it still exists in this section, otherwise picks the first item. */
 export function resolveSelectedWorkItem(items: LessonWorkItem[], selectedKey: string | undefined): LessonWorkItem | undefined {
   return items.find(item => item.key === selectedKey) ?? items[0];
-}
-
-/** Valid storage keys for work in one lesson: example/guided blocks of its concepts and its practice questions. */
-export function allowedWorkKeys(lesson: Lesson, questions: BankQuestion[]): Set<string> {
-  const keys = new Set<string>();
-  lesson.concepts.forEach(concept => concept.blocks.forEach((block, index) => {
-    if (block.type === 'example' || block.type === 'note') keys.add(exampleWorkKey(concept.id, index));
-  }));
-  for (const question of questions) if (question.lessonId === lesson.id && question.stage !== 'learn') keys.add(questionWorkKey(question.id));
-  return keys;
-}
-
-/**
- * Restores saved work tolerantly: unknown or invalid entries are dropped one by one so older or
- * damaged work can never invalidate the rest of the lesson progress.
- */
-export function normalizeWorkAnswers(
-  value: unknown,
-  allowed: Set<string>,
-  validSteps: (key: string, response: unknown) => Step[] | undefined,
-  questionForKey?: (key: string) => Pick<BankQuestion, 'answerType' | 'mode' | 'choices'> | undefined,
-): LessonWorkAnswers | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const result: LessonWorkAnswers = {};
-  for (const [key, response] of Object.entries(value as Record<string, unknown>)) {
-    if (!allowed.has(key) || !response || typeof response !== 'object' || Array.isArray(response)) continue;
-    const raw = response as Record<string, unknown>;
-    const question = questionForKey?.(key);
-    const expected: AnswerType = question?.answerType ?? (question?.mode === 'text' ? 'text' : 'math');
-    const legacyRaw = raw.legacyMathSteps;
-    const legacyMathSteps = legacyRaw === undefined ? undefined : validSteps(key, { steps: legacyRaw });
-    if (legacyRaw !== undefined && !legacyMathSteps) continue;
-    const withLegacy = <T extends LessonWorkAnswer>(answer: T): T => legacyMathSteps ? { ...answer, legacyMathSteps } : answer;
-    if (raw.type === 'math') {
-      const steps = validSteps(key, response);
-      if (!steps) continue;
-      if (expected === 'math') result[key] = { type: 'math', steps };
-      else {
-        const legacy = legacyMathSteps ?? steps;
-        if (!legacy.some(step => !stepIsBlank(step))) continue;
-        result[key] = expected === 'true_false_why'
-          ? { type: 'true_false_why', reason: '', legacyMathSteps: legacy }
-          : { type: expected, value: '', legacyMathSteps: legacy };
-      }
-      continue;
-    }
-    if (raw.type !== expected) continue;
-    if ((expected === 'text' || expected === 'find_mistake' || expected === 'choice')
-      && typeof raw.value === 'string' && raw.value.length <= 4000
-      && (expected !== 'choice' || question?.choices?.includes(raw.value))) {
-      result[key] = withLegacy({ type: expected, value: raw.value });
-    } else if (expected === 'true_false_why' && (raw.choice === undefined || raw.choice === 'true' || raw.choice === 'false')
-      && typeof raw.reason === 'string' && raw.reason.length <= 4000) {
-      result[key] = withLegacy({ type: 'true_false_why', ...(raw.choice ? { choice: raw.choice } : {}), reason: raw.reason });
-    }
-  }
-  return Object.keys(result).length ? result : undefined;
-}
-
-export function workAnswerHasContent(answer: LessonWorkAnswer | undefined): boolean {
-  if (!answer) return false;
-  return workAnswerHasCurrentContent(answer) || !!answer.legacyMathSteps?.some(step => !stepIsBlank(step));
-}
-
-export function workAnswerHasCurrentContent(answer: LessonWorkAnswer | undefined): boolean {
-  if (!answer) return false;
-  return answer.type === 'math'
-    ? answer.steps.some(step => !stepIsBlank(step))
-    : answer.type === 'true_false_why'
-      ? !!answer.choice || !!answer.reason.trim()
-      : !!answer.value.trim();
 }

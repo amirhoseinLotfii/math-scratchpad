@@ -1,25 +1,33 @@
+import {
+  isRecord,
+  isTimestamp,
+  LESSON_PROGRESS_SCHEMA,
+  MAX_RECORD_LENGTH,
+  safeProgressId,
+  statuses,
+  timestampPattern,
+  type ActiveLessonPanel,
+  type LessonPanelEvent,
+  type LessonProgress,
+  type LessonProgressState,
+} from '../../../domain/entities/lesson-progress.types';
+import { LESSON_PROGRESS_PREFIX } from '../../../shared/lib/storage-keys';
 import { getLearningStorage } from '../../../sync/browser-db';
-import type { LessonProgress, LessonStatus } from '../types';
 
-export const LESSON_PROGRESS_PREFIX = 'math-scratchpad-lesson-progress-v1';
-export const LESSON_PROGRESS_SCHEMA = 1;
-export const MAX_RECORD_LENGTH = 1_000_000;
-export const safeId = /^[\w.-]{1,80}$/;
-export const timestampPattern = /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/;
-export const statuses = new Set<LessonStatus>(['learning', 'practising', 'done']);
-
-export type LessonPanelEvent = { questionId: string; openedAt: string; closedAt: string };
-export type ActiveLessonPanel = { questionId: string; openedAt: string };
-export type LessonProgressState = {
-  bankId: string;
-  bankVersion: string;
-  progressById: Record<string, LessonProgress>;
-  lessonPanelEvents: LessonPanelEvent[];
-  activePanelEvent?: ActiveLessonPanel;
-  persistenceBlocked: boolean;
-  warning: string;
-  found: boolean;
+export {
+  isRecord,
+  isTimestamp,
+  LESSON_PROGRESS_PREFIX,
+  LESSON_PROGRESS_SCHEMA,
+  MAX_RECORD_LENGTH,
+  statuses,
+  timestampPattern,
+  type ActiveLessonPanel,
+  type LessonPanelEvent,
+  type LessonProgressState,
 };
+export const safeId = safeProgressId;
+
 export type LessonProgressExport = Pick<
   LessonProgress,
   | 'lessonId'
@@ -41,14 +49,6 @@ export function lessonProgressStorageKey(bankId: string, bankVersion: string) {
 
 export function emptyLessonProgressState(bankId: string, bankVersion: string): LessonProgressState {
   return { bankId, bankVersion, progressById: {}, lessonPanelEvents: [], persistenceBlocked: false, warning: '', found: false };
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-export function isTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 40 && timestampPattern.test(value) && Number.isFinite(Date.parse(value));
 }
 
 export function declaredVersionNumber(value: string): number | undefined {

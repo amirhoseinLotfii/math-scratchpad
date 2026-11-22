@@ -12,12 +12,6 @@ const MAX_PHYSICAL_LINES = 300;
  * Phases B–F systematically remove entries until this set is completely empty.
  */
 const MAX_LINES_ALLOWLIST = new Set<string>([
-  // Phase E: sync & storage
-  'src/sync/runtime.ts',
-  'src/sync/browser-db.ts',
-  'src/sync/sync-panel.tsx',
-  'src/sync/learning-backup.ts',
-  'src/sync/server-storage.ts',
   // Phase F: cloudflare worker
   'worker/src/event-store.ts',
   'worker/src/google-drive.ts',
@@ -38,14 +32,9 @@ const LEGACY_ROOT_NAMING_EXCEPTIONS = new Set<string>([
 ]);
 
 /**
- * Remaining layer boundary exceptions to be eliminated in Phase E.
+ * Remaining layer boundary exceptions (cleared in Phase E).
  */
-const LAYER_VIOLATION_ALLOWLIST = new Set<string>([
-  'src/sync/drive-backup.ts -> src/features/drive-bank/drive-bank.ts',
-  'src/sync/learning-backup.ts -> src/features/drive-bank/drive-bank.ts',
-  'src/sync/learning-backup.ts -> src/features/lessons/lesson-progress-store.ts',
-  'src/sync/learning-backup.ts -> src/persistence.ts',
-]);
+const LAYER_VIOLATION_ALLOWLIST = new Set<string>([]);
 
 function walkFiles(relativeDir: string, pattern = /\.(ts|tsx|css)$/): string[] {
   const fullDir = join(root, relativeDir);

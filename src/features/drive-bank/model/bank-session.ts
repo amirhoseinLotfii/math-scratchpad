@@ -1,12 +1,12 @@
 import type { ArchivedSession, BankQuestion, CachedBank, DriveBank } from '../../../domain/entities/drive-bank.types';
+import { ARCHIVE_KEY, BANK_CACHE_PREFIX } from '../../../shared/lib/storage-keys';
 import { flushLearningStorage, getLearningStorage } from '../../../sync/browser-db';
 import { blankStep, leaves, MAX_SESSION_EXERCISES, uid, type Document, type Exercise } from '../../math-editor/model/model';
 import { newSessionMeta, type ScratchState } from '../../math-editor/store/editor-store';
 import { serialize, validateSession } from '../../session/persistence/session-validator';
 import { snapshotVersion, validateBank } from './bank-validator';
 
-export const ARCHIVE_KEY = 'math-scratchpad-drive-session-archive-v1';
-export const BANK_CACHE_PREFIX = 'math-scratchpad-drive-bank-cache-v1';
+export { ARCHIVE_KEY, BANK_CACHE_PREFIX };
 const BANK_CACHE_SCHEMA = 1;
 const MAX_BANK_CACHE_LENGTH = 2_000_000;
 

@@ -1,5 +1,5 @@
 import * as z from 'zod/mini';
-import { getLearningStorage } from './browser-db';
+import { getLearningStorageOrLocal } from '../shared/lib/learning-storage-provider';
 
 export const LEARN_EVENT_TYPES = [
   'lesson_open', 'lesson_close', 'chunk_open', 'chunk_read', 'section_open', 'section_close',
@@ -36,7 +36,7 @@ export const legacyMigrationChunkSchema = z.strictObject({
   if (chunk.index >= chunk.count) ctx.addIssue({ code: 'custom', path: ['index'], message: 'Chunk index must be below count.' });
 }));
 function availableStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
-  try { return getLearningStorage(); } catch { return undefined; }
+  try { return getLearningStorageOrLocal(); } catch { return undefined; }
 }
 
 export const learnEventSchema = z.strictObject({
