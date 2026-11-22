@@ -35,9 +35,49 @@ export function useLessonTelemetry({
   const pendingAnswerEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const pendingWorkEdits = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
+  const hasEventContext = eventContext !== undefined;
+  const eventDeviceId = eventContext?.deviceId;
+  const eventBankVersion = eventContext?.bankVersion;
+  const eventSession = eventContext?.session;
+  const eventChapter = eventContext?.chapter;
+  const eventLesson = eventContext?.lesson;
+  const eventSection = eventContext?.section;
+  const eventConcept = eventContext?.concept;
+  const eventSkill = eventContext?.skill;
+  const eventPdfPage = eventContext?.pdfPage;
+  const eventBookPage = eventContext?.bookPage;
+
+  const stableEventContext = useMemo<LearnEventContext | undefined>(
+    () => (hasEventContext ? {
+      ...(eventDeviceId !== undefined ? { deviceId: eventDeviceId } : {}),
+      ...(eventBankVersion !== undefined ? { bankVersion: eventBankVersion } : {}),
+      ...(eventSession !== undefined ? { session: eventSession } : {}),
+      ...(eventChapter !== undefined ? { chapter: eventChapter } : {}),
+      ...(eventLesson !== undefined ? { lesson: eventLesson } : {}),
+      ...(eventSection !== undefined ? { section: eventSection } : {}),
+      ...(eventConcept !== undefined ? { concept: eventConcept } : {}),
+      ...(eventSkill !== undefined ? { skill: eventSkill } : {}),
+      ...(eventPdfPage !== undefined ? { pdfPage: eventPdfPage } : {}),
+      ...(eventBookPage !== undefined ? { bookPage: eventBookPage } : {}),
+    } : undefined),
+    [
+      eventBankVersion,
+      eventBookPage,
+      eventChapter,
+      eventConcept,
+      eventDeviceId,
+      eventLesson,
+      eventPdfPage,
+      eventSection,
+      eventSession,
+      eventSkill,
+      hasEventContext,
+    ],
+  );
+
   const lessonEventContext = useMemo(
-    () => buildLessonEventContext(bank, lesson, eventContext),
-    [bank, eventContext, lesson],
+    () => buildLessonEventContext(bank, lesson, stableEventContext),
+    [bank, lesson, stableEventContext],
   );
 
   const makeEventContext = useCallback(

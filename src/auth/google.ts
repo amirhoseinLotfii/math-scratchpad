@@ -14,7 +14,13 @@ export function getConfig(): DriveConfig {
   // Only the picked file is read from storage; any old saved clientId/apiKey/appId is ignored.
   return { clientId: GOOGLE_CLIENT_ID, apiKey: GOOGLE_API_KEY, appId: GOOGLE_APP_ID, fileId: s('fileId'), fileName: s('fileName') };
 }
-export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) { getLearningStorageOrLocal()?.setItem(DRIVE_CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName })); }
+export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) {
+  try {
+    getLearningStorageOrLocal()?.setItem(DRIVE_CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName }));
+  } catch {
+    /* ignore storage errors */
+  }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type G = any;

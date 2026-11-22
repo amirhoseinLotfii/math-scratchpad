@@ -141,6 +141,11 @@ export function useLessonAnswers({
     const previousAnswer = before.checkAnswers?.[questionId];
     const currentSignature = JSON.stringify(value);
     const previousSignature = JSON.stringify(previousAnswer);
+    const wasAnswered = before.answeredCheckIds.includes(questionId);
+    const wasSkipped = before.skippedChecks.some(item => item.questionId === questionId);
+    if (currentSignature === previousSignature && answered === wasAnswered && (value === null || !wasSkipped)) {
+      return;
+    }
     const checkAnswers = { ...before.checkAnswers };
     if (value) checkAnswers[questionId] = value;
     else delete checkAnswers[questionId];

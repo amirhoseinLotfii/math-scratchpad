@@ -28,11 +28,15 @@ export function migratePreviousProgress(
     for (let index = 0; index < storage.length; index++) {
       const key = storage.key(index);
       if (!key?.startsWith(prefix) || key === currentKey) continue;
-      const raw = storage.getItem(key);
-      if (!raw || raw.length > MAX_RECORD_LENGTH) continue;
-      const value: unknown = JSON.parse(raw);
-      if (!isRecord(value) || value.schemaVersion !== LESSON_PROGRESS_SCHEMA || value.bankId !== bank.bank_id || typeof value.bankVersion !== 'string' || value.bankVersion === bankVersion) continue;
-      candidates.push({ key, version: value.bankVersion, updatedAt: isTimestamp(value.updatedAt) ? value.updatedAt : '' });
+      try {
+        const raw = storage.getItem(key);
+        if (!raw || raw.length > MAX_RECORD_LENGTH) continue;
+        const value: unknown = JSON.parse(raw);
+        if (!isRecord(value) || value.schemaVersion !== LESSON_PROGRESS_SCHEMA || value.bankId !== bank.bank_id || typeof value.bankVersion !== 'string' || value.bankVersion === bankVersion) continue;
+        candidates.push({ key, version: value.bankVersion, updatedAt: isTimestamp(value.updatedAt) ? value.updatedAt : '' });
+      } catch {
+        continue;
+      }
     }
   } catch { return undefined; }
   candidates.sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));

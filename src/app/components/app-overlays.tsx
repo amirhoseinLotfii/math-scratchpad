@@ -1,4 +1,4 @@
-import { lazy, Suspense, type MutableRefObject } from 'react';
+import { lazy, Suspense, useMemo, type MutableRefObject } from 'react';
 import type { BankQuestion, DriveBank } from '../../features/drive-bank/drive-bank';
 import { contentDirection, languageForText, LessonText } from '../../features/lessons/lesson-content';
 import { LessonPicker } from '../../features/lessons/lesson-picker';
@@ -172,6 +172,11 @@ export function AppLessonOverlays({
   lessonButton: MutableRefObject<HTMLButtonElement | null>;
   onOpenDriveBank: () => void;
 }) {
+  const lessonId = lessonOrch.lessonScreen?.id;
+  const screenEventContext = useMemo(
+    () => (lessonId ? { ...lessonEventContext, lesson: lessonId } : undefined),
+    [lessonEventContext, lessonId],
+  );
   return (
     <>
       {lessonOrch.lessonScreen && (
@@ -194,10 +199,7 @@ export function AppLessonOverlays({
             practiceError={lessonOrch.practiceStartError}
             progressMessage={lessonPersistenceMessage}
             activityTracker={activityTracker}
-            eventContext={{
-              ...lessonEventContext,
-              lesson: lessonOrch.lessonScreen.id,
-            }}
+            eventContext={screenEventContext}
           />
         </div>
       )}
