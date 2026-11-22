@@ -36,7 +36,9 @@ export type Step = {
   segments?: StepSegment[];
   combinedLatex?: string;
 };
-export type AnswerType = 'math' | 'text' | 'choice' | 'true_false_why' | 'find_mistake';
+import type { AnswerType } from '../../../domain/entities/drive-bank.types';
+
+export type { AnswerType };
 export type TrueFalseChoice = 'true' | 'false';
 export type Exercise = { id: string; source: string; mode: 'math' | 'text'; prompt?: string; answerType?: AnswerType; choices?: string[]; answerText?: string; answerChoice?: TrueFalseChoice; answerReason?: string; diagnosticId?: number; bankQuestionId?: string; /** Optional bank lesson metadata. Older session JSON remains valid without it. */ stage?: 'learn' | 'practice'; conceptId?: string; assessment?: 'fractions-round-1'; elapsedMs?: number; confidence?: 'high' | 'medium' | 'low'; skipped?: boolean; migrationNotes?: string; startedAt?: string; submittedAt?: string; hintUsed?: boolean; hintNote?: string; guidance?: string; guidanceOpenedAt?: string; /** Epoch ms when the current open timing segment began (wall clock; survives reloads and hidden tabs). */ timerRunningSince?: number; timerPaused?: boolean; steps: Step[] };
 export type SessionMeta = { id: string; anxiety?: number; energy?: number; startedAt: string; endedAt?: string; bankId?: string; bankVersion?: string; chapter?: number };

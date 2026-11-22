@@ -1,1 +1,1 @@
-export { useAppDispatch, useAppSelector, useAppStore } from './app/store-provider';
+export { useAppDispatch, useAppSelector, useAppStore } from './features/math-editor/store/store-provider';

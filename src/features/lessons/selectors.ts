@@ -1,4 +1,4 @@
-import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
+import type { BankQuestion, DriveBank } from '../../domain/entities/drive-bank.types';
 import type { Concept, Lesson, Stage } from './types';
 import type { LessonSection } from './lesson-sections';
 

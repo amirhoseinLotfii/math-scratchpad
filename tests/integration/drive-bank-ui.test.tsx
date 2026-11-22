@@ -3,10 +3,10 @@ import '@testing-library/jest-dom/vitest';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import { renderMobileApp } from '../support/render-mobile-app';
 import { readArchive } from '../../src/features/drive-bank/drive-bank';
-import { clearDriveSessionToken } from '../../src/features/drive-bank/google';
+import { clearDriveSessionToken } from '../../src/auth/google';
 import { clearGoogleIdToken } from '../../src/sync/google-id-token';
 import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
-vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async () => true }));
+vi.mock('../../src/auth/identity', () => ({ permittedAccount: async () => true }));
 
 const bank = (source: string, version = 'v1') => ({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'practice', version, questions: [{ id: 'Q01', mode: 'math', source }, { id: 'Q02', mode: 'math', source: '2+2' }] });
 afterEach(async () => { cleanup(); localStorage.clear(); sessionStorage.clear(); clearDriveSessionToken(); clearGoogleIdToken(); await resetWorkerSessionForTests(); requestAccessTokenSpy.mockClear(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });
@@ -52,8 +52,8 @@ async function connect(user: ReturnType<typeof renderMobileApp>['user']) {
 describe('private Drive bank flow', () => {
   it('uses built-in Google identifiers, shows no manual entry, and ignores old saved ones', async () => {
     localStorage.setItem('math-scratchpad-drive-config-v1', JSON.stringify({ clientId: 'old.apps.googleusercontent.com', apiKey: 'OLDKEY_old_old_old_old_old', appId: '1', fileId: '' }));
-    const { getConfig } = await import('../../src/features/drive-bank/google');
-    const { GOOGLE_CLIENT_ID, GOOGLE_APP_ID, GOOGLE_API_KEY } = await import('../../src/features/drive-bank/drive-config');
+    const { getConfig } = await import('../../src/auth/google');
+    const { GOOGLE_CLIENT_ID, GOOGLE_APP_ID, GOOGLE_API_KEY } = await import('../../src/auth/drive-config');
     expect(getConfig()).toMatchObject({ clientId: GOOGLE_CLIENT_ID, appId: GOOGLE_APP_ID, apiKey: GOOGLE_API_KEY });
     const { user } = renderMobileApp();
     await user.click(screen.getByRole('button', { name: 'Exercise menu' }));

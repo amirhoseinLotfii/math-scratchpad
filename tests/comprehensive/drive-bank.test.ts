@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BANK_SCHEMA, EMPTY_BANK, ARCHIVE_KEY, archiveSession, bankDocument, driveError, metaFingerprint, parseBankText, readArchive, readDriveMeta, readPrivateBank, readPrivateBankText, snapshotVersion, validateBank, MAX_QUESTIONS_PER_BANK } from '../../src/features/drive-bank/drive-bank';
-import { getConfig, saveConfig, requestToken, pickFile, DRIVE_SCOPE } from '../../src/features/drive-bank/google';
-import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from '../../src/features/drive-bank/drive-config';
-import { permittedAccount } from '../../src/features/drive-bank/identity';
+import { getConfig, saveConfig, requestToken, DRIVE_SCOPE } from '../../src/auth/google';
+import { pickFile } from '../../src/features/drive-bank/api/drive-picker';
+import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from '../../src/auth/drive-config';
+import { permittedAccount } from '../../src/auth/identity';
 import { initialState } from '../../src/store';
 import { serialize, validateSession } from '../../src/persistence';
 import { MAX_SESSION_EXERCISES } from '../../src/model';

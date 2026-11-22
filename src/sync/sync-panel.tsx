@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { X } from 'lucide-react';
-import { getConfig, loadPicker, pickBackupFolder } from '../features/drive-bank/google';
+import { getConfig, loadPicker } from '../auth/google';
+import { pickBackupFolder } from './backup-folder-picker';
 import { createVerifiedDriveBackup } from './drive-backup';
 import { subscribeApiToken } from './worker-session';
 import { GoogleLoginButton } from './google-login-button';

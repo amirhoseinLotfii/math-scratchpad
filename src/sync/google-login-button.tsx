@@ -4,7 +4,7 @@ import { GoogleAuthError, googleAuthFailureMessage } from './google-auth-errors'
 import { getGoogleAuthDiagnostics, subscribeGoogleAuthDiagnostics } from './google-auth-diagnostics';
 import { establishGoogleIdentitySession, requestDriveAccessTokenFromGesture, type GoogleAuthCredentials } from './google-auth';
 import { mountGoogleIdButton } from './google-id-token';
-import type { Token } from '../features/drive-bank/google';
+import type { Token } from '../auth/google';
 import { getWorkerSession, WORKER_SESSION_EVENT } from './worker-session';
 
 function errorMessage(problem: unknown): string {

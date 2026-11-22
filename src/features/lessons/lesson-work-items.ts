@@ -1,5 +1,5 @@
-import type { BankQuestion } from '../drive-bank/drive-bank';
-import { stepIsBlank, type AnswerType, type Step } from '../../model';
+import type { BankQuestion } from '../../domain/entities/drive-bank.types';
+import { stepIsBlank, type AnswerType, type Step } from '../math-editor/model/model';
 import type { LessonSection } from './lesson-sections';
 import type { Lesson, LessonBlock, LessonWorkAnswer } from './types';
 import { BREAKPOINT_MEDIA } from '../../shared/lib/breakpoints';

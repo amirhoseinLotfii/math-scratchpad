@@ -1,10 +1,10 @@
 import { useCallback, useId, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import { Button } from '../../shared/ui/button';
-import type { BankQuestion } from '../drive-bank/drive-bank';
-import type { ScratchStore } from '../../store';
-import { stepIsBlank, stepLatex, type Step } from '../../model';
+import type { BankQuestion } from '../../domain/entities/drive-bank.types';
+import type { ScratchStore } from '../math-editor/store/editor-store';
+import { stepIsBlank, stepLatex, type Step } from '../math-editor/model/model';
 import { LessonMathCheck } from './lesson-math-check';
-import { MathDisplay } from '../../MathDisplay';
+import { MathDisplay } from '../../shared/ui/math-display';
 import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionSource } from './lesson-content';
 import { workAnswerHasContent, type LessonWorkItem, type LessonWorkKind } from './lesson-work-items';
 import { LessonAnswerFields } from './lesson-check';

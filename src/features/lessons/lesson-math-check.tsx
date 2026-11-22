@@ -1,21 +1,18 @@
 import { Fragment, createContext, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Trash2 } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '../../hooks';
-import { Provider } from '../../app/store-provider';
+import { Provider, useAppDispatch, useAppSelector } from '../math-editor/store/store-provider';
 import { MathTools } from '../workspace/components/math-tools';
 import { MathInsertDialog } from '../math-editor/components/math-insert-dialog';
-import { Keyboard } from '../../Keyboard';
-import { actions, exerciseOf, initialState, makeStore } from '../../store';
-import { blankStep, leaves, stepIsBlank, stepLatex, uid, type Step } from '../../model';
+import { Keyboard } from '../math-editor/components/math-keyboard';
+import { actions, exerciseOf, initialState, makeStore, type ScratchStore } from '../math-editor/store/editor-store';
+import { blankStep, leaves, stepIsBlank, stepLatex, uid, type Step } from '../math-editor/model/model';
 import { Button } from '../../shared/ui/button';
 import { useWorkspaceLayout } from '../../shared/hooks/use-workspace-layout';
-import type { BankQuestion } from '../drive-bank/drive-bank';
-import type { ScratchStore } from '../../store';
+import type { BankQuestion } from '../../domain/entities/drive-bank.types';
 import { executeMathfield, insertMathSymbol, mathfieldForStep, moveMathfield, redoMathfield, undoMathfield } from '../math-editor/mathlive-adapter';
 import { MathLiveStepInput } from '../math-editor/components/mathlive-step-input';
 import { SegmentedStepCard } from '../math-editor/components/segmented-step-card';
 import { isMathQuestionSource, localizeLessonDigits } from './lesson-content';
-import { parse } from '../../parser';
+import { parse } from '../math-editor/model/parser';
 
 /** Coordinates the inline math keyboards across a single lesson.
  * Stores remain independent so switching exercises cannot discard answers. */

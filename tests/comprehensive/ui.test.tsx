@@ -8,11 +8,11 @@ import { DriveBankPanel, POLL_MS } from '../../src/features/drive-bank/drive-ban
 import { actions, initialState, makeStore } from '../../src/store';
 import { bankDocument, validateBank } from '../../src/features/drive-bank/drive-bank';
 import { parse } from '../../src/parser';
-import { clearDriveSessionToken } from '../../src/features/drive-bank/google';
+import { clearDriveSessionToken } from '../../src/auth/google';
 import { clearGoogleIdToken } from '../../src/sync/google-id-token';
 import { resetWorkerSessionForTests } from '../../src/sync/worker-session';
 import userEvent from '@testing-library/user-event';
-vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: async (p: { email?: string }) => p?.email === 'me@example.com' }));
+vi.mock('../../src/auth/identity', () => ({ permittedAccount: async (p: { email?: string }) => p?.email === 'me@example.com' }));
 
 const BANK = (source = '1+2', version = 'v1') => JSON.stringify({ schema_version: 'math-scratchpad.bank/1.0', bank_id: 'GEN', version, questions: [{ id: 'A', mode: 'math', source }, { id: 'B', mode: 'text', source: 'متن' }] });
 afterEach(async () => { cleanup(); localStorage.clear(); sessionStorage.clear(); clearDriveSessionToken(); clearGoogleIdToken(); await resetWorkerSessionForTests(); vi.restoreAllMocks(); vi.useRealTimers(); delete window.google; delete window.gapi; });

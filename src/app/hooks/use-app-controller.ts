@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DriveBank } from '../../features/drive-bank/drive-bank';
-import { getConfig as getDriveConfig } from '../../features/drive-bank/google';
+import { getConfig as getDriveConfig } from '../../auth/google';
 import { getLesson } from '../../features/lessons/selectors';
 import { questionStatus } from '../../features/workspace/model/workspace-layout';
 import { useAppDispatch, useAppSelector, useAppStore } from '../../hooks';

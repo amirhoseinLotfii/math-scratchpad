@@ -1,5 +1,5 @@
-import { parse } from '../../parser';
-import type { Sequence } from '../../model';
+import { parse } from '../math-editor/model/parser';
+import type { Sequence } from '../math-editor/model/model';
 
 export type LessonTextPart =
   | { type: 'text'; text: string }

@@ -1,4 +1,4 @@
-import type { Concept, Difficulty, Lesson, LessonBlock, LessonSectionDefinition, Lang } from './types';
+import type { Concept, Difficulty, Lesson, LessonBlock, LessonSectionDefinition, Lang } from '../../domain/entities/lesson.types';
 
 export type LessonParseResult = { lessons: Lesson[]; warnings: string[] };
 const safeId = /^[\w.-]{1,80}$/;

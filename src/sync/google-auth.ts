@@ -1,10 +1,8 @@
-import { getConfig, readDriveSessionToken, requestToken, saveDriveSessionToken, type Token } from '../features/drive-bank/google';
-import { GOOGLE_CLIENT_ID } from '../features/drive-bank/drive-config';
-import { permittedAccount } from '../features/drive-bank/identity';
+import { clearDriveSessionToken, getConfig, readDriveSessionToken, requestToken, saveDriveSessionToken, type Token } from '../auth/google';
+import { GOOGLE_CLIENT_ID } from '../auth/drive-config';
+import { permittedAccount } from '../auth/identity';
 import { clearGoogleIdToken, getGoogleIdToken } from './google-id-token';
-import { exchangeIdTokenForWorkerSessionOrThrow, getWorkerSession, type WorkerSession } from './worker-session';
-import { clearDriveSessionToken } from '../features/drive-bank/google';
-import { revokeWorkerSession } from './worker-session';
+import { exchangeIdTokenForWorkerSessionOrThrow, getWorkerSession, revokeWorkerSession, type WorkerSession } from './worker-session';
 import { GoogleAuthError } from './google-auth-errors';
 import { recordGoogleAuthDiagnostic } from './google-auth-diagnostics';
 

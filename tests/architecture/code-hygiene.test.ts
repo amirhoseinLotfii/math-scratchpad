@@ -12,11 +12,6 @@ const MAX_PHYSICAL_LINES = 300;
  * Phases B–F systematically remove entries until this set is completely empty.
  */
 const MAX_LINES_ALLOWLIST = new Set<string>([
-  // Phase D: lessons & drive-bank
-  'src/features/lessons/lesson-screen.tsx',
-  'src/features/lessons/lesson-progress-store.ts',
-  'src/features/drive-bank/drive-bank-panel.tsx',
-  'src/features/drive-bank/drive-bank.ts',
   // Phase E: sync & storage
   'src/sync/runtime.ts',
   'src/sync/browser-db.ts',
@@ -43,21 +38,13 @@ const LEGACY_ROOT_NAMING_EXCEPTIONS = new Set<string>([
 ]);
 
 /**
- * Remaining layer boundary exceptions to be eliminated in Phases D & E.
+ * Remaining layer boundary exceptions to be eliminated in Phase E.
  */
 const LAYER_VIOLATION_ALLOWLIST = new Set<string>([
-  'src/features/lessons/lesson-math-check.tsx -> src/app/store-provider.tsx',
   'src/sync/drive-backup.ts -> src/features/drive-bank/drive-bank.ts',
-  'src/sync/google-auth.ts -> src/features/drive-bank/google.ts',
-  'src/sync/google-auth.ts -> src/features/drive-bank/drive-config.ts',
-  'src/sync/google-auth.ts -> src/features/drive-bank/identity.ts',
-  'src/sync/google-id-token.ts -> src/features/drive-bank/drive-config.ts',
-  'src/sync/google-id-token.ts -> src/features/drive-bank/google.ts',
-  'src/sync/google-login-button.tsx -> src/features/drive-bank/google.ts',
   'src/sync/learning-backup.ts -> src/features/drive-bank/drive-bank.ts',
   'src/sync/learning-backup.ts -> src/features/lessons/lesson-progress-store.ts',
   'src/sync/learning-backup.ts -> src/persistence.ts',
-  'src/sync/sync-panel.tsx -> src/features/drive-bank/google.ts',
 ]);
 
 function walkFiles(relativeDir: string, pattern = /\.(ts|tsx|css)$/): string[] {

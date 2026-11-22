@@ -1,10 +1,10 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: vi.fn(async () => true) }));
+vi.mock('../../src/auth/identity', () => ({ permittedAccount: vi.fn(async () => true) }));
 
-import { permittedAccount } from '../../src/features/drive-bank/identity';
-import { clearDriveSessionToken, ensureDriveSessionToken, readDriveSessionToken, refreshDriveSessionTokenSilently } from '../../src/features/drive-bank/google';
+import { permittedAccount } from '../../src/auth/identity';
+import { clearDriveSessionToken, ensureDriveSessionToken, readDriveSessionToken, refreshDriveSessionTokenSilently } from '../../src/auth/google';
 import { establishGoogleIdentitySession, requestDriveAccessTokenFromGesture } from '../../src/sync/google-auth';
 import { clearGoogleIdToken, commitGoogleIdToken, getGoogleIdToken } from '../../src/sync/google-id-token';
 import { resetWorkerSessionForTests } from '../../src/sync/worker-session';

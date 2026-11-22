@@ -22,11 +22,11 @@ import {
   storeServerEvents,
 } from '../../src/sync/browser-db';
 import { legacyMigrationBackupContents, markLegacyMigrationDriveVerified, queueLegacyMigration, verifyLegacyMigrationOnServer } from '../../src/sync/legacy-migration';
-import { permittedAccount } from '../../src/features/drive-bank/identity';
+import { permittedAccount } from '../../src/auth/identity';
 import { exchangeIdTokenForWorkerSession, resetWorkerSessionForTests } from '../../src/sync/worker-session';
 import { clearGoogleIdToken, commitGoogleIdToken } from '../../src/sync/google-id-token';
 
-vi.mock('../../src/features/drive-bank/identity', () => ({ permittedAccount: vi.fn() }));
+vi.mock('../../src/auth/identity', () => ({ permittedAccount: vi.fn() }));
 
 const LEGACY_KEY = 'math-scratchpad-session-v3';
 const TEST_ID_TOKEN = `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, email: 'owner@example.test' })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}.signature`;

@@ -1,6 +1,6 @@
-import { GOOGLE_CLIENT_ID } from '../features/drive-bank/drive-config';
-import { loadIdentity } from '../features/drive-bank/google';
-import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from './google-auth-state';
+import { GOOGLE_CLIENT_ID } from '../auth/drive-config';
+import { loadIdentity } from '../auth/google';
+import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from '../auth/google-auth-state';
 import { recordGoogleAuthDiagnostic } from './google-auth-diagnostics';
 
 type GoogleCredential = { credential?: string };

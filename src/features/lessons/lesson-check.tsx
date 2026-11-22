@@ -1,7 +1,7 @@
 import { useId, type FocusEvent } from 'react';
 import { Button } from '../../shared/ui/button';
-import type { BankQuestion } from '../drive-bank/drive-bank';
-import type { ScratchStore } from '../../store';
+import type { BankQuestion } from '../../domain/entities/drive-bank.types';
+import type { ScratchStore } from '../math-editor/store/editor-store';
 import { LessonMathCheck } from './lesson-math-check';
 import { contentDirection, languageForText, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';
 import type { LessonCheckAnswer } from './types';

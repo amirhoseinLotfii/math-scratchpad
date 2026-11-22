@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../shared/ui/dialog';
 import { Button } from '../../shared/ui/button';
-import type { BankQuestion, DriveBank } from '../drive-bank/drive-bank';
+import type { BankQuestion, DriveBank } from '../../domain/entities/drive-bank.types';
 import { getPracticeQuestionConceptId, getPracticeQuestionOrigin, getSectionLearnChecks, getSectionPracticeQuestions } from './selectors';
 import type { Lesson } from './types';
 import { contentDirection, displayEducationalHeading, isRedundantOpeningHeading, languageForText, lessonUiLanguage, LessonBlockView, LessonSourceAttribution, LessonText, localizeLessonDigits, QuestionChoice, QuestionSource } from './lesson-content';

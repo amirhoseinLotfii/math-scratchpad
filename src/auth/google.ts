@@ -1,20 +1,20 @@
-/* Browser-only Google sign-in (GIS token model) and Google Picker. No client secret, no refresh token, nothing stored server-side. */
+/* Browser-only Google sign-in (GIS token model) and script loader. No client secret, no refresh token, nothing stored server-side. */
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 import { GOOGLE_API_KEY, GOOGLE_APP_ID, GOOGLE_CLIENT_ID } from './drive-config';
-import { getLearningStorage } from '../../sync/browser-db';
-import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from '../../sync/google-auth-state';
+import { getLearningStorageOrLocal } from '../shared/lib/learning-storage-provider';
+import { announceGoogleAuthStateChanged, clearAuthRecord, GOOGLE_AUTH_STATE_EVENT, readAuthRecord, writeAuthRecord } from './google-auth-state';
 export const SCOPES = `openid email ${DRIVE_SCOPE}`;
 export const DRIVE_CONFIG_KEY = 'math-scratchpad-drive-config-v1';
 /** Built-in public identifiers (see drive-config.ts) plus the picked file, which stays in this browser. */
 export type DriveConfig = { clientId: string; apiKey: string; appId: string; fileId: string; fileName: string };
 export function getConfig(): DriveConfig {
   let v: Record<string, unknown> = {};
-  try { v = JSON.parse(getLearningStorage().getItem(DRIVE_CONFIG_KEY) ?? '{}') ?? {}; } catch { /* ignore */ }
+  try { v = JSON.parse(getLearningStorageOrLocal()?.getItem(DRIVE_CONFIG_KEY) ?? '{}') ?? {}; } catch { /* ignore */ }
   const s = (k: string) => typeof v[k] === 'string' ? v[k] as string : '';
   // Only the picked file is read from storage; any old saved clientId/apiKey/appId is ignored.
   return { clientId: GOOGLE_CLIENT_ID, apiKey: GOOGLE_API_KEY, appId: GOOGLE_APP_ID, fileId: s('fileId'), fileName: s('fileName') };
 }
-export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) { getLearningStorage().setItem(DRIVE_CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName })); }
+export function saveConfig(c: Pick<DriveConfig, 'fileId' | 'fileName'>) { getLearningStorageOrLocal()?.setItem(DRIVE_CONFIG_KEY, JSON.stringify({ fileId: c.fileId, fileName: c.fileName })); }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type G = any;
@@ -172,28 +172,4 @@ export async function ensureDriveSessionToken(): Promise<Token | undefined> {
   if (!saved && !hasDriveConsent()) return undefined;
   const refreshed = await refreshDriveSessionTokenSilently();
   return refreshed ?? readDriveSessionToken();
-}
-
-/** Opens Google Picker so the user grants this app (drive.file) access to just the chosen file. */
-export function pickFile(cfg: DriveConfig, token: string, done: (r: { id?: string; name?: string; error?: string }) => void) {
-  const p = window.google?.picker;
-  if (!p) { done({ error: 'Google Picker is not ready.' }); return; }
-  const view = new p.DocsView(p.ViewId.DOCS).setMimeTypes('application/json,text/plain').setMode(p.DocsViewMode.LIST).setQuery('MATH_QUESTION_BANK.json');
-  new p.PickerBuilder().addView(view).setOAuthToken(token).setDeveloperKey(cfg.apiKey).setAppId(cfg.appId).setOrigin(window.location.origin)
-    .setLocale('en').setTitle('Select MATH_QUESTION_BANK.json').setCallback((data: any) => {
-      if (data.action === p.Action.PICKED) { const d = data.docs?.[0]; done(d?.id ? { id: d.id, name: d.name } : { error: 'No file was selected.' }); }
-      else if (data.action === p.Action.CANCEL) done({ error: 'File selection was canceled.' });
-    }).build().setVisible(true);
-}
-
-/** Lets the owner select a private Drive folder for one-time learning-data backups. */
-export function pickBackupFolder(cfg: DriveConfig, token: string, done: (r: { id?: string; name?: string; error?: string }) => void) {
-  const p = window.google?.picker;
-  if (!p) { done({ error: 'Google Picker is not ready.' }); return; }
-  const view = new p.DocsView(p.ViewId.FOLDERS).setSelectFolderEnabled(true).setMode(p.DocsViewMode.LIST);
-  new p.PickerBuilder().addView(view).setOAuthToken(token).setDeveloperKey(cfg.apiKey).setAppId(cfg.appId).setOrigin(window.location.origin)
-    .setLocale('fa').setTitle('پوشهٔ خصوصی پشتیبان را انتخاب کن').setCallback((data: any) => {
-      if (data.action === p.Action.PICKED) { const d = data.docs?.[0]; done(d?.id ? { id: d.id, name: d.name } : { error: 'No folder was selected.' }); }
-      else if (data.action === p.Action.CANCEL) done({ error: 'Folder selection was canceled.' });
-    }).build().setVisible(true);
 }
